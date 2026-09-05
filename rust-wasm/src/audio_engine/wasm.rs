@@ -231,6 +231,19 @@ pub struct AudioEngine {
     audio_time_accum: f64, // accumulated quantum time (seconds)
     last_cpu_usage: f32,   // last computed average (%)
     block_size: usize,
+    /// Scratch buffers for `process_audio`, kept across calls.
+    ///
+    /// These used to be four `vec![0.0; len]` allocations per render
+    /// quantum -- heap traffic on the audio thread, ~375 times a second per
+    /// engine at 48 kHz and 750 at 96 kHz, which is exactly where an
+    /// allocator stall turns into an audible dropout. The native engine
+    /// already reused preallocated buffers; this is the same fix on the path
+    /// the browser actually runs. Resized in place when the block size
+    /// changes, so the steady state allocates nothing.
+    mix_left: Vec<f32>,
+    mix_right: Vec<f32>,
+    voice_left: Vec<f32>,
+    voice_right: Vec<f32>,
 }
 
 /// Internal representation of LFO update parameters used by the engine.
@@ -400,6 +413,10 @@ impl AudioEngine {
             audio_time_accum: 0.0,
             last_cpu_usage: 0.0,
             block_size: buffer_size,
+            mix_left: vec![0.0; buffer_size],
+            mix_right: vec![0.0; buffer_size],
+            voice_left: vec![0.0; buffer_size],
+            voice_right: vec![0.0; buffer_size],
         }
     }
 
@@ -748,14 +765,21 @@ impl AudioEngine {
         let start = js_sys::Date::now();
         #[cfg(not(feature = "wasm"))]
         let start = std::time::Instant::now();
-        // Create temporary buffers for voice mixing
-        let mut mix_left = vec![0.0; output_left.len()];
-        let mut mix_right = vec![0.0; output_right.len()];
+        // Reuse the preallocated scratch buffers; only a block-size change
+        // touches the allocator.
+        let frames = output_left.len();
+        for buffer in [
+            &mut self.mix_left,
+            &mut self.mix_right,
+            &mut self.voice_left,
+            &mut self.voice_right,
+        ] {
+            buffer.resize(frames, 0.0);
+        }
+        self.mix_left.fill(0.0);
+        self.mix_right.fill(0.0);
 
-        let mut voice_left = vec![0.0; output_left.len()];
-        let mut voice_right = vec![0.0; output_right.len()];
-
-        let block_len = output_left.len().max(1);
+        let block_len = frames.max(1);
         // Parameter voice count is dictated by the automation adapter (fixed to descriptors, usually 8).
         let param_voice_count = if block_len > 0 && !gates.is_empty() {
             (gates.len() / block_len).max(1)
@@ -831,8 +855,8 @@ impl AudioEngine {
                 }
             }
 
-            voice_left.fill(0.0);
-            voice_right.fill(0.0);
+            self.voice_left.fill(0.0);
+            self.voice_right.fill(0.0);
 
             // Process voice audio
             let zero_gate = [0.0_f32];
@@ -851,21 +875,22 @@ impl AudioEngine {
             voice.process_audio(
                 gate_buffer,
                 frequency_buffer,
-                &mut voice_left,
-                &mut voice_right,
+                &mut self.voice_left,
+                &mut self.voice_right,
             );
 
-
             // Mix voice into main mix buffers with gain
-            for (i, (left, right)) in voice_left.iter().zip(voice_right.iter()).enumerate() {
-                mix_left[i] += left * gain;
-                mix_right[i] += right * gain;
+            for (i, (left, right)) in
+                self.voice_left.iter().zip(self.voice_right.iter()).enumerate()
+            {
+                self.mix_left[i] += left * gain;
+                self.mix_right[i] += right * gain;
             }
         }
 
         // Process through effect stack
         self.effect_stack
-            .process_audio(&mix_left, &mix_right, output_left, output_right);
+            .process_audio(&self.mix_left, &self.mix_right, output_left, output_right);
 
         // Apply master gain after effects
         if master_gain != 1.0 {

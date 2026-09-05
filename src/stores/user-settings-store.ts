@@ -1,5 +1,10 @@
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
+import {
+  defaultAudioSampleRate,
+  defaultSampleOversampleFactor,
+} from 'src/audio/device-profile';
+import { setSampleQuality } from 'src/audio/sample-quality';
 
 /**
  * User settings interface
@@ -122,11 +127,19 @@ export interface UserSettings {
  * the same way, so the v2 `false` -- which is in every existing user's
  * stored blob -- is overwritten exactly once.
  *
+ * v4: the audio defaults became device-aware. A phone was asking for a
+ * 96 kHz context (doubling the cost of every node in the graph, then adding
+ * an output resample, because no handheld runs its hardware there) and for
+ * 4x sample oversampling (four times the resident sample memory and four
+ * times the read bandwidth per voice, on the render thread). Both were
+ * chosen for a desktop and shipped to everything. Handhelds are moved to
+ * the device defaults once; desktops keep exactly what they had.
+ *
  * Note that the master-volume default moving from 0.75 to 0.5 deliberately did
  * *not* get a version bump: it is a starting point rather than a correction, so
  * anyone who has already set their own level keeps it.
  */
-export const SETTINGS_VERSION = 3;
+export const SETTINGS_VERSION = 4;
 
 /**
  * Default user settings. Exported so tests can pin the ones that are
@@ -145,11 +158,11 @@ export const defaultSettings: UserSettings = {
   canvasPatternRenderer: true,
   granularPlaybackScroll: true,
   useSimplifiedModInstruments: true,
-  sampleOversampleFactor: 4,
+  sampleOversampleFactor: defaultSampleOversampleFactor(),
   sampleRemoveDcOffset: true,
   sampleLoopCrossfadeFrames: 0,
   sampleAntiAliasHighNotes: true,
-  audioSampleRate: 96000,
+  audioSampleRate: defaultAudioSampleRate(),
   postFxFilterMode: 'auto',
   postFxFilterParams: {
     staticCutoffHz: 4900,
@@ -223,6 +236,20 @@ export function migrateSettingsVersion(
     migrated.canvasPatternRenderer = true;
   }
 
+  // v3 -> v4: the audio defaults become device-aware. Only the two values a
+  // desktop chose for itself are rewritten, and only when the stored blob
+  // still holds them -- a user who picked a rate or an oversampling factor
+  // by hand keeps it, and a desktop sees no change at all because its
+  // device defaults are the old values.
+  if (version < 4) {
+    if (migrated.audioSampleRate === 96000) {
+      migrated.audioSampleRate = defaultAudioSampleRate();
+    }
+    if (migrated.sampleOversampleFactor === 4) {
+      migrated.sampleOversampleFactor = defaultSampleOversampleFactor();
+    }
+  }
+
   migrated.settingsVersion = SETTINGS_VERSION;
   return migrated;
 }
@@ -268,11 +295,33 @@ function saveSettings(settings: UserSettings): void {
 export const useUserSettingsStore = defineStore('userSettings', () => {
   const settings = ref<UserSettings>(loadSettings());
 
+  /**
+   * Push the sample-quality settings into the audio layer.
+   *
+   * Done here rather than from a page, because the jukebox loads samples too
+   * and never touched these -- so a phone that opened straight into the
+   * jukebox got the library defaults (4x oversampling and the full mip
+   * stack) whatever its settings said. They are read when a sample is
+   * loaded, so a change reaches samples loaded afterwards; reloading the
+   * song applies it to the ones already in memory.
+   */
+  function applySampleQuality(current: UserSettings): void {
+    setSampleQuality({
+      oversampleFactor: current.sampleOversampleFactor,
+      removeDcOffset: current.sampleRemoveDcOffset,
+      loopCrossfadeFrames: current.sampleLoopCrossfadeFrames,
+      antiAliasHighNotes: current.sampleAntiAliasHighNotes,
+    });
+  }
+
+  applySampleQuality(settings.value);
+
   // Watch for changes and auto-save to localStorage
   watch(
     settings,
     (newSettings) => {
       saveSettings(newSettings);
+      applySampleQuality(newSettings);
     },
     { deep: true }
   );

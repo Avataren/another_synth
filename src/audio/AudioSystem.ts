@@ -4,8 +4,8 @@ import {
   PostFxRack,
   registerPostFxRack,
 } from '@another-synth/tracker-playback';
+import { defaultAudioSampleRate } from './device-profile';
 
-const DEFAULT_SAMPLE_RATE = 96000;
 /**
  * Where to go when the preferred rate is refused.
  *
@@ -22,18 +22,22 @@ const SETTINGS_STORAGE_KEY = 'synth-user-settings';
  * corrupt or hand-edited settings blob cannot leave the app with no audio.
  */
 function readPreferredSampleRate(): number {
+    // The device's own default, used whenever the settings blob has nothing
+    // usable to say. See device-profile: a phone asks for 48 kHz, which is
+    // what its hardware runs at, rather than 96 kHz plus a resampler.
+    const deviceDefault = defaultAudioSampleRate();
     try {
         const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-        if (!raw) return DEFAULT_SAMPLE_RATE;
+        if (!raw) return deviceDefault;
         const parsed = JSON.parse(raw) as { audioSampleRate?: unknown };
         const rate = parsed?.audioSampleRate;
         if (typeof rate !== 'number' || !Number.isFinite(rate)) {
-            return DEFAULT_SAMPLE_RATE;
+            return deviceDefault;
         }
-        if (rate < 8000 || rate > 192000) return DEFAULT_SAMPLE_RATE;
+        if (rate < 8000 || rate > 192000) return deviceDefault;
         return rate;
     } catch {
-        return DEFAULT_SAMPLE_RATE;
+        return deviceDefault;
     }
 }
 

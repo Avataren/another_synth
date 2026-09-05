@@ -316,6 +316,18 @@ export interface PlaybackOptions {
   audioContext?: AudioContext;
   /** Ticks per row (FT2 style, default 6) */
   ticksPerRow?: number;
+  /**
+   * How far ahead of the audio clock rows are queued, in seconds, while the
+   * tab is visible. Defaults to 0.5.
+   *
+   * The scheduling loop runs on whatever thread the host's `PlaybackClock`
+   * runs on -- the main thread, in a browser -- so the window has to cover
+   * the longest task that can get between two of its wake-ups. Half a second
+   * is ample on a desktop; a host that knows it is on slower hardware should
+   * ask for more, because every overrun is a row scheduled late. A hidden tab
+   * always gets this plus half a second on top.
+   */
+  lookaheadSeconds?: number;
 }
 
 export type InstrumentResolver = (instrumentId: string | undefined) => Promise<void> | void;

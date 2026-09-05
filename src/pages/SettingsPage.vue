@@ -409,9 +409,13 @@
                     "
                   >
                     <option value="44100">44.1 kHz</option>
-                    <option value="48000">48 kHz (default)</option>
+                    <option value="48000">
+                      48 kHz{{ deviceDefaultRate === 48000 ? ' (default)' : '' }}
+                    </option>
                     <option value="88200">88.2 kHz</option>
-                    <option value="96000">96 kHz</option>
+                    <option value="96000">
+                      96 kHz{{ deviceDefaultRate === 96000 ? ' (default)' : '' }}
+                    </option>
                   </select>
                   <span class="toggle-description">
                     A higher rate gives the engine more room above the audible
@@ -537,6 +541,7 @@ import {
 } from 'src/stores/theme-store';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { peekSharedAudioSystem } from 'src/audio/shared-audio-system';
+import { defaultAudioSampleRate } from 'src/audio/device-profile';
 import AppVersion from 'src/components/AppVersion.vue';
 
 const themeStore = useThemeStore();
@@ -680,6 +685,12 @@ function onPickColor(key: ColorFieldKey, value: string) {
  * purely to read this, before any user gesture. Re-read when the setting
  * changes so the notice below appears as soon as the two disagree.
  */
+/**
+ * The rate this device defaults to, so the option list can say which one
+ * that is: a phone defaults to its hardware's 48 kHz, a desktop to 96 kHz.
+ */
+const deviceDefaultRate = defaultAudioSampleRate();
+
 const runningSampleRate = computed(() => {
   void settings.value.audioSampleRate;
   return peekSharedAudioSystem()?.audioContext.sampleRate ?? null;

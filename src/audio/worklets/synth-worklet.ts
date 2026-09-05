@@ -166,6 +166,11 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
   > = new Map();
   private lastCpuResponseMs = 0;
   private readonly cpuResponseIntervalMs = 50;
+  /**
+   * Consecutive silent blocks per engine, keyed by engine index or, in
+   * pooled mode, by instrument id. See `SILENT_BLOCKS_TO_SLEEP`.
+   */
+  private silentBlocks: Map<string, number> = new Map();
 
   protected getGraphEngines(): AudioEngine[] {
     return this.getTargetEngines();
@@ -966,6 +971,11 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
       });
     } finally {
       this.isApplyingPatch = false;
+      // A new patch may be a drone that sounds without a gate ever opening,
+      // and a sleeping engine would never be processed to find that out.
+      // Every patch change wakes everything; a genuinely silent engine goes
+      // back to sleep within SILENT_BLOCKS_TO_SLEEP blocks.
+      this.silentBlocks.clear();
     }
   }
 
@@ -1048,6 +1058,11 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
       });
     } finally {
       this.isApplyingPatch = false;
+      // A new patch may be a drone that sounds without a gate ever opening,
+      // and a sleeping engine would never be processed to find that out.
+      // Every patch change wakes everything; a genuinely silent engine goes
+      // back to sleep within SILENT_BLOCKS_TO_SLEEP blocks.
+      this.silentBlocks.clear();
     }
   }
 
@@ -1100,6 +1115,7 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private handleUnloadInstrument(data: { instrumentId?: string }) {
     if (!data.instrumentId) return;
+    this.silentBlocks.delete(data.instrumentId);
     if (this.instrumentSlots.delete(data.instrumentId)) {
       console.log(
         `[SynthAudioProcessor] Unloaded instrument ${data.instrumentId}`,
@@ -2261,6 +2277,87 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
   /**
    * Map global worklet parameter arrays into a local engine parameter map for a pooled instrument slot.
    */
+  /**
+   * Skip an engine whose voices are all released and whose output has
+   * already decayed to nothing.
+   *
+   * A loaded engine used to run its full graph -- every voice, then the
+   * effect stack -- on every render quantum for the life of the tab,
+   * whether or not a note had ever been played. That is the whole synth's
+   * cost, permanently, on pages that never use it: the tracker plays
+   * modules through Web Audio sampler voices (`useSimplifiedModInstruments`)
+   * and the jukebox has no synth at all, yet both open the worklet at boot
+   * and both keep it running. On a phone, at 96 kHz, that alone can be most
+   * of the render budget -- and the budget it takes is the budget module
+   * playback needs.
+   *
+   * Sleeping is gated on *measured* silence, not on the gates alone, so a
+   * release tail and a reverb tail both play out in full: an engine only
+   * sleeps after this many consecutive blocks in which no gate was open and
+   * nothing above `SILENCE_FLOOR` came out of it. It wakes on the same
+   * block a gate rises, before any audio is due.
+   *
+   * What sleeping does change is that a free-running LFO's phase stops
+   * advancing while the engine is silent. Its phase at the next note-on is
+   * arbitrary either way, so nothing that could be heard depends on it.
+   */
+  private readonly SILENT_BLOCKS_TO_SLEEP = 8;
+  /** Below this, a block is silence: -100 dBFS, well under 16-bit noise. */
+  private readonly SILENCE_FLOOR = 1e-5;
+
+  /** Whether any voice's gate is open anywhere in this block. */
+  private anyGateOpen(
+    params: Record<string, Float32Array>,
+    voiceCount: number,
+  ): boolean {
+    for (let v = 0; v < voiceCount; v++) {
+      const gate = params[`gate_${v}`];
+      if (!gate) continue;
+      for (let i = 0; i < gate.length; i++) {
+        if ((gate[i] ?? 0) > 0) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Whether both buffers stay under the silence floor for `frames`. */
+  private blockIsSilent(
+    left: Float32Array,
+    right: Float32Array,
+    frames: number,
+  ): boolean {
+    const floor = this.SILENCE_FLOOR;
+    for (let i = 0; i < frames; i++) {
+      if (Math.abs(left[i] ?? 0) >= floor) return false;
+      if (Math.abs(right[i] ?? 0) >= floor) return false;
+    }
+    return true;
+  }
+
+  /** True when this engine may skip its block entirely. */
+  private engineIsAsleep(key: string, gateOpen: boolean): boolean {
+    if (gateOpen) {
+      this.silentBlocks.set(key, 0);
+      return false;
+    }
+    return (this.silentBlocks.get(key) ?? 0) >= this.SILENT_BLOCKS_TO_SLEEP;
+  }
+
+  /** Fold what an engine just produced into its silent-block run. */
+  private noteEngineOutput(
+    key: string,
+    gateOpen: boolean,
+    left: Float32Array,
+    right: Float32Array,
+    frames: number,
+  ): void {
+    if (!gateOpen && this.blockIsSilent(left, right, frames)) {
+      this.silentBlocks.set(key, (this.silentBlocks.get(key) ?? 0) + 1);
+    } else {
+      this.silentBlocks.set(key, 0);
+    }
+  }
+
   private buildEngineParamsForSlot(
     slot: InstrumentSlot,
     parameters: Record<string, Float32Array>,
@@ -2403,6 +2500,9 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
             this.getSlotParamRecord(slot),
           );
 
+          const gateOpen = this.anyGateOpen(engineParams, slot.voiceCount);
+          if (this.engineIsAsleep(slot.instrumentId, gateOpen)) continue;
+
           // Clear engine buffers
           engineLeft.fill(0);
           engineRight.fill(0);
@@ -2413,6 +2513,14 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
             1.0,
             engineLeft,
             engineRight,
+          );
+
+          this.noteEngineOutput(
+            slot.instrumentId,
+            gateOpen,
+            engineLeft,
+            engineRight,
+            frames,
           );
 
           // Mix into output
@@ -2478,6 +2586,10 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
             }
           }
 
+          const engineKey = `engine${e}`;
+          const gateOpen = this.anyGateOpen(engineParams, this.numVoices);
+          if (this.engineIsAsleep(engineKey, gateOpen)) continue;
+
           // Clear engine buffers
           engineLeft.fill(0);
           engineRight.fill(0);
@@ -2489,6 +2601,14 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
             1.0, // Apply master gain at the end
             engineLeft,
             engineRight,
+          );
+
+          this.noteEngineOutput(
+            engineKey,
+            gateOpen,
+            engineLeft,
+            engineRight,
+            frames,
           );
 
           // Mix into output

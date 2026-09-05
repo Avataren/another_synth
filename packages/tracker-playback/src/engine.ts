@@ -259,15 +259,25 @@ export class PlaybackEngine {
   private scheduledLoops = 0;
   /** Track if tab is currently visible */
   private isTabVisible = true;
-  /** Base lookahead when visible/hidden (seconds) */
-  private readonly baseLookaheadVisible = 0.5;
-  private readonly baseLookaheadHidden = 1.0;
+  /**
+   * Base lookahead when visible/hidden (seconds).
+   *
+   * Set from `PlaybackOptions.lookaheadSeconds`; a hidden tab always gets
+   * half a second on top, because its clock falls back to a timer the
+   * browser is free to throttle.
+   */
+  private readonly baseLookaheadVisible: number;
+  private readonly baseLookaheadHidden: number;
   /** If the next row is within this threshold (seconds), consider scheduling "late" */
   private readonly lateScheduleThreshold = 0.02;
   /** Count of consecutive late scheduling loops */
   private lateScheduleCount = 0;
   /** Track worst lead deficit observed while scheduling late */
   private maxLeadDeficit = 0;
+  /** Late-row reporting state; see reportLateRow. */
+  private lateRowCount = 0;
+  private worstLateBy = 0;
+  private lastLateReportTime: number | null = null;
 
   /** Per-track effect state for FT2-style effects.
    *
@@ -340,9 +350,14 @@ export class PlaybackEngine {
 
   constructor(options: PlaybackOptions = {}) {
     this.resolver = options.instrumentResolver;
+    // The context comes first: the fallback scheduler runs off an audio
+    // clock, and left to build its own it would construct a SECOND
+    // AudioContext -- a whole extra output stream, per app session, for a
+    // scheduler the scheduled-playback path never even starts.
+    this.audioContext = options.audioContext;
     this.scheduler =
       options.scheduler ||
-      createAudioContextScheduler() ||
+      createAudioContextScheduler(this.audioContext) ||
       new IntervalScheduler();
     this.playbackClock =
       options.playbackClock ?? createVisibilityClock({ targetFps: 30 });
@@ -363,7 +378,15 @@ export class PlaybackEngine {
     this.scheduledFilterHandler = options.scheduledFilterHandler;
     this.scheduledRetriggerHandler = options.scheduledRetriggerHandler;
     this.positionCommandHandler = options.positionCommandHandler;
-    this.audioContext = options.audioContext;
+
+    const lookahead =
+      options.lookaheadSeconds !== undefined &&
+      Number.isFinite(options.lookaheadSeconds) &&
+      options.lookaheadSeconds > 0
+        ? options.lookaheadSeconds
+        : 0.5;
+    this.baseLookaheadVisible = lookahead;
+    this.baseLookaheadHidden = lookahead + 0.5;
 
     // Initialize timing system with callbacks
     this.timingSystem = new TimingSystem(
@@ -1072,13 +1095,7 @@ export class PlaybackEngine {
       // If we're late, still schedule the row just ahead of now to avoid drops
       const isLate = rowTime < now;
       const scheduledRowTime = isLate ? now + catchUpLead : rowTime;
-      if (isLate) {
-        console.warn(
-          `[PlaybackEngine] Scheduling row ${actualRow} late by ${(
-            now - rowTime
-          ).toFixed(3)}s, using catch-up lead ${catchUpLead}s`,
-        );
-      }
+      if (isLate) this.reportLateRow(actualRow, now - rowTime);
       if (scheduledRowTime >= now) {
         this.scheduleRow(actualRow, scheduledRowTime);
         this.recordScheduledPosition(actualRow, scheduledRowTime);
@@ -1147,6 +1164,35 @@ export class PlaybackEngine {
       this.lateScheduleCount = 0;
       this.maxLeadDeficit = 0;
     }
+  }
+
+  /**
+   * Report a row that missed its slot, at most once a second.
+   *
+   * This fires from inside the scheduling loop, so it fires once per late
+   * row -- and a device late enough to be dropping rows is late on all of
+   * them. Each call built a template string and made the devtools console
+   * lay out a row, on the same thread that has to catch the scheduler back
+   * up: the log made the condition it was reporting worse. One line a
+   * second, carrying the count and the worst lateness since the last one,
+   * says everything the storm did.
+   */
+  private reportLateRow(row: number, lateBy: number): void {
+    this.lateRowCount += 1;
+    if (lateBy > this.worstLateBy) this.worstLateBy = lateBy;
+
+    const now = this.audioContext?.currentTime ?? 0;
+    if (this.lastLateReportTime !== null && now - this.lastLateReportTime < 1) {
+      return;
+    }
+    this.lastLateReportTime = now;
+    console.warn(
+      `[PlaybackEngine] Scheduling late: ${this.lateRowCount} row(s) since the ` +
+        `last report, worst ${this.worstLateBy.toFixed(3)}s (row ${row}); ` +
+        'using catch-up lead 0.01s',
+    );
+    this.lateRowCount = 0;
+    this.worstLateBy = 0;
   }
 
   /**

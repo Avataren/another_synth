@@ -41,10 +41,8 @@ class AudioContextScheduler implements PlaybackScheduler {
   private running = false;
   private lastTime = 0;
 
-  constructor(context?: AudioContext) {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore - AudioContext may be undefined in non-DOM environments
-    this.ctx = context ?? new (globalThis.AudioContext || globalThis.webkitAudioContext)();
+  constructor(context: AudioContext) {
+    this.ctx = context;
   }
 
   start(tick: (deltaMs: number) => void) {
@@ -74,13 +72,19 @@ class AudioContextScheduler implements PlaybackScheduler {
   }
 }
 
-export function createAudioContextScheduler(context?: AudioContext): PlaybackScheduler | null {
-  const hasAudioContext =
-    typeof globalThis !== 'undefined' &&
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (!!(globalThis as any).AudioContext || !!(globalThis as any).webkitAudioContext);
-
-  if (!hasAudioContext) return null;
+/**
+ * An audio-clock scheduler over the caller's context, or null without one.
+ *
+ * It used to construct its own `AudioContext` when the caller passed none --
+ * a second output stream, opened for the life of the app, by an engine that
+ * takes the host's context as an option and whose scheduled-playback path
+ * never starts this scheduler at all. A caller with no context wants the
+ * interval fallback, not an audio device.
+ */
+export function createAudioContextScheduler(
+  context?: AudioContext,
+): PlaybackScheduler | null {
+  if (!context) return null;
 
   try {
     return new AudioContextScheduler(context);

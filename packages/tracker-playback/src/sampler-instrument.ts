@@ -1284,16 +1284,37 @@ export class TrackerSamplerInstrument {
     const loopTicks = points[loopEnd]!.tick - points[loopStart]!.tick;
     if (loopTicks <= 0) return;
 
+    // Three caps, whichever binds first: song time covered, passes, and
+    // total automation events.
+    //
+    // The event cap is the one that matters on weak hardware. A short loop
+    // -- a few ticks, which is what a tremolo-style envelope is -- needs
+    // hundreds of passes to fill 30 seconds, and every point of every pass
+    // is an AudioParam event inserted from the scheduling loop, on the main
+    // thread, for a note that will usually be retriggered a row later.
+    // elw-sick.xm reaches 770 events for a single note-on that way. The cost
+    // of capping is that a note held past the covered span keeps the
+    // envelope's last value instead of continuing to pulse; at 256 events
+    // that span is several seconds even for the shortest loops, and far
+    // longer than any note those instruments are given.
     const maxUnrollSeconds = 30;
+    const maxUnrollEvents = 256;
+    const pointsPerPass = loopEnd - loopStart + 1;
+    let events = 0;
     let elapsed = points[loopEnd]!.tick * tickSeconds;
     let pass = 0;
-    while (elapsed < maxUnrollSeconds && pass < 256) {
+    while (
+      elapsed < maxUnrollSeconds &&
+      pass < 256 &&
+      events + pointsPerPass <= maxUnrollEvents
+    ) {
       const offsetTicks = points[loopEnd]!.tick + pass * loopTicks;
       for (let i = loopStart; i <= loopEnd; i++) {
         const point = points[i]!;
         const tick = offsetTicks + (point.tick - points[loopStart]!.tick);
         if (tick <= fromTick) continue;
         param.linearRampToValueAtTime(level(point.value), at(tick));
+        events++;
       }
       elapsed = (offsetTicks + loopTicks) * tickSeconds;
       pass++;

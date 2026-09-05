@@ -8,6 +8,7 @@ import type {
 import { useTrackerAudioStore } from './tracker-audio-store';
 import { useTrackerStore } from './tracker-store';
 import { usePostFxStore } from 'src/stores/post-fx-store';
+import { defaultLookaheadSeconds } from 'src/audio/device-profile';
 
 export type PlaybackMode = 'pattern' | 'song';
 
@@ -205,6 +206,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     const engine = new PlaybackEngine({
       instrumentResolver: (instrumentId) => songBank.prepareInstrument(instrumentId),
       audioContext: songBank.audioContext,
+      // The scheduling loop shares the main thread with the UI, so the
+      // window has to cover the longest task that can land between two of
+      // its wake-ups -- which is a good deal longer on a phone.
+      lookaheadSeconds: defaultLookaheadSeconds(),
 
       // Automation handlers
       scheduledAutomationHandler: (instrumentId, gain, time) => {
