@@ -140,8 +140,20 @@ describe('sample quality defaults', () => {
   });
 
   it('leaves loop seams alone by default', () => {
-    // A departure from FT2, so it is the user's choice to make.
+    // A departure from FT2, and one that cancels short loops rather than
+    // smoothing them, so the toggle is withdrawn entirely.
     expect(defaultSettings.sampleLoopCrossfadeFrames).toBe(0);
+  });
+
+  it('clears a stored loop crossfade at v5, since nothing can turn it off now', () => {
+    // The Settings toggle is gone, so a blob that stored the 64 it used to
+    // write would keep crossfading forever with no way back.
+    const migrated = migrateSettingsVersion({
+      settingsVersion: 4,
+      sampleLoopCrossfadeFrames: 64,
+    });
+    expect(migrated.sampleLoopCrossfadeFrames).toBe(0);
+    expect(migrated.settingsVersion).toBe(5);
   });
 
   it('asks for 96 kHz by default', () => {

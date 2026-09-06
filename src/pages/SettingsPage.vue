@@ -389,28 +389,20 @@
                     </div>
                   </label>
 
-                  <label class="toggle-setting">
-                    <input
-                      type="checkbox"
-                      :checked="settings.sampleLoopCrossfadeFrames > 0"
-                      @change="
-                        updateSetting(
-                          'sampleLoopCrossfadeFrames',
-                          ($event.target as HTMLInputElement).checked ? 64 : 0,
-                        )
-                      "
-                    />
-                    <div class="toggle-info">
-                      <span class="toggle-label">Smooth loop seams</span>
-                      <span class="toggle-description"
-                        >Crossfades the joint of a looping sample, removing the
-                        tick when its ends do not meet. Off by default:
-                        FastTracker 2 does not do this, so it changes how a
-                        module sounds rather than only how cleanly it
-                        plays.</span
-                      >
-                    </div>
-                  </label>
+                  <!--
+                    "Smooth loop seams" (sampleLoopCrossfadeFrames) is
+                    withdrawn, not merely defaulted off: the crossfade is
+                    clamped to min(64, loopStart, loopLength / 2), which on a
+                    chip loop of a few dozen frames blends a third of one
+                    waveform cycle with a different phase of it. That cancels
+                    rather than smooths -- measured on 4-mat_-_rose.xm, its
+                    four lead instruments lose 2.9 to 8.4 dB and one loses
+                    15.8, which is what "channel 2 is way too quiet" turned
+                    out to be. The setting and its plumbing stay so the
+                    feature can come back once the fade is sized against the
+                    loop; only the control is gone, and the v5 migration
+                    clears any stored value.
+                  -->
                 </div>
 
                 <div class="select-setting">

@@ -75,9 +75,13 @@ export interface UserSettings {
   /**
    * Crossfade length, in frames, for the seam of a forward loop; 0 disables.
    *
-   * Off by default: it removes the tick from a loop whose ends do not meet,
-   * but FT2 does not do it, so it changes how a module sounds rather than
-   * only how cleanly it is reproduced.
+   * Not user-settable: the Settings toggle is withdrawn and the v5 migration
+   * clears any stored value, because the fade is clamped against itself
+   * (min(64, loopStart, loopLength / 2)) rather than against the loop, and a
+   * chip loop of a few dozen frames therefore gets a third of one waveform
+   * cycle blended with a different phase of the same cycle. The field and its
+   * plumbing stay for when the fade is sized properly. See the comment on the
+   * v5 branch in `migrateSettingsVersion`.
    */
   sampleLoopCrossfadeFrames: number;
 
@@ -171,7 +175,7 @@ export interface UserSettings {
  * *not* get a version bump: it is a starting point rather than a correction, so
  * anyone who has already set their own level keeps it.
  */
-export const SETTINGS_VERSION = 4;
+export const SETTINGS_VERSION = 5;
 
 /**
  * Default user settings. Exported so tests can pin the ones that are
@@ -287,6 +291,18 @@ export function migrateSettingsVersion(
     if (migrated.sampleOversampleFactor === 4) {
       migrated.sampleOversampleFactor = defaultSampleOversampleFactor();
     }
+  }
+
+  // v4 -> v5: "Smooth loop seams" is withdrawn. Its crossfade is clamped to
+  // min(64, loopStart, loopLength / 2) -- sized against the *fade* rather than
+  // the loop -- so on a chip loop of a few dozen frames it blends a third of
+  // one waveform cycle with a different phase of the same cycle. That is
+  // cancellation, not smoothing: on 4-mat_-_rose.xm the four lead instruments
+  // lose 2.9 to 8.4 dB of loop level and one loses 15.8, which is why its
+  // second channel came out way too quiet. The toggle is gone from Settings,
+  // so a stored value could otherwise never be turned off again.
+  if (version < 5) {
+    migrated.sampleLoopCrossfadeFrames = 0;
   }
 
   migrated.settingsVersion = SETTINGS_VERSION;

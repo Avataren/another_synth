@@ -138,7 +138,7 @@ describe('migration persistence', () => {
 
     const { createPinia, setActivePinia } = await import('pinia');
     setActivePinia(createPinia());
-    const { useUserSettingsStore } = await import(
+    const { useUserSettingsStore, SETTINGS_VERSION } = await import(
       'src/stores/user-settings-store'
     );
     useUserSettingsStore();
@@ -147,6 +147,8 @@ describe('migration persistence', () => {
       localStorage.getItem('synth-user-settings') ?? '{}',
     ) as { audioSampleRate?: number; settingsVersion?: number };
     expect(stored.audioSampleRate).toBe(48000);
-    expect(stored.settingsVersion).toBe(4);
+    // The point is that the blob was written back at the *current* version,
+    // whatever that is -- not that it is any particular number.
+    expect(stored.settingsVersion).toBe(SETTINGS_VERSION);
   });
 });
