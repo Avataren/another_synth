@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   channelsFromSelection,
+  formatChannelList,
   ordersForPattern,
   resolveSelectionOrder,
   selectionToReportRange,
@@ -110,5 +111,28 @@ describe('channelsFromSelection', () => {
     expect(channelsFromSelection({ rowStart: 0, rowEnd: 0, trackStart: 0, trackEnd: 0 })).toEqual([
       1,
     ]);
+  });
+});
+
+describe('formatChannelList', () => {
+  it('collapses a contiguous selection to a range', () => {
+    expect(formatChannelList(channelsFromSelection({
+      rowStart: 0,
+      rowEnd: 4,
+      trackStart: 2,
+      trackEnd: 4,
+    }))).toBe('3-5');
+  });
+
+  it('keeps a single track as a bare number', () => {
+    expect(formatChannelList([4])).toBe('4');
+  });
+
+  it('separates runs that do not touch, sorted and deduplicated', () => {
+    expect(formatChannelList([6, 1, 4, 5, 4])).toBe('1, 4-6');
+  });
+
+  it('is empty for no channels, so the dialog can hide the line', () => {
+    expect(formatChannelList([])).toBe('');
   });
 });

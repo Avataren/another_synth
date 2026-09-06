@@ -110,3 +110,28 @@ export function channelsFromSelection(rect: BugReportSelectionRect): number[] {
   }
   return channels;
 }
+
+/**
+ * A channel list for people to read: runs collapse to `3-5`, gaps stay
+ * separate (`1, 4-6`). The report itself prints every number (its consumer
+ * is a machine as much as a person); this is for the dialog, which shows the
+ * user which tracks their selection is about to report on.
+ */
+export function formatChannelList(channels: readonly number[]): string {
+  const sorted = [...new Set(channels)].sort((a, b) => a - b);
+  if (sorted.length === 0) return '';
+  const runs: string[] = [];
+  let runStart = sorted[0]!;
+  let previous = runStart;
+  for (const channel of sorted.slice(1)) {
+    if (channel === previous + 1) {
+      previous = channel;
+      continue;
+    }
+    runs.push(runStart === previous ? `${runStart}` : `${runStart}-${previous}`);
+    runStart = channel;
+    previous = channel;
+  }
+  runs.push(runStart === previous ? `${runStart}` : `${runStart}-${previous}`);
+  return runs.join(', ');
+}

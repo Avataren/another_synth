@@ -23,6 +23,9 @@
       <div v-if="presetEnd" class="br-mark-line">
         end: order {{ presetEnd.order }} row {{ presetEnd.row }} (0-based)
       </div>
+      <div v-if="presetChannels" class="br-mark-line">
+        {{ presetChannelsLabel }}: {{ presetChannels }} (1-based)
+      </div>
     </div>
     <template v-else>
       <div class="br-row">
@@ -110,7 +113,7 @@ import {
   type BugReportInstrument,
   type BugReportPosition,
 } from 'src/composables/bug-report';
-import type { BugReportPreset } from 'src/composables/bug-report-context';
+import { formatChannelList, type BugReportPreset } from 'src/composables/bug-report-context';
 import type { BugReportSongIdentity } from 'src/composables/bug-report';
 import { getLoadedSongHash } from 'src/composables/song-identity';
 import { useJukeboxStore } from 'src/stores/jukebox-store';
@@ -143,6 +146,17 @@ const hasSong = computed(
 /** A caller-fixed range start; its presence swaps the mark buttons out. */
 const presetStart = computed(() => props.preset?.startPosition ?? null);
 const presetEnd = computed(() => props.preset?.endPosition ?? null);
+
+/**
+ * The tracks the fixed range covers. A range is rows *and* columns — the
+ * order+row lines alone read as "everything between these two rows", which
+ * is not what a selection down three of eight tracks means. These are the
+ * numbers the report's `channels` line will carry, shown before it is built.
+ */
+const presetChannels = computed(() => formatChannelList(props.preset?.channels ?? []) || null);
+const presetChannelsLabel = computed(() =>
+  (props.preset?.channels?.length ?? 0) === 1 ? 'track' : 'tracks',
+);
 
 /**
  * The latest playback position, fed by the playback store's position
