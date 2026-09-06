@@ -56,3 +56,13 @@ export function findDemoSongByFile(
   }
   return null;
 }
+
+/**
+ * A readable stand-in name for a linked song, from its manifest path alone:
+ * the file name without its directory or module extension. Used while the
+ * manifest — the only source of the real title — is still on the way.
+ */
+export function demoFileDisplayName(file: string): string {
+  const name = file.split('/').pop() ?? file;
+  return name.replace(/\.[^.]+$/, '') || name;
+}

@@ -33,6 +33,12 @@ export interface UserSettings {
   /** When true, show a second effect column per tracker track. */
   showTrackerExtraEffectColumn: boolean;
   /**
+   * When true (default), the analyzers paint from the theme's complementary
+   * palette instead of its accents, so they read as their own thing beside
+   * the pattern. Off puts them back on the accent colors themselves.
+   */
+  analyzerComplementColors: boolean;
+  /**
    * When true (default), the pattern grid renders through the canvas
    * renderer (PatternCanvas.vue) instead of the DOM grid
    * (TrackerPattern.vue).
@@ -181,6 +187,7 @@ export const defaultSettings: UserSettings = {
   masterVolume: 0.5,
   enableMidi: false,
   showTrackerExtraEffectColumn: false,
+  analyzerComplementColors: true,
   canvasPatternRenderer: true,
   granularPlaybackScroll: true,
   useSimplifiedModInstruments: true,

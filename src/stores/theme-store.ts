@@ -794,6 +794,15 @@ export const useThemeStore = defineStore('theme', () => {
     { immediate: true }
   );
 
+  // The complementary palette is a theme variable that a setting switches
+  // off, so a flip has to repaint the theme.
+  watch(
+    () => userSettings.settings.analyzerComplementColors,
+    () => {
+      applyTheme(currentTheme.value);
+    }
+  );
+
   // Watch for font changes and apply them
   watch(
     [currentUiFont, currentTrackerFont],
@@ -847,7 +856,12 @@ export const useThemeStore = defineStore('theme', () => {
     // The complementary palette the analyzers paint with (theme-palette.ts).
     // Derived rather than authored, so every theme -- custom ones included --
     // gets one, and it always belongs to the accents it was rotated from.
-    const complements = buildComplementPalette(colors.accentPrimary, colors.accentSecondary);
+    // With the setting off, the two variables resolve to the accents
+    // themselves, so the analyzers fall back to one palette without any of
+    // them having to know about the setting.
+    const complements = userSettings.settings.analyzerComplementColors
+      ? buildComplementPalette(colors.accentPrimary, colors.accentSecondary)
+      : { complement: colors.accentPrimary, complementAlt: colors.accentSecondary };
     root.style.setProperty('--tracker-accent-complement', complements.complement);
     root.style.setProperty('--tracker-accent-complement-alt', complements.complementAlt);
 

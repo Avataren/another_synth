@@ -244,6 +244,26 @@
                   <label class="toggle-setting">
                     <input
                       type="checkbox"
+                      :checked="settings.analyzerComplementColors"
+                      @change="
+                        updateSetting(
+                          'analyzerComplementColors',
+                          ($event.target as HTMLInputElement).checked,
+                        )
+                      "
+                    />
+                    <div class="toggle-info">
+                      <span class="toggle-label">Complementary Analyzer Colors</span>
+                      <span class="toggle-description"
+                        >Paint the analyzers in the theme's complementary
+                        palette instead of its accent colors</span
+                      >
+                    </div>
+                  </label>
+
+                  <label class="toggle-setting">
+                    <input
+                      type="checkbox"
                       :checked="settings.enableMidi"
                       @change="
                         updateSetting(

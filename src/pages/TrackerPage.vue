@@ -20,14 +20,14 @@
         <div class="song-loading-dialog">
           <div class="spinner" aria-hidden="true"></div>
           <div class="song-loading-text">
-            {{ deepLinkPending ? 'Loading linked song…' : 'Loading song…' }}
-          </div>
-          <div class="song-loading-subtext">
             {{
-              deepLinkPending
-                ? 'The tracker is locked until the linked song is ready'
-                : 'Preparing instruments and assets'
+              deepLinkPending && deepLinkSongName
+                ? `Loading ${deepLinkSongName}…`
+                : 'Loading song…'
             }}
+          </div>
+          <div v-if="!deepLinkPending" class="song-loading-subtext">
+            Preparing instruments and assets
           </div>
         </div>
       </div>
@@ -891,6 +891,7 @@ import {
   DEMO_LINK_QUERY_KEY,
   findDemoSongByFile,
   readDemoLinkParam,
+  demoFileDisplayName,
 } from 'src/composables/demo-deep-link';
 import StereoLevelMeter from 'src/components/tracker/StereoLevelMeter.vue';
 import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
@@ -1026,9 +1027,15 @@ const {
  * editable during the gap before the linked song lands on top of whatever
  * the user just typed. `loadDemoDeepLink` lowers it on every exit path.
  */
-const deepLinkPending = ref(
-  typeof window !== 'undefined' && readDemoLinkParam(window.location.search) !== null,
-);
+const deepLinkFile =
+  typeof window !== 'undefined' ? readDemoLinkParam(window.location.search) : null;
+const deepLinkPending = ref(deepLinkFile !== null);
+/**
+ * What the overlay calls the linked song. The manifest -- and with it the
+ * real title -- only lands seconds later, so the file name stands in until
+ * `resolveDemoDeepLink` knows better.
+ */
+const deepLinkSongName = ref(deepLinkFile ? demoFileDisplayName(deepLinkFile) : '');
 if (deepLinkPending.value) isLoadingSong.value = true;
 const activeRow = ref(0);
 const activeTrack = ref(0);
@@ -2200,6 +2207,7 @@ async function resolveDemoDeepLink(): Promise<void> {
     return;
   }
   const song = findDemoSongByFile(collections.value, file);
+  if (song) deepLinkSongName.value = song.title;
   if (!song) {
     $q.notify({
       type: 'warning',
