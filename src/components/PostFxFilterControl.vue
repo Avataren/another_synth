@@ -73,6 +73,13 @@
             />
             <span class="param-value">{{ params.ledResDb.toFixed(1) }} dB</span>
           </label>
+          <button
+            type="button"
+            class="post-fx-reset song-button ghost"
+            @click="postFxStore.resetParamsToDefaults()"
+          >
+            Amiga defaults
+          </button>
           <div class="post-fx-divider"></div>
           <label class="post-fx-param post-fx-toggle-row">
             <span class="param-label">Limiter</span>
@@ -112,9 +119,9 @@
           <button
             type="button"
             class="post-fx-reset song-button ghost"
-            @click="postFxStore.resetParamsToDefaults()"
+            @click="postFxStore.resetLimiterParamsToDefaults()"
           >
-            Amiga defaults
+            Limiter defaults
           </button>
         </div>
       </q-menu>
@@ -183,6 +190,13 @@
           />
           <span class="param-value">{{ params.ledResDb.toFixed(1) }} dB</span>
         </label>
+        <button
+          type="button"
+          class="post-fx-reset song-button ghost"
+          @click="postFxStore.resetParamsToDefaults()"
+        >
+          Amiga defaults
+        </button>
         <div class="post-fx-divider"></div>
         <label class="post-fx-param post-fx-toggle-row">
           <span class="param-label">Limiter</span>
@@ -222,9 +236,9 @@
         <button
           type="button"
           class="post-fx-reset song-button ghost"
-          @click="postFxStore.resetParamsToDefaults()"
+          @click="postFxStore.resetLimiterParamsToDefaults()"
         >
-          Amiga defaults
+          Limiter defaults
         </button>
       </div>
     </q-menu>

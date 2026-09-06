@@ -7,12 +7,27 @@
       tabindex="0"
       @keydown="onKeyDown"
     >
-      <div v-if="isLoadingSong" class="song-loading-overlay">
+      <div
+        v-if="isLoadingSong"
+        class="song-loading-overlay"
+        role="alertdialog"
+        aria-busy="true"
+        aria-live="assertive"
+        @pointerdown.stop.prevent
+        @wheel.stop.prevent
+        @contextmenu.stop.prevent
+      >
         <div class="song-loading-dialog">
           <div class="spinner" aria-hidden="true"></div>
-          <div class="song-loading-text">Loading song…</div>
+          <div class="song-loading-text">
+            {{ deepLinkPending ? 'Loading linked song…' : 'Loading song…' }}
+          </div>
           <div class="song-loading-subtext">
-            Preparing instruments and assets
+            {{
+              deepLinkPending
+                ? 'The tracker is locked until the linked song is ready'
+                : 'Preparing instruments and assets'
+            }}
           </div>
         </div>
       </div>
@@ -1003,6 +1018,18 @@ const {
   formatInstrumentId,
   normalizeInstrumentId,
 } = host;
+
+/**
+ * A demo deep link (`?demo=…`) is only resolved after mount, and resolving
+ * it -- manifest fetch, module download, sample decode -- takes seconds. The
+ * gate goes up here, synchronously at setup, so the tracker is never
+ * editable during the gap before the linked song lands on top of whatever
+ * the user just typed. `loadDemoDeepLink` lowers it on every exit path.
+ */
+const deepLinkPending = ref(
+  typeof window !== 'undefined' && readDemoLinkParam(window.location.search) !== null,
+);
+if (deepLinkPending.value) isLoadingSong.value = true;
 const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
@@ -2136,6 +2163,17 @@ async function handleDemoSelect(url: string, _song: DemoSong) {
  * one that waits for the play button.
  */
 async function loadDemoDeepLink(): Promise<void> {
+  try {
+    await resolveDemoDeepLink();
+  } finally {
+    // Whatever happened -- loaded, failed, nothing to load -- the gate that
+    // went up at setup comes down here, and only here.
+    deepLinkPending.value = false;
+    isLoadingSong.value = false;
+  }
+}
+
+async function resolveDemoDeepLink(): Promise<void> {
   const file = readDemoLinkParam(window.location.search);
   if (!file) return;
   // Coming back to the tracker with something already playing (returning
@@ -2315,7 +2353,20 @@ const keyboardContext: TrackerKeyboardContext = {
   noteKeyMap,
 };
 
-const { handleKeyDown: onKeyDown } = useTrackerKeyboard(keyboardContext);
+const { handleKeyDown } = useTrackerKeyboard(keyboardContext);
+
+/**
+ * The loading overlay covers the pointer; keys reach the container anyway,
+ * so a song load locks the keyboard too rather than letting edits land on a
+ * song that is about to be replaced.
+ */
+function onKeyDown(event: KeyboardEvent): void {
+  if (isLoadingSong.value) {
+    event.preventDefault();
+    return;
+  }
+  handleKeyDown(event);
+}
 
 // Set up export composable
 const exportContext: TrackerExportContext = {
@@ -2589,14 +2640,16 @@ onBeforeUnmount(() => {
 }
 
 .song-loading-overlay {
-  position: absolute;
+  /* Fixed, not absolute: the container is only positioned on mobile, and a
+     lock that leaves the toolbars reachable is not a lock. */
+  position: fixed;
   inset: 0;
   background: rgba(10, 10, 20, 0.65);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 20;
+  z-index: 3000;
 }
 
 .song-loading-dialog {

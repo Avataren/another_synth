@@ -10,8 +10,9 @@
 ## Lint & Test Commands
 - Lint: `npm run lint`
 - Format: `npm run format`
-- Test all: `npm run test`
-- Single test: `npm run test -- -t "test pattern"`
+- Test all: `npm run test:run` (one shot; `npm run test` is vitest in watch
+  mode and never exits, so it is the wrong one for a script or an agent)
+- Single test: `npm run test:run -- -t "test pattern"`
 
 ## Code Style
 - TypeScript: strict typing, explicit interfaces
