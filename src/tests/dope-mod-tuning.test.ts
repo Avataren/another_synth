@@ -6,6 +6,10 @@ import {
   PlaybackEngine,
   buildPlaybackSong,
 } from '@another-synth/tracker-playback';
+import {
+  AMIGA_CLOCK,
+  PAULA_TO_SYNTH_SCALE,
+} from '@another-synth/tracker-playback';
 import type {
   PlaybackClock,
   Song,
@@ -143,7 +147,7 @@ describe('DOPE.MOD tuning', () => {
     const notes = await recordNotes(loadDope());
     // Period 113 (B-3) is ~247.7 Hz in the synth's domain; the clamp made it
     // the ceiling for the whole module.
-    const ceiling = 7159090.5 / (2 * 113 * 128);
+    const ceiling = AMIGA_CLOCK / (2 * 113 * PAULA_TO_SYNTH_SCALE);
     const above = notes.filter((note) => (note.frequency ?? 0) > ceiling + 1);
     expect(above.length).toBeGreaterThan(20);
   });

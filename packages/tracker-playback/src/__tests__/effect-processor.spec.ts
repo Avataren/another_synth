@@ -6,6 +6,7 @@ import {
   processEffectTickN,
   processVolumeColumnTick0,
 } from '../effect-processor';
+import { AMIGA_CLOCK, PAULA_TO_SYNTH_SCALE } from '../pitch-model';
 import type { EffectCommand, VolumeColumnCommand } from '../types';
 
 describe('effect-processor command batches', () => {
@@ -90,8 +91,6 @@ describe('effect-processor command batches', () => {
    */
   it('arpeggio uses the real ProTracker period table, not a continuous formula', () => {
     const state = createTrackEffectState();
-    const AMIGA_CLOCK = 7159090.5;
-    const PAULA_TO_SYNTH_SCALE = 128;
     const freqForPeriod = (period: number) =>
       AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
 
@@ -117,8 +116,6 @@ describe('effect-processor command batches', () => {
    */
   it('glissando control snaps to the real ProTracker period table on a MOD/period-domain track', () => {
     const state = createTrackEffectState();
-    const AMIGA_CLOCK = 7159090.5;
-    const PAULA_TO_SYNTH_SCALE = 128;
     const freqForPeriod = (period: number) =>
       AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
 
@@ -168,8 +165,6 @@ describe('effect-processor command batches', () => {
    */
   it('stops a tone portamento on rows that carry no tone portamento', () => {
     const state = createTrackEffectState();
-    const AMIGA_CLOCK = 7159090.5;
-    const PAULA_TO_SYNTH_SCALE = 128;
     const freqForPeriod = (period: number) =>
       AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
 

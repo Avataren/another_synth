@@ -16,16 +16,35 @@
  * See PLAN-module-format-support.md B4 and D18.
  */
 
-const AMIGA_CLOCK = 7159090.5;
+/**
+ * The Amiga's colour clock, from which Paula's sample rate is divided.
+ *
+ * *PAL*, and it has to be: ProTracker is a PAL Amiga program, the modules
+ * were written on PAL machines, and every reference replayer plays them at
+ * the PAL rate -- OpenMPT's `Amiga` resampler and libopenmpt's period
+ * conversion both use 3546895 Hz, the half of this constant that Paula
+ * actually divides (`rate = 3546895 / period`).
+ *
+ * This was the NTSC clock (7159090.5) until it was measured: rendering a
+ * one-cycle sine MOD at period 428 through libopenmpt gives 258.976 Hz, and
+ * `3546895 / 428 / 32` is 258.973 -- the NTSC clock predicts 261.357, a
+ * quarter-tone out. Everything the engine schedules is derived from here, so
+ * the wrong clock detuned every MOD in the app by a fixed amount.
+ */
+export const AMIGA_CLOCK = 3546895 * 2;
 
 /**
  * ProTracker's Paula frequency is AMIGA_CLOCK / (2 * period), which lands
  * ~128x above the equal-tempered note frequencies this synth expects (period
- * 856 -> ~4181 Hz, where our C-1 is ~32.7 Hz). Scaling down by 2^7 keeps us in
+ * 856 -> ~4144 Hz, where our C-1 is ~32.7 Hz). Scaling down by 2^7 keeps us in
  * the engine's "musical Hz" domain instead of driving the sampler at 128x
- * speed. Must stay in step with the same constant in mod-import.ts.
+ * speed.
+ *
+ * The MOD sample import derives its root note from this and AMIGA_CLOCK (see
+ * MOD_ROOT_NOTE in mod-samples.ts), so the sampler undoes the scaling exactly
+ * and the buffer plays back at Paula's own rate.
  */
-const PAULA_TO_SYNTH_SCALE = 128;
+export const PAULA_TO_SYNTH_SCALE = 128;
 
 const MIN_PROTRACKER_PERIOD = 113; // ~B-3
 const MAX_PROTRACKER_PERIOD = 856; // C-1

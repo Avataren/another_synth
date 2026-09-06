@@ -15,6 +15,7 @@ import type {
 } from '../tracker-types';
 import { formatInstrumentId } from '../instrument-ids';
 import { midiToTrackerNote } from '../note-utils';
+import { AMIGA_CLOCK, PAULA_TO_SYNTH_SCALE } from '../pitch-model';
 
 /** ProTracker patterns are always 64 rows. */
 export const MOD_PATTERN_ROWS = 64;
@@ -497,14 +498,12 @@ function modCellToTrackerEntry(
  *   f_paula = AMIGA_CLOCK / (2 * period)
  *
  * Those values are ~128× higher than the equal‑tempered note frequencies
- * our synth expects (e.g. period 856 → ~4181 Hz, but C-1 in our tuning is
+ * our synth expects (e.g. period 856 → ~4144 Hz, but C-1 in our tuning is
  * ~32.7 Hz). To stay in the engine's \"musical Hz\" domain and avoid driving
  * the sampler at 128× speed, we scale the Paula frequency down by 2^7.
  */
 function periodToFrequency(period: number): number | undefined {
   if (!period || !Number.isFinite(period)) return undefined;
-  const AMIGA_CLOCK = 7159090.5;
-  const PAULA_TO_SYNTH_SCALE = 128; // 2^7 – matches the -84 semitone offset used previously
   const freq = AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
   if (!Number.isFinite(freq) || freq <= 0) return undefined;
   return freq;

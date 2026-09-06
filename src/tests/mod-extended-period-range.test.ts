@@ -8,6 +8,10 @@ import {
   PROTRACKER_PROFILE,
   PROTRACKER_EXTENDED_PROFILE,
 } from '@another-synth/tracker-playback';
+import {
+  AMIGA_CLOCK,
+  PAULA_TO_SYNTH_SCALE,
+} from '@another-synth/tracker-playback';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
 
 /**
@@ -25,8 +29,6 @@ import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
 
 const DEMOS = path.resolve(__dirname, '../../public/demos');
 
-const AMIGA_CLOCK = 7159090.5;
-const PAULA_TO_SYNTH_SCALE = 128;
 const frequencyForPeriod = (period: number) =>
   AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
 

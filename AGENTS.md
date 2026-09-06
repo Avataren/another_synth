@@ -266,10 +266,11 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 
 ### ProTracker MOD frequency scaling (2025-12)
 
-- MOD import now converts Amiga periods into **synth-domain** frequencies instead of raw Paula hardware rates. The tracker engine and sampler expect “musical Hz” (~C-1 ≈ 32.7 Hz), but ProTracker’s playback frequencies are ~128× higher (e.g. period 856 → ~4181 Hz, while C-1 in our tuning is ~32.7 Hz).
+- MOD import now converts Amiga periods into **synth-domain** frequencies instead of raw Paula hardware rates. The tracker engine and sampler expect “musical Hz” (~C-1 ≈ 32.7 Hz), but ProTracker’s playback frequencies are ~128× higher (e.g. period 856 → ~4144 Hz, while C-1 in our tuning is ~32.7 Hz).
 - `periodToFrequency` (now `packages/tracker-playback/src/import/mod-patterns.ts`;
   it was in `src/audio/tracker/mod-import.ts` when this was written) therefore uses:
-  - `f_synth = AMIGA_CLOCK / (2 * period * 128)` (with `AMIGA_CLOCK = 7159090.5`), effectively dividing Paula’s rate by `2^7`. This keeps MOD rows mapped to the expected MIDI notes (C-1..B-3) without driving the sampler at 128× speed and turning playback into noise.
+  - `f_synth = AMIGA_CLOCK / (2 * period * 128)` (with `AMIGA_CLOCK = 3546895 * 2`, the **PAL** Amiga clock — see below), effectively dividing Paula’s rate by `2^7`. This keeps MOD rows mapped to the expected MIDI notes (C-1..B-3) without driving the sampler at 128× speed and turning playback into noise.
+- **The clock is PAL, and the sample root note is derived from it (2026-09).** `AMIGA_CLOCK` was the NTSC colour clock (7159090.5) and `mod-samples.ts` carried a hand-fitted `rootNote: 65` that half-cancelled it, leaving every MOD 7.6 cents flat of what ProTracker, OpenMPT and libopenmpt play. Only the *product* of the two is audible, which is how they drifted apart. `MOD_ROOT_NOTE` is now derived (`69 + 12*log2(44100 / 128 / 440)` ≈ 64.77) exactly as s3m-import and xm-import derive theirs, and `src/tests/mod-pal-tuning.test.ts` pins the product to `3546895 / period`.
 - Period-based portamento in the playback core (`packages/tracker-playback/src/effect-processor.ts`) still operates on true Amiga periods:
   - On tick 0, when a MOD row supplies a frequency override, `currentPeriod` is recovered as `AMIGA_CLOCK / (2 * noteFrequency * 128)`, undoing the synth scaling to get back to the original MOD period.
   - `portaUp`/`portaDown` adjust `currentPeriod` in ProTracker units and then convert it back to synth-domain Hz with `AMIGA_CLOCK / (2 * currentPeriod * 128)` so scheduled pitch updates stay in the same units that `InstrumentV2` and the sampler expect.

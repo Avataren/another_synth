@@ -6,6 +6,10 @@ import {
   createXmAmigaPitchModel,
   s3mPeriodForNote,
 } from '@another-synth/tracker-playback';
+import {
+  AMIGA_CLOCK,
+  PAULA_TO_SYNTH_SCALE,
+} from '@another-synth/tracker-playback';
 
 /**
  * The Amiga model has to reproduce the exact numbers the effect processor
@@ -17,7 +21,8 @@ import {
 const model = createAmigaPitchModel({ arpeggioWrapsToDC: true });
 
 // f = AMIGA_CLOCK / (2 * period * 128)
-const expectedFrequency = (period: number) => 7159090.5 / (2 * period * 128);
+const expectedFrequency = (period: number) =>
+  AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
 
 describe('AmigaPitchModel', () => {
   it('identifies itself as the amiga model', () => {

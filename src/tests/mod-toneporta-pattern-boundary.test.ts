@@ -25,12 +25,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
 import { PlaybackEngine } from '@another-synth/tracker-playback';
+import {
+  AMIGA_CLOCK,
+  PAULA_TO_SYNTH_SCALE,
+} from '@another-synth/tracker-playback';
 import { songFromImport } from './helpers/imported-song';
 
 const TRACK = 3; // channel 4
-const PAULA_TO_SYNTH_SCALE = 128;
 const frequencyForPeriod = (period: number) =>
-  7159090.5 / (2 * period * PAULA_TO_SYNTH_SCALE);
+  AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
 
 const F2 = frequencyForPeriod(320); // where eight rows of 3xx actually arrive
 const C2 = frequencyForPeriod(428); // the note the rows write as their target

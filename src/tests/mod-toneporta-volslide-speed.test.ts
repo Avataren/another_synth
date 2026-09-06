@@ -6,6 +6,10 @@ import {
   type TrackEffectState,
 } from '@another-synth/tracker-playback';
 import type { EffectCommand } from '@another-synth/tracker-playback';
+import {
+  AMIGA_CLOCK,
+  PAULA_TO_SYNTH_SCALE,
+} from '@another-synth/tracker-playback';
 
 /**
  * Regression coverage for 5xy (tone portamento + volume slide).
@@ -33,7 +37,7 @@ function effect(type: 'tonePorta' | 'tonePortaVol', param: number): EffectComman
 function stateWithNote(): TrackEffectState {
   const state = createTrackEffectState();
   // 269 -> the period at GSLINGER pattern 4 row 48.
-  processEffectTick0(state, undefined, 60, 255, 7159090.5 / (2 * 269 * 128));
+  processEffectTick0(state, undefined, 60, 255, AMIGA_CLOCK / (2 * 269 * PAULA_TO_SYNTH_SCALE));
   return state;
 }
 
@@ -90,7 +94,7 @@ describe('5xy tone portamento + volume slide', () => {
     // The audible symptom: at speed 1 the pitch barely moves per tick, so the
     // note never arrives at the target and drifts out of tune.
     const state = stateWithNote();
-    const targetFreq = 7159090.5 / (2 * 240 * 128);
+    const targetFreq = AMIGA_CLOCK / (2 * 240 * PAULA_TO_SYNTH_SCALE);
     processEffectTick0(state, effect('tonePorta', 0xf0), 62, undefined, targetFreq);
 
     for (let tick = 1; tick < 6; tick++) {

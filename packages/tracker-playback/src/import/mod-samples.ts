@@ -10,12 +10,35 @@
 import type { ModSong, ModSample } from '../mod-parser';
 import type { TrackerSample, TrackerSampleSet } from '../tracker-sample';
 import { TOTAL_SLOTS } from '../song-constants';
+import { PAULA_TO_SYNTH_SCALE } from '../pitch-model';
 
 /**
  * The rate MOD sample buffers are declared at, regardless of the rate the
  * Paula would have clocked them out at; `rootNote` compensates.
  */
 const MOD_SAMPLE_RATE = 44100;
+
+/**
+ * MIDI note at which a MOD sample plays at Paula's own rate.
+ *
+ * The engine schedules notes in musical Hz -- the Paula rate divided by
+ * PAULA_TO_SYNTH_SCALE (see pitch-model.ts) -- and the sampler computes
+ * playbackRate = scheduledFrequency / f(rootNote), reading a buffer declared
+ * at MOD_SAMPLE_RATE. For the buffer to come out at the Paula rate,
+ * f(rootNote) must equal MOD_SAMPLE_RATE / PAULA_TO_SYNTH_SCALE, so
+ *
+ *   rootNote = 69 + 12*log2(MOD_SAMPLE_RATE / PAULA_TO_SYNTH_SCALE / 440)
+ *            ~= 64.76
+ *
+ * (The same derivation gives s3m-import's 100.78 and xm-import's 88.77 from
+ * their own scales; this is the relation, not a fitted number.)
+ *
+ * It *was* a fitted 65, which is 23.7 cents sharp of the derivation -- a hand
+ * calibration that half-cancelled the NTSC clock this engine used to run MODs
+ * at, and left every module 7.6 cents flat of the real thing.
+ */
+const MOD_ROOT_NOTE =
+  69 + 12 * Math.log2(MOD_SAMPLE_RATE / PAULA_TO_SYNTH_SCALE / 440);
 
 /** 8-bit signed PCM as the file stores it, to -1..1 floats. */
 export function convertSampleToFloat32(sample: ModSample): Float32Array {
@@ -92,10 +115,8 @@ export function buildModTrackerSamples(mod: ModSong): TrackerSampleSet {
       name: sample.name,
       data: convertSampleToFloat32(sample),
       sampleRate: MOD_SAMPLE_RATE,
-      // Empirically calibrated root note for MOD import. A fixed root of 65
-      // keeps most instruments (including AmegAs) close to their original
-      // ProTracker pitch; per-sample finetune is baked into detune instead.
-      rootNote: 65,
+      // Per-sample finetune is baked into detune rather than the root.
+      rootNote: MOD_ROOT_NOTE,
       // MOD finetune is -8..7 in 1/8 semitone steps.
       detuneCents: ((sample.finetune ?? 0) / 8) * 100,
       // Unity. The sample's default volume (0-64) is a *channel* volume in
