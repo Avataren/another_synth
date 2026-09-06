@@ -112,6 +112,16 @@ export function shouldRetriggerLastNote(
  * Set: this is consulted once per step per row, and rebuilding a literal array
  * and scanning it linearly on every one of those was pure churn.
  */
+/**
+ * Ceiling on the output-latency compensation applied to the display clock.
+ *
+ * A browser is free to report whatever it likes for `outputLatency`, and a
+ * reading in the seconds would freeze the playing-row highlight rather than
+ * align it. Half a second is past the deepest buffer any device in play
+ * actually uses, so anything beyond it is a bad reading, not a slow device.
+ */
+const MAX_OUTPUT_LATENCY_COMPENSATION = 0.5;
+
 const TICK_BASED_EFFECTS: ReadonlySet<string> = new Set([
   'portaUp',
   'portaDown',
@@ -1261,7 +1271,11 @@ export class PlaybackEngine {
   private finishIfEnded(): boolean {
     if (this.pendingEndTime === null) return false;
     if (!this.audioContext) return false;
-    if (this.audioContext.currentTime < this.pendingEndTime) return false;
+    // Against the audible clock: the end time is a render-clock time, so
+    // stopping when `currentTime` reaches it cuts the last output buffer's
+    // worth of the final row -- a fifth of a second of the song's last note
+    // on a phone.
+    if (this.audibleTime() < this.pendingEndTime) return false;
     this.pendingEndTime = null;
     this.pendingSongStop = false;
     this.stop();
@@ -2000,11 +2014,62 @@ export class PlaybackEngine {
     }
   }
 
+  /**
+   * Seconds between an audio-clock time and the moment it leaves the speaker.
+   *
+   * `currentTime` is the clock the graph is *rendered* against, not the one
+   * the listener hears: the frames rendered for time T sit in the output
+   * buffer for `outputLatency` seconds before they reach anyone. On a desktop
+   * that is a few milliseconds and nobody notices. On a phone the context is
+   * built with `latencyHint: 'playback'`, which buys a buffer measured in
+   * hundreds of milliseconds -- and that is exactly how far ahead of the
+   * sound the playing-row highlight ran, because the display advanced a row
+   * the moment it was *rendered* rather than when it was heard.
+   *
+   * `outputLatency` covers the whole path where a browser implements it
+   * (Chrome, Firefox); `baseLatency` is the part Safari reports. Clamped, so
+   * a nonsense reading cannot stall the display.
+   */
+  private outputLatencySeconds(): number {
+    const ctx = this.audioContext as
+      | (AudioContext & { outputLatency?: number })
+      | null;
+    if (!ctx) return 0;
+    const reported =
+      typeof ctx.outputLatency === 'number' && ctx.outputLatency > 0
+        ? ctx.outputLatency
+        : ctx.baseLatency;
+    if (
+      typeof reported !== 'number' ||
+      !Number.isFinite(reported) ||
+      reported <= 0
+    ) {
+      return 0;
+    }
+    return Math.min(reported, MAX_OUTPUT_LATENCY_COMPENSATION);
+  }
+
+  /**
+   * The audio-clock time the listener is hearing right now.
+   *
+   * Everything the *user* observes -- the playing row, the end of the song --
+   * is timed against this rather than against `currentTime`, so a device with
+   * a deep output buffer stays as tightly in sync as one without. Scheduling
+   * keeps using `currentTime`: rows are queued against the clock they are
+   * rendered on.
+   */
+  private audibleTime(): number {
+    if (!this.audioContext) return 0;
+    return this.audioContext.currentTime - this.outputLatencySeconds();
+  }
+
   private updatePosition() {
     if (!this.audioContext) return;
     if (this.state !== 'playing') return;
 
-    const now = this.audioContext.currentTime;
+    // What is being *heard*, not what is being rendered: a row scheduled for
+    // time T is not the playing row until T has cleared the output buffer.
+    const now = this.audibleTime();
 
     // Advance to the most recent row whose scheduled time has been reached,
     // keeping it as the head of the queue so it stays current until the next

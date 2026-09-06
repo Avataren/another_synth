@@ -5,7 +5,13 @@ import {
   PostFxRack,
   registerPostFxRack,
 } from '@another-synth/tracker-playback';
-import { defaultAudioSampleRate } from './device-profile';
+import {
+    type AudioLatencyMode,
+    defaultAudioLatencyMode,
+    defaultAudioSampleRate,
+    isAudioLatencyMode,
+    latencyHintForMode,
+} from './device-profile';
 
 /**
  * Where to go when the preferred rate is refused.
@@ -45,13 +51,17 @@ function readPreferredSampleRate(): number {
 /**
  * Which latency the context should be built for.
  *
- * `interactive` asks for the smallest buffer the device will give, which is
- * what a synth being played from a keyboard needs. Phones and tablets do not
- * have the headroom for it: the same request there produces buffer underruns,
- * heard as clicks and dropouts, and the tracker is being *played back* on
- * those devices far more often than it is being played *on*. `playback` asks
- * for a larger buffer and trades input latency nobody is using for output
- * that does not glitch.
+ * `latencyHint` is fixed for the life of an AudioContext, so this is not
+ * something the app can correct later -- it needs a reload. It also sets the
+ * floor on two things the user feels directly: how long after `stop` the
+ * sound really stops, and how far the audio trails the screen. The playback
+ * engine pulls the display back by the reported output latency so the pattern
+ * stays in sync at any setting, but the buffered audio itself cannot be
+ * un-rendered, so a deeper buffer always means a laggier stop.
+ *
+ * The device default (see `defaultAudioLatencyMode`) is the smallest buffer
+ * the device can be expected to fill without underrunning; the user setting
+ * overrides it in either direction.
  *
  * Deliberately not `useMobileLayout`. That signal follows the *window*, by
  * design -- narrow a desktop browser and it reports mobile -- and this
@@ -65,13 +75,25 @@ function readPreferredSampleRate(): number {
  * mobile there would give the tests and the dev server a latency the app
  * never uses.
  */
-export function preferredLatencyHint(): AudioContextLatencyCategory {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-        return 'interactive';
+export function preferredLatencyMode(): AudioLatencyMode {
+    // Read straight from storage, like the sample rate above and for the same
+    // reason: this runs while the audio singleton is being built.
+    try {
+        const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw) as { audioLatencyMode?: unknown };
+            if (isAudioLatencyMode(parsed?.audioLatencyMode)) {
+                return parsed.audioLatencyMode;
+            }
+        }
+    } catch {
+        // Fall through to the device default.
     }
-    return window.matchMedia('(pointer: coarse) and (hover: none)').matches
-        ? 'playback'
-        : 'interactive';
+    return defaultAudioLatencyMode();
+}
+
+export function preferredLatencyHint(): AudioContextLatencyCategory | number {
+    return latencyHintForMode(preferredLatencyMode());
 }
 
 /**
@@ -128,17 +150,35 @@ export default class AudioSystem {
     postFxRack: PostFxRack;
     postFxLpfStage: AmigaLpfStage;
     postFxLimiterStage: LimiterStage;
+    /**
+     * The latency mode this context was actually built with.
+     *
+     * The setting can be changed at any time but only takes effect on the
+     * next context, so Settings needs to know what is running rather than
+     * what is stored.
+     */
+    readonly latencyMode: AudioLatencyMode;
     /** Waiters released when the context reaches `running`. */
     private runningWaiters = new Set<() => void>();
     /** Cached `whenRunning()` promise (idempotent while it is still waiting). */
     private whenRunningPromise: Promise<void> | null = null;
     constructor() {
         console.log('creating audio context');
+        this.latencyMode = preferredLatencyMode();
         // Read straight from storage rather than from the settings store: this
         // runs while the audio singleton is being built, before Pinia is
         // necessarily available, and the value is needed exactly once.
         this.audioContext = createAudioContext(readPreferredSampleRate());
         console.log('audio context rate:', this.audioContext.sampleRate);
+        // The latency actually granted, which is what the display alignment
+        // and the stop responsiveness are governed by -- the hint is only a
+        // request, and browsers round it to a buffer size of their choosing.
+        console.log(
+            `[AudioSystem] latency: base=${this.audioContext.baseLatency?.toFixed(4) ?? 'n/a'}s output=${
+                (this.audioContext as AudioContext & { outputLatency?: number })
+                    .outputLatency?.toFixed(4) ?? 'n/a'
+            }s`,
+        );
         this.destinationNode = this.audioContext.createGain();
         (this.destinationNode as GainNode).gain.value = 1.0;
         // destinationNode -> rack -> speakers. Everything that ever connects

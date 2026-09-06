@@ -443,6 +443,56 @@
                     </button>
                   </div>
                 </div>
+
+                <div class="select-setting">
+                  <label class="select-label" for="audio-latency-mode">
+                    Audio output buffer
+                  </label>
+                  <select
+                    id="audio-latency-mode"
+                    class="setting-select"
+                    :value="settings.audioLatencyMode"
+                    @change="
+                      updateSetting(
+                        'audioLatencyMode',
+                        ($event.target as HTMLSelectElement)
+                          .value as AudioLatencyMode,
+                      )
+                    "
+                  >
+                    <option
+                      v-for="mode in (['low', 'balanced', 'safe'] as const)"
+                      :key="mode"
+                      :value="mode"
+                    >
+                      {{ latencyLabels[mode]
+                      }}{{ deviceDefaultLatency === mode ? ' (default)' : '' }}
+                    </option>
+                  </select>
+                  <span class="toggle-description">
+                    How much audio the browser renders ahead of the speaker. A
+                    deeper buffer survives a busy moment without clicking, and
+                    costs you the same delay every time playback stops. The
+                    playing row is aligned to the buffer either way, so the
+                    pattern stays in sync at any setting. Raise it only if you
+                    hear dropouts.
+                  </span>
+                  <div v-if="latencyNeedsReload" class="reload-notice">
+                    <span>
+                      The engine is still on
+                      {{ latencyLabels[runningLatencyMode ?? 'low'] }} — the
+                      buffer is fixed when audio starts, so this takes effect on
+                      reload.
+                    </span>
+                    <button
+                      type="button"
+                      class="reload-button"
+                      @click="reloadForSampleRate"
+                    >
+                      Reload now
+                    </button>
+                  </div>
+                </div>
               </div>
             </section>
           </template>
@@ -541,7 +591,11 @@ import {
 } from 'src/stores/theme-store';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { peekSharedAudioSystem } from 'src/audio/shared-audio-system';
-import { defaultAudioSampleRate } from 'src/audio/device-profile';
+import {
+  type AudioLatencyMode,
+  defaultAudioLatencyMode,
+  defaultAudioSampleRate,
+} from 'src/audio/device-profile';
 import AppVersion from 'src/components/AppVersion.vue';
 
 const themeStore = useThemeStore();
@@ -710,6 +764,30 @@ function formatRate(hz: number): string {
 function reloadForSampleRate() {
   window.location.reload();
 }
+
+/**
+ * The buffering this device asks for by default, so the option list can say
+ * which one that is.
+ */
+const deviceDefaultLatency = defaultAudioLatencyMode();
+
+const latencyLabels: Record<AudioLatencyMode, string> = {
+  low: 'Low — smallest buffer',
+  balanced: 'Balanced — about 100 ms',
+  safe: 'Safe — largest buffer',
+};
+
+/** The mode the running context was built with, or null before audio starts. */
+const runningLatencyMode = computed(() => {
+  void settings.value.audioLatencyMode;
+  return peekSharedAudioSystem()?.latencyMode ?? null;
+});
+
+const latencyNeedsReload = computed(
+  () =>
+    runningLatencyMode.value !== null &&
+    runningLatencyMode.value !== settings.value.audioLatencyMode,
+);
 
 </script>
 

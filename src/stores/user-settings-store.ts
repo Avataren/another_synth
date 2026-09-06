@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import {
+  type AudioLatencyMode,
+  defaultAudioLatencyMode,
   defaultAudioSampleRate,
   defaultSampleOversampleFactor,
 } from 'src/audio/device-profile';
@@ -93,6 +95,17 @@ export interface UserSettings {
   audioSampleRate: number;
 
   /**
+   * How deep an output buffer the audio context asks for.
+   *
+   * Applied when the context is created, so a change takes effect on reload.
+   * The buffer is the floor on how quickly the sound can stop and on how far
+   * the audio trails the screen (the display is aligned to it either way), so
+   * it is only worth raising on a device that underruns at the default. See
+   * `device-profile`.
+   */
+  audioLatencyMode: AudioLatencyMode;
+
+  /**
    * Post-fx rack master mode (D114/D116): full bypass, full cascade, or AUTO
    * (LED filter driven by the song's E0x events, resetting to OFF on load).
    */
@@ -176,6 +189,7 @@ export const defaultSettings: UserSettings = {
   sampleLoopCrossfadeFrames: 0,
   sampleAntiAliasHighNotes: true,
   audioSampleRate: defaultAudioSampleRate(),
+  audioLatencyMode: defaultAudioLatencyMode(),
   postFxFilterMode: 'auto',
   postFxFilterParams: {
     staticCutoffHz: 4900,

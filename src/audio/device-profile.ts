@@ -72,3 +72,66 @@ export function defaultSampleOversampleFactor(): number {
 export function defaultLookaheadSeconds(): number {
   return isTouchAudioDevice() ? 1.5 : 0.5;
 }
+
+/**
+ * How much output buffering the audio context is built for.
+ *
+ * `latencyHint` is fixed for the life of an AudioContext, and it sets the
+ * floor on two things the user feels directly: how long after `stop` the
+ * sound actually stops, and how far the sound trails what the screen shows.
+ * Neither can be recovered afterwards -- the display can be aligned to the
+ * buffer (the playback engine does exactly that), but the audio already
+ * rendered into it will be heard.
+ *
+ * - `low`     -- `interactive`, the smallest buffer the device offers.
+ * - `balanced` -- ~100 ms, asked for as a number so the browser rounds up to
+ *                 its nearest supported buffer.
+ * - `safe`    -- `playback`, the deepest buffer, for a device that underruns
+ *                 at anything less.
+ */
+export type AudioLatencyMode = 'low' | 'balanced' | 'safe';
+
+export const AUDIO_LATENCY_MODES: readonly AudioLatencyMode[] = [
+  'low',
+  'balanced',
+  'safe',
+];
+
+/** Seconds requested for `balanced`. */
+const BALANCED_LATENCY_SECONDS = 0.1;
+
+export function isAudioLatencyMode(value: unknown): value is AudioLatencyMode {
+  return (
+    value === 'low' || value === 'balanced' || value === 'safe'
+  );
+}
+
+/**
+ * The buffering this device should ask for when the user has not chosen.
+ *
+ * Handhelds used to get `playback` outright, because `interactive` underran
+ * on them -- but that was measured before the render thread's cost was cut
+ * (48 kHz, no sample oversampling, sleeping synth engines), and `playback`
+ * is a buffer deep enough to hear: the transport keeps sounding for its
+ * length after stop, and the pattern has to be pulled back by the same
+ * amount to stay in sync. `balanced` is the middle: several times the
+ * headroom of `interactive`, and short enough that stop feels immediate.
+ * A device that still underruns has `safe` in Settings.
+ */
+export function defaultAudioLatencyMode(): AudioLatencyMode {
+  return isTouchAudioDevice() ? 'balanced' : 'low';
+}
+
+/** The `AudioContextOptions.latencyHint` a mode asks for. */
+export function latencyHintForMode(
+  mode: AudioLatencyMode,
+): AudioContextLatencyCategory | number {
+  switch (mode) {
+    case 'low':
+      return 'interactive';
+    case 'balanced':
+      return BALANCED_LATENCY_SECONDS;
+    case 'safe':
+      return 'playback';
+  }
+}
