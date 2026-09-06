@@ -649,6 +649,9 @@ export class PlaybackEngine {
         ? { linearFrequency: song.linearFrequency }
         : {}),
       ...(song.amigaLimits !== undefined ? { amigaLimits: song.amigaLimits } : {}),
+      ...(song.fastVolumeSlides !== undefined
+        ? { fastVolumeSlides: song.fastVolumeSlides }
+        : {}),
     });
     // The song's own initial global volume (S3M's header byte, 0..64 ->
     // 0..1). Recorded for loop restarts, applied to the live state now, and

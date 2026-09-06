@@ -56,6 +56,15 @@ export interface Song {
    */
   amigaLimits?: boolean;
   /**
+   * S3M only: whether the module's volume slides also step on tick 0.
+   *
+   * The header property OpenMPT's `Load_s3m.cpp` reads as
+   * `SONG_FASTVOLSLIDES` -- cwtv exactly 0x1300 (ST3.00), or flag bit 0x40.
+   * Same per-file-flag shape as `amigaLimits`; absent means the ordinary ST3
+   * reading, where the first step is tick 1's.
+   */
+  fastVolumeSlides?: boolean;
+  /**
    * The song's initial global volume, 0..1 (S3M's header `globalVol`, 0..64,
    * divided by 64). Absent means full volume, what every other format does
    * and what the engine resets to. Feeds the same `songGlobalVolume`

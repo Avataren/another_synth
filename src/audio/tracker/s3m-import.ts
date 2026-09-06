@@ -39,7 +39,7 @@ export function importS3mToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
     patterns: s3m.patterns.length,
     instruments: s3m.instruments.length,
     amigaLimits: s3m.amigaLimits,
-    fastVolumeSlides: s3m.fastVolumeSlides,
+    fastVolumeSlides: s3m.trackerVersion === 0x1300 || s3m.fastVolumeSlides,
     st2Vibrato: s3m.st2Vibrato,
     amigaSlidesBitSet: s3m.amigaSlidesBitSet,
     counts,
@@ -75,6 +75,19 @@ export function importS3mToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
         '-- M/N/Y/Z, D96/D97); they decode to nothing rather than to a borrowed reading.',
     );
   }
+
+  // Volume slides step on tick 0 too on ST3.00-era files. OpenMPT's
+  // Load_s3m.cpp (fetched 2026-09-06) is the rule, and it is a version
+  // *equality*, not "anything older than 3.20":
+  //
+  //   if(fileHeader.cwtv == S3MFileHeader::trkST3_00 || (fileHeader.flags &
+  //      S3MFileHeader::fastVolumeSlides) != 0)
+  //       m_SongFlags.set(SONG_FASTVOLSLIDES);
+  //
+  // `trkST3_00` is 0x1300. Per-file header data, so it rides the same D59
+  // chain to the profile that `amigaLimits` does.
+  const fastVolumeSlides =
+    s3m.trackerVersion === 0x1300 || s3m.fastVolumeSlides;
 
   // The pitch model every effect runs in. The amiga-limits header flag is
   // per-file song data (D1/D24: a file-level flag must not masquerade as a
@@ -132,6 +145,7 @@ export function importS3mToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
       // Per-file header data that must reach the engine's effect arithmetic
       // (D59 discipline). Serialized additively; no song-file version bump.
       ...(s3m.amigaLimits ? { amigaLimits: true } : {}),
+      ...(fastVolumeSlides ? { fastVolumeSlides: true } : {}),
       ...(initialGlobalVolume !== 1 ? { initialGlobalVolume } : {}),
       patternRows: clampPatternRows(patterns[0]?.rows),
       stepSize: DEFAULT_STEP_SIZE,

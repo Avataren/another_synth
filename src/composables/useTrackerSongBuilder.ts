@@ -29,6 +29,8 @@ export interface TrackerSongBuilderContext {
   linearFrequency?: Ref<boolean>;
   /** S3M only: the per-file amiga-limits header flag (flags & 0x10). */
   amigaLimits?: Ref<boolean>;
+  /** S3M only: whether volume slides also step on tick 0 (ST3.00 / flag 0x40). */
+  fastVolumeSlides?: Ref<boolean>;
   /**
    * The song's initial global volume 0..1 (S3M's header globalVol / 64);
    * absent means full.
@@ -107,6 +109,9 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         : {}),
       ...(context.amigaLimits
         ? { amigaLimits: context.amigaLimits.value }
+        : {}),
+      ...(context.fastVolumeSlides
+        ? { fastVolumeSlides: context.fastVolumeSlides.value }
         : {}),
       ...(context.initialGlobalVolume
         ? { initialGlobalVolume: context.initialGlobalVolume.value }

@@ -87,6 +87,7 @@ interface TrackerSnapshot {
   initialSpeed: number;
   linearFrequency: boolean;
   amigaLimits: boolean;
+  fastVolumeSlides: boolean;
   initialGlobalVolume: number;
   vblankTiming: boolean;
   defaultPatternRows: number;
@@ -128,6 +129,12 @@ interface TrackerStoreState {
    * means the default 64..32767 period range.
    */
   amigaLimits: boolean;
+  /**
+   * S3M only: whether the module's volume slides also step on tick 0 --
+   * OpenMPT's `SONG_FASTVOLSLIDES` (cwtv 0x1300, or header flag 0x40).
+   * Threaded through the same per-file chain as `amigaLimits` (D59).
+   */
+  fastVolumeSlides: boolean;
   /**
    * The song's initial global volume 0..1 (S3M's header globalVol / 64).
    * Absent/default means full volume.
@@ -278,6 +285,11 @@ export interface TrackerSongFile {
      */
     amigaLimits?: boolean;
     /**
+     * S3M only: whether volume slides also step on tick 0. Absent means the
+     * ordinary ST3 reading. See `ProfileOptions.fastVolumeSlides`.
+     */
+    fastVolumeSlides?: boolean;
+    /**
      * The song's initial global volume 0..1 (S3M's header globalVol / 64).
      * Absent means full, what every other format declares.
      */
@@ -314,6 +326,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       initialSpeed: DEFAULT_SPEED,
       linearFrequency: true,
       amigaLimits: false,
+      fastVolumeSlides: false,
       initialGlobalVolume: 1.0,
       vblankTiming: false,
       baseOctave: 4,
@@ -377,6 +390,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         initialSpeed: this.initialSpeed,
         linearFrequency: this.linearFrequency,
         amigaLimits: this.amigaLimits,
+        fastVolumeSlides: this.fastVolumeSlides,
         initialGlobalVolume: this.initialGlobalVolume,
         vblankTiming: this.vblankTiming,
         defaultPatternRows: this.defaultPatternRows,
@@ -398,6 +412,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.initialSpeed = snapshot.initialSpeed ?? DEFAULT_SPEED;
       this.linearFrequency = snapshot.linearFrequency ?? true;
       this.amigaLimits = snapshot.amigaLimits ?? false;
+      this.fastVolumeSlides = snapshot.fastVolumeSlides ?? false;
       this.initialGlobalVolume = snapshot.initialGlobalVolume ?? 1.0;
       this.vblankTiming = snapshot.vblankTiming ?? false;
       this.defaultPatternRows = clampPatternRows(snapshot.defaultPatternRows);
@@ -450,6 +465,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.initialSpeed = DEFAULT_SPEED;
       this.linearFrequency = true;
       this.amigaLimits = false;
+      this.fastVolumeSlides = false;
       this.initialGlobalVolume = 1.0;
       this.vblankTiming = false;
       this.baseOctave = 4;
@@ -754,6 +770,9 @@ export const useTrackerStore = defineStore('trackerStore', {
         ...(this.moduleFormat === 'protracker'
           ? { amigaLimits: this.amigaLimits }
           : {}),
+        ...(this.moduleFormat === 's3m' && this.fastVolumeSlides
+          ? { fastVolumeSlides: true }
+          : {}),
         ...(this.moduleFormat === 's3m' && this.initialGlobalVolume !== 1.0
           ? { initialGlobalVolume: this.initialGlobalVolume }
           : {}),
@@ -795,6 +814,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       // header global volume below defaults the same way.
       this.amigaLimits =
         data.amigaLimits ?? this.moduleFormat === 'protracker';
+      this.fastVolumeSlides = data.fastVolumeSlides === true;
       this.initialGlobalVolume = Number.isFinite(data.initialGlobalVolume)
         ? Math.max(0, Math.min(1, data.initialGlobalVolume as number))
         : 1.0;

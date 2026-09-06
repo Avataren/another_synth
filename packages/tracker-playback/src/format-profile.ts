@@ -188,6 +188,82 @@ export interface FormatProfile {
   readonly f00StopsSong: boolean;
 
   /**
+   * How the two nibbles of a volume-slide parameter are read.
+   *
+   * This is OpenMPT's own split, and it is a whole dialect rather than a
+   * single quirk -- `CSoundFile::VolumeSlide` (Snd_fx.cpp, fetched
+   * 2026-09-06) opens by masking the parameter for one family of formats and
+   * then runs a second, different reading for everything else:
+   *
+   *   if((GetType() & (MOD_TYPE_MOD | MOD_TYPE_XM | ...)))
+   *   {
+   *       // MOD / XM nibble priority
+   *       if((param & 0xF0) != 0) param &= 0xF0; else param &= 0x0F;
+   *   }
+   *   ...
+   *   if(!(GetType() & (MOD_TYPE_MOD | MOD_TYPE_XM | ...)))
+   *   {
+   *       if ((param & 0x0F) == 0x0F)      // Fine upslide or slide -15
+   *       {
+   *           if (param & 0xF0) { FineVolumeUp(chn, param >> 4, false); return; }
+   *           else if(chn.isFirstTick && !m_SongFlags[SONG_FASTVOLSLIDES]) newVolume -= 0x0F * 4;
+   *       } else if ((param & 0xF0) == 0xF0) // Fine downslide or slide +15
+   *       {
+   *           if (param & 0x0F) { FineVolumeDown(chn, param & 0x0F, false); return; }
+   *           else if(chn.isFirstTick && !m_SongFlags[SONG_FASTVOLSLIDES]) newVolume += 0x0F * 4;
+   *       }
+   *   }
+   *   if(!chn.isFirstTick || m_SongFlags[SONG_FASTVOLSLIDES] || ...)
+   *   {
+   *       if (param & 0x0F) newVolume -= (param & 0x0F) * 4;
+   *       else              newVolume += (param & 0xF0) >> 2;
+   *   }
+   *
+   * Two differences follow, and Scream Tracker 3's `Dxy` (and the `Kxy` /
+   * `Lxy` that share the routine) needs both:
+   *
+   * - **A 0xF nibble makes the slide fine.** `DxF` is a single step *up* by
+   *   x on tick 0, `DFy` a single step *down* by y. Under the MOD/XM reading
+   *   the up nibble simply wins, so `DFy` -- 0xF in the *high* nibble --
+   *   slides the channel *up* by 15/64 on every tick, which slams it to full
+   *   scale inside one row. 2500 cells in the 40-module S3M corpus are
+   *   written this way, and two modules are made of almost nothing else:
+   *   return_to_saturn.s3m (1449 of 1474 `D` commands) and o-79642.s3m (557
+   *   of 557).
+   * - **The down nibble wins, not the up nibble.** `D48` slides down by 8 in
+   *   ST3 and up by 4 in ProTracker/FT2. 284 corpus cells carry both
+   *   nibbles (252 of them in return_to_saturn.s3m).
+   *
+   * The two edge parameters `D0F` and `DF0` are neither fine nor ordinary:
+   * the fine branch declines them (its `param & 0xF0` / `param & 0x0F` test
+   * fails) after taking a first-tick step of its own, and the general block
+   * then slides them every later tick -- so both end up sliding 15 units on
+   * *every* tick including the first, which is what `volumeSlideFirstTick`
+   * carries them through.
+   */
+  readonly volumeSlideNibbles: 'modxm' | 's3m';
+
+  /**
+   * Whether an ordinary volume slide also steps on tick 0 of its row.
+   *
+   * ST3 0.00-era files slide on every tick, one step further per row than a
+   * later ST3 does. It is a per-file property, not a per-format one --
+   * OpenMPT's `Load_s3m.cpp` (fetched 2026-09-06) sets it from the header:
+   *
+   *   if(fileHeader.cwtv == S3MFileHeader::trkST3_00 || (fileHeader.flags & S3MFileHeader::fastVolumeSlides) != 0)
+   *       m_SongFlags.set(SONG_FASTVOLSLIDES);
+   *
+   * -- so `trkST3_00` (cwtv exactly 0x1300) or flag bit 0x40, and *not* the
+   * "any pre-3.20 version" reading the version number invites. It reaches
+   * the profile through `ProfileOptions.fastVolumeSlides`, the same per-file
+   * chain as `amigaLimits` (D59). Seven of the 40 corpus modules qualify:
+   * five by version (cool_city_volume_1_2, global_motion_vol_1,
+   * satellite_one, starshine, turbulence) and two by flag
+   * (astraying_voyages, mechanism_eight).
+   */
+  readonly fastVolumeSlides: boolean;
+
+  /**
    * How a module's raw effect-command bytes decode into the format-neutral
    * effect behaviours, for entries that carry them (`TrackerEntryData
    * .effectCommand`/`.effectParam`). The numeric command byte is what the
@@ -319,6 +395,10 @@ export const PROTRACKER_PROFILE: FormatProfile = {
   fineSlideHasMemory: false,
   // Never read: ProTracker has no pan slides. Kept at the legacy unit.
   panSlideUnit: 1 / 64,
+  // ProTracker masks the parameter to one nibble and lets the up nibble win;
+  // its fine volume slides are EAx/EBx, not a 0xF nibble on Axy.
+  volumeSlideNibbles: 'modxm',
+  fastVolumeSlides: false,
   f00StopsSong: true,
   // ProTracker's own command numbering; FT2 continues the alphabet past 0x0F
   // with G(0x10), K(0x14), L(0x15), P(0x19), R(0x1B), T(0x1D), U(0x1E) and
@@ -414,6 +494,10 @@ export const XM_PROFILE: FormatProfile = {
   // FT2 pan is one 0..255 byte, so one parameter unit is 2/255 of the
   // processor's -1..1 swing.
   panSlideUnit: 2 / 255,
+  // FT2 is in OpenMPT's MOD/XM masking family: one nibble survives and the
+  // up nibble wins. Its fine volume slides are EAx/EBx, not a 0xF nibble.
+  volumeSlideNibbles: 'modxm',
+  fastVolumeSlides: false,
   // FT2's setSpeed with a parameter below 32 sets speed 0, which stalls the
   // song rather than stopping it cleanly; keep the engine's old clamp.
   f00StopsSong: false,
@@ -512,6 +596,15 @@ export const S3M_PROFILE: FormatProfile = {
   // processor's -1..1 swing. (ST3.20's own replayer dummies the P
   // command; the value is for the MPT-era files that use it.)
   panSlideUnit: 2 / 255,
+  // ST3 reads both nibbles: a 0xF makes the slide fine (DxF up, DFy down)
+  // and otherwise the *down* nibble wins. See the field's docs for the
+  // quoted VolumeSlide split and the corpus counts -- two demo modules are
+  // written almost entirely in DxF/DFy.
+  volumeSlideNibbles: 's3m',
+  // Per-file, not per-format: `profileForFormat` turns it on for the ST3.00
+  // and flag-0x40 files that OpenMPT's loader flags. This constant is the
+  // ordinary case.
+  fastVolumeSlides: false,
   // S3M has no song-stop command: its 'F' byte (0x06) is portamento up,
   // not speed (the ST3.20 manual's effect list has no stop reading).
   f00StopsSong: false,
@@ -636,6 +729,10 @@ export const NATIVE_PROFILE: FormatProfile = {
   // old clamp-to-speed-1 reading rather than stopping the song.
   fineSlideHasMemory: false,
   panSlideUnit: 1 / 64,
+  // Legacy again: native songs were hand-written against the MOD/XM reading
+  // of Axy, where a 0xF nibble is an ordinary slide speed.
+  volumeSlideNibbles: 'modxm',
+  fastVolumeSlides: false,
   f00StopsSong: false,
   // In-app songs can hand-type E00/E01 into the effect column
   // (parseEffectCommand decodes it through the same DEFAULT map), so the
@@ -676,6 +773,14 @@ export interface ProfileOptions {
    * same way so it reaches the engine's effect arithmetic (D59).
    */
   amigaLimits?: boolean;
+  /**
+   * S3M only: whether volume slides also step on tick 0 of their row.
+   *
+   * Set by the importer from the header, per OpenMPT's `Load_s3m.cpp` rule
+   * (cwtv exactly 0x1300, or flag bit 0x40) -- see
+   * `FormatProfile.fastVolumeSlides`. Absent means the ordinary ST3 reading.
+   */
+  fastVolumeSlides?: boolean;
 }
 
 /** The playback semantics to apply for a given module format. */
@@ -687,8 +792,16 @@ export function profileForFormat(
   if (format === 'xm' && options?.linearFrequency === false) {
     return XM_AMIGA_PROFILE;
   }
-  if (format === 's3m' && options?.amigaLimits === true) {
-    return S3M_AMIGA_PROFILE;
+  if (format === 's3m') {
+    const base =
+      options?.amigaLimits === true ? S3M_AMIGA_PROFILE : S3M_PROFILE;
+    // The two S3M header flags are independent, so the four combinations
+    // cannot each be a named constant without the table doubling again on
+    // the next flag. `amigaLimits` keeps its constant (it swaps the pitch
+    // model, which is the expensive part); `fastVolumeSlides` is one
+    // boolean, applied on top.
+    if (options?.fastVolumeSlides !== true) return base;
+    return { ...base, fastVolumeSlides: true };
   }
   if (format === 'protracker' && options?.amigaLimits === false) {
     return PROTRACKER_EXTENDED_PROFILE;

@@ -58,6 +58,8 @@ export interface PlaybackSongSource {
   linearFrequency?: boolean;
   /** S3M only: the per-file amiga-limits header flag (flags & 0x10). */
   amigaLimits?: boolean;
+  /** S3M only: whether volume slides also step on tick 0 (see PlaybackSong). */
+  fastVolumeSlides?: boolean;
   /**
    * The song's initial global volume 0..1 (S3M's header globalVol / 64);
    * absent means full.
@@ -134,13 +136,18 @@ export function buildPlaybackStepsForTrack(
   // raw bytes, so the profile is never consulted for them.
   const profile = profileForFormat(
     source.moduleFormat,
-    source.linearFrequency !== undefined || source.amigaLimits !== undefined
+    source.linearFrequency !== undefined ||
+      source.amigaLimits !== undefined ||
+      source.fastVolumeSlides !== undefined
       ? {
           ...(source.linearFrequency !== undefined
             ? { linearFrequency: source.linearFrequency }
             : {}),
           ...(source.amigaLimits !== undefined
             ? { amigaLimits: source.amigaLimits }
+            : {}),
+          ...(source.fastVolumeSlides !== undefined
+            ? { fastVolumeSlides: source.fastVolumeSlides }
             : {}),
         }
       : undefined,
@@ -463,6 +470,7 @@ export function buildPlaybackSong(
     ...(source.amigaLimits !== undefined
       ? { amigaLimits: source.amigaLimits }
       : {}),
+    ...(source.fastVolumeSlides ? { fastVolumeSlides: true } : {}),
     ...(source.initialGlobalVolume !== undefined &&
     source.initialGlobalVolume !== 1.0
       ? { initialGlobalVolume: source.initialGlobalVolume }

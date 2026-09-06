@@ -250,6 +250,15 @@ export interface TrackEffectState {
     delta: number; // positive = up, negative = down (normalized per tick)
     mode: 'none' | 'normal' | 'fine';
     source: 'volSlide' | 'tonePortaVol' | 'vibratoVol' | null;
+    /**
+     * Whether a `normal` slide also steps on tick 0 of the row.
+     *
+     * False everywhere except S3M, and there only for the ST3.00-era files
+     * `FormatProfile.fastVolumeSlides` describes and for the two `D0F`/`DF0`
+     * parameters that OpenMPT's VolumeSlide steps on the first tick as well
+     * as every later one (see `FormatProfile.volumeSlideNibbles`).
+     */
+    firstTick: boolean;
   };
 
   // Panning slide state
@@ -404,7 +413,7 @@ export function createTrackEffectState(
     arpeggioX: 0,
     arpeggioY: 0,
 
-    volumeSlide: { delta: 0, mode: 'none', source: null },
+    volumeSlide: { delta: 0, mode: 'none', source: null, firstTick: false },
     panSlideSpeed: 0,
     volumeColumnSlide: 0,
     volumeColumnPanSlide: 0,
@@ -617,7 +626,7 @@ function velocityFromVolume(volume: number): number {
 }
 
 function resetVolumeSlide(state: TrackEffectState): void {
-  state.volumeSlide = { delta: 0, mode: 'none', source: null };
+  state.volumeSlide = { delta: 0, mode: 'none', source: null, firstTick: false };
 }
 
 /**
@@ -642,12 +651,25 @@ function resetVolumeSlide(state: TrackEffectState): void {
  * ProTracker's `volumeSlide` is the same nibble precedence with no memory: it
  * reads `ch->n_cmd & 0xFF` directly, so `A00` there is a genuine no-op. That
  * is what `volumeSlideHasMemory` selects between.
+ *
+ * Scream Tracker 3 reads the very same nibbles differently enough that it
+ * needs its own branch rather than another boolean: a 0xF nibble turns the
+ * slide *fine* (one step on tick 0), the down nibble wins over the up one,
+ * and `D0F`/`DF0` slide on every tick including the first. All of it is
+ * quoted in `FormatProfile.volumeSlideNibbles`, whose value selects between
+ * the two readings here.
  */
-function resolveVolumeSlideDelta(
+interface ResolvedVolumeSlide {
+  delta: number;
+  mode: 'normal' | 'fine';
+  firstTick: boolean;
+}
+
+function resolveVolumeSlide(
   state: TrackEffectState,
   paramX: number,
   paramY: number,
-): number {
+): ResolvedVolumeSlide {
   let raw = ((paramX & 0x0f) << 4) | (paramY & 0x0f);
   if (state.profile.volumeSlideHasMemory) {
     if (raw === 0) raw = state.lastVolSlide;
@@ -657,9 +679,30 @@ function resolveVolumeSlideDelta(
   const scale = state.profile.volumeSlideUnit;
   const up = (raw >> 4) & 0x0f;
   const down = raw & 0x0f;
-  if (up) return up * scale;
-  if (down) return -down * scale;
-  return 0;
+
+  if (state.profile.volumeSlideNibbles === 's3m') {
+    // DxF: fine slide up by x, once, on tick 0. DFy: fine slide down by y.
+    // Neither claims `D0F`/`DF0`, whose other nibble is zero -- OpenMPT
+    // falls those through to the ordinary slide *and* steps them on the
+    // first tick, so they move 15 units on every tick of the row.
+    if (down === 0x0f && up !== 0) {
+      return { delta: up * scale, mode: 'fine', firstTick: false };
+    }
+    if (up === 0x0f && down !== 0) {
+      return { delta: -down * scale, mode: 'fine', firstTick: false };
+    }
+    const firstTick =
+      state.profile.fastVolumeSlides || raw === 0x0f || raw === 0xf0;
+    // `if (param & 0x0F) newVolume -= ...; else newVolume += ...` -- down
+    // first, so a parameter with both nibbles set slides down.
+    if (down) return { delta: -down * scale, mode: 'normal', firstTick };
+    if (up) return { delta: up * scale, mode: 'normal', firstTick };
+    return { delta: 0, mode: 'normal', firstTick: false };
+  }
+
+  if (up) return { delta: up * scale, mode: 'normal', firstTick: false };
+  if (down) return { delta: -down * scale, mode: 'normal', firstTick: false };
+  return { delta: 0, mode: 'normal', firstTick: false };
 }
 
 function primeVolumeSlide(
@@ -669,15 +712,19 @@ function primeVolumeSlide(
   if (!effect) return;
 
   const setSlide = (
-    delta: number,
-    mode: 'normal' | 'fine',
+    resolved: ResolvedVolumeSlide,
     source: 'volSlide' | 'tonePortaVol' | 'vibratoVol',
   ) => {
-    if (delta === 0) {
+    if (resolved.delta === 0) {
       resetVolumeSlide(state);
       return;
     }
-    state.volumeSlide = { delta, mode, source };
+    state.volumeSlide = {
+      delta: resolved.delta,
+      mode: resolved.mode,
+      source,
+      firstTick: resolved.firstTick,
+    };
   };
 
   switch (effect.type) {
@@ -694,7 +741,14 @@ function primeVolumeSlide(
           if (param === 0) param = state.lastFineVolUp;
           state.lastFineVolUp = param;
         }
-        setSlide(param * state.profile.volumeSlideUnit, 'fine', 'volSlide');
+        setSlide(
+          {
+            delta: param * state.profile.volumeSlideUnit,
+            mode: 'fine',
+            firstTick: false,
+          },
+          'volSlide',
+        );
         return;
       }
       if (effect.extSubtype === 'fineVolDown') {
@@ -703,13 +757,19 @@ function primeVolumeSlide(
           if (param === 0) param = state.lastFineVolDown;
           state.lastFineVolDown = param;
         }
-        setSlide(-param * state.profile.volumeSlideUnit, 'fine', 'volSlide');
+        setSlide(
+          {
+            delta: -param * state.profile.volumeSlideUnit,
+            mode: 'fine',
+            firstTick: false,
+          },
+          'volSlide',
+        );
         return;
       }
 
       setSlide(
-        resolveVolumeSlideDelta(state, effect.paramX, effect.paramY),
-        'normal',
+        resolveVolumeSlide(state, effect.paramX, effect.paramY),
         'volSlide',
       );
       return;
@@ -732,16 +792,14 @@ function primeVolumeSlide(
     // is what its 612 `600` cells expect.
     case 'tonePortaVol':
       setSlide(
-        resolveVolumeSlideDelta(state, effect.paramX, effect.paramY),
-        'normal',
+        resolveVolumeSlide(state, effect.paramX, effect.paramY),
         'tonePortaVol',
       );
       return;
 
     case 'vibratoVol':
       setSlide(
-        resolveVolumeSlideDelta(state, effect.paramX, effect.paramY),
-        'normal',
+        resolveVolumeSlide(state, effect.paramX, effect.paramY),
         'vibratoVol',
       );
       return;
@@ -749,6 +807,32 @@ function primeVolumeSlide(
     default:
       return;
   }
+}
+
+/**
+ * Tick 0 of a row carrying a primed `normal` volume slide.
+ *
+ * Ordinarily the slide's first *step* is tick 1's, and tick 0 only re-states
+ * the level the channel already sits at so the scheduler has a starting point
+ * to ramp from. Where the slide steps on the first tick too --
+ * `volumeSlide.firstTick`, which is S3M's fast-volume-slide files and its
+ * `D0F`/`DF0` parameters -- the step happens here and the stated level is the
+ * one it lands on.
+ */
+function emitTick0VolumeSlide(
+  state: TrackEffectState,
+  commands: ProcessorCommand[],
+  voiceIndex: number | undefined,
+): void {
+  if (state.volumeSlide.mode !== 'normal' || state.volumeSlide.delta === 0) {
+    return;
+  }
+  if (state.volumeSlide.firstTick) {
+    state.currentVolume = clampVolume(
+      state.currentVolume + state.volumeSlide.delta,
+    );
+  }
+  pushVolume(commands, voiceIndex, state.currentVolume);
 }
 
 function applyVolumeSlideIfNeeded(state: TrackEffectState): number | undefined {
@@ -1224,24 +1308,14 @@ export function processEffectTick0(
       }
       state.tonePortaActive = state.tonePortaSpeed > 0;
       primeVolumeSlide(state, effect);
-      if (
-        state.volumeSlide.mode === 'normal' &&
-        state.volumeSlide.delta !== 0
-      ) {
-        pushVolume(commands, voiceIndex, state.currentVolume);
-      }
+      emitTick0VolumeSlide(state, commands, voiceIndex);
       // No slide on tick 0 -- see the 'tonePorta' case above for why.
       break;
 
     case 'vibratoVol':
       // Vibrato continues, volume slide applies
       primeVolumeSlide(state, effect);
-      if (
-        state.volumeSlide.mode === 'normal' &&
-        state.volumeSlide.delta !== 0
-      ) {
-        pushVolume(commands, voiceIndex, state.currentVolume);
-      }
+      emitTick0VolumeSlide(state, commands, voiceIndex);
       break;
 
     case 'tremolo':
@@ -1261,13 +1335,9 @@ export function processEffectTick0(
     case 'volSlide': {
       // Distinguish between normal Axy volume slide and fine EAx/EBx slides.
       primeVolumeSlide(state, effect);
-      if (
-        state.volumeSlide.mode === 'normal' &&
-        state.volumeSlide.delta !== 0
-      ) {
-        // Emit current volume so schedulers have a starting point before per-tick slides.
-        pushVolume(commands, voiceIndex, state.currentVolume);
-      }
+      // States the level per-tick slides ramp from -- and takes the step
+      // itself where the format slides on tick 0 as well.
+      emitTick0VolumeSlide(state, commands, voiceIndex);
       if (state.volumeSlide.mode === 'fine' && state.volumeSlide.delta !== 0) {
         state.currentVolume = clampVolume(
           state.currentVolume + state.volumeSlide.delta,
