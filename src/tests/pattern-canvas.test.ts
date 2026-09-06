@@ -14,6 +14,7 @@ import { blitWindow } from 'src/components/tracker/pattern-canvas/pattern-window
 import { BAND_PAD_PX } from 'src/components/tracker/pattern-canvas/pattern-bands';
 import { setCache } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern-theme';
+import { buildTrackAccents } from 'src/components/tracker/pattern-canvas/track-accents';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 
 /**
@@ -323,6 +324,7 @@ const theme: PatternTheme = {
   interpolatedExponential: 'rgba(158, 197, 255, 0.1)',
   panelBackground: '#0a0e16',
   fontTracker: "'JetBrains Mono', monospace",
+  trackAccents: buildTrackAccents('rgb(77, 242, 197)', 'rgb(88, 176, 255)'),
 };
 
 // ---------------------------------------------------------------------

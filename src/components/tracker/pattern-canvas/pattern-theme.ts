@@ -18,6 +18,8 @@
  * untouched, so jsdom runs never accidentally blank the palette.
  */
 
+import { buildTrackAccents } from './track-accents';
+
 export interface PatternTheme {
   /** Empty entry background (`--tracker-entry-base`). */
   entryBase: string;
@@ -67,7 +69,15 @@ export interface PatternTheme {
   panelBackground: string;
   /** Tracker font stack (`--font-tracker`). */
   fontTracker: string;
+  /**
+   * Per-track accents, ramped between the theme's two accent colors (see
+   * track-accents.ts). Indexed by track index modulo its length; never empty.
+   */
+  trackAccents: string[];
 }
+
+/** The palette keys read straight off a CSS custom property. */
+type PatternThemeVarKey = Exclude<keyof PatternTheme, 'trackAccents'>;
 
 /**
  * Every CSS custom property the theme reads, with the fallback the DOM
@@ -75,7 +85,7 @@ export interface PatternTheme {
  * TrackerPattern.vue and TrackerTrack.vue so a canvas drawn before any
  * stylesheet applies is still visually identical to the DOM grid.
  */
-const VARS: Array<{ key: keyof PatternTheme; varName: string; fallback: string }> = [
+const VARS: Array<{ key: PatternThemeVarKey; varName: string; fallback: string }> = [
   { key: 'entryBase', varName: '--tracker-entry-base', fallback: 'rgba(13, 18, 29, 0.85)' },
   { key: 'entryFilled', varName: '--tracker-entry-filled', fallback: 'rgba(21, 31, 48, 0.95)' },
   { key: 'rowSub', varName: '--tracker-entry-row-sub', fallback: 'rgba(13, 18, 29, 0.9)' },
@@ -128,11 +138,14 @@ export function resolveVars(
       : ((element as { getPropertyValue?: unknown } | undefined)?.getPropertyValue
           ? (element as unknown as CSSStyleDeclaration)
           : getComputedStyle(document.documentElement));
-  const result = {} as Record<keyof PatternTheme, string>;
+  const result = {} as Record<PatternThemeVarKey, string>;
   for (const { key, varName, fallback } of VARS) {
     result[key] = readVar(style, varName, fallback);
   }
-  return result as unknown as PatternTheme;
+  return {
+    ...result,
+    trackAccents: buildTrackAccents(result.accentPrimary, result.accentSecondary),
+  };
 }
 
 /**

@@ -43,9 +43,18 @@ export function rowType(row: number): RowType {
   return 'normal';
 }
 
-/** Per-track accent, TrackerTrack.vue: `track.color || '#5dd6ff'`. */
-export function trackAccent(track: TrackerTrackData): string {
-  return track.color ?? '#5dd6ff';
+/**
+ * Per-track accent for track `index`, taken from the theme's ramp (see
+ * track-accents.ts) so the track chips and cursor follow the selected theme.
+ * The track's own decorative `color` is only a fallback for a themeless call.
+ */
+export function trackAccent(
+  index: number,
+  theme: Pick<PatternTheme, 'trackAccents'>,
+  track?: TrackerTrackData,
+): string {
+  const accents = theme.trackAccents;
+  return accents[index % accents.length] ?? track?.color ?? '#5dd6ff';
 }
 
 /** Row → interpolation tint map, TrackerTrack.vue's `interpolatedRows`. */
@@ -566,7 +575,7 @@ export function drawCursorCell(
 
   ctx.fillStyle = theme.activeBg;
   ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-  ctx.strokeStyle = trackAccent(track);
+  ctx.strokeStyle = trackAccent(data.trackIndex, theme, track);
   ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 }
 

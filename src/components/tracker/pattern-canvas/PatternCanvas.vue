@@ -16,7 +16,7 @@
           v-for="(track, index) in tracks"
           :key="track.id"
           class="header-track"
-          :style="headerTrackStyle(index, track)"
+          :style="headerTrackStyle(index)"
         >
           <span class="header-track-index">{{ index + 1 }}</span>
           <span class="header-track-name">{{ track.name }}</span>
@@ -274,11 +274,23 @@ const hscrollVisible = computed(() => panelWidth.value > panelMaxWidth.value);
 
 const headerShift = computed(() => ({ transform: `translateX(${-viewLeft.value}px)` }));
 
-function headerTrackStyle(index: number, track: TrackerTrackData) {
+/**
+ * Bumped on every theme flip so the header chips (plain DOM, outside the
+ * canvas paint path) re-read the palette the observer just refreshed.
+ */
+const themeRevision = ref(0);
+
+/** The theme's per-track accent ramp, re-read whenever the theme changes. */
+const trackAccents = computed(() => {
+  void themeRevision.value;
+  return getTheme().trackAccents;
+});
+
+function headerTrackStyle(index: number) {
   return {
     left: `${GUTTER_WIDTH_PX + index * trackPitchPx(layout.value.trackCount, layout.value.showExtraEffectColumn)}px`,
     width: `${trackWidthPx(layout.value.trackCount, layout.value.showExtraEffectColumn)}px`,
-    '--track-accent': trackAccent(track),
+    '--track-accent': trackAccent(index, { trackAccents: trackAccents.value }),
   };
 }
 
@@ -1443,6 +1455,7 @@ onMounted(() => {
   // running — the module cache still holds the old palette, so re-read it
   // before the first paint.
   refreshTheme();
+  themeRevision.value++;
   applySize();
   schedule(['static', 'overlay', 'blit']);
   requestFollow();
@@ -1468,6 +1481,7 @@ onMounted(() => {
   // repaint with the refreshed theme, and re-queue the pre-render.
   themeObserver = new MutationObserver(() => {
     refreshTheme();
+    themeRevision.value++;
     paintedState = null;
     preRenderMeta = null;
     preRenderTarget = null;

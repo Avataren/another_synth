@@ -18,6 +18,7 @@ import {
 import { trackWidthPx } from 'src/components/tracker/track-metrics';
 import { activeRowBarWidthPx } from 'src/components/tracker/pattern-buffering';
 import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern-theme';
+import { buildTrackAccents } from 'src/components/tracker/pattern-canvas/track-accents';
 import type {
   TrackerEntryData,
   TrackerSelectionRect,
@@ -162,6 +163,7 @@ const theme: PatternTheme = {
   interpolatedExponential: 'rgba(158, 197, 255, 0.1)',
   panelBackground: '#0a0e16',
   fontTracker: "'JetBrains Mono', monospace",
+  trackAccents: buildTrackAccents('rgb(77, 242, 197)', 'rgb(88, 176, 255)'),
 };
 
 const layout = (trackCount = 2, showExtraEffectColumn = false, rowCount = 32) => ({
@@ -345,11 +347,14 @@ describe('drawEntryBox', () => {
     expect(dual).toEqual(expect.arrayContaining(['A', 'B', 'C', 'D', 'E', 'F']));
   });
 
-  it('uses the per-track accent for borders only via theme when selected', () => {
-    const entry: TrackerEntryData = { row: 0, note: 'C-4' };
-    const track = makeTrack([entry], '#ff0000');
-    expect(trackAccent(track)).toBe('#ff0000');
-    expect(trackAccent(makeTrack([]))).toBe('#5dd6ff');
+  it('takes the per-track accent from the theme ramp, cycling past its length', () => {
+    const track = makeTrack([], '#ff0000');
+    expect(trackAccent(0, theme, track)).toBe(theme.trackAccents[0]);
+    expect(trackAccent(3, theme, track)).toBe(theme.trackAccents[3]);
+    // Past the ramp's length the accents repeat, and the track's own
+    // decorative color never wins over the theme.
+    expect(trackAccent(theme.trackAccents.length, theme, track)).toBe(theme.trackAccents[0]);
+    expect(trackAccent(0, { trackAccents: [] }, track)).toBe('#ff0000');
   });
 });
 

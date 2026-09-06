@@ -9,6 +9,7 @@ import { GUTTER_WIDTH_PX } from 'src/components/tracker/pattern-canvas/pattern-l
 import { totalTracksWidth } from 'src/components/tracker/pattern-canvas/pattern-layout';
 import { setCache } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern-theme';
+import { buildTrackAccents } from 'src/components/tracker/pattern-canvas/track-accents';
 import type { UpcomingPatternInfo } from 'src/components/tracker/pattern-buffering';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 
@@ -43,6 +44,7 @@ const theme: PatternTheme = {
   interpolatedExponential: 'rgba(158, 197, 255, 0.1)',
   panelBackground: '#0a0e16',
   fontTracker: "'JetBrains Mono', monospace",
+  trackAccents: buildTrackAccents('rgb(77, 242, 197)', 'rgb(88, 176, 255)'),
 };
 
 setCache(theme);
