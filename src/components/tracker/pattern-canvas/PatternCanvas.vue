@@ -31,7 +31,7 @@
       this element is the pattern-space y of the bitmap's top line.
     -->
     <div ref="scrollerRef" class="canvas-scroller" @scroll="onScrollerScroll">
-      <div class="canvas-viewport">
+      <div ref="viewportRef" class="canvas-viewport">
         <canvas ref="visibleCanvasRef" class="canvas-layer"></canvas>
         <canvas
           ref="overlayCanvasRef"
@@ -75,7 +75,7 @@ import {
   type PatternLayout,
 } from './pattern-layout';
 import { hitTest, type PatternHit } from './pattern-hit-test';
-import { blitWindow } from './pattern-window';
+import { blitWindow, snapToDevicePx } from './pattern-window';
 import {
   bitmapScaleFor,
   DESKTOP_BITMAP_BUDGET,
@@ -193,6 +193,7 @@ const emit = defineEmits<{
 
 const scrollerRef = ref<HTMLDivElement | null>(null);
 const hscrollRef = ref<HTMLDivElement | null>(null);
+const viewportRef = ref<HTMLDivElement | null>(null);
 const visibleCanvasRef = ref<HTMLCanvasElement | null>(null);
 const overlayCanvasRef = ref<HTMLCanvasElement | null>(null);
 
@@ -272,7 +273,14 @@ const sideGutter = computed(() =>
  */
 const hscrollVisible = computed(() => panelWidth.value > panelMaxWidth.value);
 
-const headerShift = computed(() => ({ transform: `translateX(${-viewLeft.value}px)` }));
+/*
+ * The header chips ride the same horizontal origin as the blit, snapped to
+ * the same device pixel: an unsnapped translate re-rasterizes the chip text
+ * at a different sub-pixel phase than the track columns it labels.
+ */
+const headerShift = computed(() => ({
+  transform: `translateX(${-snapToDevicePx(viewLeft.value, dpr.value)}px)`,
+}));
 
 /**
  * Bumped on every theme flip so the header chips (plain DOM, outside the
@@ -761,8 +769,12 @@ function runFrame(): void {
   // One frame, one composition: the view origin is read exactly once, after
   // the follow applied, and the same values drive the blit and the overlay
   // paint. No pass can observe a mid-frame scroll write the other missed.
-  const viewTopFrame = viewTop.value;
-  const viewLeftFrame = viewLeft.value;
+  // Snapped to whole device pixels (pattern-window): the compositor snaps
+  // the sticky canvas stack's own position the same way, so painting at the
+  // unrounded offset would move the content half a pixel against the
+  // element carrying it, re-decided every scroll step.
+  const viewTopFrame = snapToDevicePx(viewTop.value, dpr.value);
+  const viewLeftFrame = snapToDevicePx(viewLeft.value, dpr.value);
   const drawStatic = wantStatic;
   const drawOverlay = wantOverlay;
   const blit = wantBlit || drawStatic || followMoved;
@@ -869,9 +881,22 @@ function runFrame(): void {
 function applySize(): void {
   const scroller = scrollerRef.value;
   if (!scroller) return;
-  const w = scroller.clientWidth;
-  const h = scroller.clientHeight;
   const nextDpr = window.devicePixelRatio || 1;
+  // The canvas stack's real box, not the scroller's rounded clientWidth/
+  // clientHeight: those are integers, while the box they describe is
+  // whatever fraction of a CSS pixel the flex layout produced. Sizing the
+  // backing store from the rounded number and letting CSS stretch it back
+  // over the true box re-samples every pixel the renderer draws.
+  const box = viewportRef.value?.getBoundingClientRect();
+  const boxW = box && box.width > 0 ? box.width : scroller.clientWidth;
+  const boxH = box && box.height > 0 ? box.height : scroller.clientHeight;
+  // Whole device pixels, and the CSS size pinned to exactly that many, so
+  // the backing store maps 1:1 onto the screen and nothing the blit writes
+  // is resampled on the way out.
+  const backingW = Math.max(1, Math.round(boxW * nextDpr));
+  const backingH = Math.max(1, Math.round(boxH * nextDpr));
+  const w = backingW / nextDpr;
+  const h = backingH / nextDpr;
   // The bitmap depends on the pattern extent and the DPR, not the viewport:
   // a resize that changes neither leaves it valid and only the visible
   // layers need painting.
@@ -887,8 +912,8 @@ function applySize(): void {
   overlayFullPaint = true;
   for (const canvas of [visibleCanvasRef.value, overlayCanvasRef.value]) {
     if (!canvas) continue;
-    const backingW = Math.max(1, Math.floor(w * nextDpr));
-    const backingH = Math.max(1, Math.floor(h * nextDpr));
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
     if (canvas.width !== backingW || canvas.height !== backingH) {
       canvas.width = backingW;
       canvas.height = backingH;
@@ -920,11 +945,22 @@ function emitScroll(): void {
   emit('scroll', { top: viewTop.value, left: viewLeft.value });
 }
 
+/*
+ * The dead zone is one device pixel, not one CSS pixel: what the frame
+ * paints is the offset snapped to a device pixel (runFrame), so two
+ * scrollTops that snap to different device pixels are two different
+ * pictures however close they are in CSS space. A wheel or trackpad scroll
+ * delivers fractional offsets, and holding the old one back because it
+ * moved "less than half a pixel" leaves the content a device pixel away
+ * from where the compositor put the canvas carrying it.
+ */
 function onScrollerScroll(): void {
   const el = scrollerRef.value;
   if (!el) return;
-  if (Math.abs(el.scrollTop - viewTop.value) < 0.5) return;
-  viewTop.value = el.scrollTop;
+  const next = el.scrollTop;
+  const d = dpr.value;
+  if (snapToDevicePx(next, d) === snapToDevicePx(viewTop.value, d)) return;
+  viewTop.value = next;
   emitScroll();
   // The overlay's pattern→viewport translate reads viewTop/viewLeft, so a
   // scroll must repaint it alongside the blit.
@@ -934,8 +970,10 @@ function onScrollerScroll(): void {
 function onHScroll(): void {
   const el = hscrollRef.value;
   if (!el) return;
-  if (Math.abs(el.scrollLeft - viewLeft.value) < 0.5) return;
-  viewLeft.value = el.scrollLeft;
+  const next = el.scrollLeft;
+  const d = dpr.value;
+  if (snapToDevicePx(next, d) === snapToDevicePx(viewLeft.value, d)) return;
+  viewLeft.value = next;
   emitScroll();
   schedule(['blit', 'overlay']);
 }
@@ -1032,14 +1070,20 @@ function applyFollow(): boolean {
     // Row-granular (the DOM grid's behavior): center the playing row every
     // step, so vertical playback scroll advances exactly one row pitch per
     // step. Clamped to the scroll extent the spacer defines.
-    target = Math.min(Math.max(0, y - (viewH - rowHeightPx) / 2), maxScroll);
+    target = snapToDevicePx(
+      Math.min(Math.max(0, y - (viewH - rowHeightPx) / 2), maxScroll),
+      dpr.value,
+    );
   } else {
     // Paged: only re-anchor once the row leaves a 3-row margin, jumping it
     // roughly a third from the top.
     const top = viewTop.value;
     const margin = rowPitchPx * 3;
     if (y >= top + margin && y + rowHeightPx <= top + viewH - margin) return false;
-    target = Math.min(Math.max(0, y - (viewH - rowHeightPx) / 3), maxScroll);
+    target = snapToDevicePx(
+      Math.min(Math.max(0, y - (viewH - rowHeightPx) / 3), maxScroll),
+      dpr.value,
+    );
   }
   const el = scrollerRef.value;
   if (el) el.scrollTop = target;
@@ -1094,9 +1138,9 @@ function applyCursorFollow(): boolean {
   const viewH = viewportH.value || props.containerHeight;
   if (viewH <= 0) return false;
   const maxScroll = Math.max(0, totalRowsHeight.value - viewH);
-  const target = Math.min(
-    Math.max(0, rowY(row) - (viewH - rowHeightPx) / 2),
-    maxScroll,
+  const target = snapToDevicePx(
+    Math.min(Math.max(0, rowY(row) - (viewH - rowHeightPx) / 2), maxScroll),
+    dpr.value,
   );
   if (Math.abs(viewTop.value - target) < 0.5) return false;
   const el = scrollerRef.value;

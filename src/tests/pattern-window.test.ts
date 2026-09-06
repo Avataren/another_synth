@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { blitWindow } from 'src/components/tracker/pattern-canvas/pattern-window';
+import {
+  blitWindow,
+  snapToDevicePx,
+} from 'src/components/tracker/pattern-canvas/pattern-window';
 
 /**
  * The renderer copies one slice of a pre-rendered pattern bitmap onto the
@@ -122,12 +125,52 @@ describe('degenerate inputs', () => {
     expect(w.sh).toBe(0);
   });
 
-  it('fractional dpr keeps the rect in device pixels', () => {
+  it('fractional dpr keeps the rect in whole device pixels', () => {
+    // 33 css px at dpr 1.5 is 49.5 device px; a rect drawImage has to
+    // resample. Callers snap the view origin first, and the rounding here
+    // is the backstop that guarantees it.
     const w = blitWindow(33, 44, 320, 240, 800, 600, 1.5);
     expect(w.sx).toBe(66);
-    expect(w.sy).toBe(49.5);
+    expect(w.sy).toBe(50);
     expect(w.sw).toBe(480);
     expect(w.sh).toBe(360);
+  });
+
+  it('rounds every edge of both rects to a whole pixel', () => {
+    const w = blitWindow(10.3, 7.7, 320.4, 240.6, 800, 600, 1.5, 1.25);
+    for (const v of [w.sx, w.sy, w.sw, w.sh, w.dx, w.dy, w.dw, w.dh]) {
+      expect(Number.isInteger(v)).toBe(true);
+    }
+  });
+});
+
+/**
+ * The view origin the renderer paints at has to be one the compositor can
+ * honour exactly: it snaps the sticky canvas stack's own position to whole
+ * device pixels, so an unsnapped scroll offset moves the element and the
+ * content it carries by different amounts -- re-decided every scroll step,
+ * which is the pattern shimmering as playback follows the rows.
+ */
+describe('snapToDevicePx', () => {
+  it('rounds a css offset onto a whole device pixel', () => {
+    expect(snapToDevicePx(335.5, 1)).toBe(336);
+    expect(snapToDevicePx(335.5, 2)).toBe(335.5);
+    expect(snapToDevicePx(33, 1.5)).toBe(33.333333333333336);
+  });
+
+  it('is idempotent: a snapped offset snaps to itself', () => {
+    for (const dpr of [1, 1.25, 1.5, 2, 3]) {
+      for (const v of [0, 12.7, 335.5, 1234.9]) {
+        const once = snapToDevicePx(v, dpr);
+        expect(snapToDevicePx(once, dpr)).toBeCloseTo(once, 9);
+      }
+    }
+  });
+
+  it('leaves the value alone for a nonsense dpr', () => {
+    expect(snapToDevicePx(42.5, 0)).toBe(42.5);
+    expect(snapToDevicePx(42.5, Number.NaN)).toBe(42.5);
+    expect(snapToDevicePx(Number.NaN, 2)).toBeNaN();
   });
 });
 

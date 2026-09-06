@@ -932,9 +932,11 @@ describe('playback follow (row-granular auto-scroll)', () => {
     const jumped = scroller.scrollTop as number;
     expect(jumped).toBeGreaterThan(start);
     expect(jumped).not.toBe(start + rowPitchPx);
-    // The jump targets a third from the top, per the paged mode.
+    // The jump targets a third from the top, per the paged mode -- landing
+    // on a whole device pixel, because a scroll offset the compositor would
+    // have to snap is the pattern shimmering half a pixel per step.
     const expected = 14 * rowPitchPx - (VIEWPORT_H - rowHeightPx) / 3;
-    expect(jumped).toBeCloseTo(expected, 5);
+    expect(jumped).toBe(Math.round(expected * window.devicePixelRatio) / window.devicePixelRatio);
     wrapper.unmount();
   });
 
@@ -2307,6 +2309,103 @@ describe('gutter pill tracks the gutter under programmatic pan', () => {
       // Edge-adjacent, never overlapping, at any origin.
       expect(gutterPill.x + GUTTER_WIDTH_PX).toBeCloseTo(tracksPill.x, 5);
     }
+    wrapper.unmount();
+  });
+});
+
+/**
+ * Sub-pixel stability of the scrolled view.
+ *
+ * The canvas stack is `position: sticky` inside the scroller: the browser
+ * moves the element, the blit moves the content inside it, and the two only
+ * agree while the scroll offset is a whole device pixel — the compositor
+ * snaps the element's position to one, the blit does not have to. Half a
+ * device pixel of disagreement, re-decided on every row step, is the
+ * pattern "shimmering" while playback follows the rows (Morten, 2026-09-06).
+ *
+ * So: every offset the renderer scrolls to and paints at is a whole device
+ * pixel, and the blit that comes out of it copies whole bitmap pixels.
+ */
+describe('device-pixel stability of the scrolled view', () => {
+  const ODD_VIEWPORT_H = 401;
+
+  /** An odd viewport height: centering a row lands on a half CSS pixel. */
+  function useOddViewport(): void {
+    Object.defineProperty(Element.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => ODD_VIEWPORT_H,
+    });
+  }
+
+  function isWholeDevicePx(css: number, dpr: number): boolean {
+    return Math.abs(css * dpr - Math.round(css * dpr)) < 1e-9;
+  }
+
+  it('follows every row on a whole device pixel, one row pitch apart', async () => {
+    // 1.25 and an odd viewport: the pre-fix target for row 8 was 102.5 css
+    // px, which is 128.125 device px — a position no compositor can hold.
+    vi.stubGlobal('devicePixelRatio', 1.25);
+    useOddViewport();
+    const wrapper = mountCanvas({
+      autoScroll: true,
+      isPlaying: true,
+      playbackRow: 8,
+      rows: 64,
+      granularScroll: true,
+    });
+    pumpFrame();
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    const { visible } = layerCanvases(wrapper);
+    const viewCtx = contexts.find((c) => c.canvas === visible)!;
+
+    const tops = [scroller.scrollTop as number];
+    for (const row of [9, 10, 11, 12]) {
+      await wrapper.setProps({ playbackRow: row } as never);
+      await nextTick();
+      pumpFrame();
+      tops.push(scroller.scrollTop as number);
+    }
+
+    for (const top of tops) expect(isWholeDevicePx(top, 1.25)).toBe(true);
+    // Still exactly one row per step: the snap is a translation the row
+    // pitch (36 css px = 45 device px) survives intact.
+    for (let i = 1; i < tops.length; i += 1) {
+      expect(tops[i]! - tops[i - 1]!).toBeCloseTo(rowPitchPx, 6);
+    }
+    // And what actually reached the screen read whole bitmap pixels.
+    const blits = drawImageOn(viewCtx);
+    expect(blits.length).toBeGreaterThan(1);
+    for (const blit of blits) {
+      expect(Number.isInteger(blit.sx)).toBe(true);
+      expect(Number.isInteger(blit.sy)).toBe(true);
+    }
+    wrapper.unmount();
+  });
+
+  it('repaints a scroll that moves less than a css pixel but crosses a device one', async () => {
+    vi.stubGlobal('devicePixelRatio', 2);
+    const wrapper = mountCanvas({});
+    pumpFrame();
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    const { visible } = layerCanvases(wrapper);
+    const viewCtx = contexts.find((c) => c.canvas === visible)!;
+
+    scroller.scrollTop = 100;
+    fireScroll(scroller);
+    await nextTick();
+    pumpFrame();
+    expect(drawImageOn(viewCtx).at(-1)!.sy).toBe(200);
+
+    // 0.4 css px is under the old half-pixel dead zone, but it is 0.8 device
+    // px: the compositor has already moved the canvas a whole pixel, and a
+    // frame that skips the repaint leaves the content behind it.
+    const blitsBefore = drawImageOn(viewCtx).length;
+    scroller.scrollTop = 100.4;
+    fireScroll(scroller);
+    await nextTick();
+    pumpFrame();
+    expect(drawImageOn(viewCtx).length).toBe(blitsBefore + 1);
+    expect(drawImageOn(viewCtx).at(-1)!.sy).toBe(201);
     wrapper.unmount();
   });
 });

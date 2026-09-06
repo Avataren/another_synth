@@ -32,6 +32,27 @@ export interface BlitWindow {
 }
 
 /**
+ * Round a CSS-pixel view offset onto a whole device pixel.
+ *
+ * Every offset the renderer paints with has to be one the *browser* can
+ * also honour exactly. The scroller's sticky canvas stack is positioned by
+ * the compositor, which snaps a layer's position to whole device pixels; a
+ * scrollTop of 335.5 at dpr 1 therefore moves the canvas element by 336
+ * while the blit inside it moves the content by 335.5. Half a device pixel
+ * of disagreement, re-decided every scroll step, is the pattern
+ * "shimmering" as playback follows the rows.
+ *
+ * So the renderer only ever scrolls to, and paints at, offsets that are
+ * whole device pixels: the compositor's own snapping becomes a no-op and
+ * the blit's source rect lands on exact bitmap pixels instead of asking
+ * drawImage to resample the whole pattern.
+ */
+export function snapToDevicePx(cssValue: number, dpr: number): number {
+  if (!Number.isFinite(cssValue) || !(dpr > 0) || !Number.isFinite(dpr)) return cssValue;
+  return Math.round(cssValue * dpr) / dpr;
+}
+
+/**
  * Rectangle of the pattern visible through the viewport, in both spaces.
  *
  * `bitmapW`/`bitmapH` are the pattern's size in CSS pixels; the bitmap
@@ -80,14 +101,27 @@ export function blitWindow(
     Math.min(viewportH - cssDy, bitmapH - cssSy),
   );
 
+  // Both rects are rounded to whole pixels of their own space, and by their
+  // *edges* rather than by origin-plus-size: rounding an origin and a width
+  // independently can drop or duplicate the last row of pixels, which is
+  // the smear this rounding exists to prevent. Callers snap the view origin
+  // to a device pixel first (snapToDevicePx), so at the usual
+  // bitmapScale === dpr these roundings are exact and drawImage copies
+  // pixel for pixel; they only bite when the bitmap was painted below the
+  // screen's scale and the blit is a stretch either way.
+  const sx = Math.round(cssSx * bitmapScale);
+  const sy = Math.round(cssSy * bitmapScale);
+  const dx = Math.round(cssDx * dpr);
+  const dy = Math.round(cssDy * dpr);
+
   return {
-    sx: cssSx * bitmapScale,
-    sy: cssSy * bitmapScale,
-    sw: visibleCssW * bitmapScale,
-    sh: visibleCssH * bitmapScale,
-    dx: cssDx * dpr,
-    dy: cssDy * dpr,
-    dw: visibleCssW * dpr,
-    dh: visibleCssH * dpr,
+    sx,
+    sy,
+    sw: Math.max(0, Math.round((cssSx + visibleCssW) * bitmapScale) - sx),
+    sh: Math.max(0, Math.round((cssSy + visibleCssH) * bitmapScale) - sy),
+    dx,
+    dy,
+    dw: Math.max(0, Math.round((cssDx + visibleCssW) * dpr) - dx),
+    dh: Math.max(0, Math.round((cssDy + visibleCssH) * dpr) - dy),
   };
 }
