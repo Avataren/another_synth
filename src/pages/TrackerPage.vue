@@ -2276,7 +2276,7 @@ function handleNewSong() {
     syncSongBankFromSlots();
     // New Song replaces the song without going through applySongFile, so the
     // AUTO load-reset must be hooked here too (plan review M6).
-    usePostFxStore().onSongLoad();
+    usePostFxStore().onSongLoad(trackerStore.moduleFormat);
   });
 }
 

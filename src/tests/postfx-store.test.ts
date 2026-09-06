@@ -173,6 +173,60 @@ describe('engine events in AUTO', () => {
   });
 });
 
+describe('AUTO only models formats that had the Amiga output chain', () => {
+  it('an XM load bypasses the whole stage in AUTO, static RC included', () => {
+    const { stage } = registerMocks();
+    const store = usePostFxStore();
+
+    store.onSongLoad('xm');
+    expect(store.songHasAmigaChain).toBe(false);
+    // Not setLedActive(false): FT2 output never went through the static
+    // ~4.9 kHz stage either, so the whole cascade is bypassed.
+    expect(stage.setBypassed).toHaveBeenLastCalledWith(true, 10);
+    expect(store.resolveLedAt(10)).toBe(false);
+  });
+
+  it('S3M too, and a MOD load re-engages the chain with the LED dark', () => {
+    const { stage } = registerMocks();
+    const store = usePostFxStore();
+
+    store.onSongLoad('s3m');
+    expect(stage.setBypassed).toHaveBeenLastCalledWith(true, 10);
+
+    store.onSongLoad('protracker');
+    expect(store.songHasAmigaChain).toBe(true);
+    expect(stage.setBypassed).toHaveBeenLastCalledWith(false, 10);
+    expect(stage.setLedActive).toHaveBeenLastCalledWith(false, 10);
+  });
+
+  it('a stray E0x event on an XM cannot light the LED', () => {
+    const { stage } = registerMocks();
+    const store = usePostFxStore();
+
+    store.onSongLoad('xm');
+    const callsBefore = stage.setLedActive.mock.calls.length;
+    store.applyEngineEvent(true, 5.0);
+    expect(stage.setLedActive.mock.calls.length).toBe(callsBefore);
+    expect(store.resolveLedAt(10)).toBe(false);
+  });
+
+  it('manual ON still filters an XM: the gate is AUTO-only', () => {
+    const { stage } = registerMocks();
+    const store = usePostFxStore();
+
+    store.onSongLoad('xm');
+    store.setMode('on');
+    expect(stage.setBypassed).toHaveBeenLastCalledWith(false, 10);
+    expect(stage.setLedActive).toHaveBeenLastCalledWith(true, 10);
+    expect(store.resolveLedAt(10)).toBe(true);
+
+    // ...and switching back to AUTO bypasses it again: the format the song
+    // was loaded with is remembered across the manual detour.
+    store.setMode('auto');
+    expect(stage.setBypassed).toHaveBeenLastCalledWith(true, 10);
+  });
+});
+
 describe('manual override', () => {
   it('ON/OFF swallow engine events entirely', () => {
     const { stage } = registerMocks();

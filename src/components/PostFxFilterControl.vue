@@ -266,7 +266,7 @@ const postFxStore = usePostFxStore();
 const MODE_OPTIONS: Array<{ id: PostFxFilterMode; label: string; title: string }> = [
   { id: 'off', label: 'OFF', title: 'Full bypass' },
   { id: 'on', label: 'ON', title: 'Amiga filter cascade (static + LED)' },
-  { id: 'auto', label: 'AUTO', title: "Follow the song's E0x set-filter commands" },
+  { id: 'auto', label: 'AUTO', title: "Amiga formats only: follow the song's E0x set-filter commands" },
 ];
 
 const mode = computed(() => postFxStore.mode);

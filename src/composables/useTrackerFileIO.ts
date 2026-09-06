@@ -310,15 +310,18 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
 
     // Drop all existing tracker instruments before wiring up the next song
     context.songBank.resetForNewSong();
+    // Load song data and rebuild instruments
+    console.log('[FileIO] Loading song data');
+    context.trackerStore.loadSongFile(songFile);
+
     // AUTO resets its LED-filter state on every song replacement -- this path
     // covers file open, the demo browser, URL loads and the jukebox (all
     // funnel through applySongFile). The New Song path hooks the same event
     // in TrackerPage's handleNewSong. Manual on/off modes persist (D116).
-    usePostFxStore().onSongLoad();
-
-    // Load song data and rebuild instruments
-    console.log('[FileIO] Loading song data');
-    context.trackerStore.loadSongFile(songFile);
+    // After loadSongFile, not before: the store resolves the module format
+    // (legacy JSON songs infer it), and AUTO only models the Amiga output
+    // chain for formats that had one.
+    usePostFxStore().onSongLoad(context.trackerStore.moduleFormat);
     context.ensureActiveInstrument();
 
     // Reset sequence index to 0 AFTER song is loaded so it operates on new data
