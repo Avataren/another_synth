@@ -23,15 +23,19 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 
 // Theme color caching
 let cachedBgColor = '#0b111a';
-let cachedAccentColor = 'rgb(77, 242, 197)';
-let cachedAccentColorDark = 'rgb(50, 160, 130)';
+// Complementary palette, shared with the other analyzers (theme-palette.ts):
+// the bars are the theme's complement, the gradient's far stop its darker
+// twin. Fallbacks are the default theme's complements.
+let cachedAccentColor = 'rgb(254, 65, 116)';
+let cachedAccentColorDark = 'rgb(165, 42, 75)';
 let cachedGridColor = 'rgba(255, 255, 255, 0.08)';
 let freqThemeObserver: MutationObserver | null = null;
 
 function updateFreqThemeColors() {
   const style = getComputedStyle(document.documentElement);
   cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
-  const accent = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+  const accent =
+    style.getPropertyValue('--tracker-accent-complement').trim() || 'rgb(254, 65, 116)';
   cachedAccentColor = accent;
   // Create a darker version for gradient
   if (accent.startsWith('rgb(')) {

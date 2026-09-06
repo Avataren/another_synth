@@ -13,91 +13,13 @@
  * whose two accents are nearly the same color (Matrix Green, Monochrome).
  */
 
+import { hslToCss, lerpHue, parseRgb, rgbToHsl } from 'src/utils/color';
+
 /** How many distinct accents a theme yields; track index cycles through them. */
 export const TRACK_ACCENT_COUNT = 8;
 
 /** Lightness sweep across the ramp, in percentage points, ± this amount. */
 const LIGHTNESS_SWEEP = 9;
-
-interface Hsl {
-  h: number;
-  s: number;
-  l: number;
-}
-
-/** Parse `#rgb`, `#rrggbb`, `rgb(...)` and `rgba(...)`; null when unparsable. */
-function parseRgb(color: string): [number, number, number] | null {
-  const value = color.trim();
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value);
-  if (hex) {
-    const digits = hex[1]!;
-    const full =
-      digits.length === 3
-        ? digits
-            .split('')
-            .map((d) => d + d)
-            .join('')
-        : digits;
-    return [
-      parseInt(full.slice(0, 2), 16),
-      parseInt(full.slice(2, 4), 16),
-      parseInt(full.slice(4, 6), 16),
-    ];
-  }
-  const rgb = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(value);
-  if (rgb) {
-    return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
-  }
-  return null;
-}
-
-function rgbToHsl([r, g, b]: [number, number, number]): Hsl {
-  const rn = r / 255;
-  const gn = g / 255;
-  const bn = b / 255;
-  const max = Math.max(rn, gn, bn);
-  const min = Math.min(rn, gn, bn);
-  const l = (max + min) / 2;
-  const delta = max - min;
-  if (delta === 0) return { h: 0, s: 0, l: l * 100 };
-  const s = delta / (1 - Math.abs(2 * l - 1));
-  let h: number;
-  if (max === rn) h = ((gn - bn) / delta) % 6;
-  else if (max === gn) h = (bn - rn) / delta + 2;
-  else h = (rn - gn) / delta + 4;
-  h *= 60;
-  if (h < 0) h += 360;
-  return { h, s: s * 100, l: l * 100 };
-}
-
-function hslToCss({ h, s, l }: Hsl): string {
-  const sn = Math.min(100, Math.max(0, s)) / 100;
-  const ln = Math.min(100, Math.max(0, l)) / 100;
-  const c = (1 - Math.abs(2 * ln - 1)) * sn;
-  const hp = (((h % 360) + 360) % 360) / 60;
-  const x = c * (1 - Math.abs((hp % 2) - 1));
-  const [r1, g1, b1] =
-    hp < 1
-      ? [c, x, 0]
-      : hp < 2
-        ? [x, c, 0]
-        : hp < 3
-          ? [0, c, x]
-          : hp < 4
-            ? [0, x, c]
-            : hp < 5
-              ? [x, 0, c]
-              : [c, 0, x];
-  const m = ln - c / 2;
-  const to255 = (v: number) => Math.round(Math.min(1, Math.max(0, v + m)) * 255);
-  return `rgb(${to255(r1)}, ${to255(g1)}, ${to255(b1)})`;
-}
-
-/** Interpolate hue along the shorter arc, so cyan→blue never sweeps the wheel. */
-function lerpHue(from: number, to: number, t: number): number {
-  const delta = ((to - from + 540) % 360) - 180;
-  return from + delta * t;
-}
 
 /**
  * Build `count` accents ramping from `primary` to `secondary`. Unparsable

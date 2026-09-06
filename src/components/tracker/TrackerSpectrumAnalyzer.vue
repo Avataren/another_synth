@@ -99,17 +99,27 @@ const right: Side = {
 };
 const sides = [left, right];
 
+/**
+ * The strips paint in the theme's complementary palette (theme-palette.ts,
+ * published as CSS custom properties by theme-store) rather than its accents,
+ * so the analyzers are their own hue family beside the pattern instead of one
+ * more thing in the same shade. The fallbacks are the complements of the
+ * default theme's two accents, for a paint that beats the store's first
+ * applyTheme.
+ */
 function getThemeColors() {
   const style = getComputedStyle(document.documentElement);
-  const accent = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
-  const secondary = style.getPropertyValue('--tracker-accent-secondary').trim() || 'rgb(88, 176, 255)';
+  const accent =
+    style.getPropertyValue('--tracker-accent-complement').trim() || 'rgb(254, 65, 116)';
+  const secondary =
+    style.getPropertyValue('--tracker-accent-complement-alt').trim() || 'rgb(255, 167, 88)';
 
   const parseColor = (color: string) => {
     const match = color.match(/\d+/g);
     if (match && match.length >= 3) {
       return { r: parseInt(match[0]!), g: parseInt(match[1]!), b: parseInt(match[2]!) };
     }
-    return { r: 77, g: 242, b: 197 };
+    return { r: 254, g: 65, b: 116 };
   };
 
   return { primary: parseColor(accent), secondary: parseColor(secondary) };

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, watch, computed } from 'vue';
 import { useUserSettingsStore } from './user-settings-store';
+import { buildComplementPalette } from 'src/utils/theme-palette';
 
 // Monospace fonts for tracker matrix
 export const monospaceFonts = [
@@ -842,6 +843,14 @@ export const useThemeStore = defineStore('theme', () => {
     // Accent colors
     root.style.setProperty('--tracker-accent-primary', colors.accentPrimary);
     root.style.setProperty('--tracker-accent-secondary', colors.accentSecondary);
+
+    // The complementary palette the analyzers paint with (theme-palette.ts).
+    // Derived rather than authored, so every theme -- custom ones included --
+    // gets one, and it always belongs to the accents it was rotated from.
+    const complements = buildComplementPalette(colors.accentPrimary, colors.accentSecondary);
+    root.style.setProperty('--tracker-accent-complement', complements.complement);
+    root.style.setProperty('--tracker-accent-complement-alt', complements.complementAlt);
+
     root.style.setProperty('--tracker-active-bg', colors.activeBackground);
     root.style.setProperty('--tracker-active-border', colors.activeBorder);
     root.style.setProperty('--tracker-selected-border', colors.selectedBorder);

@@ -29,14 +29,16 @@ const rightCanvasRef = ref<HTMLCanvasElement | null>(null);
 
 // Theme color caching
 let cachedBgColor = '#0b111a';
-let cachedAccentColor = 'rgb(77, 242, 197)';
+// Complementary palette, shared with the tracker's analyzers (theme-palette.ts).
+let cachedAccentColor = 'rgb(254, 65, 116)';
 let cachedTextColor = 'rgba(255, 255, 255, 0.6)';
 let oscThemeObserver: MutationObserver | null = null;
 
 function updateOscThemeColors() {
   const style = getComputedStyle(document.documentElement);
   cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
-  cachedAccentColor = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+  cachedAccentColor =
+    style.getPropertyValue('--tracker-accent-complement').trim() || 'rgb(254, 65, 116)';
   cachedTextColor = style.getPropertyValue('--text-muted').trim() || 'rgba(255, 255, 255, 0.6)';
 }
 

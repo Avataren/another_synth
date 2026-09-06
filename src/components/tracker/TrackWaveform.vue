@@ -26,13 +26,16 @@ let canvasWidth = 0;
 let canvasHeight = 0;
 
 // Cached theme colors - updated only when theme changes
-let cachedWaveformColor = 'rgb(77, 242, 197)';
+// The waveform draws in the theme's complement, like the spectrum strips it
+// sits with (see theme-palette.ts); fallback is the default theme's.
+let cachedWaveformColor = 'rgb(254, 65, 116)';
 let cachedBgColor = '#0b111a';
 let themeObserver: MutationObserver | null = null;
 
 function updateCachedColors() {
   const style = getComputedStyle(document.documentElement);
-  cachedWaveformColor = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+  cachedWaveformColor =
+    style.getPropertyValue('--tracker-accent-complement').trim() || 'rgb(254, 65, 116)';
   cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
 }
 
