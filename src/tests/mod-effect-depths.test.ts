@@ -43,7 +43,7 @@ function startNote(state: TrackEffectState, effect: EffectCommand) {
 }
 
 describe('vibrato depth is measured in period units', () => {
-  it('swings the period by (255 * depth) / 128', () => {
+  it('swings the period by trunc((255 * depth) / 128)', () => {
     const state = stateOnC2();
     // Square waveform so the deviation is exactly the peak, with no sine
     // rounding to reason about.
@@ -57,17 +57,20 @@ describe('vibrato depth is measured in period units', () => {
       6,
     );
 
-    // ProTracker: periodDelta = table(255 at peak) * depth / 128 = 15.9375,
-    // *added* to the period while the vibrato position is positive -- so the
-    // first half of the waveform bends the pitch down, not up. This used to
-    // assert the opposite sign, which inverted the phase of every vibrato.
-    expect(periodOfLastPitch(commands)).toBeCloseTo(PERIOD_C2 + 15.9375, 4);
+    // ProTracker: periodDelta = table(255 at peak) * depth / 128, an int16_t
+    // division that drops the remainder -- 15, not 15.9375 -- and *added* to
+    // the period while the vibrato position is positive, so the first half of
+    // the waveform bends the pitch down, not up. This used to assert the
+    // opposite sign, which inverted the phase of every vibrato, and (until the
+    // "to the beach.mod" report) kept the fraction, which made every vibrato
+    // deeper than ProTracker's by a margin that widens as the depth shrinks.
+    expect(periodOfLastPitch(commands)).toBeCloseTo(PERIOD_C2 + 15, 4);
   });
 
   it('covers a wider interval on a lower note, as a period deviation does', () => {
     // The old semitone-based formula gave the same musical width at every
     // pitch. A fixed period swing does not: an octave down is twice the
-    // period, so the same +-15.9375 is half the musical distance.
+    // period, so the same +-15 is half the musical distance.
     const low = stateOnC2();
     low.vibratoWaveform = 2;
     const lowPeriod = PERIOD_C2 * 2; // C-1
@@ -93,7 +96,7 @@ describe('vibrato depth is measured in period units', () => {
       6,
     );
 
-    expect(periodOfLastPitch(commands)).toBeCloseTo(lowPeriod - 15.9375, 4);
+    expect(periodOfLastPitch(commands)).toBeCloseTo(lowPeriod - 15, 4);
   });
 
   it('bends down before it bends up', () => {
@@ -157,7 +160,7 @@ describe('vibrato depth is measured in period units', () => {
       6,
     );
 
-    expect(periodOfLastPitch(commands)).toBeCloseTo(PERIOD_C2 + 15.9375, 4);
+    expect(periodOfLastPitch(commands)).toBeCloseTo(PERIOD_C2 + 15, 4);
   });
 
   it('holds the offset across rows carrying no effect at all', () => {
@@ -191,7 +194,7 @@ describe('vibrato depth is measured in period units', () => {
       6,
     );
 
-    expect(periodOfLastPitch(commands)).toBeCloseTo(PERIOD_C2 + 15.9375, 4);
+    expect(periodOfLastPitch(commands)).toBeCloseTo(PERIOD_C2 + 15, 4);
   });
 
   it('starts a new note from its own pitch, not the held offset', () => {

@@ -283,6 +283,15 @@ describe('D84: 6xy and 5xy run the same volume slide Axy does', () => {
 // D85 -- the vibrato/tremolo oscillator
 // ---------------------------------------------------------------------------
 
+/**
+ * ProTracker's period offset for one waveform sample, `vibratoData =
+ * (vibratoData * (ch->n_vibratocmd & 0xF)) / 128` -- an int16_t division, so
+ * the remainder is dropped before the sign is applied. FT2 quantises the same
+ * way one step finer (`>> 5` on a four-times-finer period).
+ */
+const vibratoUnits = (raw: number, depth: number) =>
+  Math.trunc((raw * depth) / 128);
+
 describe('D85: the vibrato oscillator matches the replayers', () => {
   it('samples position 0 on the first tick, then advances', () => {
     // doVibrato ends with `ch->vibratoPos += ch->vibratoSpeed;`, and vibrato
@@ -299,7 +308,7 @@ describe('D85: the vibrato oscillator matches the replayers', () => {
     // (97 * 8) >> 7 == 6 period units, added while the position is positive.
     const t2 = processEffectTickN(state, vib, 2, 6);
     expect(periodOf(state, t2.commands)).toBeCloseTo(
-      PERIOD_C2 + (97 * 8) / 128,
+      PERIOD_C2 + vibratoUnits(97, 8),
       4,
     );
   });
@@ -314,7 +323,7 @@ describe('D85: the vibrato oscillator matches the replayers', () => {
     for (let tick = 1; tick <= expected.length; tick++) {
       const { commands } = processEffectTickN(state, vib, tick, 20);
       expect(periodOf(state, commands)).toBeCloseTo(
-        PERIOD_C2 + (expected[tick - 1]! * 8) / 128,
+        PERIOD_C2 + vibratoUnits(expected[tick - 1]!, 8),
         4,
       );
     }
@@ -340,7 +349,7 @@ describe('D85: the vibrato oscillator matches the replayers', () => {
     ] as const) {
       const { commands } = processEffectTickN(state, vib, tick, 40);
       expect(periodOf(state, commands)).toBeCloseTo(
-        PERIOD_C2 + (raw * 8) / 128,
+        PERIOD_C2 + vibratoUnits(raw, 8),
         4,
       );
     }
@@ -349,7 +358,7 @@ describe('D85: the vibrato oscillator matches the replayers', () => {
     state.vibratoPos = 32;
     const { commands } = processEffectTickN(state, vib, 5, 40);
     expect(periodOf(state, commands)).toBeCloseTo(
-      PERIOD_C2 - (255 * 8) / 128,
+      PERIOD_C2 - vibratoUnits(255, 8),
       4,
     );
   });
@@ -373,8 +382,8 @@ describe('D85: the vibrato oscillator matches the replayers', () => {
     expect(first).toEqual(second);
     // Speed 8: positions 0,8,...,24 are the positive half (offset +15.9375),
     // 32,40,48,56 the negative half.
-    expect(first[0]).toBeCloseTo(PERIOD_C2 + (255 * 8) / 128, 4);
-    expect(first[4]).toBeCloseTo(PERIOD_C2 - (255 * 8) / 128, 4);
+    expect(first[0]).toBeCloseTo(PERIOD_C2 + vibratoUnits(255, 8), 4);
+    expect(first[4]).toBeCloseTo(PERIOD_C2 - vibratoUnits(255, 8), 4);
   });
 
   it('the tremolo position also advances only after it is read', () => {

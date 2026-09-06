@@ -94,6 +94,22 @@ function applyFinePortamento(
  * note being played. FT2 uses the same formula against its four-times-finer
  * period scale, hence portamentoUnitScale.
  *
+ * That division is **integer**, and dropping the remainder is not a rounding
+ * detail at small depths -- it is most of the effect. `vibrato2` in
+ * pt2_replayer.c has `vibratoData = (vibratoData * (ch->n_vibratocmd & 0xF)) /
+ * 128;` on an int16_t, and `vibrato2` in ft2_replayer.c has `tmpVib =
+ * (tmpVib * ch->vibDepth) >> 5;` on a uint8_t -- the same quantisation, just
+ * against FT2's four-times-finer period. Both truncate a non-negative
+ * magnitude and only then pick the sign from the position, so the wave is
+ * quantised symmetrically about the note.
+ *
+ * Keeping the fraction made every vibrato deeper than the reference, by an
+ * amount that grows as the depth shrinks: at depth 2 -- "to the beach.mod"
+ * order 1, a `432` held from row 48 through row 63 -- ProTracker's table
+ * quantises to 0,0,0,1,1,1,2,2,2,3,3,3,3,3,3,3 where this emitted a smooth
+ * 0..3.98, a peak 33% wide and a mean swing ~24% wide. At depth 1 the
+ * reference peaks at one period unit and this was nearly twice that.
+ *
  * The previous code worked in semitones instead (`wave * depth / 16`), which
  * is a fixed musical width. That is only about right in the middle of the
  * range: at C-2 (period 428) it under-swung by ~23%, and an octave lower
@@ -106,9 +122,18 @@ function vibratoFrequency(state: TrackEffectState, wave: number): number {
     return state.currentFrequency * Math.pow(2, -semitones / 12);
   }
   const pitch = state.profile.pitch;
+  // `wave` is the reference's table entry normalised to -1..1; scaling it back
+  // by the peak recovers the exact non-negative magnitude both replayers
+  // multiply (Math.round because 24/255*255 need not be exactly 24 in binary
+  // floating point), and the sign comes off the position afterwards, as it
+  // does there.
+  const magnitude = Math.round(Math.abs(wave) * VIBRATO_TABLE_PEAK);
   const delta =
-    ((wave * VIBRATO_TABLE_PEAK * state.vibratoDepth) / VIBRATO_DEPTH_DIVISOR) *
-    state.profile.portamentoUnitScale;
+    Math.sign(wave) *
+    Math.trunc(
+      (magnitude * state.vibratoDepth * state.profile.portamentoUnitScale) /
+        VIBRATO_DEPTH_DIVISOR,
+    );
   // The offset is *added* to the period, so the first half of the waveform
   // bends the pitch down and the second half up.
   //
