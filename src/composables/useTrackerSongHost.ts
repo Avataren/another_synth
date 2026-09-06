@@ -69,7 +69,13 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
   const currentPattern = computed(() => trackerStore.currentPattern);
   const trackCount = computed(() => currentPattern.value?.tracks.length ?? 0);
   const audioContext = computed(() => songBank.audioContext);
-  const masterOutputNode = computed(() => songBank.output);
+  /**
+   * What the master meter and spectrum analyser measure: the post-fx rack
+   * output, i.e. the last node before the speakers. Tapping the bank's
+   * pre-rack mix bus would show peaks the limiter has already caught, so the
+   * CLIP indicator would fire on audio nobody ever hears.
+   */
+  const masterOutputNode = computed(() => songBank.finalOutput);
 
   /** A load is in progress; watchers that rebuild audio must keep out of it. */
   const isLoadingSong = ref(false);

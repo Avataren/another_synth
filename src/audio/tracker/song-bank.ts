@@ -204,6 +204,18 @@ export class TrackerSongBank implements TrackerSink {
     return this.masterGain;
   }
 
+  /**
+   * The very last node before the speakers: the post-fx rack output.
+   *
+   * `output` above is the *pre-rack* mix bus, so anything tapping it sees the
+   * signal before the Amiga LPF and, more importantly, before the limiter.
+   * Meters and analysers must show what-you-hear (the same reasoning that
+   * puts the recorder tap here, D117), so they tap this instead.
+   */
+  get finalOutput(): AudioNode {
+    return this.audioSystem.postFxOutput;
+  }
+
   get needsResume(): boolean {
     return this.needsAudioContextResume;
   }

@@ -177,6 +177,16 @@ describe('the one speaker feed runs through the rack', () => {
     ).toBe(true);
   });
 
+  it('the meter/analyser tap is the rack output, not the pre-rack master bus', async () => {
+    const { system, bank } = await freshGraph();
+    // `masterOutputNode` in useTrackerSongHost -- what StereoLevelMeter and
+    // TrackerSpectrumAnalyzer measure. It must be the last node before the
+    // speakers, or the CLIP LED latches on peaks the limiter already caught.
+    expect(bank.finalOutput).toBe(system.postFxOutput);
+    expect(bank.finalOutput).not.toBe(bank.output);
+    expect(bank.finalOutput).not.toBe(system.destinationNode);
+  });
+
   it('the recorder taps the rack output, not the pre-rack master bus', async () => {
     const { system, bank } = await freshGraph();
     const recorder = (
