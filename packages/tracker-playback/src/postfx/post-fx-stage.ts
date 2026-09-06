@@ -31,6 +31,8 @@ export interface PostFxStage {
 export interface AudioNodeFactory {
   createGain(): GainNode;
   createIIRFilter(feedforward: number[], feedback: number[]): IIRFilterNode;
+  createDynamicsCompressor(): DynamicsCompressorNode;
+  createWaveShaper(): WaveShaperNode;
 }
 
 /** Real-node factory used everywhere outside tests. */
@@ -39,5 +41,7 @@ export function createDefaultNodeFactory(context: BaseAudioContext): AudioNodeFa
     createGain: () => context.createGain(),
     createIIRFilter: (feedforward, feedback) =>
       context.createIIRFilter(feedforward, feedback),
+    createDynamicsCompressor: () => context.createDynamicsCompressor(),
+    createWaveShaper: () => context.createWaveShaper(),
   };
 }

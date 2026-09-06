@@ -36,6 +36,15 @@ class MockParam {
 
 class MockNode {
   readonly gain = new MockParam();
+  /** DynamicsCompressorNode/WaveShaperNode surface used by LimiterStage. */
+  readonly threshold = new MockParam();
+  readonly knee = new MockParam();
+  readonly ratio = new MockParam();
+  readonly attack = new MockParam();
+  readonly release = new MockParam();
+  reduction = 0;
+  oversample = 'none';
+  curve: Float32Array | null = null;
   readonly connections: MockNode[] = [];
   readonly disconnected: MockNode[] = [];
   readonly iir: { ff: number[]; fb: number[] } | null = null;
@@ -74,6 +83,16 @@ function createMockFactory() {
       const node = new MockNode({ ff, fb });
       nodes.push(node);
       return node as unknown as IIRFilterNode;
+    },
+    createDynamicsCompressor: () => {
+      const node = new MockNode();
+      nodes.push(node);
+      return node as unknown as DynamicsCompressorNode;
+    },
+    createWaveShaper: () => {
+      const node = new MockNode();
+      nodes.push(node);
+      return node as unknown as WaveShaperNode;
     },
   };
   return { nodes, factory };

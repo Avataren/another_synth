@@ -27,6 +27,8 @@ export * from './sink';
 export * from './postfx/post-fx-stage';
 export * from './postfx/amiga-filter-math';
 export * from './postfx/amiga-lpf-stage';
+export * from './postfx/limiter-math';
+export * from './postfx/limiter-stage';
 export * from './postfx/post-fx-rack';
 export * from './postfx/registry';
 

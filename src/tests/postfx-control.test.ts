@@ -47,6 +47,11 @@ beforeEach(() => {
       setBypassed: () => undefined,
       cancelPending: () => undefined,
     } as never,
+    limiter: {
+      setParams: () => undefined,
+      setBypassed: () => undefined,
+      getReduction: () => 0,
+    } as never,
   });
 });
 

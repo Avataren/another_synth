@@ -10,8 +10,10 @@ import fs from 'fs';
 
 /**
  * Build identity injected into the bundle as __APP_VERSION__ / __APP_GIT_HASH__.
- * deploy-pi.sh bumps package.json and commits before building, so these always
- * describe the exact tree that was deployed.
+ * The deploy scripts bump package.json and commit (and tag) before building, so
+ * these always describe the exact tree that was deployed: deploy-pi.sh on the
+ * OpenClaw instance that publishes, deploy-local.sh here (untracked, see its
+ * header).
  */
 function readBuildIdentity(): { version: string; hash: string } {
   let version = '0.0.0';

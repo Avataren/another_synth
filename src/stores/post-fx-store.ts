@@ -21,10 +21,13 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import {
   AMIGA_LPF_DEFAULT_PARAMS,
+  LIMITER_DEFAULT_PARAMS,
   getPostFxRack,
   onPostFxRackRegistered,
   sanitizeAmigaLpfParams,
+  sanitizeLimiterParams,
   type AmigaLpfParams,
+  type LimiterParams,
   type PostFxRegistration,
 } from '@another-synth/tracker-playback';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
@@ -41,6 +44,18 @@ export const usePostFxStore = defineStore('postFx', () => {
   );
   const params = ref<AmigaLpfParams>(
     sanitizeAmigaLpfParams(settingsStore.settings.postFxFilterParams ?? {}),
+  );
+
+  /**
+   * The limiter is independent of the filter's OFF/ON/AUTO mode: no module
+   * format commands it, so it is a plain persisted user toggle, on by
+   * default (see user-settings-store).
+   */
+  const limiterEnabled = ref<boolean>(
+    settingsStore.settings.postFxLimiterEnabled ?? true,
+  );
+  const limiterParams = ref<LimiterParams>(
+    sanitizeLimiterParams(settingsStore.settings.postFxLimiterParams ?? {}),
   );
 
   /**
@@ -98,6 +113,11 @@ export const usePostFxStore = defineStore('postFx', () => {
   onPostFxRackRegistered((registration: PostFxRegistration) => {
     registration.amigaLpf.setParams(params.value);
     applyModeToStage(registration.rack.contextTime());
+    registration.limiter.setParams(limiterParams.value);
+    registration.limiter.setBypassed(
+      !limiterEnabled.value,
+      registration.rack.contextTime(),
+    );
   });
 
   /** Set the master mode. Manual changes cancel pending engine toggles. */
@@ -179,6 +199,40 @@ export const usePostFxStore = defineStore('postFx', () => {
     setParams({ ...AMIGA_LPF_DEFAULT_PARAMS });
   }
 
+  /** Engage or bypass the limiter (the stage crossfades, so no click). */
+  function setLimiterEnabled(enabled: boolean): void {
+    if (limiterEnabled.value === enabled) return;
+    limiterEnabled.value = enabled;
+    settingsStore.updateSetting('postFxLimiterEnabled', enabled);
+    const registration = getPostFxRack();
+    if (registration) {
+      registration.limiter.setBypassed(!enabled, currentAudioTime());
+    }
+  }
+
+  function setLimiterParams(next: LimiterParams): void {
+    limiterParams.value = sanitizeLimiterParams(next);
+    settingsStore.updateSetting('postFxLimiterParams', limiterParams.value);
+    const registration = getPostFxRack();
+    if (registration) {
+      registration.limiter.setParams(limiterParams.value);
+    }
+  }
+
+  function resetLimiterParamsToDefaults(): void {
+    setLimiterParams({ ...LIMITER_DEFAULT_PARAMS });
+  }
+
+  /**
+   * Gain reduction in dB (<= 0) for the meter. 0 when the stage is bypassed
+   * or the rack does not exist yet (headless tests, pre-boot UI).
+   */
+  function limiterReduction(): number {
+    const registration = getPostFxRack();
+    if (!registration || !limiterEnabled.value) return 0;
+    return registration.limiter.getReduction();
+  }
+
   /**
    * The LED state at audio time `now`. In AUTO, a scheduled E0x flips the
    * display only when the audio clock reaches its scheduled time; with
@@ -194,6 +248,12 @@ export const usePostFxStore = defineStore('postFx', () => {
   return {
     mode,
     params,
+    limiterEnabled,
+    limiterParams,
+    setLimiterEnabled,
+    setLimiterParams,
+    resetLimiterParamsToDefaults,
+    limiterReduction,
     engineActive,
     resolveLedAt,
     setMode,

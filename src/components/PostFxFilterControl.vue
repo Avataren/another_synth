@@ -24,6 +24,15 @@
         {{ option.label }}
       </button>
     </div>
+    <button
+      type="button"
+      class="post-fx-lim-btn"
+      :class="{ active: limiterEnabled, limiting: limiterActive }"
+      :title="limiterTitle"
+      @click="toggleLimiter()"
+    >
+      LIM
+    </button>
     <button type="button" class="post-fx-params-btn" title="Filter parameters">
       <q-icon name="tune" size="16px" />
       <q-menu class="post-fx-params-menu" anchor="bottom right" self="top right">
@@ -64,6 +73,42 @@
             />
             <span class="param-value">{{ params.ledResDb.toFixed(1) }} dB</span>
           </label>
+          <div class="post-fx-divider"></div>
+          <label class="post-fx-param post-fx-toggle-row">
+            <span class="param-label">Limiter</span>
+            <button
+              type="button"
+              class="post-fx-lim-btn"
+              :class="{ active: limiterEnabled, limiting: limiterActive }"
+              @click.prevent="toggleLimiter()"
+            >
+              {{ limiterEnabled ? 'ON' : 'OFF' }}
+            </button>
+          </label>
+          <label class="post-fx-param">
+            <span class="param-label">Ceiling</span>
+            <input
+              type="range"
+              min="-12"
+              max="0"
+              step="0.1"
+              :value="limiterParams.ceilingDb"
+              @input="onCeiling($event)"
+            />
+            <span class="param-value">{{ limiterParams.ceilingDb.toFixed(1) }} dB</span>
+          </label>
+          <label class="post-fx-param">
+            <span class="param-label">Release</span>
+            <input
+              type="range"
+              min="20"
+              max="1000"
+              step="5"
+              :value="limiterParams.releaseMs"
+              @input="onRelease($event)"
+            />
+            <span class="param-value">{{ Math.round(limiterParams.releaseMs) }} ms</span>
+          </label>
           <button
             type="button"
             class="post-fx-reset song-button ghost"
@@ -85,6 +130,9 @@
   >
     <span class="post-fx-led" :class="{ on: ledOn }"></span>
     FX: {{ mode.toUpperCase() }}
+    <span v-if="limiterEnabled" class="post-fx-lim-dot" :class="{ limiting: limiterActive }"
+      >LIM</span
+    >
     <q-menu class="post-fx-params-menu" anchor="bottom left" self="top left">
       <div class="post-fx-params">
         <div class="post-fx-segment compact-segment">
@@ -135,6 +183,42 @@
           />
           <span class="param-value">{{ params.ledResDb.toFixed(1) }} dB</span>
         </label>
+        <div class="post-fx-divider"></div>
+        <label class="post-fx-param post-fx-toggle-row">
+          <span class="param-label">Limiter</span>
+          <button
+            type="button"
+            class="post-fx-lim-btn"
+            :class="{ active: limiterEnabled, limiting: limiterActive }"
+            @click.prevent="toggleLimiter()"
+          >
+            {{ limiterEnabled ? 'ON' : 'OFF' }}
+          </button>
+        </label>
+        <label class="post-fx-param">
+          <span class="param-label">Ceiling</span>
+          <input
+            type="range"
+            min="-12"
+            max="0"
+            step="0.1"
+            :value="limiterParams.ceilingDb"
+            @input="onCeiling($event)"
+          />
+          <span class="param-value">{{ limiterParams.ceilingDb.toFixed(1) }} dB</span>
+        </label>
+        <label class="post-fx-param">
+          <span class="param-label">Release</span>
+          <input
+            type="range"
+            min="20"
+            max="1000"
+            step="5"
+            :value="limiterParams.releaseMs"
+            @input="onRelease($event)"
+          />
+          <span class="param-value">{{ Math.round(limiterParams.releaseMs) }} ms</span>
+        </label>
         <button
           type="button"
           class="post-fx-reset song-button ghost"
@@ -173,6 +257,17 @@ const MODE_OPTIONS: Array<{ id: PostFxFilterMode; label: string; title: string }
 
 const mode = computed(() => postFxStore.mode);
 const params = computed(() => postFxStore.params);
+const limiterEnabled = computed(() => postFxStore.limiterEnabled);
+const limiterParams = computed(() => postFxStore.limiterParams);
+
+/** True while the limiter is actually pulling gain down (meter threshold). */
+const limiterActive = ref(false);
+
+const limiterTitle = computed(() =>
+  limiterEnabled.value
+    ? `Brickwall limiter on (ceiling ${limiterParams.value.ceilingDb.toFixed(1)} dB)`
+    : 'Brickwall limiter off',
+);
 
 /**
  * The LED resolved against the audio clock, refreshed per frame: engine E0x
@@ -200,6 +295,9 @@ onMounted(() => {
   }
   unregisterTick = registerAnimationCallback(() => {
     ledOn.value = postFxStore.resolveLedAt(resolveNow());
+    // Anything past a fraction of a dB counts as "working"; the meter is a
+    // presence indicator, not a readout.
+    limiterActive.value = postFxStore.limiterReduction() < -0.5;
   });
 });
 
@@ -226,6 +324,20 @@ function onLedCutoff(event: Event): void {
 function onLedRes(event: Event): void {
   const value = Number((event.target as HTMLInputElement).value);
   postFxStore.setParams({ ...postFxStore.params, ledResDb: value });
+}
+
+function toggleLimiter(): void {
+  postFxStore.setLimiterEnabled(!postFxStore.limiterEnabled);
+}
+
+function onCeiling(event: Event): void {
+  const value = Number((event.target as HTMLInputElement).value);
+  postFxStore.setLimiterParams({ ...postFxStore.limiterParams, ceilingDb: value });
+}
+
+function onRelease(event: Event): void {
+  const value = Number((event.target as HTMLInputElement).value);
+  postFxStore.setLimiterParams({ ...postFxStore.limiterParams, releaseMs: value });
 }
 </script>
 
@@ -284,6 +396,43 @@ function onLedRes(event: Event): void {
 .post-fx-mode-btn.active {
   background: rgba(255, 179, 71, 0.16);
   color: #ffcf87;
+}
+
+.post-fx-lim-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 5px;
+  cursor: pointer;
+}
+
+.post-fx-lim-btn.active {
+  background: rgba(120, 220, 160, 0.14);
+  border-color: rgba(120, 220, 160, 0.4);
+  color: #8fe3b4;
+}
+
+/* Lit only while gain is actually being pulled down. */
+.post-fx-lim-btn.limiting {
+  background: rgba(255, 110, 90, 0.2);
+  border-color: rgba(255, 140, 120, 0.6);
+  color: #ff9e88;
+}
+
+.post-fx-lim-dot {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #8fe3b4;
+}
+
+.post-fx-lim-dot.limiting {
+  color: #ff9e88;
 }
 
 .post-fx-params-btn {
@@ -355,5 +504,51 @@ function onLedRes(event: Event): void {
 
 .post-fx-reset {
   align-self: flex-start;
+}
+
+.post-fx-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 2px 0;
+}
+
+.post-fx-toggle-row {
+  grid-template-rows: auto;
+}
+
+.post-fx-toggle-row .post-fx-lim-btn {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+}
+
+/*
+  The in-menu copy of the LIM button styling: the scoped rules of the same
+  name cover the toolbar instance, this one covers the portal (same reason
+  .post-fx-params itself lives out here).
+*/
+.post-fx-params .post-fx-lim-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.post-fx-params .post-fx-lim-btn.active {
+  background: rgba(120, 220, 160, 0.14);
+  border-color: rgba(120, 220, 160, 0.4);
+  color: #8fe3b4;
+}
+
+.post-fx-params .post-fx-lim-btn.limiting {
+  background: rgba(255, 110, 90, 0.2);
+  border-color: rgba(255, 140, 120, 0.6);
+  color: #ff9e88;
 }
 </style>

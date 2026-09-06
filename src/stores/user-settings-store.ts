@@ -108,6 +108,19 @@ export interface UserSettings {
     ledCutoffHz: number;
     ledResDb: number;
   };
+
+  /**
+   * Post-fx brickwall limiter: on by default, because the alternative is
+   * riding the master slider per song (a loud module like dope.mod clips an
+   * output level that is comfortable for everything else).
+   */
+  postFxLimiterEnabled: boolean;
+
+  /** Limiter ceiling (dBFS) and release (ms). */
+  postFxLimiterParams: {
+    ceilingDb: number;
+    releaseMs: number;
+  };
 }
 
 /**
@@ -168,6 +181,11 @@ export const defaultSettings: UserSettings = {
     staticCutoffHz: 4900,
     ledCutoffHz: 3275,
     ledResDb: -0.7,
+  },
+  postFxLimiterEnabled: true,
+  postFxLimiterParams: {
+    ceilingDb: -1.5,
+    releaseMs: 150,
   },
 };
 

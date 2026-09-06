@@ -24,6 +24,14 @@ function makeMockStage() {
   };
 }
 
+function makeMockLimiter() {
+  return {
+    setParams: vi.fn(),
+    setBypassed: vi.fn(),
+    getReduction: vi.fn(() => -3),
+  };
+}
+
 function makeMockRack() {
   return { contextTime: vi.fn(() => 10), input: {}, output: {} };
 }
@@ -37,17 +45,20 @@ beforeEach(() => {
 function registerMocks() {
   const stage = makeMockStage();
   const rack = makeMockRack();
-  registerPostFxRack(castRegistration(stage, rack));
-  return { stage, rack };
+  const limiter = makeMockLimiter();
+  registerPostFxRack(castRegistration(stage, rack, limiter));
+  return { stage, rack, limiter };
 }
 
 function castRegistration(
   stage: ReturnType<typeof makeMockStage>,
   rack: ReturnType<typeof makeMockRack>,
+  limiter: ReturnType<typeof makeMockLimiter> = makeMockLimiter(),
 ) {
   return {
     rack: rack as unknown as PostFxRegistration['rack'],
     amigaLpf: stage as unknown as PostFxRegistration['amigaLpf'],
+    limiter: limiter as unknown as PostFxRegistration['limiter'],
   };
 }
 
@@ -272,5 +283,62 @@ describe('registration timing', () => {
     expect(store.mode).toBe('auto');
     expect(stage.setBypassed).toHaveBeenLastCalledWith(false, 10);
     expect(stage.setLedActive).toHaveBeenLastCalledWith(false, 10);
+  });
+});
+describe('limiter', () => {
+  it('is on by default and engages the stage on registration', () => {
+    const { limiter } = registerMocks();
+    const store = usePostFxStore();
+    expect(store.limiterEnabled).toBe(true);
+    expect(store.limiterParams).toEqual({ ceilingDb: -1.5, releaseMs: 150 });
+    expect(limiter.setParams).toHaveBeenCalledWith({
+      ceilingDb: -1.5,
+      releaseMs: 150,
+    });
+    // Enabled means NOT bypassed.
+    expect(limiter.setBypassed).toHaveBeenLastCalledWith(false, 10);
+  });
+
+  it('toggling bypasses the stage and persists the choice', async () => {
+    const { limiter } = registerMocks();
+    const store = usePostFxStore();
+    store.setLimiterEnabled(false);
+    expect(limiter.setBypassed).toHaveBeenLastCalledWith(true, 10);
+    await nextTick();
+    expect(useUserSettingsStore().settings.postFxLimiterEnabled).toBe(false);
+
+    store.setLimiterEnabled(true);
+    expect(limiter.setBypassed).toHaveBeenLastCalledWith(false, 10);
+  });
+
+  it('sanitizes parameters before they reach the stage', () => {
+    const { limiter } = registerMocks();
+    const store = usePostFxStore();
+    store.setLimiterParams({ ceilingDb: 99, releaseMs: -5 });
+    expect(store.limiterParams).toEqual({ ceilingDb: 0, releaseMs: 20 });
+    expect(limiter.setParams).toHaveBeenLastCalledWith({
+      ceilingDb: 0,
+      releaseMs: 20,
+    });
+    store.resetLimiterParamsToDefaults();
+    expect(store.limiterParams).toEqual({ ceilingDb: -1.5, releaseMs: 150 });
+  });
+
+  it('reports reduction only while enabled', () => {
+    registerMocks();
+    const store = usePostFxStore();
+    expect(store.limiterReduction()).toBe(-3);
+    store.setLimiterEnabled(false);
+    expect(store.limiterReduction()).toBe(0);
+  });
+
+  it('is independent of the filter mode', () => {
+    const { stage, limiter } = registerMocks();
+    const store = usePostFxStore();
+    store.setMode('off');
+    // A filter bypass must not touch the limiter.
+    expect(stage.setBypassed).toHaveBeenLastCalledWith(true, 10);
+    expect(limiter.setBypassed).toHaveBeenCalledTimes(1);
+    expect(store.limiterEnabled).toBe(true);
   });
 });

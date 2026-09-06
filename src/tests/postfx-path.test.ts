@@ -59,6 +59,28 @@ class FakeAudioContext {
       disconnect: (): void => undefined,
     };
   }
+  createDynamicsCompressor(): object {
+    return {
+      threshold: new FakeAudioParam(),
+      knee: new FakeAudioParam(),
+      ratio: new FakeAudioParam(),
+      attack: new FakeAudioParam(),
+      release: new FakeAudioParam(),
+      reduction: 0,
+      connect: (target: unknown): void => {
+        connections.push({ from: this, to: target });
+      },
+      disconnect: (): void => undefined,
+    };
+  }
+  createWaveShaper(): object {
+    return {
+      curve: null,
+      oversample: 'none',
+      connect: (): void => undefined,
+      disconnect: (): void => undefined,
+    };
+  }
   resume(): Promise<void> {
     return Promise.resolve();
   }
@@ -127,9 +149,14 @@ describe('the one speaker feed runs through the rack', () => {
 
     expect(connectedTo(destinationNode, rackInput)).toBe(true);
     expect(connectedTo(rackOutput, context.destination)).toBe(true);
-    // The rack owns the LPF stage and registered itself for the store.
-    expect(system.postFxRack.activeStages()).toEqual([system.postFxLpfStage]);
+    // The rack owns the stages, in order (limiter last, so it has the final
+    // word on the output ceiling), and registered itself for the store.
+    expect(system.postFxRack.activeStages()).toEqual([
+      system.postFxLpfStage,
+      system.postFxLimiterStage,
+    ]);
     expect(registry.getPostFxRack()?.rack).toBe(system.postFxRack);
+    expect(registry.getPostFxRack()?.limiter).toBe(system.postFxLimiterStage);
     // The recorder tap point is the rack output (what-you-hear).
     expect(system.postFxOutput).toBe(system.postFxRack.output);
   });

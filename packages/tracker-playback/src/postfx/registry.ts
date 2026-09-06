@@ -11,11 +11,13 @@
  */
 
 import type { AmigaLpfStage } from './amiga-lpf-stage';
+import type { LimiterStage } from './limiter-stage';
 import type { PostFxRack } from './post-fx-rack';
 
 export interface PostFxRegistration {
   rack: PostFxRack;
   amigaLpf: AmigaLpfStage;
+  limiter: LimiterStage;
 }
 
 let current: PostFxRegistration | null = null;

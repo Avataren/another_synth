@@ -1,6 +1,7 @@
 
 import {
   AmigaLpfStage,
+  LimiterStage,
   PostFxRack,
   registerPostFxRack,
 } from '@another-synth/tracker-playback';
@@ -126,6 +127,7 @@ export default class AudioSystem {
      */
     postFxRack: PostFxRack;
     postFxLpfStage: AmigaLpfStage;
+    postFxLimiterStage: LimiterStage;
     /** Waiters released when the context reaches `running`. */
     private runningWaiters = new Set<() => void>();
     /** Cached `whenRunning()` promise (idempotent while it is still waiting). */
@@ -145,9 +147,17 @@ export default class AudioSystem {
         this.postFxRack = new PostFxRack(this.audioContext);
         this.postFxLpfStage = new AmigaLpfStage(this.audioContext);
         this.postFxRack.registerStage(this.postFxLpfStage);
+        // The limiter goes last: it catches whatever the filter stage leaves,
+        // and it is the final word on the output ceiling.
+        this.postFxLimiterStage = new LimiterStage(this.audioContext);
+        this.postFxRack.registerStage(this.postFxLimiterStage);
         this.destinationNode.connect(this.postFxRack.input);
         this.postFxRack.output.connect(this.audioContext.destination);
-        registerPostFxRack({ rack: this.postFxRack, amigaLpf: this.postFxLpfStage });
+        registerPostFxRack({
+            rack: this.postFxRack,
+            amigaLpf: this.postFxLpfStage,
+            limiter: this.postFxLimiterStage,
+        });
         // A re-suspension (iOS interruption, Safari auto-suspend) must not
         // leave a settled whenRunning() promise cached: the next caller
         // would be told "running now" against a suspended context. Drop

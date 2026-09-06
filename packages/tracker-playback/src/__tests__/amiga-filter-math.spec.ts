@@ -47,6 +47,26 @@ function recordingFactory() {
         iirNodes.push(node);
         return node as unknown as IIRFilterNode;
       },
+      // Unused here (the limiter stage has its own tests), but part of the
+      // factory seam.
+      createDynamicsCompressor: () =>
+        ({
+          threshold: { value: 0 },
+          knee: { value: 0 },
+          ratio: { value: 0 },
+          attack: { value: 0 },
+          release: { value: 0 },
+          reduction: 0,
+          connect: (): void => undefined,
+          disconnect: (): void => undefined,
+        }) as unknown as DynamicsCompressorNode,
+      createWaveShaper: () =>
+        ({
+          curve: null,
+          oversample: 'none',
+          connect: (): void => undefined,
+          disconnect: (): void => undefined,
+        }) as unknown as WaveShaperNode,
     },
   };
 }
