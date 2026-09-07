@@ -330,11 +330,15 @@ function decodeSample(
   }
 
   if (instrument.bits16) {
-    const frames = Math.min(
-      instrument.length,
-      Math.floor((buffer.byteLength - offset) / 2),
-    );
-    const out = new Float32Array(frames);
+    // The memseg offset comes straight from the sample header and a crafted
+    // one points far past the buffer, which makes `buffer.byteLength -
+    // offset` a large negative number. Clamping the available byte count at
+    // zero degrades to an empty sample -- the same truncation policy the
+    // pattern decoders apply -- instead of `new Float32Array(negative)`
+    // throwing a RangeError that aborts the whole parse.
+    const avail = Math.max(0, buffer.byteLength - offset);
+    const frames = Math.min(instrument.length, Math.floor(avail / 2));
+    const out = new Float32Array(Math.max(0, frames));
     const view = new DataView(
       buffer.buffer,
       buffer.byteOffset,
@@ -346,8 +350,9 @@ function decodeSample(
     return out;
   }
 
-  const frames = Math.min(instrument.length, buffer.byteLength - offset);
-  const out = new Float32Array(frames);
+  const avail = Math.max(0, buffer.byteLength - offset);
+  const frames = Math.min(instrument.length, avail);
+  const out = new Float32Array(Math.max(0, frames));
   for (let i = 0; i < frames; i++) {
     const raw = buffer[offset + i] ?? 0;
     if (signed8Bit) {
@@ -375,8 +380,15 @@ export function parseS3m(buffer: Uint8Array): S3mSong {
   // Layout: 28-byte title @ 0x00, 0x1A marker @ 0x1C, fileType 0x10 @ 0x1D,
   // 2 reserved bytes, then ordNum @ 0x20 (OpenMPT S3MFileHeader).
   const ordNum = view.getUint16(0x20, true);
-  const smpNum = view.getUint16(0x22, true);
-  const patNum = view.getUint16(0x24, true);
+  let smpNum = view.getUint16(0x22, true);
+  let patNum = view.getUint16(0x24, true);
+  // The count fields are u16 with no bound the format enforces, so a crafted
+  // file can declare 0xFFFF samples or patterns. Clamping to the replayers'
+  // own ceilings (OpenMPT and st3play allocate at most 256 of each) bounds
+  // the pointer tables read below and the pattern decode, before anything
+  // is allocated.
+  smpNum = Math.min(smpNum, 256);
+  patNum = Math.min(patNum, 256);
   const flags = view.getUint16(0x26, true);
   const trackerVersion = view.getUint16(0x28, true);
   const formatVersion = view.getUint16(0x2a, true);
@@ -400,14 +412,26 @@ export function parseS3m(buffer: Uint8Array): S3mSong {
   // Each parapointer is a paragraph number (byte offset / 16).
   const orderTableSize = ordNum;
   const instrumentPointerBase = 0x60 + orderTableSize;
+  // Bounds-checked parapointer read. The table sits right after the order
+  // list and a crafted header can declare counts that push it past the end
+  // of a short buffer; a bare DataView read there throws an uncaught
+  // RangeError instead of the clean "unsupported module" error the load
+  // path expects, so every read is checked first.
+  const readParapointer = (base: number, index: number): number => {
+    const at = base + index * 2;
+    if (at + 2 > buffer.byteLength) {
+      throw new Error('Unsupported or invalid S3M file');
+    }
+    return view.getUint16(at, true) * 16;
+  };
   const instrumentPointers: number[] = [];
   for (let i = 0; i < smpNum; i++) {
-    instrumentPointers.push(view.getUint16(instrumentPointerBase + i * 2, true) * 16);
+    instrumentPointers.push(readParapointer(instrumentPointerBase, i));
   }
   const patternPointerBase = instrumentPointerBase + smpNum * 2;
   const patternPointers: number[] = [];
   for (let i = 0; i < patNum; i++) {
-    patternPointers.push(view.getUint16(patternPointerBase + i * 2, true) * 16);
+    patternPointers.push(readParapointer(patternPointerBase, i));
   }
 
   const hasPanningTable = usePanningTable === 0xfc;
@@ -417,7 +441,6 @@ export function parseS3m(buffer: Uint8Array): S3mSong {
         (_, i) => buffer[patternPointerBase + patNum * 2 + i] ?? 0,
       )
     : undefined;
-
   const patterns: S3mPattern[] = [];
   for (const pointer of patternPointers) {
     // A zero parapointer is an empty pattern (OpenMPT: "A zero parapointer

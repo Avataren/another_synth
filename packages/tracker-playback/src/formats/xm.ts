@@ -286,8 +286,8 @@ export function parseXm(buffer: Uint8Array): XmSong {
   const songLength = view.getUint16(64, true);
   const restartPosition = view.getUint16(66, true);
   const numChannels = view.getUint16(68, true);
-  const numPatterns = view.getUint16(70, true);
-  const numInstruments = view.getUint16(72, true);
+  let numPatterns = view.getUint16(70, true);
+  let numInstruments = view.getUint16(72, true);
   const flags = view.getUint16(74, true);
   const defaultSpeed = view.getUint16(76, true);
   const defaultBpm = view.getUint16(78, true);
@@ -295,6 +295,19 @@ export function parseXm(buffer: Uint8Array): XmSong {
   if (numChannels < 1 || numChannels > 32) {
     throw new Error(`Unsupported XM channel count ${numChannels}`);
   }
+
+  // The count fields are u16, so a crafted file can declare 0xFFFF patterns
+  // or instruments, and each pattern header can declare 0xFFFF rows. Every
+  // pattern allocates numRows x numChannels cell objects and every iteration
+  // of the loop below only has to advance 9 bytes, so unbounded counts here
+  // are unbounded allocation before any data has been read. Clamp to the
+  // format's own ceilings FIRST (FT2 tops out at 256 patterns and
+  // instruments; the import layer clamps rows to MAX_PATTERN_ROWS = 256 in
+  // song-constants.ts, but only after this parser has already allocated the
+  // cells), so a hostile header degrades to a small, valid-shaped song
+  // instead of hanging or OOMing the renderer.
+  numPatterns = Math.min(numPatterns, 256);
+  numInstruments = Math.min(numInstruments, 256);
 
   const orders: number[] = [];
   for (let i = 0; i < 256; i++) {
@@ -308,7 +321,12 @@ export function parseXm(buffer: Uint8Array): XmSong {
   for (let p = 0; p < numPatterns; p++) {
     if (at + 9 > buffer.byteLength) break;
     const patternHeaderSize = view.getUint32(at, true);
-    const numRows = view.getUint16(at + 5, true);
+    // The header must at least cover the fields read below (rows at +5,
+    // packedSize at +7). A smaller value means the offsets are garbage and
+    // every later pattern would decode from misaligned bytes.
+    if (patternHeaderSize < 9) break;
+    // Clamp rows before decodePattern allocates one cell per row x channel.
+    const numRows = Math.max(1, Math.min(256, view.getUint16(at + 5, true)));
     const packedSize = view.getUint16(at + 7, true);
     const dataOffset = at + patternHeaderSize;
 
