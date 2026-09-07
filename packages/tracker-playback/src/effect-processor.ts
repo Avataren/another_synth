@@ -265,6 +265,17 @@ export interface TrackEffectState {
   tremoloWaveform: number;
   /** As vibratoRetrigger, for E7x. */
   tremoloRetrigger: boolean;
+  /**
+   * Whether a tremolo is currently bending this channel's volume.
+   *
+   * Unlike vibrato, FT2 and ProTracker do NOT hold a tremolo offset across
+   * rows: both recompute `outVol` from `realVol` every tick, so the moment a
+   * row stops carrying 7xy the volume springs back to what the channel's
+   * slides have made of it. Tick 0 uses this flag to tell "tremolo ran on a
+   * previous row, re-state the channel volume" apart from "nothing to
+   * restore".
+   */
+  tremoloApplied: boolean;
 
   // Arpeggio state
   arpeggioX: number;
@@ -434,6 +445,7 @@ export function createTrackEffectState(
     tremoloPos: 0,
     tremoloWaveform: 0,
     tremoloRetrigger: true,
+    tremoloApplied: false,
 
     arpeggioX: 0,
     arpeggioY: 0,
@@ -1683,6 +1695,28 @@ export function processEffectTick0(
       break;
   }
 
+  // Restore the channel volume once a tremolo stops.
+  //
+  // The tremolo case above deliberately never writes `currentVolume`, so on
+  // the row after the last `7xy` nothing re-asserts the channel's volume:
+  // an empty (or non-volume) effect cell emits no volume command, and the
+  // scheduled voice gain stays frozen at whatever the tremolo waveform held
+  // on the previous row's last tick. FT2 and ProTracker never do this --
+  // both recompute `outVol` from `realVol` every tick, so tremolo springs
+  // back to the channel volume the moment the command is absent. (Vibrato's
+  // held offset is the opposite case: there the reference does hold it,
+  // which is why `continuesVibrato` above keeps the pitch bent.) A row that
+  // already states its own volume -- a note (the noteOn carries the
+  // velocity), a Cxx, a volume-column value -- is left alone.
+  if (
+    state.tremoloApplied &&
+    state.tremoloDepth > 0 &&
+    effect?.type !== 'tremolo' &&
+    !commands.some((cmd) => cmd.kind === 'volume' || cmd.kind === 'noteOn')
+  ) {
+    pushVolume(commands, voiceIndex, state.currentVolume);
+  }
+
   // Ensure we emit at least one pitch command to keep schedulers in sync.
   //
   // A running vibrato has to carry its current offset across the row boundary.
@@ -1869,6 +1903,7 @@ export function processEffectTickN(
       //
       // As with vibrato, the position advances *after* the sample is used:
       // both `tremolo` routines end with `ch->tremoloPos += ch->tremoloSpeed`.
+      state.tremoloApplied = true;
       const tremoloOffset = getWaveformValue(
         state.tremoloPos,
         state.tremoloWaveform,
@@ -2241,6 +2276,10 @@ export function resetEffectStateForNote(state: TrackEffectState): void {
   state.vibratoApplied = false;
   state.vibratoHeldWave = 0;
   if (state.tremoloRetrigger) state.tremoloPos = 0;
+  // A new note re-states the channel volume itself (the noteOn carries the
+  // velocity), so whatever tremolo was bending before it is gone with the
+  // note.
+  state.tremoloApplied = false;
   state.retriggerTick = 0;
   state.noteCutTick = -1;
   state.noteDelayTick = -1;

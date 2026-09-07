@@ -5,6 +5,7 @@ import {
   processEffectTick0,
   processEffectTickN,
   processVolumeColumnTick0,
+  resetEffectStateForNote,
 } from '../effect-processor';
 import { AMIGA_CLOCK, PAULA_TO_SYNTH_SCALE } from '../pitch-model';
 import type { EffectCommand, VolumeColumnCommand } from '../types';
@@ -432,5 +433,81 @@ describe('effect-processor reusable command buffers', () => {
     expect(volume0.commands).toHaveLength(1);
     expect(volume0.commands[0]).toMatchObject({ kind: 'volume' });
     expect(tick0.commands).not.toBe(volume0.commands);
+  });
+
+  // Review 2026-09-07 M2: tremolo (7xy) never restored the channel volume
+  // after the effect stopped. FT2 and ProTracker recompute `outVol` from
+  // `realVol` every tick, so the volume springs back the moment a row stops
+  // carrying the command -- unlike vibrato, whose offset IS held across
+  // empty rows (that asymmetry is deliberate).
+  it('restores the channel volume when tremolo stops', () => {
+    const state = createTrackEffectState();
+    const tremolo: EffectCommand = { type: 'tremolo', paramX: 2, paramY: 10 };
+    // Note trigger below full volume, so the waveform's positive phase is
+    // not clamped flat against 1 and the bend is visible.
+    processEffectTick0(state, tremolo, 60, 200, undefined, 6);
+
+    // Tremolo runs on ticks 1..N, pushing volumes bent away from the
+    // channel's own level. currentVolume itself must never move.
+    let sawBentVolume = false;
+    for (let tick = 1; tick < 6; tick++) {
+      const batch = processEffectTickN(state, tremolo, tick, 6);
+      const vol = batch.commands.find((cmd) => cmd.kind === 'volume');
+      if (vol && vol.kind === 'volume' && vol.volume !== state.currentVolume) {
+        sawBentVolume = true;
+      }
+    }
+    expect(sawBentVolume).toBe(true);
+    expect(state.currentVolume).toBeCloseTo(200 / 255, 6);
+
+    // Next row: no effect, no note, no volume column value. The channel
+    // volume must spring back to what the channel actually holds.
+    const next = processEffectTick0(state, undefined, undefined, undefined, undefined, 6);
+    const volumes = next.commands.filter((cmd) => cmd.kind === 'volume');
+    expect(volumes).toHaveLength(1);
+    if (volumes[0] && volumes[0].kind === 'volume') {
+      expect(volumes[0].volume).toBe(state.currentVolume);
+    }
+  });
+
+  it('does not double-state the volume on rows that carry their own level', () => {
+    const state = createTrackEffectState();
+    const tremolo: EffectCommand = { type: 'tremolo', paramX: 2, paramY: 10 };
+    processEffectTick0(state, tremolo, 60, 200, undefined, 6);
+    processEffectTickN(state, tremolo, 1, 6);
+
+    // A note row restates the volume itself (the noteOn carries the
+    // velocity, plus the triggeredNote volume push): no second restore.
+    const noteRow = processEffectTick0(state, undefined, 62, 200, undefined, 6);
+    expect(noteRow.commands.filter((cmd) => cmd.kind === 'volume')).toHaveLength(1);
+
+    // The engine resets the effect state on a note trigger; after that,
+    // tremolo is no longer applied, so an empty row restores nothing.
+    resetEffectStateForNote(state);
+    const emptyRow = processEffectTick0(state, undefined, undefined, undefined, undefined, 6);
+    expect(emptyRow.commands.some((cmd) => cmd.kind === 'volume')).toBe(false);
+  });
+
+  it('still restores the volume on a row carrying a non-volume effect', () => {
+    const state = createTrackEffectState();
+    const tremolo: EffectCommand = { type: 'tremolo', paramX: 2, paramY: 10 };
+    processEffectTick0(state, tremolo, 60, 255, undefined, 6);
+    processEffectTickN(state, tremolo, 1, 6);
+
+    // An arpeggio row states pitch, not volume: the volume restore must
+    // still happen alongside it.
+    const arpRow = processEffectTick0(
+      state,
+      { type: 'arpeggio', paramX: 3, paramY: 7 },
+      undefined,
+      undefined,
+      undefined,
+      6,
+    );
+    const volumes = arpRow.commands.filter((cmd) => cmd.kind === 'volume');
+    expect(volumes).toHaveLength(1);
+    if (volumes[0] && volumes[0].kind === 'volume') {
+      expect(volumes[0].volume).toBe(state.currentVolume);
+    }
   });
 });
