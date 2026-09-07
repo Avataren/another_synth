@@ -1715,6 +1715,10 @@ export function processEffectTick0(
     !commands.some((cmd) => cmd.kind === 'volume' || cmd.kind === 'noteOn')
   ) {
     pushVolume(commands, voiceIndex, state.currentVolume);
+    // The volume is restored: the next effect-less row has nothing to
+    // re-emit. (FT2/PT keep recomputing outVol from realVol, but the value
+    // no longer changes, so the scheduled gain needs no further command.)
+    state.tremoloApplied = false;
   }
 
   // Ensure we emit at least one pitch command to keep schedulers in sync.

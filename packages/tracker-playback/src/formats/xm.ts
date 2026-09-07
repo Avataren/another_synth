@@ -349,7 +349,10 @@ export function parseXm(buffer: Uint8Array): XmSong {
     if (at + 29 > buffer.byteLength) break;
     const instrumentHeaderSize = view.getUint32(at, true);
     const name = readAscii(buffer, at + 4, 22);
-    const numSamples = view.getUint16(at + 27, true);
+    // XM tops out at 16 samples per instrument; a crafted header can declare
+    // 0xFFFF, and the sample-header loop below would walk (and allocate)
+    // until the buffer runs out. Clamp with the other header counts.
+    const numSamples = Math.min(view.getUint16(at + 27, true), 16);
 
     let keymap: number[] = new Array(96).fill(0);
     let volumeEnvelope = emptyEnvelope();

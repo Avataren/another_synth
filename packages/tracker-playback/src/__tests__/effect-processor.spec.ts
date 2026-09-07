@@ -468,6 +468,11 @@ describe('effect-processor reusable command buffers', () => {
     if (volumes[0] && volumes[0].kind === 'volume') {
       expect(volumes[0].volume).toBe(state.currentVolume);
     }
+
+    // The restore is one-shot: after it, the volume no longer changes, so
+    // the next effect-less row must emit nothing further.
+    const after = processEffectTick0(state, undefined, undefined, undefined, undefined, 6);
+    expect(after.commands.some((cmd) => cmd.kind === 'volume')).toBe(false);
   });
 
   it('does not double-state the volume on rows that carry their own level', () => {

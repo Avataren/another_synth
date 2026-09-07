@@ -82,6 +82,29 @@ describe('XM hostile header counts (H1)', () => {
     expect(song.instruments.length).toBe(256);
   });
 
+  it('clamps a 0xFFFF per-instrument sample count to the XM ceiling of 16', () => {
+    const bytes = buildXm({
+      numChannels: 4,
+      orders: [0],
+      patterns: [],
+      instruments: [{ samples: [{ frames: [0, 100, -100] }] }],
+    });
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    // With no patterns the first instrument header follows the order table.
+    const instrAt = 60 + view.getUint32(60, true);
+    view.setUint16(instrAt + 27, 0xffff, true); // numSamples
+    // Room for far more sample headers than the ceiling, so the clamp (not
+    // the buffer end) is what stops the loop.
+    const patched = new Uint8Array(bytes.length + 2048);
+    patched.set(bytes, 0);
+
+    const song = parseXm(patched);
+    expect(song.instruments.length).toBe(1);
+    expect(song.instruments[0]!.samples.length).toBe(16);
+    // The real sample header survives as sample 0.
+    expect(song.instruments[0]!.samples[0]!.data.length).toBe(3);
+  });
+
   it('stops at a pattern header too small to contain its own fields', () => {
     const bytes = buildXm({ numChannels: 4, orders: [0], patterns: [] });
     // headerSize 4: the rows/packedSize fields would be read out of the
@@ -147,6 +170,39 @@ describe('S3M hostile header counts (H1)', () => {
     expect(song.patterns[0]!.numRows).toBe(64);
     expect(song.patterns[0]!.rows.length).toBe(64);
     expect(song.patterns[0]!.rows[0]!.length).toBe(32);
+  });
+
+  it('clamps a 0xFFFF order count to a bounded sequence', () => {
+    // Hand-built: header + a full 256-byte order region + one pattern pointer
+    // + pattern data, with ordNum declaring 0xFFFF. The order bytes past the
+    // written region would read as 255 padding forever, and the sequence
+    // length feeds several O(n) import passes, so the clamp is what keeps a
+    // crafted header from turning into a load-time CPU burn.
+    const orderBase = 0x60;
+    const pointerBase = orderBase + 256;
+    const patternAt = (pointerBase + 2 + 15) & ~0xf; // paragraph-aligned
+    const bytes = new Uint8Array(patternAt + 4);
+    const view = new DataView(bytes.buffer);
+
+    bytes[0x1c] = 0x1a; // DOS EOF marker
+    bytes[0x1d] = 0x10; // fileType: ST3 module
+    bytes.set([0x53, 0x43, 0x52, 0x4d], 0x2c); // 'SCRM'
+    view.setUint16(0x20, 0xffff, true); // ordNum: hostile
+    view.setUint16(0x22, 0, true); // smpNum
+    view.setUint16(0x24, 1, true); // patNum
+    bytes[orderBase] = 0; // the one real order: pattern 0
+
+    view.setUint16(pointerBase, Math.floor(patternAt / 16), true);
+    view.setUint16(patternAt, 2, true); // packed size
+    bytes[patternAt + 2] = 0; // end of row 0
+    bytes[patternAt + 3] = 0; // end of row 1
+
+    const song = parseS3m(bytes);
+    // Bounded, not just non-crashing: exactly the 256-order ceiling.
+    expect(song.orders.length).toBe(256);
+    expect(song.songLength).toBe(256);
+    expect(song.orders[0]).toBe(0);
+    expect(song.patterns.length).toBe(1);
   });
 });
 

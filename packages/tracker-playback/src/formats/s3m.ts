@@ -379,14 +379,19 @@ export function parseS3m(buffer: Uint8Array): S3mSong {
   const title = readAscii(buffer, 0, 28);
   // Layout: 28-byte title @ 0x00, 0x1A marker @ 0x1C, fileType 0x10 @ 0x1D,
   // 2 reserved bytes, then ordNum @ 0x20 (OpenMPT S3MFileHeader).
-  const ordNum = view.getUint16(0x20, true);
+  let ordNum = view.getUint16(0x20, true);
   let smpNum = view.getUint16(0x22, true);
   let patNum = view.getUint16(0x24, true);
   // The count fields are u16 with no bound the format enforces, so a crafted
-  // file can declare 0xFFFF samples or patterns. Clamping to the replayers'
-  // own ceilings (OpenMPT and st3play allocate at most 256 of each) bounds
-  // the pointer tables read below and the pattern decode, before anything
-  // is allocated.
+  // file can declare 0xFFFF orders, samples or patterns. Clamping to the
+  // replayers' own ceilings (OpenMPT and st3play allocate at most 256 of
+  // each) bounds the order walk, the pointer tables read below and the
+  // pattern decode, before anything is allocated. ordNum in particular feeds
+  // song.sequence downstream, whose length several import passes walk
+  // (precomputeTonePortaTargets and friends), so an unbounded value there is
+  // a load-time CPU denial of service even though the order bytes themselves
+  // read as 255 past the buffer.
+  ordNum = Math.min(ordNum, 256);
   smpNum = Math.min(smpNum, 256);
   patNum = Math.min(patNum, 256);
   const flags = view.getUint16(0x26, true);
