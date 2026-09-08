@@ -343,6 +343,29 @@ export interface FormatProfile {
    * scoped to the format that motivated it rather than applied to all three.
    */
   readonly tonePortaContinuesThroughEmptyRows?: boolean;
+
+  /**
+   * S3M only: a row whose cell carries no effect command restores the
+   * channel period to its un-modulated base, so a vibrato (H/U) that has
+   * stopped springs the held pitch offset back to the note on the very next
+   * effectless row.
+   *
+   * st3play digcmd.c `docmd1` (tick 0), the `ch->cmd == 0` arm, quoted:
+   *
+   *   // fix speed if tone port noncomplete
+   *   if (ch->aspd != ch->aorgspd)
+   *   {
+   *       ch->aspd = ch->aorgspd;
+   *       setspd(ch);
+   *   }
+   *
+   * `s_vibrato` only ever writes `ch->aspd = ch->aorgspd + offset` and never
+   * touches `ch->aorgspd`, so once the H rows run out this snaps the channel
+   * back to the note. FT2 and ProTracker-MOD instead hold the last vibrato
+   * offset across effectless rows (D75, jt_911.xm) -- hence the flag rather
+   * than a change to the shared `continuesVibrato` path.
+   */
+  readonly pitchResetsAfterEffectlessRow?: boolean;
 }
 
 /**
@@ -628,6 +651,10 @@ export const S3M_PROFILE: FormatProfile = {
   // See the field's docs: kept for 2nd Reality's order 45, and deliberately
   // not extended to ProTracker/FT2.
   tonePortaContinuesThroughEmptyRows: true,
+  // st3play docmd1: a cell with no effect command snaps aspd back to aorgspd,
+  // so a stopped vibrato returns to the note on the next effectless row (see
+  // the field's docs). ProTracker/FT2 hold the offset instead (D75).
+  pitchResetsAfterEffectlessRow: true,
   arpeggioCommandByte: 0x0a, // 'J'
   speedTempoCommandByte: 0x01, // 'A' -- set speed (manual: "Set speed to xx")
   tempoCommandByte: 0x14, // 'T' -- tempo = xx (manual: "valid values 20 to FF")

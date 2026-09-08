@@ -1740,11 +1740,28 @@ export function processEffectTick0(
   // rows out of four -- and because the position keeps creeping, the jerk
   // grows to most of a tone. A cell carrying some *other* effect still
   // re-states the note, which is the conservative reading.
+  //
+  // ST3 is the exception: st3play `docmd1` restores `ch->aspd` to `ch->aorgspd`
+  // on tick 0 of any cell that carries no vibrato command (the `ch->cmd == 0`
+  // and `ch->cmd == 'D'` arms), so a stopped vibrato snaps back to the note on
+  // the next such row rather than holding. `pitchResetsAfterEffectlessRow`
+  // gates that to the S3M profiles; the fallback below then emits
+  // `state.currentFrequency` (the un-modulated base) for them. Tracks the row
+  // omits altogether are handled by the engine's trailing pass.
+  const isVibratoRow =
+    effect?.type === 'vibrato' || effect?.type === 'vibratoVol';
+  const vibratoSnapsBack =
+    state.profile.pitchResetsAfterEffectlessRow === true && !isVibratoRow;
   const continuesVibrato =
     newNote === undefined &&
-    (!effect || effect.type === 'vibrato' || effect.type === 'vibratoVol') &&
+    (isVibratoRow || !effect) &&
+    !vibratoSnapsBack &&
     state.vibratoApplied &&
     state.vibratoDepth > 0;
+  if (vibratoSnapsBack && newNote === undefined && state.vibratoApplied) {
+    state.vibratoApplied = false;
+    state.vibratoHeldWave = 0;
+  }
 
   // A delayed note does not move the channel's pitch on tick 0. ProTracker
   // stores the new period but only writes it to the hardware when the delay

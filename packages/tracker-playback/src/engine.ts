@@ -1803,12 +1803,48 @@ export class PlaybackEngine {
       const effectState = this.trackEffectStates[trackIndex];
       if (
         !effectState ||
-        effectState.profile.tonePortaContinuesThroughEmptyRows !== true ||
         tracksWithSteps.has(trackIndex) ||
-        !effectState.tonePortaActive ||
-        effectState.tonePortaSpeed <= 0 ||
         !effectState.hasActiveVoice ||
         !effectState.instrumentId
+      ) {
+        continue;
+      }
+
+      // ST3 (st3play digcmd.c docmd1, the `ch->cmd == 0` arm): a cell with no
+      // effect command restores the channel period to its base -- so a
+      // vibrato (H/U) that has stopped springs the held pitch offset back to
+      // the note on this effectless row. `processEffectTick0` guarantees the
+      // same for a track that *does* have a (non-vibrato) step this row; this
+      // covers the tracks the row omits entirely. Emitted once at row start;
+      // a later effectless row finds `vibratoApplied` already cleared, like
+      // st3play's `if (ch->aspd != ch->aorgspd)` guard. ProTracker/FT2 hold
+      // the offset instead (D75), hence the profile gate.
+      if (
+        effectState.profile.pitchResetsAfterEffectlessRow === true &&
+        effectState.vibratoApplied
+      ) {
+        effectState.vibratoApplied = false;
+        effectState.vibratoHeldWave = 0;
+        context.instrumentId = effectState.instrumentId;
+        context.trackIndex = trackIndex;
+        context.voiceIndex = effectState.voiceIndex;
+        context.time = time;
+        this.dispatchCommands(
+          [
+            {
+              kind: 'pitch',
+              frequency: effectState.currentFrequency,
+              voiceIndex: effectState.voiceIndex,
+            },
+          ],
+          context,
+        );
+      }
+
+      if (
+        effectState.profile.tonePortaContinuesThroughEmptyRows !== true ||
+        !effectState.tonePortaActive ||
+        effectState.tonePortaSpeed <= 0
       ) {
         continue;
       }
