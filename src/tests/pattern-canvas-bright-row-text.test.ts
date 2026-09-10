@@ -132,6 +132,13 @@ function makeRecordingCtx(): RecordingCtx {
   }) as RecordingCtx;
 }
 
+/** Make a recording context throw on its first bake draw call (F4). */
+function throwOnSetTransform(ctx: RecordingCtx, message: string): void {
+  (ctx as unknown as { setTransform: () => void }).setTransform = () => {
+    throw new Error(message);
+  };
+}
+
 const originalGetContext = HTMLCanvasElement.prototype.getContext;
 let contexts: RecordingCtx[] = [];
 const rafQueue = new Map<number, (t: number) => void>();
@@ -377,6 +384,104 @@ describe('canvas playing-row text overlay — degraded allocation (MAJOR-1)', ()
       createSpy.mockRestore();
       wrapper.unmount();
     }
+  });
+});
+
+/**
+ * F4: the bake's DRAW phase (setTransform/clearRect/drawBright*) is wrapped,
+ * not just the allocation. A context/draw-phase throw (context loss, an
+ * exhausted GPU) must degrade to plain text and never propagate out of
+ * paintOverlay→runFrame (no try/catch there) or the deferred idle callback.
+ *
+ * Fails on 1f38684: there only `new OffscreenCanvas` is wrapped; the
+ * setTransform/clearRect/drawBrightRow* calls run bare, so a draw-phase throw
+ * escapes pumpFrame.
+ */
+describe('canvas playing-row text overlay — draw-phase throw (F4)', () => {
+  it('degrades to plain text without wedging playback when the bake draw phase throws', async () => {
+    const wrapper = mountCanvas({ isPlaying: false, playbackRow: 4 });
+    pumpFrame(); // static bitmap + the two DOM layers get their clean contexts
+    const overlayCtx = ctxOf(layers(wrapper).overlay);
+
+    // Any canvas created from here on (i.e. the bright-text surface) gets a
+    // context that throws on the first draw call of the bake; the already-built
+    // static bitmap and DOM layers keep their clean cached contexts.
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (
+      this: HTMLCanvasElement,
+    ) {
+      const existing = contexts.find((c) => c.canvas === this);
+      if (existing) return existing as unknown as CanvasRenderingContext2D;
+      const ctx = makeRecordingCtx();
+      ctx.canvas = this;
+      throwOnSetTransform(ctx, 'context lost during bright-text bake');
+      contexts.push(ctx);
+      return ctx as unknown as CanvasRenderingContext2D;
+    });
+
+    try {
+      // Synchronous first bake (playback start) — reached inside runFrame.
+      await wrapper.setProps({ isPlaying: true, playbackRow: 4 } as never);
+      await nextTick();
+      expect(() => pumpFrame()).not.toThrow();
+      expect(drawImagesOn(overlayCtx)).toHaveLength(0);
+
+      // The rAF loop is not wedged: playback keeps advancing, every frame
+      // repaints the overlay, and the row just shows plain text.
+      for (const row of [5, 6, 7]) {
+        await wrapper.setProps({ playbackRow: row } as never);
+        await nextTick();
+        const before = overlayCtx.calls.length;
+        expect(() => pumpFrame()).not.toThrow();
+        expect(overlayCtx.calls.length).toBeGreaterThan(before);
+        expect(drawImagesOn(overlayCtx)).toHaveLength(0);
+      }
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('degrades without throwing when the DEFERRED re-bake draw phase throws', async () => {
+    vi.stubGlobal('requestIdleCallback', undefined);
+    const baseTracks = [makeTrack('t0'), makeTrack('t1')];
+    const wrapper = mountCanvas({ isPlaying: true, playbackRow: 2, tracks: baseTracks });
+    pumpFrame(); // first bake succeeds with a clean context
+
+    const overlayCtx = ctxOf(layers(wrapper).overlay);
+    const brightSurface = drawImagesOn(overlayCtx).at(-1)!.image;
+    const brightCtx = contexts.find((c) => c.canvas === brightSurface)!;
+    // Poison the reused bright surface's context for the next (deferred) bake.
+    throwOnSetTransform(brightCtx, 'context lost during deferred re-bake');
+
+    const edited: TrackerTrackData[] = [
+      {
+        ...baseTracks[0]!,
+        entries: baseTracks[0]!.entries.map((e, i) => (i === 1 ? { row: 1, note: 'D-5' } : e)),
+      },
+      baseTracks[1]!,
+    ];
+    await wrapper.setProps({ tracks: edited } as never);
+    await nextTick();
+    await wrapper.setProps({ playbackRow: 3 } as never);
+    await nextTick();
+
+    // Critical frame: no inline re-bake, no throw.
+    expect(() => pumpFrame()).not.toThrow();
+    const stripsBeforeDeferred = drawImagesOn(overlayCtx).length;
+    // Deferred re-bake fires on the next scheduled callback — the draw throws,
+    // is swallowed, and the row falls back to plain text.
+    expect(() => pumpFrame()).not.toThrow();
+    // Playback keeps running, every frame repaints the overlay, and no further
+    // bright strip is ever blitted.
+    for (const row of [4, 5]) {
+      await wrapper.setProps({ playbackRow: row } as never);
+      await nextTick();
+      const before = overlayCtx.calls.length;
+      expect(() => pumpFrame()).not.toThrow();
+      expect(overlayCtx.calls.length).toBeGreaterThan(before);
+    }
+    expect(drawImagesOn(overlayCtx).length).toBe(stripsBeforeDeferred);
+
+    wrapper.unmount();
   });
 });
 

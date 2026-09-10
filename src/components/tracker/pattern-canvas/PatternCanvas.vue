@@ -381,8 +381,15 @@ function invalidateBrightRowText(): void {
  * inside a playback-critical frame, and a synchronous full-pattern bright-text
  * bake there is a visible hitch on large patterns. Instead: drop the surface
  * now (so the overlay blits nothing and the row falls back to plain static
- * text — correct-ish, never wrong colours) and schedule the bake for the next
- * idle slot (rAF fallback), mirroring schedulePreRender.
+ * text — correct-ish, never wrong colours) and schedule the bake off this
+ * frame, mirroring schedulePreRender.
+ *
+ * Scheduling contract: idle-first (`requestIdleCallback`), rAF fallback. Under
+ * continuous playback the main thread may never truly idle, so the idle
+ * request carries `{ timeout: 150 }` — the re-bake runs at the next idle slot
+ * or within ~150 ms, whichever comes first, never starving indefinitely. The
+ * `run` callback swallows any throw from the bake (F4): a failed re-bake
+ * degrades to plain text, it must not escape the idle/rAF callback.
  */
 function scheduleBrightRowTextRebake(): void {
   brightRowTextValid = false;
@@ -394,14 +401,17 @@ function scheduleBrightRowTextRebake(): void {
   const w = window as unknown as IdleWindow;
   const run = () => {
     brightRowTextRebakeId = null;
+    // bakeBrightRowText is self-degrading (F4): any throw inside it — from the
+    // allocation or the draw phase — is swallowed and leaves plain text, so
+    // this callback never throws out of the idle/rAF slot.
     bakeBrightRowText();
-    // Show the freshly baked strip: the frame that invalidated painted the
-    // row plain.
+    // Show the freshly baked strip (or plain text on failure): the frame that
+    // invalidated painted the row plain.
     schedule(['overlay']);
   };
   if (typeof w.requestIdleCallback === 'function') {
     brightRowTextRebakeIsIdle = true;
-    brightRowTextRebakeId = w.requestIdleCallback(run);
+    brightRowTextRebakeId = w.requestIdleCallback(run, { timeout: 150 });
   } else {
     brightRowTextRebakeIsIdle = false;
     brightRowTextRebakeId = requestAnimationFrame(run);
@@ -605,8 +615,13 @@ function paintStatic(): boolean {
  * exactly like `paintPreRender`'s, with the element fallback and a final
  * give-up. `brightRowTextValid` is set true on the degraded path too, so a
  * refused bake is not retried every tick — an invalidation re-arms it.
+ *
+ * F4: the outer `bakeBrightRowText` wraps this whole body — allocation AND
+ * the setTransform/clearRect/drawBright* draw phase — so ANY throw degrades to
+ * plain text and never escapes into `paintOverlay`→`runFrame` (no try/catch
+ * there) or the deferred idle callback.
  */
-function bakeBrightRowText(): void {
+function bakeBrightRowTextInner(): void {
   const source = bitmap;
   if (!source) {
     brightRowTextBitmap = null;
@@ -681,6 +696,22 @@ function bakeBrightRowText(): void {
 }
 
 /**
+ * F4 wrapper: degrade the whole bright-text bake to plain text on ANY throw —
+ * a context/draw-phase failure (context stub that throws, an exhausted GPU)
+ * must not propagate out of `paintOverlay`→`runFrame` or the deferred idle
+ * callback and wedge playback. On failure: no bright bitmap, marked valid so
+ * it is not retried every tick (an invalidation re-arms it), no rethrow.
+ */
+function bakeBrightRowText(): void {
+  try {
+    bakeBrightRowTextInner();
+  } catch {
+    brightRowTextBitmap = null;
+    brightRowTextValid = true;
+  }
+}
+
+/**
  * Ensure a fresh bright-text surface is available for the overlay blit.
  * Called inside the playback overlay paint. The FIRST bake of a playback
  * session is synchronous (approved: bake-once when playback starts); an
@@ -710,7 +741,7 @@ let preRenderTarget: UpcomingPatternInfo | null = null;
 type IdleCb = (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void;
 type IdleId = number;
 interface IdleWindow {
-  requestIdleCallback?: (cb: IdleCb) => IdleId;
+  requestIdleCallback?: (cb: IdleCb, opts?: { timeout: number }) => IdleId;
   cancelIdleCallback?: (id: IdleId) => void;
 }
 
@@ -1057,7 +1088,7 @@ function runFrame(): void {
         // The adopted bitmap is a different pattern at a possibly different
         // scale; the bright playing-row text must rebake against it — but off
         // this critical swap frame (MAJOR-2). The row shows plain static text
-        // until the deferred bake lands a frame or two later.
+        // until the deferred bake lands (idle-first, ≤150 ms bound).
         scheduleBrightRowTextRebake();
         preRenderMeta = null;
         preRenderTarget = null;

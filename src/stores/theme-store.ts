@@ -880,13 +880,13 @@ export const useThemeStore = defineStore('theme', () => {
     root.style.setProperty('--tracker-effect-text', colors.effectText);
     root.style.setProperty('--tracker-default-text', colors.defaultText);
 
-    // Brightened, hue-preserving cell-text variants for the playing row
-    // (bright-row-text, MINOR-4/NOTE-5). Derived so every theme — custom ones
-    // included — gets one that belongs to the token it came from, and it
-    // degrades sensibly on a light custom theme (mixes toward black there
-    // rather than washing out toward white). The canvas renderer reads the
-    // same helper (pattern-theme.ts) so both paths land on one colour.
-    root.style.setProperty('--tracker-note-text-bright', deriveBrightText(colors.noteText));
+    // Brightened, hue-preserving effect/macro text for the playing row
+    // (bright-row-text, MINOR-4). Derived so every theme — custom ones
+    // included — gets one that belongs to the token it came from; the canvas
+    // renderer reads the same helper (pattern-theme.ts) so both paths land on
+    // one colour. Note/instrument/volume columns need no bright variant: their
+    // tokens are already near-white, so the playing row just uses
+    // `--tracker-note-text` as shipped.
     root.style.setProperty('--tracker-effect-text-bright', deriveBrightText(colors.effectText));
   }
 
