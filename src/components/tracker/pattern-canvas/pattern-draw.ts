@@ -222,6 +222,42 @@ export function drawEntryBox(
   // every one of them on every full-grid paint.
   const cells: EntryCells = entry !== undefined ? formatEntryCells(entry) : EMPTY_CELLS;
 
+  drawEntryCells(ctx, box, layout, theme, cells, interpolated);
+}
+
+/** Options for {@link drawEntryCells}, used by the bright playing-row pre-render. */
+interface EntryCellsOpts {
+  /**
+   * Force every glyph to this one colour instead of the per-column theme
+   * text tokens — the bright playing-row text variant (drawBrightRowText).
+   */
+  textColor?: string;
+  /** Skip the effect-column interpolation tint (text-only overlay pre-render). */
+  skipInterpolationTint?: boolean;
+}
+
+/**
+ * The cell content of one entry box: note / instrument / volume / effect
+ * text plus the effect-column interpolation tint, laid out inside the box's
+ * own rect. Factored out of {@link drawEntryBox} so the bright playing-row
+ * pre-render ({@link drawBrightRowText}) places the exact same glyphs, only
+ * recoloured — the bright strip must land pixel-aligned on the static text
+ * it blits over.
+ */
+function drawEntryCells(
+  ctx: CanvasRenderingContext2D,
+  box: { x: number; y: number; width: number; height: number },
+  layout: PatternLayout,
+  theme: PatternTheme,
+  cells: EntryCells,
+  interpolated: 'linear' | 'exponential' | undefined,
+  opts: EntryCellsOpts = {},
+): void {
+  const noteColor = opts.textColor ?? theme.noteText;
+  const instrumentColor = opts.textColor ?? theme.instrumentText;
+  const volumeColor = opts.textColor ?? theme.volumeText;
+  const effectColor = opts.textColor ?? theme.effectText;
+
   // Cell content box: the fr columns only span inside the entry's
   // `padding: 6px 10px` + 1px border.
   const contentX = box.x + entryHorizontalInsetPx;
@@ -232,31 +268,24 @@ export function drawEntryBox(
   const cellWidth = (column: number): number => offsetAt(column + 1) - offsetAt(column);
 
   // .note — left-aligned, 700 weight, white.
-  drawText(ctx, cells.note.display, cellLeft(0), contentY, theme.noteText, theme, true);
-  drawText(ctx, cells.instrument.display, cellLeft(1), contentY, theme.instrumentText, theme);
+  drawText(ctx, cells.note.display, cellLeft(0), contentY, noteColor, theme, true);
+  drawText(ctx, cells.instrument.display, cellLeft(1), contentY, instrumentColor, theme);
   // Volume chars share the 0.35fr column (TrackerEntry renders both spans
   // side by side; each is one character wide).
-  drawText(ctx, cells.volumeHi.display, cellLeft(2), contentY, theme.volumeText, theme);
-  drawText(ctx, cells.volumeLo.display, cellLeft(3), contentY, theme.volumeText, theme);
+  drawText(ctx, cells.volumeHi.display, cellLeft(2), contentY, volumeColor, theme);
+  drawText(ctx, cells.volumeLo.display, cellLeft(3), contentY, volumeColor, theme);
 
   // Effect cell: interpolation tint under the digits (TrackerEntry's
-  // .interpolated-linear/.interpolated-exponential backgrounds).
-  if (interpolated === 'linear') {
-    ctx.fillStyle = theme.interpolatedLinear;
-    ctx.fillRect(
-      box.x + offsetAt(4),
-      box.y,
-      cellWidth(4),
-      box.height,
-    );
-  } else if (interpolated === 'exponential') {
-    ctx.fillStyle = theme.interpolatedExponential;
-    ctx.fillRect(
-      box.x + offsetAt(4),
-      box.y,
-      cellWidth(4),
-      box.height,
-    );
+  // .interpolated-linear/.interpolated-exponential backgrounds). The bright
+  // playing-row overlay skips it — it is background, not text.
+  if (!opts.skipInterpolationTint) {
+    if (interpolated === 'linear') {
+      ctx.fillStyle = theme.interpolatedLinear;
+      ctx.fillRect(box.x + offsetAt(4), box.y, cellWidth(4), box.height);
+    } else if (interpolated === 'exponential') {
+      ctx.fillStyle = theme.interpolatedExponential;
+      ctx.fillRect(box.x + offsetAt(4), box.y, cellWidth(4), box.height);
+    }
   }
 
   // Macro nibbles: laid as even thirds of the effect column — the same
@@ -266,32 +295,94 @@ export function drawEntryBox(
   // split the highlight away from the glyph.)
   const nibbleWidth = cellWidth(4) / 3;
   for (let i = 0; i < cells.macroDigits.length; i++) {
-    drawText(
-      ctx,
-      cells.macroDigits[i]!,
-      cellLeft(4) + i * nibbleWidth,
-      contentY,
-      theme.effectText,
-      theme,
-      true,
-    );
+    drawText(ctx, cells.macroDigits[i]!, cellLeft(4) + i * nibbleWidth, contentY, effectColor, theme, true);
   }
 
   // Second effect column only exists in dual-effect mode.
   if (layout.showExtraEffectColumn) {
     const nibbleWidth2 = cellWidth(5) / 3;
     for (let i = 0; i < cells.macro2Digits.length; i++) {
-      drawText(
-        ctx,
-        cells.macro2Digits[i]!,
-        cellLeft(5) + i * nibbleWidth2,
-        contentY,
-        theme.effectText,
-        theme,
-        true,
-      );
+      drawText(ctx, cells.macro2Digits[i]!, cellLeft(5) + i * nibbleWidth2, contentY, effectColor, theme, true);
     }
   }
+}
+
+export interface DrawBrightRowTextData {
+  tracks: TrackerTrackData[];
+  /** Rows to paint; defaults to the whole pattern. */
+  startRow?: number;
+  endRow?: number;
+  /** Bright glyph colour; defaults to the theme's brightest cell-text token. */
+  color?: string;
+}
+
+/**
+ * Pre-render the bright playing-row text (task: light up the playing row's
+ * TEXT, nothing behind it). Every cell's glyphs for every track × row in
+ * range are drawn once, in a single theme-derived bright colour, onto a
+ * transparent surface — no backgrounds, no borders, no interpolation tint.
+ *
+ * The component bakes this into an offscreen bitmap the moment the static
+ * grid is (re)built (same lifecycle as the static bitmap: theme, layout,
+ * zoom, buffer rebuild) and, per playback tick, blits ONLY the playing
+ * row's strip over the indicator overlay — a single drawImage, no per-tick
+ * text re-layout, no static-grid repaint. Glyph geometry is
+ * {@link drawEntryCells}' geometry exactly, so the bright strip lands
+ * pixel-aligned over the static text beneath it.
+ */
+export function drawBrightRowText(
+  ctx: CanvasRenderingContext2D,
+  layout: PatternLayout,
+  theme: PatternTheme,
+  data: DrawBrightRowTextData,
+): void {
+  const color = data.color ?? theme.noteText;
+  const startRow = Math.max(0, data.startRow ?? 0);
+  const endRow = Math.min(layout.rowCount, data.endRow ?? layout.rowCount);
+  for (let trackIndex = 0; trackIndex < layout.trackCount; trackIndex++) {
+    const track = data.tracks[trackIndex];
+    if (!track) continue;
+    const lookup = new Map<number, TrackerEntryData>();
+    for (const entry of track.entries) lookup.set(entry.row, entry);
+    for (let row = startRow; row < endRow; row++) {
+      beginTextRun();
+      const box = entryBoxRect(trackIndex, row, layout);
+      const entry = lookup.get(row);
+      const cells: EntryCells = entry !== undefined ? formatEntryCells(entry) : EMPTY_CELLS;
+      drawEntryCells(ctx, box, layout, theme, cells, undefined, {
+        textColor: color,
+        skipInterpolationTint: true,
+      });
+    }
+  }
+}
+
+/**
+ * The bright playing-row variant of the row-number gutter: just the hex
+ * label glyphs, recoloured, with no pill fill or border. Baked and blitted
+ * on the same path as {@link drawBrightRowText}.
+ */
+export function drawBrightRowNumbers(
+  ctx: CanvasRenderingContext2D,
+  layout: PatternLayout,
+  theme: PatternTheme,
+  data: { startRow?: number; endRow?: number; color?: string } = {},
+): void {
+  const color = data.color ?? theme.noteText;
+  const startRow = Math.max(0, data.startRow ?? 0);
+  const endRow = Math.min(layout.rowCount, data.endRow ?? layout.rowCount);
+  beginTextRun();
+  ctx.font = cellFont(theme);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color;
+  for (let row = startRow; row < endRow; row++) {
+    const y = rowY(row);
+    const label = row.toString(16).toUpperCase().padStart(2, '0');
+    ctx.fillText(label, GUTTER_WIDTH_PX / 2, y + rowHeightPx / 2);
+  }
+  ctx.textAlign = 'left';
+  beginTextRun();
 }
 
 export interface DrawStaticGridData {

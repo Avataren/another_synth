@@ -95,6 +95,8 @@ import {
   drawActiveRowBar,
   buildInterpolatedRows,
   cursorCellRect,
+  drawBrightRowNumbers,
+  drawBrightRowText,
   drawCursorCell,
   drawEntryBox,
   drawRowNumbers,
@@ -335,6 +337,25 @@ let paintedState: PaintState | null = null;
 let bitmapDpr = 1;
 
 /**
+ * Bright playing-row TEXT pre-render (task: light up the playing row's text,
+ * nothing behind it). A second offscreen surface, the exact size and scale
+ * of the static bitmap, holding every cell's glyphs once in a theme-derived
+ * bright colour on a transparent background — no fills, no borders, no bar.
+ * Baked lazily the first time a playback frame needs it and reused until the
+ * static bitmap's own lifecycle invalidates it (theme / layout / zoom /
+ * buffer rebuild / cell edit). Per playback tick the overlay blits ONLY the
+ * playing row's strip from it — one drawImage, no text re-layout, no
+ * static-grid repaint (§3.3 layering: this is overlay-side work).
+ */
+let brightRowTextBitmap: BitmapSurface | null = null;
+let brightRowTextValid = false;
+
+/** Drop the bright playing-row text pre-render; the next frame rebakes it. */
+function invalidateBrightRowText(): void {
+  brightRowTextValid = false;
+}
+
+/**
  * Build (or reuse) the full-pattern bitmap, at the best scale it fits at.
  *
  * `scale` is what the screen would like -- its device pixel ratio. A
@@ -449,6 +470,8 @@ function repaintCells(diffs: CellDiff[]): boolean {
     props.showExtraEffectColumn,
     props.selectionRect,
   );
+  // A repaired cell may have changed its glyphs; rebake the bright variant.
+  invalidateBrightRowText();
   return true;
 }
 
@@ -494,7 +517,55 @@ function paintStatic(): boolean {
     props.showExtraEffectColumn,
     props.selectionRect,
   );
+  // The bright playing-row text is baked from this same content/theme, so a
+  // full static repaint invalidates it.
+  invalidateBrightRowText();
   return true;
+}
+
+/**
+ * Bake the bright playing-row text pre-render into an offscreen surface the
+ * size and scale of the current static bitmap. Runs at most once per static
+ * invalidation (never per playback tick). No-op without a static bitmap.
+ */
+function ensureBrightRowText(): void {
+  if (brightRowTextValid) return;
+  const source = bitmap;
+  if (!source) {
+    brightRowTextBitmap = null;
+    return;
+  }
+  const w = source.width;
+  const h = source.height;
+  if (!brightRowTextBitmap || brightRowTextBitmap.width !== w || brightRowTextBitmap.height !== h) {
+    if (typeof OffscreenCanvas !== 'undefined') {
+      brightRowTextBitmap = new OffscreenCanvas(w, h);
+    } else {
+      const el = document.createElement('canvas');
+      el.width = w;
+      el.height = h;
+      brightRowTextBitmap = el;
+    }
+  }
+  const rawCtx = brightRowTextBitmap.getContext('2d');
+  if (!rawCtx) {
+    brightRowTextBitmap = null;
+    return;
+  }
+  const ctx = rawCtx as unknown as CanvasRenderingContext2D;
+  const theme = getTheme();
+  const l = layout.value;
+  ctx.setTransform(bitmapDpr, 0, 0, bitmapDpr, 0, 0);
+  ctx.clearRect(0, 0, bitmapCssWidth, bitmapCssHeight);
+  // Brighten toward the theme's brightest cell-text token (the note colour);
+  // readable and crisp on every theme, no hard-coded literal.
+  const color = theme.noteText;
+  drawBrightRowNumbers(ctx, l, theme, { color });
+  ctx.save();
+  ctx.translate(GUTTER_WIDTH_PX, 0);
+  drawBrightRowText(ctx, l, theme, { tracks: props.tracks, color });
+  ctx.restore();
+  brightRowTextValid = true;
 }
 
 // ---------------------------------------------------------------------
@@ -730,6 +801,30 @@ function paintOverlay(vt: number, vl: number): boolean {
       // clung over scrolled-away content.
     });
   }
+  // Bright playing-row TEXT: only on the playing row, only during playback.
+  // One drawImage of the pre-baked bright strip over the row the bar sits on
+  // — the pill fill/border stay exactly as drawActiveRowBar left them, only
+  // the glyphs on top brighten. The bar's clear band (pattern-bands) already
+  // spans this whole row, so a moving playhead leaves no stale bright text.
+  if (props.isPlaying && barRow >= 0 && bitmap) {
+    ensureBrightRowText();
+    const strip = brightRowTextBitmap;
+    if (strip) {
+      const sy = rowY(barRow) * bitmapDpr;
+      const sh = rowHeightPx * bitmapDpr;
+      ctx.drawImage(
+        strip as CanvasImageSource,
+        0,
+        sy,
+        strip.width,
+        sh,
+        -GUTTER_WIDTH_PX,
+        rowY(barRow),
+        contentWidth.value,
+        rowHeightPx,
+      );
+    }
+  }
   if (cursorRect) {
     drawCursorCell(ctx, l, props.tracks, theme, {
       trackIndex: props.activeTrack,
@@ -833,6 +928,9 @@ function runFrame(): void {
           props.showExtraEffectColumn,
           props.selectionRect,
         );
+        // The adopted bitmap is a different pattern at a possibly different
+        // scale; the bright playing-row text must rebake against it.
+        invalidateBrightRowText();
         preRenderMeta = null;
         preRenderTarget = null;
         schedulePreRender(props.upcomingPattern);
@@ -924,6 +1022,7 @@ function applySize(): void {
   // or the DPR changed (otherwise the blit reuses it as-is). The ping-pong
   // surface follows the same extent/DPR inputs, so a pending pre-render is
   // queued again and rebuilt at the new scale.
+  if (bitmapInputsChanged) invalidateBrightRowText();
   schedule(bitmapInputsChanged ? ['static', 'overlay', 'blit'] : ['overlay', 'blit']);
   if (bitmapInputsChanged) schedulePreRender(props.upcomingPattern);
 }
@@ -1530,6 +1629,8 @@ onMounted(() => {
     preRenderMeta = null;
     preRenderTarget = null;
     overlayFullPaint = true;
+    // The bright playing-row text bakes the theme's colour in too.
+    invalidateBrightRowText();
     schedulePreRender(props.upcomingPattern);
     schedule(['static', 'overlay']);
   });
@@ -1557,6 +1658,8 @@ onBeforeUnmount(() => {
   preRenderBitmap = null;
   preRenderMeta = null;
   preRenderTarget = null;
+  brightRowTextBitmap = null;
+  brightRowTextValid = false;
   paintedState = null;
   overlayPainted = null;
   overlayFullPaint = true;

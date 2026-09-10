@@ -28,7 +28,8 @@
                 tabindex="-1"
                 :class="{
                   selected: effectiveSelectedRow === row,
-                  'in-selection': isRowInSelection(row)
+                  'in-selection': isRowInSelection(row),
+                  'row-playing': isPlaying && row === playbackRow
                 }"
                 @click="selectRow(row)"
               >
@@ -89,6 +90,7 @@
                   type="button"
                   class="row-number"
                   tabindex="-1"
+                  :class="{ 'row-playing': isSlotVisible(slotKey) && isPlaying && row === playbackRow }"
                   @click="onBufferRowClick(slotKey, row)"
                 >
                   {{ formatRow(row) }}
@@ -127,11 +129,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, provide, ref, watch } from 'vue';
 import TrackerTrack from './TrackerTrack.vue';
 import type { TrackerSelectionRect, TrackerTrackData } from './tracker-types';
 import { trackGapPx, trackWidthPx } from './track-metrics';
 import { activeRowBarWidthPx } from './pattern-buffering';
+import { TRACKER_PLAYBACK_ROW } from './use-tracker-playback-row';
 
 /** One ping-pong buffer slot: the rendered grid for one pattern. */
 interface PatternBuffer {
@@ -292,6 +295,12 @@ function bufferRowsOffsetStyle(slot: BufferSlot) {
 // During playback, don't propagate selectedRow changes to TrackerTrack/TrackerEntry
 // The active-row-bar provides visual feedback instead, avoiding component re-renders
 const effectiveSelectedRow = computed(() => props.isPlaying ? -1 : props.selectedRow);
+
+// The playing row (or -1 when stopped), for the cell-text brightening in
+// TrackerEntry. Provided rather than threaded as a prop so the per-tick
+// churn is two entry re-renders, not a full TrackerTrack pass.
+const playbackRowForText = computed(() => (props.isPlaying ? props.playbackRow : -1));
+provide(TRACKER_PLAYBACK_ROW, playbackRowForText);
 
 // Hidden buffers get inert placeholders for the editing-highlight props so a
 // pattern swap cannot flash selection state inside the still-hidden grid.
@@ -634,6 +643,15 @@ defineExpose({
 
 .row-number.selected {
   border-color: var(--panel-border, rgba(255, 255, 255, 0.25));
+}
+
+/*
+ * Playing-row gutter digits: brightened toward the theme's brightest text
+ * token during playback, matching TrackerEntry's playing-row cell text.
+ * Colour only — the .row-playback-bar pill is untouched.
+ */
+.row-number.row-playing {
+  color: var(--tracker-note-text, #ffffff);
 }
 
 .row-playback-bar {

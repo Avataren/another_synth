@@ -80,9 +80,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, inject, ref } from 'vue';
 import type { TrackerEntryData } from './tracker-types';
 import { formatEntryCells } from './pattern-canvas/format-entry-cells';
+import { TRACKER_PLAYBACK_ROW } from './use-tracker-playback-row';
 
 interface Props {
   entry?: TrackerEntryData | undefined;
@@ -108,6 +109,12 @@ const emit = defineEmits<{
 // Cache isActiveTrack check - only recompute when trackIndex or activeTrack changes
 const isActiveTrack = computed(() => props.trackIndex === props.activeTrack);
 
+// The playing row's TEXT brightens during playback (a class toggle only —
+// the active-row bar still owns fill/border). Injected as a ref so only the
+// two entries whose answer flips per tick re-render; TrackerTrack never does.
+const playbackRow = inject(TRACKER_PLAYBACK_ROW, ref(-1));
+const isPlayingRow = computed(() => playbackRow.value === props.rowIndex);
+
 // Pre-compute row type based on index - this is stable and doesn't change
 const rowType = computed(() => {
   const idx = props.rowIndex;
@@ -123,6 +130,7 @@ const entryClasses = computed(() => ({
   filled: !!props.entry,
   focused: isActiveTrack.value && props.active,
   selected: props.selected,
+  'row-playing': isPlayingRow.value,
   'row-bar': !props.active && !props.selected && rowType.value === 'bar',
   'row-beat': !props.active && !props.selected && rowType.value === 'beat',
   'row-sub': !props.active && !props.selected && rowType.value === 'sub',
@@ -277,6 +285,18 @@ function onMouseEnterRow() {
   /* Keep selection visible but let the text stay legible */
   background: rgba(77, 242, 197, 0.12);
   color: var(--tracker-effect-text, #8ef5c5);
+}
+
+/*
+ * Playing-row text: during playback the actively playing row lifts every
+ * cell toward the theme's brightest text token so it reads clearly against
+ * the pill. Colour only — the .active-row-bar fill/border is untouched, and
+ * nothing behind the glyphs changes. Derived from a --tracker-* token so it
+ * stays legible on every theme.
+ */
+.tracker-entry.row-playing .cell,
+.tracker-entry.row-playing .macro-digit {
+  color: var(--tracker-note-text, #ffffff);
 }
 
 .note {
