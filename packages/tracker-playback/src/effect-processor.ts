@@ -855,11 +855,21 @@ function primeVolumeSlide(
  * `volumeSlide.firstTick`, which is S3M's fast-volume-slide files and its
  * `D0F`/`DF0` parameters -- the step happens here and the stated level is the
  * one it lands on.
+ *
+ * `volumeStatedThisRow` is set when the row also (re)stated the channel volume
+ * outright -- a sample number reloading its default, a Cxx, an XM volume-column
+ * set-volume. ProTracker writes that value straight to Paula's volume register
+ * on tick 0, so it is a *step*, not something to glide into: without the flag
+ * an unqualified command ramps linearly from the previous automation event,
+ * turning a bare "sample number + Axy" pump (reload to full, then slide down)
+ * into a slow swell up from wherever the last slide left the channel. See
+ * butterfly_syndrome.mod order 9 channel 4 rows 54-57 (D127).
  */
 function emitTick0VolumeSlide(
   state: TrackEffectState,
   commands: ProcessorCommand[],
   voiceIndex: number | undefined,
+  volumeStatedThisRow: boolean,
 ): void {
   if (state.volumeSlide.mode !== 'normal' || state.volumeSlide.delta === 0) {
     return;
@@ -869,7 +879,12 @@ function emitTick0VolumeSlide(
       state.currentVolume + state.volumeSlide.delta,
     );
   }
-  pushVolume(commands, voiceIndex, state.currentVolume);
+  pushVolume(
+    commands,
+    voiceIndex,
+    state.currentVolume,
+    volumeStatedThisRow ? 'step' : undefined,
+  );
 }
 
 function applyVolumeSlideIfNeeded(state: TrackEffectState): number | undefined {
@@ -1345,14 +1360,24 @@ export function processEffectTick0(
       }
       state.tonePortaActive = state.tonePortaSpeed > 0;
       primeVolumeSlide(state, effect);
-      emitTick0VolumeSlide(state, commands, voiceIndex);
+      emitTick0VolumeSlide(
+        state,
+        commands,
+        voiceIndex,
+        newVelocity !== undefined,
+      );
       // No slide on tick 0 -- see the 'tonePorta' case above for why.
       break;
 
     case 'vibratoVol':
       // Vibrato continues, volume slide applies
       primeVolumeSlide(state, effect);
-      emitTick0VolumeSlide(state, commands, voiceIndex);
+      emitTick0VolumeSlide(
+        state,
+        commands,
+        voiceIndex,
+        newVelocity !== undefined,
+      );
       break;
 
     case 'tremolo':
@@ -1374,7 +1399,12 @@ export function processEffectTick0(
       primeVolumeSlide(state, effect);
       // States the level per-tick slides ramp from -- and takes the step
       // itself where the format slides on tick 0 as well.
-      emitTick0VolumeSlide(state, commands, voiceIndex);
+      emitTick0VolumeSlide(
+        state,
+        commands,
+        voiceIndex,
+        newVelocity !== undefined,
+      );
       if (state.volumeSlide.mode === 'fine' && state.volumeSlide.delta !== 0) {
         state.currentVolume = clampVolume(
           state.currentVolume + state.volumeSlide.delta,
