@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   overlayClearBands,
   BAND_PAD_PX,
+  BAR_BAND_PAD_PX,
   type OverlayFootprint,
 } from 'src/components/tracker/pattern-canvas/pattern-bands';
 import { GUTTER_WIDTH_PX, rowHeightPx, rowPitchPx } from 'src/components/tracker/pattern-canvas/pattern-layout';
@@ -52,12 +53,15 @@ describe('overlayClearBands', () => {
     expect(covering(bands, 6 * rowPitchPx - 90)).toBe(true);
   });
 
-  it('bands are padded around the row height by BAND_PAD_PX', () => {
+  it('the bar band is padded around the row height by BAR_BAND_PAD_PX (glow halo)', () => {
     const bands = overlayClearBands(null, footprint(), VIEW_W, VIEW_H);
     expect(bands).toHaveLength(1);
     const [band] = bands;
-    expect(band!.y).toBe(2 * rowPitchPx - BAND_PAD_PX);
-    expect(band!.height).toBe(rowHeightPx + 2 * BAND_PAD_PX);
+    // Wider than the plain BAND_PAD_PX: the active-row glow reaches past the
+    // pill, so the clear band has to wipe the halo too when the bar moves.
+    expect(BAR_BAND_PAD_PX).toBeGreaterThan(BAND_PAD_PX);
+    expect(band!.y).toBe(2 * rowPitchPx - BAR_BAND_PAD_PX);
+    expect(band!.height).toBe(rowHeightPx + 2 * BAR_BAND_PAD_PX);
   });
 
   it('a band fully above the viewport (bar scrolled past) is dropped', () => {
@@ -74,7 +78,7 @@ describe('overlayClearBands', () => {
   });
 
   it('a band fully outside the viewport is dropped', () => {
-    const bands = overlayClearBands(null, footprint({ barRow: 2, viewTop: 3 * rowPitchPx }), VIEW_W, VIEW_H);
+    const bands = overlayClearBands(null, footprint({ barRow: 2, viewTop: 5 * rowPitchPx }), VIEW_W, VIEW_H);
     expect(bands).toHaveLength(0);
   });
 

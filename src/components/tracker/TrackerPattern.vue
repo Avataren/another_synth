@@ -651,12 +651,20 @@ defineExpose({
 
 .playback-pattern .row-playback-bar {
   border-color: var(--tracker-accent-primary, rgb(77, 242, 197));
-  background: var(--tracker-selected-bg, rgba(77, 242, 197, 0.14));
+  /* Lit playing row: brighter fill than the idle selection bar + a soft
+     accent glow. box-shadow paints once (the bar only ever transforms). */
+  background: rgba(77, 242, 197, 0.22);
+  box-shadow:
+    0 0 6px 1px rgba(77, 242, 197, 0.5),
+    0 0 16px 4px rgba(77, 242, 197, 0.28);
 }
 
 .playback-song .row-playback-bar {
   border-color: var(--tracker-accent-secondary, rgb(88, 176, 255));
-  background: rgba(88, 176, 255, 0.14);
+  background: rgba(88, 176, 255, 0.24);
+  box-shadow:
+    0 0 6px 1px rgba(88, 176, 255, 0.5),
+    0 0 16px 4px rgba(88, 176, 255, 0.28);
 }
 
 .tracks-wrapper {
@@ -684,13 +692,21 @@ defineExpose({
 }
 
 .playback-pattern .active-row-bar {
-  background: var(--tracker-selected-bg, rgba(77, 242, 197, 0.14));
+  /* Lit playing row: brighter fill than the idle selection bar + a soft
+     accent glow. box-shadow paints once (the bar only ever transforms). */
+  background: rgba(77, 242, 197, 0.22);
   border: 2px solid var(--tracker-accent-primary, rgb(77, 242, 197));
+  box-shadow:
+    0 0 6px 1px rgba(77, 242, 197, 0.5),
+    0 0 16px 4px rgba(77, 242, 197, 0.28);
 }
 
 .playback-song .active-row-bar {
-  background: rgba(88, 176, 255, 0.14);
+  background: rgba(88, 176, 255, 0.24);
   border: 2px solid var(--tracker-accent-secondary, rgb(88, 176, 255));
+  box-shadow:
+    0 0 6px 1px rgba(88, 176, 255, 0.5),
+    0 0 16px 4px rgba(88, 176, 255, 0.28);
 }
 
 /*
