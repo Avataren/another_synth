@@ -466,83 +466,14 @@ function roundRectPath(
 }
 
 /**
- * Outermost reach of the active-row glow, in px past the pill edge on every
- * side. The overlay band math (pattern-bands) pads the playback-bar clear
- * band by this so a moving bar never leaves a stale halo behind.
- */
-export const PLAYBACK_GLOW_SPREAD_PX = 16;
-
-/**
- * Brighter-than-selection pill fills, per playback mode. The idle selection
- * bar keeps `theme.selectedBg`; the *playing* row is a clear step brighter
- * so it reads as lit, matching `.playback-pattern/.playback-song
- * .active-row-bar` in TrackerPattern.vue.
- */
-const PLAYBACK_BAR_FILL: Record<PlaybackBarMode, string> = {
-  pattern: 'rgba(77, 242, 197, 0.22)',
-  song: 'rgba(88, 176, 255, 0.24)',
-};
-
-/** Solid mode accent the glow rings tint (alpha applied per ring). */
-const PLAYBACK_GLOW_RGB: Record<PlaybackBarMode, string> = {
-  pattern: 'rgb(77, 242, 197)',
-  song: 'rgb(88, 176, 255)',
-};
-
-/**
- * Soft outer glow faked with a few widening translucent rounded-rect fills
- * instead of `ctx.shadowBlur`: the bar repaints on every playback-row tick
- * (~50Hz worst case) and a per-tick blurred shadow is far too costly, while
- * three plain fills are trivial. Each ring is the pill rect grown by
- * `spread` on every side with a matching corner radius, so the halo keeps
- * the pill's rounded shape. Ordered outermost-first; all are drawn before
- * the pill so its crisp 2px border and bright fill land on top.
- */
-const PLAYBACK_GLOW_RINGS: ReadonlyArray<{ spread: number; alpha: number }> = [
-  { spread: PLAYBACK_GLOW_SPREAD_PX, alpha: 0.08 },
-  { spread: 9, alpha: 0.16 },
-  { spread: 3, alpha: 0.3 },
-];
-
-/** `'rgb(r, g, b)'` + alpha → `'rgba(r, g, b, a)'`. */
-function rgbaFrom(rgb: string, alpha: number): string {
-  const inner = rgb.slice(rgb.indexOf('(') + 1, rgb.lastIndexOf(')')).trim();
-  return `rgba(${inner}, ${alpha})`;
-}
-
-/** Paint the layered glow rings behind one pill rect. */
-function drawPillGlow(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  rgb: string,
-): void {
-  for (const ring of PLAYBACK_GLOW_RINGS) {
-    ctx.fillStyle = rgbaFrom(rgb, ring.alpha);
-    roundRectPath(
-      ctx,
-      x - ring.spread,
-      y - ring.spread,
-      width + 2 * ring.spread,
-      height + 2 * ring.spread,
-      PLAYBACK_BAR_RADIUS_PX + ring.spread,
-    );
-    ctx.fill();
-  }
-}
-
-/**
  * The active-row (playback) indicator, matching the DOM grid's two pills:
  * one across the tracks (`.active-row-bar`, activeRowBarWidthPx wide) and
  * one over the 78px row-number gutter (`.row-playback-bar`), both 10px
  * rounded, rowHeightPx tall, with a 2px mode-colored border over a
- * translucent fill — pattern mode `--tracker-accent-primary` (#4df2c5),
- * song mode `--tracker-accent-secondary` (rgb(88, 176, 255)). During
- * playback the row lights up: a brighter fill (`PLAYBACK_BAR_FILL`) plus a
- * soft outer glow in the mode accent (`drawPillGlow` — layered fills, not
- * `shadowBlur`), mirroring the `box-shadow` on the DOM pills.
+ * translucent fill — pattern mode `--tracker-accent-primary` (#4df2c5) on
+ * `--tracker-selected-bg`, song mode `--tracker-accent-secondary`
+ * (rgb(88, 176, 255)) on rgba(88, 176, 255, 0.14). No gradient or shadow in
+ * the DOM styling, so none here either.
  */
 export function drawActiveRowBar(
   ctx: CanvasRenderingContext2D,
@@ -552,19 +483,13 @@ export function drawActiveRowBar(
 ): void {
   const borderColor =
     data.mode === 'pattern' ? theme.accentPrimary : theme.accentSecondary;
-  const bgColor = PLAYBACK_BAR_FILL[data.mode];
-  const glowRgb = PLAYBACK_GLOW_RGB[data.mode];
+  const bgColor =
+    data.mode === 'pattern' ? theme.selectedBg : 'rgba(88, 176, 255, 0.14)';
 
   const trackCount = data.trackCount ?? layout.trackCount;
   const barWidth = activeRowBarWidthPx(trackCount, layout.showExtraEffectColumn);
   const width = barWidth ?? totalPatternWidth(layout);
   const y = rowY(data.playbackRow);
-
-  // Glow first, behind both pills: cheap layered fills (PLAYBACK_GLOW_RINGS),
-  // no per-tick shadowBlur. Same color for both, so the shared seam at
-  // pattern x 0 reads as one continuous halo.
-  drawPillGlow(ctx, 0, y, width, rowHeightPx, glowRgb);
-  drawPillGlow(ctx, -GUTTER_WIDTH_PX, y, GUTTER_WIDTH_PX, rowHeightPx, glowRgb);
 
   ctx.fillStyle = bgColor;
   ctx.strokeStyle = borderColor;

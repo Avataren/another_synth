@@ -440,24 +440,18 @@ describe('drawSelectionBar', () => {
 describe('drawActiveRowBar', () => {
   const layout4 = layout(4, false, 32);
 
-  // The two crisp pills carry a 2px border; the glow rings behind them are
-  // plain fills traced at the default lineWidth (1).
-  const pillsOf = (ctx: MockCtx) => paths(ctx).filter((c) => c.lineWidth === 2);
-  const glowOf = (ctx: MockCtx) => paths(ctx).filter((c) => c.lineWidth !== 2);
-
-  it('paints the tracks pill with a brighter-than-selection fill and 2px border', () => {
+  it('paints the tracks pill with the DOM fill/stroke values and 2px border', () => {
     const ctx = makeMockCtx();
     drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7, mode: 'pattern' });
-    // Two rounded pills (tracks + row-number gutter). The playing row is lit:
-    // a brighter fill than the idle selection bar's --tracker-selected-bg,
-    // stroke --tracker-accent-primary at 2px — .playback-pattern's styles.
-    const pills = pillsOf(ctx);
+    // Two rounded pills (tracks + row-number gutter), both carrying the
+    // DOM's exact values: fill var(--tracker-selected-bg), stroke
+    // var(--tracker-accent-primary) at 2px — .playback-pattern's styles.
+    const pills = paths(ctx);
     expect(pills).toHaveLength(2);
     for (const pill of pills) {
       expect(pill.y).toBe(7 * 36);
       expect(pill.height).toBe(30);
-      expect(pill.fillStyle).toBe('rgba(77, 242, 197, 0.22)');
-      expect(pill.fillStyle).not.toBe(theme.selectedBg); // brighter than idle
+      expect(pill.fillStyle).toBe(theme.selectedBg);
       expect(pill.strokeStyle).toBe(theme.accentPrimary);
       expect(pill.radius).toBe(10); // the DOM's border-radius
     }
@@ -467,38 +461,14 @@ describe('drawActiveRowBar', () => {
     expect(pills.every((p) => p.lineWidth === 2)).toBe(true);
   });
 
-  it('paints a soft accent glow behind both pills (layered fills, no shadowBlur)', () => {
-    const ctx = makeMockCtx();
-    drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7, mode: 'pattern' });
-    // Three widening rings per pill, all in the mode accent at descending
-    // alpha, each grown by its spread on every side with a matching radius.
-    const glow = glowOf(ctx);
-    expect(glow).toHaveLength(6);
-    expect(glow.every((g) => /^rgba\(77, 242, 197, 0?\.\d+\)$/.test(g.fillStyle))).toBe(true);
-    // Every ring sits strictly outside the 10px pill radius and its own
-    // spread widens the rect symmetrically (radius === 10 + spread).
-    for (const ring of glow) {
-      const spread = ring.radius - 10;
-      expect(spread).toBeGreaterThan(0);
-      expect(ring.height).toBe(30 + 2 * spread);
-      expect(ring.y).toBe(7 * 36 - spread);
-    }
-    // The outermost ring reaches 16px past the pill; no ctx.shadowBlur used.
-    expect(Math.max(...glow.map((g) => g.radius - 10))).toBe(16);
-    expect(ctx.props.shadowBlur ?? 0).toBe(0);
-  });
-
-  it('uses the song-mode accent for both the fill and the glow', () => {
+  it('uses the song-mode colors the DOM hard-codes for .playback-song', () => {
     const ctx = makeMockCtx();
     drawActiveRowBar(ctx, layout4, theme, { playbackRow: 0, mode: 'song' });
     expect(theme.accentSecondary).toBe('rgb(88, 176, 255)');
-    for (const pill of pillsOf(ctx)) {
+    for (const pill of paths(ctx)) {
       expect(pill.strokeStyle).toBe(theme.accentSecondary);
-      expect(pill.fillStyle).toBe('rgba(88, 176, 255, 0.24)'); // brighter than the old 0.14
+      expect(pill.fillStyle).toBe('rgba(88, 176, 255, 0.14)');
     }
-    const glow = glowOf(ctx);
-    expect(glow).toHaveLength(6);
-    expect(glow.every((g) => /^rgba\(88, 176, 255, 0?\.\d+\)$/.test(g.fillStyle))).toBe(true);
   });
 
   it('draws the gutter pill on the row-number column, scrolling with the pattern', () => {
@@ -512,7 +482,7 @@ describe('drawActiveRowBar', () => {
     // media query), so the pill must pan away with them — a viewport-edge
     // pin parked it over track content the gutter had scrolled past
     // (Morten, 2026-09-04).
-    const gutter = pillsOf(ctx).find((c) => c.width === 78);
+    const gutter = paths(ctx).find((c) => c.width === 78);
     expect(gutter).toBeDefined();
     expect(gutter!.x).toBe(-78);
     expect(gutter!.y).toBe(3 * 36);
@@ -532,7 +502,7 @@ describe('drawActiveRowBar', () => {
         mode: 'pattern',
       });
       const translateX = GUTTER_WIDTH_PX - viewLeft; // paintOverlay's shift
-      const pills = pillsOf(ctx).filter((c) => c.y === 3 * 36);
+      const pills = paths(ctx).filter((c) => c.y === 3 * 36);
       const gutter = pills.find((c) => c.width === GUTTER_WIDTH_PX);
       const tracks = pills.find((c) => c.width === activeRowBarWidthPx(16, false));
       expect(gutter).toBeDefined();
@@ -554,7 +524,7 @@ describe('drawActiveRowBar', () => {
       trackCount: 0,
     });
     // totalPatternWidth(4 tracks) = 3 pitches + one width, no trailing gap.
-    const tracksPill = pillsOf(ctx).find((c) => c.width === 3 * (180 + 10) + 180);
+    const tracksPill = paths(ctx).find((c) => c.width === 3 * (180 + 10) + 180);
     expect(tracksPill).toBeDefined();
   });
 });

@@ -11,7 +11,7 @@ import {
 import { activeRowBarWidthPx } from 'src/components/tracker/pattern-buffering';
 import { hitTest } from 'src/components/tracker/pattern-canvas/pattern-hit-test';
 import { blitWindow } from 'src/components/tracker/pattern-canvas/pattern-window';
-import { BAND_PAD_PX, BAR_BAND_PAD_PX } from 'src/components/tracker/pattern-canvas/pattern-bands';
+import { BAND_PAD_PX } from 'src/components/tracker/pattern-canvas/pattern-bands';
 import { setCache } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import { buildTrackAccents } from 'src/components/tracker/pattern-canvas/track-accents';
@@ -1093,7 +1093,7 @@ describe('playback follow: one coalesced frame per row advance', () => {
         .filter((call): call is RectCall => call.op === 'clearRect');
       expect(clears.length).toBeGreaterThan(0);
       for (const clear of clears) {
-        expect(clear.height).toBeLessThanOrEqual(rowHeightPx + 2 * BAR_BAND_PAD_PX + 0.5);
+        expect(clear.height).toBeLessThanOrEqual(rowHeightPx + 2 * BAND_PAD_PX + 0.5);
       }
       // And the pills were repainted on the new row, once.
       expect(newestPills(overlayCtx, overlayFrameStart)).toHaveLength(2);
@@ -1639,15 +1639,7 @@ describe('playback bar accents', () => {
     expect(pills).toHaveLength(2);
     expect(pills.every((p) => p.radius === 10)).toBe(true);
     expect(overlayCtx.props.get('strokeStyle')).toBe('#4df2c5');
-    // Lit playing row: fill is a step brighter than the idle selection bar's
-    // rgba(77, 242, 197, 0.12), plus glow rings behind the pills — wider
-    // rounded rects (radius 10 + spread) at the same row.
-    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(77, 242, 197, 0.22)');
-    const glow = overlayCtx.calls.filter(
-      (call): call is PathCall =>
-        call.op === 'path' && call.radius > 10 && call.height > rowHeightPx,
-    );
-    expect(glow.length).toBeGreaterThanOrEqual(3);
+    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(77, 242, 197, 0.12)');
     wrapper.unmount();
   });
 
@@ -1664,7 +1656,7 @@ describe('playback bar accents', () => {
     );
     expect(pills).toHaveLength(2);
     expect(overlayCtx.props.get('strokeStyle')).toBe('rgb(88, 176, 255)');
-    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(88, 176, 255, 0.24)');
+    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(88, 176, 255, 0.14)');
     wrapper.unmount();
   });
 
@@ -2203,7 +2195,7 @@ describe('touch-pan band repaint (pan-jitter)', () => {
       // Band repaint: no full-layer clear after the mount frame.
       expect(clears.length).toBeGreaterThan(0);
       for (const clear of clears) {
-        expect(clear.height).toBeLessThanOrEqual(rowHeightPx + 2 * BAR_BAND_PAD_PX + 0.5);
+        expect(clear.height).toBeLessThanOrEqual(rowHeightPx + 2 * BAND_PAD_PX + 0.5);
       }
       // No trail: when the bar was on screen last frame, some cleared
       // band overlaps where it WAS. (A bar band entirely off-viewport

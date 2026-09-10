@@ -20,7 +20,6 @@
  */
 
 import { GUTTER_WIDTH_PX, rowHeightPx, rowY } from './pattern-layout';
-import { PLAYBACK_GLOW_SPREAD_PX } from './pattern-draw';
 
 /**
  * What the overlay currently shows, in the coordinates it was painted at.
@@ -53,14 +52,6 @@ export interface BandRect {
  */
 export const BAND_PAD_PX = 2;
 
-/**
- * The playback-bar band also has to wipe the active-row glow halo
- * (drawActiveRowBar's layered fills), which reaches `PLAYBACK_GLOW_SPREAD_PX`
- * past the pill on every side. The editing cursor has no glow, so it keeps
- * the plain `BAND_PAD_PX`.
- */
-export const BAR_BAND_PAD_PX = BAND_PAD_PX + PLAYBACK_GLOW_SPREAD_PX;
-
 /** Intersect a viewport-space rect with the viewport; null when empty. */
 function clampBand(
   band: BandRect,
@@ -91,9 +82,9 @@ function footprintBands(
     const band = clampBand(
       {
         x: 0,
-        y: rowY(f.barRow) - f.viewTop - BAR_BAND_PAD_PX,
+        y: rowY(f.barRow) - f.viewTop - BAND_PAD_PX,
         width: viewportW,
-        height: rowHeightPx + 2 * BAR_BAND_PAD_PX,
+        height: rowHeightPx + 2 * BAND_PAD_PX,
       },
       viewportW,
       viewportH,
