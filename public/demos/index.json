@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-10T11:03:33.519Z",
+  "generated": "2026-09-10T14:21:06.952Z",
   "collections": [
     {
       "id": "amiga",
@@ -170,7 +170,7 @@
           "channels": 4,
           "signature": "M.K.",
           "file": "amiga/blue_stars.mod",
-          "bytes": 164546
+          "bytes": 178230
         },
         {
           "title": "blueberry",
