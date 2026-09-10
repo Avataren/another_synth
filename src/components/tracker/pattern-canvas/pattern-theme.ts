@@ -19,6 +19,7 @@
  */
 
 import { buildTrackAccents } from './track-accents';
+import { deriveBrightText } from 'src/utils/color';
 
 export interface PatternTheme {
   /** Empty entry background (`--tracker-entry-base`). */
@@ -57,6 +58,14 @@ export interface PatternTheme {
   volumeText: string;
   /** Effect/macro text (`--tracker-effect-text`). */
   effectText: string;
+  /**
+   * Brightened, hue-preserving effect/macro text for the playing row
+   * (`--tracker-effect-text-bright`; falls back to a luminance-aware derive
+   * from `effectText` when the stylesheet has not set it, e.g. in tests).
+   * MINOR-4: the playing row's effect glyphs brighten toward their OWN hue,
+   * not toward note-text.
+   */
+  effectTextBright: string;
   /** Default text (`--tracker-default-text`). */
   defaultText: string;
   /** Row-number text (`--text-muted`). */
@@ -76,8 +85,12 @@ export interface PatternTheme {
   trackAccents: string[];
 }
 
-/** The palette keys read straight off a CSS custom property. */
-type PatternThemeVarKey = Exclude<keyof PatternTheme, 'trackAccents'>;
+/**
+ * The palette keys read straight off a CSS custom property. `trackAccents` is
+ * ramped, and `effectTextBright` has a computed fallback, so both are filled
+ * in after the plain read loop.
+ */
+type PatternThemeVarKey = Exclude<keyof PatternTheme, 'trackAccents' | 'effectTextBright'>;
 
 /**
  * Every CSS custom property the theme reads, with the fallback the DOM
@@ -142,8 +155,14 @@ export function resolveVars(
   for (const { key, varName, fallback } of VARS) {
     result[key] = readVar(style, varName, fallback);
   }
+  // theme-store sets --tracker-effect-text-bright; when it is absent (a canvas
+  // drawn before any stylesheet, or a test stub) derive it from effect-text
+  // with the same helper the store uses, so DOM and canvas never disagree.
+  const effectTextBright =
+    readVar(style, '--tracker-effect-text-bright', '') || deriveBrightText(result.effectText);
   return {
     ...result,
+    effectTextBright,
     trackAccents: buildTrackAccents(result.accentPrimary, result.accentSecondary),
   };
 }

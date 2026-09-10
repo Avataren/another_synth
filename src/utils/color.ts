@@ -102,6 +102,34 @@ export function lerpHue(from: number, to: number, t: number): number {
 }
 
 /**
+ * A brighter, hue-preserving variant of a cell-text token, for the playing
+ * row's text highlight (the tracker's bright-row-text feature).
+ *
+ * Dark base tokens — every one of the 14 built-in themes — mix toward white,
+ * so the glyphs lift clear of the active-row pill. A light base token (only
+ * reachable on a user custom theme) mixes toward black instead, so "brighten"
+ * keeps meaning "more contrast with the pill" rather than "wash the text out
+ * until it is unreadable". Both DOM (`--tracker-*-bright` custom props) and
+ * canvas (`ensureBrightRowText`) call this, so the two paths agree.
+ *
+ * Mixed channel-wise toward the extreme rather than swapping in a fixed
+ * near-white: mint effect text stays mint, blue volume text stays blue — the
+ * column keeps its hue identity, which is the point (MINOR-4). Unparsable
+ * input is returned unchanged so a caller can always use the result.
+ */
+export function deriveBrightText(base: string, amount = 0.45): string {
+  const rgb = parseRgb(base);
+  if (!rgb) return base;
+  const [r, g, b] = rgb;
+  // Rec. 601 perceived luminance, 0–1: which extreme "brighter" means here.
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  const target = luminance < 0.5 ? 255 : 0;
+  const t = clamp(amount, 0, 1);
+  const mix = (channel: number) => Math.round(channel + (target - channel) * t);
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
+
+/**
  * Rotate a color's hue, keeping its saturation and lightness, with optional
  * saturation and lightness deltas (percentage points). Unparsable input is
  * returned unchanged, so a caller can always use the result as a color.

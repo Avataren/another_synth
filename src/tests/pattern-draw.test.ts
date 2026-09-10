@@ -157,6 +157,7 @@ const theme: PatternTheme = {
   instrumentText: 'rgba(255, 255, 255, 0.82)',
   volumeText: '#85b7ff',
   effectText: '#8ef5c5',
+  effectTextBright: '#c8ffe4',
   defaultText: '#d8e7ff',
   rowNumberText: '#a7bcd8',
   interpolatedLinear: 'rgba(77, 242, 197, 0.08)',

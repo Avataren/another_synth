@@ -100,6 +100,28 @@ describe('TrackerPattern playing-row text highlight', () => {
     wrapper.unmount();
   });
 
+  it('never marks entries in the hidden playback buffer (MINOR-3)', async () => {
+    const wrapper = mountPattern({ isPlaying: true, playbackRow: 3 });
+    await nextTick();
+    await wrapper.setProps({
+      upcomingPattern: { id: 'up', tracks: [makeTrack('u0'), makeTrack('u1')], rows: 8 },
+    } as never);
+    await nextTick();
+
+    const buffers = wrapper.findAll('.pattern-buffer');
+    expect(buffers).toHaveLength(2);
+    const hidden = buffers.find((b) => b.classes().includes('buffer-hidden'))!;
+    const visible = buffers.find((b) => !b.classes().includes('buffer-hidden'))!;
+
+    // The hidden buffer is fully rendered (pre-rasterized), but none of its
+    // rows carry .row-playing even though row 3 === playbackRow.
+    expect(hidden.findAll('.tracker-entry').length).toBeGreaterThan(0);
+    expect(hidden.findAll('.tracker-entry.row-playing')).toHaveLength(0);
+    // The visible buffer still lights up its playing row (one entry per track).
+    expect(visible.findAll('.tracker-entry.row-playing')).toHaveLength(2);
+    wrapper.unmount();
+  });
+
   it('drops every mark when playback stops', async () => {
     const wrapper = mountPattern({ isPlaying: true, playbackRow: 4 });
     await nextTick();
@@ -137,6 +159,14 @@ describe('playing-row text colour derives from a theme token', () => {
     expect(rule).toMatch(/color:\s*var\(--tracker-note-text/);
     // No colour literal outside the var() fallback.
     expect(rule.replace(/var\([^)]*\)/g, '')).not.toMatch(/#[0-9a-fA-F]{3,8}|rgb|hsl/);
+  });
+
+  it('brightens playing-row effect/macro text toward the effect hue, not note-text (MINOR-4)', () => {
+    const idx = entrySrc.indexOf('.tracker-entry.row-playing .effect');
+    expect(idx).toBeGreaterThan(-1);
+    const rule = entrySrc.slice(idx).split('}')[0]!;
+    expect(rule).toMatch(/color:\s*var\(--tracker-effect-text-bright/);
+    expect(rule).not.toMatch(/--tracker-note-text/);
   });
 
   it('TrackerPattern .row-number.row-playing rule uses the same token', () => {

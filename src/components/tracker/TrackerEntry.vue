@@ -83,7 +83,11 @@
 import { computed, inject, ref } from 'vue';
 import type { TrackerEntryData } from './tracker-types';
 import { formatEntryCells } from './pattern-canvas/format-entry-cells';
-import { TRACKER_PLAYBACK_ROW } from './use-tracker-playback-row';
+import {
+  TRACKER_PLAYBACK_ROW,
+  TRACKER_SLOT_VISIBLE,
+  type TrackerBufferSlot,
+} from './use-tracker-playback-row';
 
 interface Props {
   entry?: TrackerEntryData | undefined;
@@ -97,6 +101,12 @@ interface Props {
   activeMacroNibble: number;
   interpolationType?: 'linear' | 'exponential' | undefined;
   showExtraEffectColumn: boolean;
+  /**
+   * The playback buffer slot this entry's track sits in, when inside one.
+   * Static per slot; used only to drop `.row-playing` in the hidden buffer
+   * (MINOR-3). Absent in idle single-buffer mode.
+   */
+  bufferSlot?: TrackerBufferSlot | undefined;
 }
 
 const props = defineProps<Props>();
@@ -113,7 +123,16 @@ const isActiveTrack = computed(() => props.trackIndex === props.activeTrack);
 // the active-row bar still owns fill/border). Injected as a ref so only the
 // two entries whose answer flips per tick re-render; TrackerTrack never does.
 const playbackRow = inject(TRACKER_PLAYBACK_ROW, ref(-1));
-const isPlayingRow = computed(() => playbackRow.value === props.rowIndex);
+// TRACKER_PLAYBACK_ROW reaches both ping-pong buffers; a hidden-buffer entry
+// must never light up (MINOR-3). `isSlotVisible` has stable identity and
+// reads reactive `activeSlot`, so this computed stays reactive with no
+// per-tick prop churn through TrackerTrack.
+const isSlotVisible = inject(TRACKER_SLOT_VISIBLE, null);
+const isPlayingRow = computed(() => {
+  if (playbackRow.value !== props.rowIndex) return false;
+  if (props.bufferSlot && isSlotVisible && !isSlotVisible(props.bufferSlot)) return false;
+  return true;
+});
 
 // Pre-compute row type based on index - this is stable and doesn't change
 const rowType = computed(() => {
@@ -288,15 +307,27 @@ function onMouseEnterRow() {
 }
 
 /*
- * Playing-row text: during playback the actively playing row lifts every
- * cell toward the theme's brightest text token so it reads clearly against
- * the pill. Colour only — the .active-row-bar fill/border is untouched, and
- * nothing behind the glyphs changes. Derived from a --tracker-* token so it
- * stays legible on every theme.
+ * Playing-row text: during playback the actively playing row lifts its cell
+ * text so it reads clearly against the pill. Colour only — the
+ * .active-row-bar fill/border is untouched, and nothing behind the glyphs
+ * changes. Derived from --tracker-* tokens so it stays legible on every
+ * theme.
+ *
+ * Note/instrument/volume brighten toward note-text (as shipped). Effect and
+ * macro-digit text brightens toward its OWN hue instead (a hue-preserving
+ * brighter --tracker-effect-text) — the note-text rule below would otherwise
+ * win on specificity and collapse the effect column to white when the
+ * editing cursor also sits on the playing row (MINOR-4). The
+ * `.effect`/`.macro-digit` rule comes second so it takes that column back at
+ * equal specificity.
  */
-.tracker-entry.row-playing .cell,
-.tracker-entry.row-playing .macro-digit {
+.tracker-entry.row-playing .cell {
   color: var(--tracker-note-text, #ffffff);
+}
+
+.tracker-entry.row-playing .effect,
+.tracker-entry.row-playing .macro-digit {
+  color: var(--tracker-effect-text-bright, var(--tracker-effect-text, #8ef5c5));
 }
 
 .note {

@@ -113,6 +113,7 @@
               :row-count="bufferRows(slotKey)"
               :selected-row="bufferSelectedRow(slotKey)"
               :index="index"
+              :buffer-slot="slotKey"
               :active-track="bufferActiveTrack(slotKey)"
               :active-column="bufferActiveColumn(slotKey)"
               :active-macro-nibble="activeMacroNibble"
@@ -134,7 +135,7 @@ import TrackerTrack from './TrackerTrack.vue';
 import type { TrackerSelectionRect, TrackerTrackData } from './tracker-types';
 import { trackGapPx, trackWidthPx } from './track-metrics';
 import { activeRowBarWidthPx } from './pattern-buffering';
-import { TRACKER_PLAYBACK_ROW } from './use-tracker-playback-row';
+import { TRACKER_PLAYBACK_ROW, TRACKER_SLOT_VISIBLE } from './use-tracker-playback-row';
 
 /** One ping-pong buffer slot: the rendered grid for one pattern. */
 interface PatternBuffer {
@@ -301,6 +302,11 @@ const effectiveSelectedRow = computed(() => props.isPlaying ? -1 : props.selecte
 // churn is two entry re-renders, not a full TrackerTrack pass.
 const playbackRowForText = computed(() => (props.isPlaying ? props.playbackRow : -1));
 provide(TRACKER_PLAYBACK_ROW, playbackRowForText);
+// Stable identity (declared once, reads reactive `activeSlot`), so a
+// consuming entry's `.row-playing` computed stays reactive without any
+// per-tick prop churn — MINOR-3. `isSlotVisible` is hoisted (function
+// declaration), so providing it here before its definition is fine.
+provide(TRACKER_SLOT_VISIBLE, isSlotVisible);
 
 // Hidden buffers get inert placeholders for the editing-highlight props so a
 // pattern swap cannot flash selection state inside the still-hidden grid.

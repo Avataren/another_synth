@@ -228,10 +228,19 @@ export function drawEntryBox(
 /** Options for {@link drawEntryCells}, used by the bright playing-row pre-render. */
 interface EntryCellsOpts {
   /**
-   * Force every glyph to this one colour instead of the per-column theme
-   * text tokens — the bright playing-row text variant (drawBrightRowText).
+   * Force the note / instrument / volume glyphs to this colour instead of
+   * their per-column theme tokens — the bright playing-row text variant
+   * (drawBrightRowText).
    */
   textColor?: string;
+  /**
+   * Force the effect / macro-digit glyphs to this colour. Separate from
+   * {@link textColor} so the playing row's effect cells brighten toward their
+   * OWN hue (a brighter `--tracker-effect-text`) rather than collapsing to
+   * note-text (MINOR-4). Defaults to {@link textColor} when only that is set,
+   * so an all-one-colour caller still works.
+   */
+  effectTextColor?: string;
   /** Skip the effect-column interpolation tint (text-only overlay pre-render). */
   skipInterpolationTint?: boolean;
 }
@@ -256,7 +265,7 @@ function drawEntryCells(
   const noteColor = opts.textColor ?? theme.noteText;
   const instrumentColor = opts.textColor ?? theme.instrumentText;
   const volumeColor = opts.textColor ?? theme.volumeText;
-  const effectColor = opts.textColor ?? theme.effectText;
+  const effectColor = opts.effectTextColor ?? opts.textColor ?? theme.effectText;
 
   // Cell content box: the fr columns only span inside the entry's
   // `padding: 6px 10px` + 1px border.
@@ -312,15 +321,28 @@ export interface DrawBrightRowTextData {
   /** Rows to paint; defaults to the whole pattern. */
   startRow?: number;
   endRow?: number;
-  /** Bright glyph colour; defaults to the theme's brightest cell-text token. */
+  /**
+   * Bright colour for the note / instrument / volume glyphs; defaults to the
+   * theme note-text token.
+   */
   color?: string;
+  /**
+   * Bright colour for the effect / macro-digit glyphs. Kept separate from
+   * {@link color} so the playing row's effect text brightens toward its own
+   * hue rather than note-text (MINOR-4). Defaults to the theme's
+   * hue-preserving `effectTextBright`.
+   */
+  effectColor?: string;
 }
 
 /**
  * Pre-render the bright playing-row text (task: light up the playing row's
  * TEXT, nothing behind it). Every cell's glyphs for every track × row in
- * range are drawn once, in a single theme-derived bright colour, onto a
- * transparent surface — no backgrounds, no borders, no interpolation tint.
+ * range are drawn once onto a transparent surface — no backgrounds, no
+ * borders, no interpolation tint. Note/instrument/volume glyphs take the
+ * bright note colour; effect/macro glyphs take their own brighter hue
+ * (`effectColor`), so the playing row keeps its column colour-coding
+ * (MINOR-4) instead of collapsing every glyph to white.
  *
  * The component bakes this into an offscreen bitmap the moment the static
  * grid is (re)built (same lifecycle as the static bitmap: theme, layout,
@@ -337,6 +359,7 @@ export function drawBrightRowText(
   data: DrawBrightRowTextData,
 ): void {
   const color = data.color ?? theme.noteText;
+  const effectColor = data.effectColor ?? theme.effectTextBright;
   const startRow = Math.max(0, data.startRow ?? 0);
   const endRow = Math.min(layout.rowCount, data.endRow ?? layout.rowCount);
   for (let trackIndex = 0; trackIndex < layout.trackCount; trackIndex++) {
@@ -351,6 +374,7 @@ export function drawBrightRowText(
       const cells: EntryCells = entry !== undefined ? formatEntryCells(entry) : EMPTY_CELLS;
       drawEntryCells(ctx, box, layout, theme, cells, undefined, {
         textColor: color,
+        effectTextColor: effectColor,
         skipInterpolationTint: true,
       });
     }

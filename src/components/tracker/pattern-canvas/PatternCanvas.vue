@@ -347,12 +347,77 @@ let bitmapDpr = 1;
  * playing row's strip from it — one drawImage, no text re-layout, no
  * static-grid repaint (§3.3 layering: this is overlay-side work).
  */
+/** The allocation, reused across re-bakes (sized like the static bitmap). */
+let brightRowTextSurface: BitmapSurface | null = null;
+/**
+ * What the overlay is allowed to blit: `brightRowTextSurface` once a bake has
+ * populated it, `null` whenever the bake is stale (invalidated, deferred and
+ * not yet re-run, or refused for budget/allocation reasons). The overlay
+ * blit already no-ops on `null`, so a `null` here means the playing row shows
+ * plain (un-brightened) text from the static bitmap — correct, never wrong
+ * colours.
+ */
 let brightRowTextBitmap: BitmapSurface | null = null;
 let brightRowTextValid = false;
+/** Handle of a pending off-critical-path re-bake (idle callback or rAF). */
+let brightRowTextRebakeId: number | null = null;
+let brightRowTextRebakeIsIdle = false;
 
-/** Drop the bright playing-row text pre-render; the next frame rebakes it. */
+/**
+ * Drop the bright playing-row text pre-render synchronously; the next
+ * playback overlay frame re-bakes it inline. Used for the paths that already
+ * pay for a full static repaint (paintStatic, theme flip, resize) — the bake
+ * rides along with work that frame is doing anyway, and the FIRST bake of a
+ * playback session is meant to be synchronous (approved behaviour).
+ */
 function invalidateBrightRowText(): void {
   brightRowTextValid = false;
+  brightRowTextBitmap = null;
+}
+
+/**
+ * Invalidate and re-bake OFF the critical path (MAJOR-2). The fast static
+ * paths — incremental cell repair and the ping-pong adoption swap — run
+ * inside a playback-critical frame, and a synchronous full-pattern bright-text
+ * bake there is a visible hitch on large patterns. Instead: drop the surface
+ * now (so the overlay blits nothing and the row falls back to plain static
+ * text — correct-ish, never wrong colours) and schedule the bake for the next
+ * idle slot (rAF fallback), mirroring schedulePreRender.
+ */
+function scheduleBrightRowTextRebake(): void {
+  brightRowTextValid = false;
+  brightRowTextBitmap = null;
+  // Nothing to defer while stopped: the next playback start bakes fresh.
+  if (!props.isPlaying) return;
+  // A second invalidation before the callback fires must not double-schedule.
+  if (brightRowTextRebakeId !== null) return;
+  const w = window as unknown as IdleWindow;
+  const run = () => {
+    brightRowTextRebakeId = null;
+    bakeBrightRowText();
+    // Show the freshly baked strip: the frame that invalidated painted the
+    // row plain.
+    schedule(['overlay']);
+  };
+  if (typeof w.requestIdleCallback === 'function') {
+    brightRowTextRebakeIsIdle = true;
+    brightRowTextRebakeId = w.requestIdleCallback(run);
+  } else {
+    brightRowTextRebakeIsIdle = false;
+    brightRowTextRebakeId = requestAnimationFrame(run);
+  }
+}
+
+/** Cancel a pending deferred bright-text re-bake (unmount). */
+function cancelBrightRowTextRebake(): void {
+  if (brightRowTextRebakeId === null) return;
+  const w = window as unknown as IdleWindow;
+  if (brightRowTextRebakeIsIdle && typeof w.cancelIdleCallback === 'function') {
+    w.cancelIdleCallback(brightRowTextRebakeId);
+  } else {
+    cancelAnimationFrame(brightRowTextRebakeId);
+  }
+  brightRowTextRebakeId = null;
 }
 
 /**
@@ -470,8 +535,10 @@ function repaintCells(diffs: CellDiff[]): boolean {
     props.showExtraEffectColumn,
     props.selectionRect,
   );
-  // A repaired cell may have changed its glyphs; rebake the bright variant.
-  invalidateBrightRowText();
+  // A repaired cell may have changed its glyphs; rebake the bright variant —
+  // but OFF the critical playback frame (MAJOR-2). Until the deferred bake
+  // lands the playing row shows plain static text.
+  scheduleBrightRowTextRebake();
   return true;
 }
 
@@ -527,9 +594,19 @@ function paintStatic(): boolean {
  * Bake the bright playing-row text pre-render into an offscreen surface the
  * size and scale of the current static bitmap. Runs at most once per static
  * invalidation (never per playback tick). No-op without a static bitmap.
+ *
+ * Degraded paths (MAJOR-1): a phone during song playback can be holding the
+ * static bitmap, the ping-pong pre-render AND this surface at once. If this
+ * surface would push past the device's bitmap budget, or its allocation
+ * throws (iOS caps canvas memory hard), the bright-text effect is SKIPPED —
+ * `brightRowTextBitmap` stays `null`, the overlay blit no-ops, the playing
+ * row shows plain static text. An allocation throw must never escape into
+ * `runFrame` and wedge the rAF loop, so `new OffscreenCanvas` is wrapped
+ * exactly like `paintPreRender`'s, with the element fallback and a final
+ * give-up. `brightRowTextValid` is set true on the degraded path too, so a
+ * refused bake is not retried every tick — an invalidation re-arms it.
  */
-function ensureBrightRowText(): void {
-  if (brightRowTextValid) return;
+function bakeBrightRowText(): void {
   const source = bitmap;
   if (!source) {
     brightRowTextBitmap = null;
@@ -537,19 +614,50 @@ function ensureBrightRowText(): void {
   }
   const w = source.width;
   const h = source.height;
-  if (!brightRowTextBitmap || brightRowTextBitmap.width !== w || brightRowTextBitmap.height !== h) {
-    if (typeof OffscreenCanvas !== 'undefined') {
-      brightRowTextBitmap = new OffscreenCanvas(w, h);
-    } else {
-      const el = document.createElement('canvas');
-      el.width = w;
-      el.height = h;
-      brightRowTextBitmap = el;
-    }
+  // Budget gate, mirroring ensureBitmap's `bitmapScaleFor` guard: refuse when
+  // this surface alone would exceed what the device will hold. The static
+  // bitmap passed the same budget at build time, but the budget is reactive
+  // (useMobileLayout) and can tighten to the mobile ceiling under a
+  // desktop-sized bitmap without a rebuild.
+  const budget = bitmapBudget.value;
+  if (w * h > budget.maxArea || w > budget.maxDimension || h > budget.maxDimension) {
+    brightRowTextBitmap = null;
+    brightRowTextValid = true;
+    return;
   }
-  const rawCtx = brightRowTextBitmap.getContext('2d');
+  let surface = brightRowTextSurface;
+  if (!surface || surface.width !== w || surface.height !== h) {
+    surface = null;
+    if (typeof OffscreenCanvas !== 'undefined') {
+      try {
+        surface = new OffscreenCanvas(w, h);
+      } catch {
+        surface = null;
+      }
+    }
+    if (!surface) {
+      try {
+        const el = document.createElement('canvas');
+        el.width = w;
+        el.height = h;
+        surface = el;
+      } catch {
+        surface = null;
+      }
+    }
+    if (!surface) {
+      // Both allocation paths failed: skip the effect, keep playback running.
+      brightRowTextSurface = null;
+      brightRowTextBitmap = null;
+      brightRowTextValid = true;
+      return;
+    }
+    brightRowTextSurface = surface;
+  }
+  const rawCtx = surface.getContext('2d');
   if (!rawCtx) {
     brightRowTextBitmap = null;
+    brightRowTextValid = true;
     return;
   }
   const ctx = rawCtx as unknown as CanvasRenderingContext2D;
@@ -557,15 +665,33 @@ function ensureBrightRowText(): void {
   const l = layout.value;
   ctx.setTransform(bitmapDpr, 0, 0, bitmapDpr, 0, 0);
   ctx.clearRect(0, 0, bitmapCssWidth, bitmapCssHeight);
-  // Brighten toward the theme's brightest cell-text token (the note colour);
-  // readable and crisp on every theme, no hard-coded literal.
+  // Note/instrument/volume glyphs brighten toward the theme's note-text token
+  // (matching TrackerEntry's `.row-playing .cell` rule); effect/macro glyphs
+  // brighten toward their own hue-preserving bright variant (MINOR-4) — the
+  // same `--tracker-effect-text-bright` the DOM path reads.
   const color = theme.noteText;
+  const effectColor = theme.effectTextBright;
   drawBrightRowNumbers(ctx, l, theme, { color });
   ctx.save();
   ctx.translate(GUTTER_WIDTH_PX, 0);
-  drawBrightRowText(ctx, l, theme, { tracks: props.tracks, color });
+  drawBrightRowText(ctx, l, theme, { tracks: props.tracks, color, effectColor });
   ctx.restore();
+  brightRowTextBitmap = surface;
   brightRowTextValid = true;
+}
+
+/**
+ * Ensure a fresh bright-text surface is available for the overlay blit.
+ * Called inside the playback overlay paint. The FIRST bake of a playback
+ * session is synchronous (approved: bake-once when playback starts); an
+ * invalidation that scheduled a DEFERRED re-bake leaves `brightRowTextBitmap`
+ * null until the idle callback runs, so this frame's row shows plain text
+ * rather than a stale (wrong-content) strip.
+ */
+function ensureBrightRowText(): void {
+  if (brightRowTextValid) return;
+  if (brightRowTextRebakeId !== null) return; // deferred re-bake pending
+  bakeBrightRowText();
 }
 
 // ---------------------------------------------------------------------
@@ -929,8 +1055,10 @@ function runFrame(): void {
           props.selectionRect,
         );
         // The adopted bitmap is a different pattern at a possibly different
-        // scale; the bright playing-row text must rebake against it.
-        invalidateBrightRowText();
+        // scale; the bright playing-row text must rebake against it — but off
+        // this critical swap frame (MAJOR-2). The row shows plain static text
+        // until the deferred bake lands a frame or two later.
+        scheduleBrightRowTextRebake();
         preRenderMeta = null;
         preRenderTarget = null;
         schedulePreRender(props.upcomingPattern);
@@ -1654,10 +1782,12 @@ onBeforeUnmount(() => {
     frameRaf = null;
   }
   cancelPreRenderPaint();
+  cancelBrightRowTextRebake();
   stopFling();
   preRenderBitmap = null;
   preRenderMeta = null;
   preRenderTarget = null;
+  brightRowTextSurface = null;
   brightRowTextBitmap = null;
   brightRowTextValid = false;
   paintedState = null;

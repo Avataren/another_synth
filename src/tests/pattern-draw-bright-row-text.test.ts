@@ -13,7 +13,9 @@ import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/
  * The bright playing-row TEXT pre-render (task: light up the playing row's
  * text, nothing behind it). A call-recording 2D-context mock (same approach
  * as pattern-draw.test.ts) pins that the pre-render:
- *  - recolours every glyph to ONE theme-derived colour,
+ *  - recolours note/instrument/volume glyphs to the bright note colour and
+ *    effect/macro glyphs to their OWN brighter hue (MINOR-4) — NOT one flat
+ *    colour for every glyph,
  *  - lays each glyph out on the exact pixels drawEntryBox uses (so the strip
  *    blits pixel-aligned over the static text), and
  *  - paints no fills — no background, no border, no interpolation tint.
@@ -105,6 +107,7 @@ function makeMockCtx() {
 type MockCtx = ReturnType<typeof makeMockCtx>;
 
 const BRIGHT = '#bada55';
+const FX_BRIGHT = '#c0ffee';
 
 /** Sentinel palette: every text token is distinct, none equal to BRIGHT. */
 const theme: PatternTheme = {
@@ -126,6 +129,7 @@ const theme: PatternTheme = {
   instrumentText: '#instr-sentinel',
   volumeText: '#vol-sentinel',
   effectText: '#fx-sentinel',
+  effectTextBright: '#fx-bright-sentinel',
   defaultText: '#def-sentinel',
   rowNumberText: '#rownum-sentinel',
   interpolatedLinear: 'rgba(77, 242, 197, 0.08)',
@@ -151,36 +155,52 @@ const rects = (ctx: MockCtx) =>
 
 describe('drawBrightRowText', () => {
   const entries: TrackerEntryData[] = [
-    { row: 0, note: 'C-4', instrument: '01', volume: '40', macro: 'A05' },
+    { row: 0, note: 'C-4', instrument: '01', volume: '40', macro: 'XYZ' },
     { row: 2, note: 'D-5', instrument: '03' },
   ];
 
-  it('recolours every glyph to the one supplied colour, never a per-column token', () => {
+  it('splits glyph colour by column: note→color, effect/macro→effectColor', () => {
     const ctx = makeMockCtx();
     drawBrightRowText(ctx, layout(2, false, 8), theme, {
       tracks: [makeTrack('t0', entries), makeTrack('t1', [])],
       color: BRIGHT,
+      effectColor: FX_BRIGHT,
     });
     const drawn = texts(ctx);
     expect(drawn.length).toBeGreaterThan(0);
-    for (const t of drawn) expect(t.fillStyle).toBe(BRIGHT);
-    // None of the normal per-column text tokens leaked through.
+    // Two colours in play, not one flat recolour (this is what fails on the
+    // pre-fix code, where every glyph took the single `color`).
+    expect(new Set(drawn.map((t) => t.fillStyle))).toEqual(new Set([BRIGHT, FX_BRIGHT]));
+    // The macro digits carry the effect hue.
+    const macroGlyphs = drawn.filter((t) => ['X', 'Y', 'Z'].includes(t.text));
+    expect(macroGlyphs).toHaveLength(3);
+    for (const g of macroGlyphs) expect(g.fillStyle).toBe(FX_BRIGHT);
+    // The note glyph carries the note hue.
+    expect(drawn.find((t) => t.text === 'C-4')?.fillStyle).toBe(BRIGHT);
+    // No raw per-column theme token leaked through.
     const leaked = drawn.filter((t) =>
-      [theme.noteText, theme.instrumentText, theme.volumeText, theme.effectText].includes(
-        t.fillStyle,
-      ),
+      [
+        theme.noteText,
+        theme.instrumentText,
+        theme.volumeText,
+        theme.effectText,
+        theme.effectTextBright,
+      ].includes(t.fillStyle),
     );
     expect(leaked).toHaveLength(0);
   });
 
-  it('defaults the bright colour to the theme note-text token', () => {
+  it('defaults note columns to note-text and effect/macro to effectTextBright', () => {
     const ctx = makeMockCtx();
     drawBrightRowText(ctx, layout(1, false, 4), theme, {
       tracks: [makeTrack('t0', entries)],
     });
     const drawn = texts(ctx);
     expect(drawn.length).toBeGreaterThan(0);
-    for (const t of drawn) expect(t.fillStyle).toBe(theme.noteText);
+    expect(drawn.find((t) => t.text === 'C-4')?.fillStyle).toBe(theme.noteText);
+    const macroGlyphs = drawn.filter((t) => ['X', 'Y', 'Z'].includes(t.text));
+    expect(macroGlyphs).toHaveLength(3);
+    for (const g of macroGlyphs) expect(g.fillStyle).toBe(theme.effectTextBright);
   });
 
   it('paints text only — no fills, no borders, no interpolation tint', () => {

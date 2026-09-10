@@ -29,6 +29,7 @@ import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
  */
 
 const NOTE_TEXT = '#f0ffe0-note-sentinel';
+const EFFECT_BRIGHT = '#00ffaa-effect-bright-sentinel';
 
 interface DrawImageCall {
   op: 'drawImage';
@@ -184,8 +185,11 @@ beforeEach(() => {
     return new Proxy(style, {
       get(target, prop) {
         if (prop === 'getPropertyValue') {
-          return (name: string) =>
-            name === '--tracker-note-text' ? NOTE_TEXT : target.getPropertyValue(name);
+          return (name: string) => {
+            if (name === '--tracker-note-text') return NOTE_TEXT;
+            if (name === '--tracker-effect-text-bright') return EFFECT_BRIGHT;
+            return target.getPropertyValue(name);
+          };
         }
         return Reflect.get(target, prop);
       },
@@ -207,10 +211,12 @@ function makeTrack(id: string, rows = 32): TrackerTrackData {
   return { id, name: id, entries: Array.from({ length: rows }, (_, i) => ({ row: i, note: 'C-4' })) };
 }
 
-function mountCanvas(opts: { isPlaying?: boolean; playbackRow?: number } = {}) {
+function mountCanvas(
+  opts: { isPlaying?: boolean; playbackRow?: number; tracks?: TrackerTrackData[] } = {},
+) {
   return mount(PatternCanvas, {
     props: {
-      tracks: [makeTrack('t0'), makeTrack('t1')],
+      tracks: opts.tracks ?? [makeTrack('t0'), makeTrack('t1')],
       rows: 32,
       selectedRow: 0,
       playbackRow: opts.playbackRow ?? 0,
@@ -277,11 +283,16 @@ describe('canvas playing-row text overlay', () => {
     expect(brightSurface).not.toBe(visible);
     expect(brightSurface).not.toBe(overlay);
 
-    // Bright glyphs were painted into that surface in the note-text token.
+    // Bright glyphs were painted into that surface: note columns in the
+    // note-text token, effect/macro columns in their own brighter hue
+    // (MINOR-4) — not one flat colour for every glyph.
     const brightCtx = contexts.find((c) => c.canvas === brightSurface)!;
     const brightGlyphs = brightCtx.calls.filter((c): c is TextCall => c.op === 'fillText');
     expect(brightGlyphs.length).toBeGreaterThan(0);
-    for (const g of brightGlyphs) expect(g.fillStyle).toBe(NOTE_TEXT);
+    const brightStyles = new Set(brightGlyphs.map((g) => g.fillStyle));
+    expect(brightStyles.has(NOTE_TEXT)).toBe(true);
+    expect(brightStyles.has(EFFECT_BRIGHT)).toBe(true);
+    expect(brightStyles).toEqual(new Set([NOTE_TEXT, EFFECT_BRIGHT]));
 
     // Advance several rows: no new offscreen surface, no static repaint, and
     // the overlay keeps blitting the SAME bright surface, tracking the row.
@@ -312,6 +323,116 @@ describe('canvas playing-row text overlay', () => {
     // The stop frame repaints the overlay (bar gone) but adds no text strip.
     const after = drawImagesOn(overlayCtx).slice(before);
     expect(after).toHaveLength(0);
+    wrapper.unmount();
+  });
+});
+
+const textCount = (ctx: RecordingCtx) =>
+  ctx.calls.filter((c): c is TextCall => c.op === 'fillText').length;
+
+/**
+ * MAJOR-1: the bright-text surface allocation is budget-gated and wrapped —
+ * a throw (iOS canvas-memory cap) must never escape runFrame and wedge the
+ * rAF loop; a failed allocation just skips the effect for the frame.
+ *
+ * Fails on f9abc2b: there `ensureBrightRowText` does a bare
+ * `new OffscreenCanvas(w, h)` with no try/catch, so the throw propagates out
+ * of `pumpFrame`.
+ */
+describe('canvas playing-row text overlay — degraded allocation (MAJOR-1)', () => {
+  it('skips the strip without throwing when the surface cannot be allocated', async () => {
+    const wrapper = mountCanvas({ isPlaying: false, playbackRow: 4 });
+    pumpFrame(); // static bitmap builds first, via the real createElement
+    const overlayCtx = ctxOf(layers(wrapper).overlay);
+
+    class ThrowingOffscreen {
+      constructor() {
+        throw new Error('OffscreenCanvas: allocation failed');
+      }
+    }
+    vi.stubGlobal('OffscreenCanvas', ThrowingOffscreen);
+    const realCreate = document.createElement.bind(document);
+    const createSpy = vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
+      if (String(tag).toLowerCase() === 'canvas') throw new Error('no canvas element');
+      return realCreate(tag);
+    }) as unknown as typeof document.createElement);
+
+    try {
+      await wrapper.setProps({ isPlaying: true, playbackRow: 4 } as never);
+      await nextTick();
+      expect(() => pumpFrame()).not.toThrow();
+      expect(drawImagesOn(overlayCtx)).toHaveLength(0);
+
+      // The rAF loop is not wedged: playback keeps advancing, every frame
+      // repaints the overlay, and no bright strip is ever blitted.
+      for (const row of [5, 6, 7]) {
+        await wrapper.setProps({ playbackRow: row } as never);
+        await nextTick();
+        const before = overlayCtx.calls.length;
+        expect(() => pumpFrame()).not.toThrow();
+        expect(overlayCtx.calls.length).toBeGreaterThan(before);
+        expect(drawImagesOn(overlayCtx)).toHaveLength(0);
+      }
+    } finally {
+      createSpy.mockRestore();
+      wrapper.unmount();
+    }
+  });
+});
+
+/**
+ * MAJOR-2: a cell edit during playback invalidates the bright layer, but the
+ * re-bake is deferred off the critical playback frame (idle callback, rAF
+ * fallback). The stale surface is never blitted while the re-bake is pending.
+ *
+ * Fails on f9abc2b: there the repaintCells call site invalidates
+ * synchronously, so the very next playback overlay frame re-bakes the whole
+ * pattern's bright text inline (glyph count jumps) and blits it.
+ */
+describe('canvas playing-row text overlay — deferred re-bake on edit (MAJOR-2)', () => {
+  it('does not re-bake or blit on the critical frame after a cell edit', async () => {
+    vi.stubGlobal('requestIdleCallback', undefined);
+    const baseTracks = [makeTrack('t0'), makeTrack('t1')];
+    const wrapper = mountCanvas({ isPlaying: true, playbackRow: 2, tracks: baseTracks });
+    pumpFrame();
+
+    const overlayCtx = ctxOf(layers(wrapper).overlay);
+    const brightSurface = drawImagesOn(overlayCtx).at(-1)!.image;
+    const brightCtx = contexts.find((c) => c.canvas === brightSurface)!;
+
+    const glyphsAfterFirstBake = textCount(brightCtx);
+    expect(glyphsAfterFirstBake).toBeGreaterThan(0);
+
+    // Edit one cell (new entries array, one replaced entry object) and advance
+    // the playhead, so the next frame repairs the static cell AND repaints the
+    // overlay — the critical playback frame.
+    const edited: TrackerTrackData[] = [
+      {
+        ...baseTracks[0]!,
+        entries: baseTracks[0]!.entries.map((e, i) => (i === 1 ? { row: 1, note: 'D-5' } : e)),
+      },
+      baseTracks[1]!,
+    ];
+    await wrapper.setProps({ tracks: edited } as never);
+    await nextTick();
+    await wrapper.setProps({ playbackRow: 3 } as never);
+    await nextTick();
+
+    const overlayImagesBefore = drawImagesOn(overlayCtx).length;
+    pumpFrame();
+    // No inline re-bake, and the stale surface is not blitted.
+    expect(textCount(brightCtx)).toBe(glyphsAfterFirstBake);
+    expect(drawImagesOn(overlayCtx).length).toBe(overlayImagesBefore);
+
+    // The deferred re-bake runs on the next scheduled callback, then the
+    // strip blits again.
+    pumpFrame();
+    expect(textCount(brightCtx)).toBeGreaterThan(glyphsAfterFirstBake);
+    pumpFrame();
+    const strip = drawImagesOn(overlayCtx).at(-1)!;
+    expect(strip.image).toBe(brightSurface);
+    expect(strip.sy).toBeCloseTo(3 * rowPitchPx, 5);
+
     wrapper.unmount();
   });
 });

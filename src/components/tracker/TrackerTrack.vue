@@ -19,6 +19,7 @@
           :active-macro-nibble="activeMacroNibble"
           :interpolation-type="interpolatedRows[row] ?? undefined"
           :show-extra-effect-column="props.showExtraEffectColumn"
+          :buffer-slot="props.bufferSlot"
           @select-cell="onSelectCell"
           @start-selection="onStartSelection"
           @hover-selection="onHoverSelection"
@@ -32,6 +33,7 @@
 import { computed } from 'vue';
 import TrackerEntry from './TrackerEntry.vue';
 import type { TrackerEntryData, TrackerSelectionRect, TrackerTrackData } from './tracker-types';
+import type { TrackerBufferSlot } from './use-tracker-playback-row';
 
 interface Props {
   track: TrackerTrackData;
@@ -45,6 +47,13 @@ interface Props {
   visibleStartRow: number;
   visibleEndRow: number;
   showExtraEffectColumn: boolean;
+  /**
+   * Which playback ping-pong buffer this track belongs to, when rendered
+   * inside one. Static per slot (never changes per tick), threaded down so
+   * TrackerEntry can suppress `.row-playing` in the hidden buffer (MINOR-3).
+   * Absent in idle single-buffer mode.
+   */
+  bufferSlot?: TrackerBufferSlot | undefined;
 }
 
 const props = defineProps<Props>();

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, watch, computed } from 'vue';
 import { useUserSettingsStore } from './user-settings-store';
 import { buildComplementPalette } from 'src/utils/theme-palette';
+import { deriveBrightText } from 'src/utils/color';
 
 // Monospace fonts for tracker matrix
 export const monospaceFonts = [
@@ -878,6 +879,15 @@ export const useThemeStore = defineStore('theme', () => {
     root.style.setProperty('--tracker-volume-text', colors.volumeText);
     root.style.setProperty('--tracker-effect-text', colors.effectText);
     root.style.setProperty('--tracker-default-text', colors.defaultText);
+
+    // Brightened, hue-preserving cell-text variants for the playing row
+    // (bright-row-text, MINOR-4/NOTE-5). Derived so every theme — custom ones
+    // included — gets one that belongs to the token it came from, and it
+    // degrades sensibly on a light custom theme (mixes toward black there
+    // rather than washing out toward white). The canvas renderer reads the
+    // same helper (pattern-theme.ts) so both paths land on one colour.
+    root.style.setProperty('--tracker-note-text-bright', deriveBrightText(colors.noteText));
+    root.style.setProperty('--tracker-effect-text-bright', deriveBrightText(colors.effectText));
   }
 
   function setTheme(themeId: string) {
