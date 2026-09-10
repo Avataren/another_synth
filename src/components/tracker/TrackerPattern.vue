@@ -61,6 +61,17 @@
             @hoverSelection="hoverSelection"
           />
         </div>
+
+        <!--
+          Active-row glow. Rendered here as a sibling of .row-column and
+          .tracks-wrapper — OUTSIDE their overflow-clip boxes (.row-column
+          overflow-y:hidden, .tracks-wrapper overflow-x:auto) and spanning
+          the 12px grid gap — so the halo is one continuous rounded rect,
+          exactly like the canvas overlay, not two clipped half-halos with a
+          dark seam. It carries ONLY the box-shadow glow (no border, no fill;
+          the in-container bar pills keep those). See .row-glow-overlay.
+        -->
+        <div class="row-glow-overlay" :style="rowGlowOverlayStyle"></div>
       </template>
 
       <template v-else>
@@ -120,6 +131,14 @@
               :show-extra-effect-column="showExtraEffectColumn"
             />
           </div>
+
+          <!--
+            Active-row glow — see the idle-mode overlay above and
+            .row-glow-overlay. One per buffer slot, inside .pattern-buffer
+            (which is position:relative), so it clears the same overflow
+            clips the buffer's own .row-column / .tracks-wrapper impose.
+          -->
+          <div class="row-glow-overlay" :style="rowGlowOverlayStyle"></div>
         </div>
       </template>
     </div>
@@ -360,6 +379,33 @@ function bufferActiveBarStyle(_slot: BufferSlot) {
   };
 }
 
+/**
+ * The continuous active-row glow overlay (.row-glow-overlay).
+ *
+ * Same vertical offset math as `bufferActiveBarStyle` (headerHeightPx + 6 +
+ * row * pitch), so it tracks the tracks pill exactly. Its left edge is the
+ * pattern-body's own left (x 0) and its width covers the union of the gutter
+ * column (78px) + the 12px grid gap + the tracks bar; when the bar width is
+ * unknown it falls back to 100%.
+ *
+ * It deliberately does NOT pan with .tracks-wrapper's horizontal scroll:
+ * when the tracks overflow (a scrollbar exists) the halo already covers the
+ * whole visible row, so it looks identical to the canvas either way; when
+ * they don't overflow, `activeBarWidth` matches the pills exactly. Slot is
+ * irrelevant (like `bufferActiveBarStyle`), so one computed serves every
+ * surface.
+ */
+const rowGlowOverlayStyle = computed(() => {
+  const offset = headerHeightPx + 6 + props.playbackRow * (rowHeightPx + rowGapPx);
+  return {
+    transform: `translateY(${offset}px)`,
+    height: rowHeight,
+    width: activeBarWidth.value
+      ? `calc(78px + 12px + ${activeBarWidth.value}px)`
+      : '100%'
+  };
+});
+
 function onBufferRowClick(slot: BufferSlot, row: number) {
   // The hidden buffer is pointer-events:none anyway; this guards the visible
   // one only, so clicks can never select rows in the upcoming pattern.
@@ -548,6 +594,9 @@ defineExpose({
      time, which is what caused a visible blank on dense (24-32ch) grids. */
   will-change: opacity;
   transform: translateZ(0);
+  /* Containing block for .row-glow-overlay (the transform already makes one,
+     but be explicit). */
+  position: relative;
 }
 
 .buffer-hidden {
@@ -651,20 +700,24 @@ defineExpose({
 
 .playback-pattern .row-playback-bar {
   border-color: var(--tracker-accent-primary, rgb(77, 242, 197));
-  /* Lit playing row: brighter fill than the idle selection bar + a soft
-     accent glow. box-shadow paints once (the bar only ever transforms). */
-  background: rgba(77, 242, 197, 0.22);
-  box-shadow:
-    0 0 6px 1px rgba(77, 242, 197, 0.5),
-    0 0 16px 4px rgba(77, 242, 197, 0.28);
+  /* Lit playing row: fill a clear step brighter than the idle selection bar
+     (var(--tracker-selected-bg), the accent at ~12-15%), in the live theme
+     accent. The glow itself lives on .row-glow-overlay so it can escape the
+     column clips — the mobile fallback restores a per-pill box-shadow. */
+  background: color-mix(
+    in srgb,
+    var(--tracker-accent-primary, rgb(77, 242, 197)) 22%,
+    transparent
+  );
 }
 
 .playback-song .row-playback-bar {
   border-color: var(--tracker-accent-secondary, rgb(88, 176, 255));
-  background: rgba(88, 176, 255, 0.24);
-  box-shadow:
-    0 0 6px 1px rgba(88, 176, 255, 0.5),
-    0 0 16px 4px rgba(88, 176, 255, 0.28);
+  background: color-mix(
+    in srgb,
+    var(--tracker-accent-secondary, rgb(88, 176, 255)) 24%,
+    transparent
+  );
 }
 
 .tracks-wrapper {
@@ -692,21 +745,70 @@ defineExpose({
 }
 
 .playback-pattern .active-row-bar {
-  /* Lit playing row: brighter fill than the idle selection bar + a soft
-     accent glow. box-shadow paints once (the bar only ever transforms). */
-  background: rgba(77, 242, 197, 0.22);
+  /* Lit playing row: brighter fill than the idle selection bar, in the live
+     theme accent. The glow lives on .row-glow-overlay (see above). */
+  background: color-mix(
+    in srgb,
+    var(--tracker-accent-primary, rgb(77, 242, 197)) 22%,
+    transparent
+  );
   border: 2px solid var(--tracker-accent-primary, rgb(77, 242, 197));
-  box-shadow:
-    0 0 6px 1px rgba(77, 242, 197, 0.5),
-    0 0 16px 4px rgba(77, 242, 197, 0.28);
 }
 
 .playback-song .active-row-bar {
-  background: rgba(88, 176, 255, 0.24);
+  background: color-mix(
+    in srgb,
+    var(--tracker-accent-secondary, rgb(88, 176, 255)) 24%,
+    transparent
+  );
   border: 2px solid var(--tracker-accent-secondary, rgb(88, 176, 255));
+}
+
+/*
+ * The continuous active-row glow. A single transparent rounded rect that
+ * carries ONLY the two-layer box-shadow halo — no border, no fill. It is a
+ * sibling of .row-column (z-index 2) and .tracks-wrapper (z-index 1) inside
+ * the position:relative .pattern-body / .pattern-buffer, so it sits OUTSIDE
+ * both overflow-clip boxes (.row-column overflow-y:hidden pins 78px wide;
+ * .tracks-wrapper overflow-x:auto) and spans the 12px grid gap between them.
+ * The in-container bar pills therefore keep their fill + 2px border but drop
+ * their box-shadow on desktop, and this one element paints the halo as one
+ * shape — matching the canvas overlay instead of two clipped half-halos with
+ * a dark seam.
+ *
+ * It does NOT pan with .tracks-wrapper's horizontal scroll (JS style is a
+ * plain translateY): in the wide-content case the halo already covers the
+ * whole visible row, visually identical to the canvas; in the narrow case
+ * the activeBarWidth-derived width matches the pills exactly.
+ *
+ * .tracker-pattern's `contain: layout style paint` clips the halo at the
+ * pattern root — that is fine and matches the canvas overlay's own edge
+ * behavior. No ancestor between here and there re-cuts it mid-row.
+ */
+.row-glow-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 10px;
+  pointer-events: none;
+  will-change: transform;
+  z-index: 3;
+}
+
+.playback-pattern .row-glow-overlay {
   box-shadow:
-    0 0 6px 1px rgba(88, 176, 255, 0.5),
-    0 0 16px 4px rgba(88, 176, 255, 0.28);
+    0 0 6px 1px
+      color-mix(in srgb, var(--tracker-accent-primary, rgb(77, 242, 197)) 50%, transparent),
+    0 0 16px 4px
+      color-mix(in srgb, var(--tracker-accent-primary, rgb(77, 242, 197)) 28%, transparent);
+}
+
+.playback-song .row-glow-overlay {
+  box-shadow:
+    0 0 6px 1px
+      color-mix(in srgb, var(--tracker-accent-secondary, rgb(88, 176, 255)) 50%, transparent),
+    0 0 16px 4px
+      color-mix(in srgb, var(--tracker-accent-secondary, rgb(88, 176, 255)) 28%, transparent);
 }
 
 /*
@@ -759,6 +861,35 @@ defineExpose({
 
   .tracker-pattern {
     max-width: none;
+  }
+
+  /*
+   * Mobile divergence: the columns stack vertically here, so the union
+   * overlay's math (78px gutter + 12px gap + bar width, on one row) no
+   * longer describes a single continuous row. Hide it and fall back to a
+   * per-pill box-shadow on the bar elements — clipped by the stacked
+   * columns' own overflow, which is the documented mobile fallback.
+   */
+  .row-glow-overlay {
+    display: none;
+  }
+
+  .playback-pattern .row-playback-bar,
+  .playback-pattern .active-row-bar {
+    box-shadow:
+      0 0 6px 1px
+        color-mix(in srgb, var(--tracker-accent-primary, rgb(77, 242, 197)) 50%, transparent),
+      0 0 16px 4px
+        color-mix(in srgb, var(--tracker-accent-primary, rgb(77, 242, 197)) 28%, transparent);
+  }
+
+  .playback-song .row-playback-bar,
+  .playback-song .active-row-bar {
+    box-shadow:
+      0 0 6px 1px
+        color-mix(in srgb, var(--tracker-accent-secondary, rgb(88, 176, 255)) 50%, transparent),
+      0 0 16px 4px
+        color-mix(in srgb, var(--tracker-accent-secondary, rgb(88, 176, 255)) 28%, transparent);
   }
 }
 </style>

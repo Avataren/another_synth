@@ -4,6 +4,7 @@ import { nextTick } from 'vue';
 import PatternCanvas from 'src/components/tracker/pattern-canvas/PatternCanvas.vue';
 import {
   GUTTER_WIDTH_PX,
+  PLAYBACK_GLOW_SPREAD_PX,
   rowHeightPx,
   rowPitchPx,
   totalTracksWidth,
@@ -1094,6 +1095,9 @@ describe('playback follow: one coalesced frame per row advance', () => {
       expect(clears.length).toBeGreaterThan(0);
       for (const clear of clears) {
         expect(clear.height).toBeLessThanOrEqual(rowHeightPx + 2 * BAR_BAND_PAD_PX + 0.5);
+        // Absolute cap: a future glow-growth can never silently balloon the
+        // wiped area past two row pitches (30 + 2*20 + 0.5 = 70.5 <= 72).
+        expect(clear.height).toBeLessThanOrEqual(2 * rowPitchPx);
       }
       // And the pills were repainted on the new row, once.
       expect(newestPills(overlayCtx, overlayFrameStart)).toHaveLength(2);
@@ -1647,7 +1651,9 @@ describe('playback bar accents', () => {
       (call): call is PathCall =>
         call.op === 'path' && call.radius > 10 && call.height > rowHeightPx,
     );
-    expect(glow.length).toBeGreaterThanOrEqual(3);
+    // A smooth ramp (>=5 rings), reaching PLAYBACK_GLOW_SPREAD_PX past the pill.
+    expect(glow.length).toBeGreaterThanOrEqual(5);
+    expect(Math.max(...glow.map((g) => g.radius - 10))).toBe(PLAYBACK_GLOW_SPREAD_PX);
     wrapper.unmount();
   });
 
@@ -2204,6 +2210,8 @@ describe('touch-pan band repaint (pan-jitter)', () => {
       expect(clears.length).toBeGreaterThan(0);
       for (const clear of clears) {
         expect(clear.height).toBeLessThanOrEqual(rowHeightPx + 2 * BAR_BAND_PAD_PX + 0.5);
+        // Absolute cap (see the follow-repaint spec): never past two pitches.
+        expect(clear.height).toBeLessThanOrEqual(2 * rowPitchPx);
       }
       // No trail: when the bar was on screen last frame, some cleared
       // band overlaps where it WAS. (A bar band entirely off-viewport

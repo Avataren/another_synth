@@ -18,6 +18,7 @@ import {
   entryBoxRect,
   entryHorizontalInsetPx,
   GUTTER_WIDTH_PX,
+  PLAYBACK_GLOW_SPREAD_PX,
   rowHeightPx,
   rowY,
   type PatternLayout,
@@ -466,51 +467,61 @@ function roundRectPath(
 }
 
 /**
- * Outermost reach of the active-row glow, in px past the pill edge on every
- * side. The overlay band math (pattern-bands) pads the playback-bar clear
- * band by this so a moving bar never leaves a stale halo behind.
+ * Alpha of the brighter-than-selection pill fill, per playback mode. The
+ * idle selection bar keeps `theme.selectedBg`; the *playing* row is a clear
+ * step brighter so it reads as lit — the color itself is the live mode
+ * accent (`theme.accentPrimary` / `theme.accentSecondary`), matching
+ * `.playback-pattern/.playback-song .active-row-bar` in TrackerPattern.vue.
  */
-export const PLAYBACK_GLOW_SPREAD_PX = 16;
-
-/**
- * Brighter-than-selection pill fills, per playback mode. The idle selection
- * bar keeps `theme.selectedBg`; the *playing* row is a clear step brighter
- * so it reads as lit, matching `.playback-pattern/.playback-song
- * .active-row-bar` in TrackerPattern.vue.
- */
-const PLAYBACK_BAR_FILL: Record<PlaybackBarMode, string> = {
-  pattern: 'rgba(77, 242, 197, 0.22)',
-  song: 'rgba(88, 176, 255, 0.24)',
-};
-
-/** Solid mode accent the glow rings tint (alpha applied per ring). */
-const PLAYBACK_GLOW_RGB: Record<PlaybackBarMode, string> = {
-  pattern: 'rgb(77, 242, 197)',
-  song: 'rgb(88, 176, 255)',
+const PLAYBACK_BAR_FILL_ALPHA: Record<PlaybackBarMode, number> = {
+  pattern: 0.22,
+  song: 0.24,
 };
 
 /**
- * Soft outer glow faked with a few widening translucent rounded-rect fills
- * instead of `ctx.shadowBlur`: the bar repaints on every playback-row tick
- * (~50Hz worst case) and a per-tick blurred shadow is far too costly, while
- * three plain fills are trivial. Each ring is the pill rect grown by
- * `spread` on every side with a matching corner radius, so the halo keeps
- * the pill's rounded shape. Ordered outermost-first; all are drawn before
- * the pill so its crisp 2px border and bright fill land on top.
+ * Soft outer glow faked with a stack of widening translucent rounded-rect
+ * fills instead of `ctx.shadowBlur`: the bar repaints on every playback-row
+ * tick (~50Hz worst case) and a per-tick blurred shadow is far too costly,
+ * while a handful of plain fills are trivial. Each ring is the pill rect
+ * grown by `spread` on every side with a matching corner radius, so the halo
+ * keeps the pill's rounded shape.
+ *
+ * Six rings on a smooth monotonic ramp — alpha strictly decreasing as the
+ * spread grows, `PLAYBACK_GLOW_SPREAD_PX` the outermost reach — so the halo
+ * reads as a gaussian falloff, not a few hard contour steps. Source-over
+ * stacking near the pill edge (all six overlap there) composites to ~0.62,
+ * matching the DOM box-shadow core. Ordered outermost-first; all are drawn
+ * before the pills so their crisp 2px borders and bright fills land on top.
  */
 const PLAYBACK_GLOW_RINGS: ReadonlyArray<{ spread: number; alpha: number }> = [
-  { spread: PLAYBACK_GLOW_SPREAD_PX, alpha: 0.08 },
-  { spread: 9, alpha: 0.16 },
-  { spread: 3, alpha: 0.3 },
+  { spread: PLAYBACK_GLOW_SPREAD_PX, alpha: 0.03 },
+  { spread: 14, alpha: 0.06 },
+  { spread: 11, alpha: 0.1 },
+  { spread: 8, alpha: 0.15 },
+  { spread: 5, alpha: 0.22 },
+  { spread: 2, alpha: 0.3 },
 ];
 
-/** `'rgb(r, g, b)'` + alpha → `'rgba(r, g, b, a)'`. */
-function rgbaFrom(rgb: string, alpha: number): string {
-  const inner = rgb.slice(rgb.indexOf('(') + 1, rgb.lastIndexOf(')')).trim();
+/**
+ * `'rgb(r, g, b)'` (every built-in theme's accent format) or a 6-digit
+ * `'#rrggbb'` (the stylesheet fallbacks) + alpha → `'rgba(r, g, b, a)'`.
+ */
+function rgbaFrom(color: string, alpha: number): string {
+  const hex = /^#([0-9a-f]{6})$/i.exec(color.trim());
+  if (hex) {
+    const n = parseInt(hex[1]!, 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+  }
+  const inner = color.slice(color.indexOf('(') + 1, color.lastIndexOf(')')).trim();
   return `rgba(${inner}, ${alpha})`;
 }
 
-/** Paint the layered glow rings behind one pill rect. */
+/**
+ * Paint the layered glow rings behind a single rect. `drawActiveRowBar`
+ * calls this ONCE for the union of the gutter pill and the tracks pill, so
+ * the shared seam at pattern x 0 is painted exactly once — no ring
+ * double-composites into a brighter vertical stripe there.
+ */
 function drawPillGlow(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -538,11 +549,14 @@ function drawPillGlow(
  * one across the tracks (`.active-row-bar`, activeRowBarWidthPx wide) and
  * one over the 78px row-number gutter (`.row-playback-bar`), both 10px
  * rounded, rowHeightPx tall, with a 2px mode-colored border over a
- * translucent fill — pattern mode `--tracker-accent-primary` (#4df2c5),
- * song mode `--tracker-accent-secondary` (rgb(88, 176, 255)). During
- * playback the row lights up: a brighter fill (`PLAYBACK_BAR_FILL`) plus a
- * soft outer glow in the mode accent (`drawPillGlow` — layered fills, not
- * `shadowBlur`), mirroring the `box-shadow` on the DOM pills.
+ * translucent fill — pattern mode `--tracker-accent-primary`, song mode
+ * `--tracker-accent-secondary`, both read live off the theme. During
+ * playback the row lights up: a brighter fill (the same accent at
+ * `PLAYBACK_BAR_FILL_ALPHA`) plus a soft outer glow in that accent
+ * (`drawPillGlow` — layered fills, not `shadowBlur`), mirroring the
+ * `box-shadow` on the DOM `.row-glow-overlay`. The glow is painted ONCE for
+ * the union of the two pills, so the shared seam at pattern x 0 is never
+ * double-composited.
  */
 export function drawActiveRowBar(
   ctx: CanvasRenderingContext2D,
@@ -550,10 +564,13 @@ export function drawActiveRowBar(
   theme: PatternTheme,
   data: DrawActiveRowBarData,
 ): void {
-  const borderColor =
+  // Fill + glow both follow the live mode accent (all built-in themes store
+  // it as 'rgb(r, g, b)', which rgbaFrom parses); the DOM pills do the same
+  // via var(--tracker-accent-*). The border is that accent at full alpha.
+  const accent =
     data.mode === 'pattern' ? theme.accentPrimary : theme.accentSecondary;
-  const bgColor = PLAYBACK_BAR_FILL[data.mode];
-  const glowRgb = PLAYBACK_GLOW_RGB[data.mode];
+  const borderColor = accent;
+  const bgColor = rgbaFrom(accent, PLAYBACK_BAR_FILL_ALPHA[data.mode]);
 
   const trackCount = data.trackCount ?? layout.trackCount;
   const barWidth = activeRowBarWidthPx(trackCount, layout.showExtraEffectColumn);
@@ -561,10 +578,17 @@ export function drawActiveRowBar(
   const y = rowY(data.playbackRow);
 
   // Glow first, behind both pills: cheap layered fills (PLAYBACK_GLOW_RINGS),
-  // no per-tick shadowBlur. Same color for both, so the shared seam at
-  // pattern x 0 reads as one continuous halo.
-  drawPillGlow(ctx, 0, y, width, rowHeightPx, glowRgb);
-  drawPillGlow(ctx, -GUTTER_WIDTH_PX, y, GUTTER_WIDTH_PX, rowHeightPx, glowRgb);
+  // no per-tick shadowBlur. ONE pass over the union rect
+  // [-GUTTER_WIDTH_PX, width] so the shared seam at pattern x 0 reads as one
+  // continuous halo and is never composited twice.
+  drawPillGlow(
+    ctx,
+    -GUTTER_WIDTH_PX,
+    y,
+    GUTTER_WIDTH_PX + width,
+    rowHeightPx,
+    accent,
+  );
 
   ctx.fillStyle = bgColor;
   ctx.strokeStyle = borderColor;

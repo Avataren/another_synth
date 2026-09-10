@@ -19,8 +19,12 @@
  * applies them; tests assert the geometry without a canvas.
  */
 
-import { GUTTER_WIDTH_PX, rowHeightPx, rowY } from './pattern-layout';
-import { PLAYBACK_GLOW_SPREAD_PX } from './pattern-draw';
+import {
+  GUTTER_WIDTH_PX,
+  PLAYBACK_GLOW_SPREAD_PX,
+  rowHeightPx,
+  rowY,
+} from './pattern-layout';
 
 /**
  * What the overlay currently shows, in the coordinates it was painted at.
@@ -56,10 +60,13 @@ export const BAND_PAD_PX = 2;
 /**
  * The playback-bar band also has to wipe the active-row glow halo
  * (drawActiveRowBar's layered fills), which reaches `PLAYBACK_GLOW_SPREAD_PX`
- * past the pill on every side. The editing cursor has no glow, so it keeps
- * the plain `BAND_PAD_PX`.
+ * past the pill on every side. The halo edge gets the same `BAND_PAD_PX`
+ * AA/dpr margin the pill stroke gets, on top of the glow reach — so the pad
+ * is `BAND_PAD_PX + glow reach + BAND_PAD_PX`. The editing cursor has no
+ * glow, so it keeps the plain `BAND_PAD_PX`.
  */
-export const BAR_BAND_PAD_PX = BAND_PAD_PX + PLAYBACK_GLOW_SPREAD_PX;
+export const BAR_BAND_PAD_PX =
+  BAND_PAD_PX + PLAYBACK_GLOW_SPREAD_PX + BAND_PAD_PX;
 
 /** Intersect a viewport-space rect with the viewport; null when empty. */
 function clampBand(

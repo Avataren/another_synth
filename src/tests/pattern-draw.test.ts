@@ -14,6 +14,7 @@ import {
   entryHorizontalInsetPx,
   GUTTER_WIDTH_PX,
   macroNibbleWidth,
+  PLAYBACK_GLOW_SPREAD_PX,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
 import { trackWidthPx } from 'src/components/tracker/track-metrics';
 import { activeRowBarWidthPx } from 'src/components/tracker/pattern-buffering';
@@ -467,28 +468,56 @@ describe('drawActiveRowBar', () => {
     expect(pills.every((p) => p.lineWidth === 2)).toBe(true);
   });
 
-  it('paints a soft accent glow behind both pills (layered fills, no shadowBlur)', () => {
+  /** Trailing alpha of an `rgba(r, g, b, a)` string. */
+  const alphaOf = (rgba: string) => Number(rgba.split(',').pop()!.replace(')', '').trim());
+
+  it('paints a smooth multi-ring accent glow behind the pills (layered fills, no shadowBlur)', () => {
     const ctx = makeMockCtx();
     drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7, mode: 'pattern' });
-    // Three widening rings per pill, all in the mode accent at descending
-    // alpha, each grown by its spread on every side with a matching radius.
     const glow = glowOf(ctx);
-    expect(glow).toHaveLength(6);
+    // A ramp, not a few hard bands: at least 5 rings.
+    expect(glow.length).toBeGreaterThanOrEqual(5);
     expect(glow.every((g) => /^rgba\(77, 242, 197, 0?\.\d+\)$/.test(g.fillStyle))).toBe(true);
-    // Every ring sits strictly outside the 10px pill radius and its own
-    // spread widens the rect symmetrically (radius === 10 + spread).
+    // Each ring grows the pill by its own spread on every side with a
+    // matching radius (radius === 10 + spread), same row.
     for (const ring of glow) {
       const spread = ring.radius - 10;
       expect(spread).toBeGreaterThan(0);
       expect(ring.height).toBe(30 + 2 * spread);
       expect(ring.y).toBe(7 * 36 - spread);
     }
-    // The outermost ring reaches 16px past the pill; no ctx.shadowBlur used.
-    expect(Math.max(...glow.map((g) => g.radius - 10))).toBe(16);
+    // Ordered outermost-first on a strictly monotonic falloff: as the spread
+    // shrinks the alpha rises, every step.
+    const bySpreadDesc = [...glow].sort((a, b) => b.radius - a.radius);
+    for (let i = 1; i < bySpreadDesc.length; i++) {
+      expect(bySpreadDesc[i]!.radius).toBeLessThan(bySpreadDesc[i - 1]!.radius);
+      expect(alphaOf(bySpreadDesc[i]!.fillStyle)).toBeGreaterThan(
+        alphaOf(bySpreadDesc[i - 1]!.fillStyle),
+      );
+    }
+    // Outermost reach is exactly PLAYBACK_GLOW_SPREAD_PX; no ctx.shadowBlur.
+    expect(Math.max(...glow.map((g) => g.radius - 10))).toBe(PLAYBACK_GLOW_SPREAD_PX);
     expect(ctx.props.shadowBlur ?? 0).toBe(0);
   });
 
-  it('uses the song-mode accent for both the fill and the glow', () => {
+  it('paints the glow ONCE for the union of both pills — no seam double-composite', () => {
+    const ctx = makeMockCtx();
+    drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7, mode: 'pattern' });
+    const glow = glowOf(ctx);
+    const tracksWidth = activeRowBarWidthPx(4, false)!;
+    // Every spread appears exactly once (a per-pill pass would draw each
+    // twice), and every ring spans the whole union [-GUTTER - spread,
+    // tracksWidth + spread] — one rounded-rect halo over both pills.
+    const spreads = glow.map((g) => g.radius - 10).sort((a, b) => a - b);
+    expect(new Set(spreads).size).toBe(spreads.length);
+    for (const ring of glow) {
+      const spread = ring.radius - 10;
+      expect(ring.x).toBe(-GUTTER_WIDTH_PX - spread);
+      expect(ring.x + ring.width).toBe(tracksWidth + spread);
+    }
+  });
+
+  it('uses the live song-mode accent for the fill and the glow', () => {
     const ctx = makeMockCtx();
     drawActiveRowBar(ctx, layout4, theme, { playbackRow: 0, mode: 'song' });
     expect(theme.accentSecondary).toBe('rgb(88, 176, 255)');
@@ -497,8 +526,23 @@ describe('drawActiveRowBar', () => {
       expect(pill.fillStyle).toBe('rgba(88, 176, 255, 0.24)'); // brighter than the old 0.14
     }
     const glow = glowOf(ctx);
-    expect(glow).toHaveLength(6);
+    expect(glow.length).toBeGreaterThanOrEqual(5);
     expect(glow.every((g) => /^rgba\(88, 176, 255, 0?\.\d+\)$/.test(g.fillStyle))).toBe(true);
+  });
+
+  it('derives the fill and glow from a non-default theme accent, not a literal', () => {
+    const amber: PatternTheme = {
+      ...theme,
+      accentPrimary: 'rgb(255, 180, 80)',
+      accentSecondary: 'rgb(255, 140, 60)',
+    };
+    const ctx = makeMockCtx();
+    drawActiveRowBar(ctx, layout4, amber, { playbackRow: 2, mode: 'pattern' });
+    for (const pill of pillsOf(ctx)) {
+      expect(pill.strokeStyle).toBe('rgb(255, 180, 80)');
+      expect(pill.fillStyle).toBe('rgba(255, 180, 80, 0.22)');
+    }
+    expect(glowOf(ctx).every((g) => /^rgba\(255, 180, 80, /.test(g.fillStyle))).toBe(true);
   });
 
   it('draws the gutter pill on the row-number column, scrolling with the pattern', () => {
