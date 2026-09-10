@@ -34,17 +34,6 @@ export const GUTTER_WIDTH_PX = 78;
 export const rowPitchPx = rowHeightPx + rowGapPx;
 
 /**
- * Outermost reach of the active-row playback glow, in px past the pill edge
- * on every side (see `drawActiveRowBar` in pattern-draw.ts).
- *
- * It lives here, not in pattern-draw.ts, so pattern-bands.ts can pad its
- * clear band by it without importing the whole draw layer — pattern-bands
- * was a near-leaf module and a draw→bands back-import would have made every
- * clear band NaN-sized at module init.
- */
-export const PLAYBACK_GLOW_SPREAD_PX = 16;
-
-/**
  * One entry's horizontal padding plus border, in pixels per side.
  *
  * TrackerEntry boxes its grid columns inside `padding: 6px 10px` and a 1px

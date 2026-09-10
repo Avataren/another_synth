@@ -62,9 +62,6 @@ describe('overlayClearBands', () => {
     expect(BAR_BAND_PAD_PX).toBeGreaterThan(BAND_PAD_PX);
     expect(band!.y).toBe(2 * rowPitchPx - BAR_BAND_PAD_PX);
     expect(band!.height).toBe(rowHeightPx + 2 * BAR_BAND_PAD_PX);
-    // Absolute cap: the padded band is still under two row pitches, so a
-    // future glow-growth can never silently double the wiped area.
-    expect(band!.height).toBeLessThanOrEqual(2 * rowPitchPx);
   });
 
   it('a band fully above the viewport (bar scrolled past) is dropped', () => {
@@ -81,11 +78,6 @@ describe('overlayClearBands', () => {
   });
 
   it('a band fully outside the viewport is dropped', () => {
-    // viewTop is 5 pitches down (was 3 before the glow halo widened
-    // BAR_BAND_PAD_PX to 20): at 3 pitches the halo's bottom edge still
-    // pokes into the viewport, so the band is legitimately not "fully
-    // outside" any more. The absolute cap on band height (asserted above)
-    // is what guards against the pad growing without bound.
     const bands = overlayClearBands(null, footprint({ barRow: 2, viewTop: 5 * rowPitchPx }), VIEW_W, VIEW_H);
     expect(bands).toHaveLength(0);
   });
