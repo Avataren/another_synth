@@ -819,7 +819,12 @@ function schedulePreRender(info: UpcomingPatternInfo | null): void {
   cancelPreRenderPaint();
   const w = window as unknown as IdleWindow;
   if (typeof w.requestIdleCallback === 'function') {
-    preRenderRaf = w.requestIdleCallback(() => paintPreRender());
+    // Under continuous playback the main thread may never truly idle, so
+    // this carries the same { timeout: 150 } contract as
+    // scheduleBrightRowTextRebake: the pre-render runs at the next idle
+    // slot or within ~150 ms, whichever comes first, never starving
+    // indefinitely (MAJOR-3).
+    preRenderRaf = w.requestIdleCallback(() => paintPreRender(), { timeout: 150 });
   } else {
     preRenderRaf = requestAnimationFrame(paintPreRender);
   }

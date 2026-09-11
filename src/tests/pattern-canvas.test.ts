@@ -2121,6 +2121,50 @@ describe('upcoming-pattern pre-render (§3.2)', () => {
     expect(drawImageOn(viewCtx).length).toBe(blitsBefore + 1);
     wrapper.unmount();
   });
+
+  it('the idle pre-render request carries a timeout so it cannot starve forever under continuous playback (MAJOR-3)', async () => {
+    // A stub that mirrors a main thread that never goes idle spontaneously:
+    // the callback only ever runs via its timeout, exactly like a real
+    // requestIdleCallback does once its deadline elapses. Without a
+    // { timeout } argument (pre-P2 code) this stub never invokes the
+    // callback at all, so the pre-render would starve forever — which is
+    // exactly the bug this test pins.
+    const idleCalls: { timeout?: number }[] = [];
+    vi.stubGlobal(
+      'requestIdleCallback',
+      vi.fn((cb: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void, opts?: { timeout: number }) => {
+        idleCalls.push(opts ?? {});
+        if (opts && typeof opts.timeout === 'number') {
+          return setTimeout(() => cb({ didTimeout: true, timeRemaining: () => 0 }), opts.timeout);
+        }
+        return 0;
+      }),
+    );
+    vi.stubGlobal('cancelIdleCallback', vi.fn((id: number) => clearTimeout(id)));
+    vi.useFakeTimers();
+
+    const upcoming = { id: 'p2', tracks: [makeTrack('u'), makeTrack('v')], rows: 32 };
+    const wrapper = mountCanvas();
+    pumpFrame();
+    const before = contexts.length;
+
+    await wrapper.setProps({ upcomingPattern: upcoming });
+    await nextTick();
+
+    expect(idleCalls.length).toBeGreaterThan(0);
+    expect(idleCalls.at(-1)?.timeout).toBe(150);
+
+    // Advance exactly to the timeout: the stub only fires via it, so this
+    // is where a starved main thread's idle callback would finally run.
+    vi.advanceTimersByTime(150);
+
+    const surfaces = contexts.slice(before);
+    expect(surfaces.length).toBeGreaterThan(0);
+    expect(fillsOn(surfaces[0]!).length).toBeGreaterThan(0);
+
+    vi.useRealTimers();
+    wrapper.unmount();
+  });
 });
 
 // ---------------------------------------------------------------------
