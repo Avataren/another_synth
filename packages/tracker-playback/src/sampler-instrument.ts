@@ -61,6 +61,18 @@ function modInstrumentDebug(): boolean {
 }
 
 /**
+ * scheduleTrackerEnvelope's default `level` mapper (volume envelopes: 0..64
+ * onto 0..1). Hoisted to a module-level constant rather than a default
+ * parameter's inline arrow: a default-parameter expression is evaluated
+ * fresh on every call that omits the argument, so every plain volume-envelope
+ * schedule -- at least once per note that has one, again on every Lxx
+ * envelope-position command -- allocated a new, identical closure. One
+ * shared function is behaviourally identical and costs nothing per call.
+ */
+const DEFAULT_ENVELOPE_LEVEL = (value: number): number =>
+  Math.max(0, Math.min(1, value / 64));
+
+/**
  * Warnings that report a *condition* rather than an event: once a patch is
  * short of voices, or a volume command cannot find its voice, it is short of
  * them for every note that follows. Logging each occurrence says nothing the
@@ -1217,8 +1229,7 @@ export class TrackerSamplerInstrument {
      * wants 0..1; panning wants the channel pan combined with the envelope's
      * offset, so it cannot be a fixed division.
      */
-    level: (value: number) => number = (value) =>
-      Math.max(0, Math.min(1, value / 64)),
+    level: (value: number) => number = DEFAULT_ENVELOPE_LEVEL,
     /**
      * Envelope tick to start from, for Lxx (set envelope position) and for
      * re-scheduling a panning envelope after the channel pan moves. The
@@ -1364,7 +1375,7 @@ export class TrackerSamplerInstrument {
   ): number | null {
     const MAX_RELEASE_SECONDS = 30;
     const points = envelope.points;
-    const level = (value: number) => Math.max(0, Math.min(1, value / 64));
+    const level = DEFAULT_ENVELOPE_LEVEL;
 
     const hasSustain =
       envelope.sustainPoint >= 0 && envelope.sustainPoint < points.length;
