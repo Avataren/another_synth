@@ -177,3 +177,50 @@ describe('playing-row text colour derives from a theme token', () => {
     expect(rule.replace(/var\([^)]*\)/g, '')).not.toMatch(/#[0-9a-fA-F]{3,8}|rgb|hsl/);
   });
 });
+
+/**
+ * Task (2026-09-11): "Would it break the layout if we also make all text on
+ * active rows bold?" — no, and Morten wants it. `.tracker-entry.row-playing
+ * .cell` matches every cell span (note/instrument/volume/effect wrapper),
+ * so one `font-weight` declaration there bolds the whole row; `.note` and
+ * `.macro-digit` were already unconditionally bold, so only instrument,
+ * volume and the row-number gutter change. jsdom applies no layout, so
+ * "zero layout shift" is pinned by source scan (fixed `fr` grid columns +
+ * `.cell`'s `overflow: hidden` already clip instead of reflowing) rather
+ * than a measured reflow.
+ */
+describe('playing-row text goes bold without shifting layout', () => {
+  const componentsDir = path.resolve(__dirname, '../components/tracker');
+  const entrySrc = readFileSync(path.join(componentsDir, 'TrackerEntry.vue'), 'utf8');
+  const patternSrc = readFileSync(path.join(componentsDir, 'TrackerPattern.vue'), 'utf8');
+
+  it('bolds every cell on the playing row via .tracker-entry.row-playing .cell', () => {
+    const rule = entrySrc
+      .slice(entrySrc.indexOf('.tracker-entry.row-playing .cell'))
+      .split('}')[0]!;
+    expect(rule).toMatch(/font-weight:\s*700/);
+  });
+
+  it('bolds the playing row\'s gutter digit via .row-number.row-playing', () => {
+    const rule = patternSrc
+      .slice(patternSrc.indexOf('.row-number.row-playing'))
+      .split('}')[0]!;
+    expect(rule).toMatch(/font-weight:\s*700/);
+  });
+
+  it('keeps every cell in a fixed-width grid track, so bolding cannot widen a column', () => {
+    // .tracker-entry lays its cells out with `fr` columns (not auto/content
+    // sizing), and .cell clips overflow rather than growing — the two
+    // properties that make a heavier glyph a no-op for layout.
+    expect(entrySrc).toMatch(/grid-template-columns:\s*[\d.]+fr/);
+    const cellRule = entrySrc.slice(entrySrc.indexOf('.cell {')).split('}')[0]!;
+    expect(cellRule).toMatch(/overflow:\s*hidden/);
+    expect(cellRule).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it('keeps the row-number gutter column fixed-width', () => {
+    const columnRule = patternSrc.slice(patternSrc.indexOf('.row-column {')).split('}')[0]!;
+    expect(columnRule).toMatch(/width:\s*78px/);
+    expect(columnRule).toMatch(/max-width:\s*78px/);
+  });
+});

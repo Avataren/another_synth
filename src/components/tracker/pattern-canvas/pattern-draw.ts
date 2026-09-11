@@ -244,6 +244,16 @@ interface EntryCellsOpts {
   effectTextColor?: string;
   /** Skip the effect-column interpolation tint (text-only overlay pre-render). */
   skipInterpolationTint?: boolean;
+  /**
+   * Bold the instrument / volume glyphs too, not just note and macro-digit
+   * (which are already unconditionally bold, matching `.note`/`.macro-digit`
+   * in the DOM). Set only by the playing-row bright pre-render
+   * (drawBrightRowText): the DOM makes ALL of a `.row-playing` row's text
+   * bold via `.tracker-entry.row-playing .cell`, and instrument/volume are
+   * regular weight everywhere else, so this is the canvas mirror of that one
+   * rule.
+   */
+  bold?: boolean;
 }
 
 /**
@@ -279,11 +289,11 @@ function drawEntryCells(
 
   // .note — left-aligned, 700 weight, white.
   drawText(ctx, cells.note.display, cellLeft(0), contentY, noteColor, theme, true);
-  drawText(ctx, cells.instrument.display, cellLeft(1), contentY, instrumentColor, theme);
+  drawText(ctx, cells.instrument.display, cellLeft(1), contentY, instrumentColor, theme, opts.bold);
   // Volume chars share the 0.35fr column (TrackerEntry renders both spans
   // side by side; each is one character wide).
-  drawText(ctx, cells.volumeHi.display, cellLeft(2), contentY, volumeColor, theme);
-  drawText(ctx, cells.volumeLo.display, cellLeft(3), contentY, volumeColor, theme);
+  drawText(ctx, cells.volumeHi.display, cellLeft(2), contentY, volumeColor, theme, opts.bold);
+  drawText(ctx, cells.volumeLo.display, cellLeft(3), contentY, volumeColor, theme, opts.bold);
 
   // Effect cell: interpolation tint under the digits (TrackerEntry's
   // .interpolated-linear/.interpolated-exponential backgrounds). The bright
@@ -345,11 +355,21 @@ export interface DrawBrightRowTextData {
  * (`effectColor`), so the playing row keeps its column colour-coding
  * (MINOR-4) instead of collapsing every glyph to white.
  *
+ * Every glyph is also drawn with `drawEntryCells`' `bold` option (note and
+ * macro-digit already bold unconditionally; this adds instrument and
+ * volume), matching the DOM's `.tracker-entry.row-playing .cell` rule which
+ * bolds the whole row. `cellFont(theme, true)` is a distinct cached string
+ * from `cellFont(theme, false)` (see cellFont), so the bright/bold glyphs
+ * this bakes can never be confused with the regular-weight glyphs
+ * {@link drawStaticGrid} paints for every other row onto the separate static
+ * bitmap underneath — two different surfaces, two different font strings.
+ *
  * The component bakes this into an offscreen bitmap the moment the static
  * grid is (re)built (same lifecycle as the static bitmap: theme, layout,
  * zoom, buffer rebuild) and, per playback tick, blits ONLY the playing
  * row's strip over the indicator overlay — a single drawImage, no per-tick
- * text re-layout, no static-grid repaint. Glyph geometry is
+ * text re-layout, no static-grid repaint, no per-tick font switching (the
+ * bold/regular choice is baked in, not decided per blit). Glyph geometry is
  * {@link drawEntryCells}' geometry exactly, so the bright strip lands
  * pixel-aligned over the static text beneath it.
  */
@@ -377,6 +397,7 @@ export function drawBrightRowText(
         textColor: color,
         effectTextColor: effectColor,
         skipInterpolationTint: true,
+        bold: true,
       });
     }
   }
@@ -397,7 +418,9 @@ export function drawBrightRowNumbers(
   const startRow = Math.max(0, data.startRow ?? 0);
   const endRow = Math.min(layout.rowCount, data.endRow ?? layout.rowCount);
   beginTextRun();
-  ctx.font = cellFont(theme);
+  // Bold: the DOM mirror is `.row-number.row-playing` (TrackerPattern.vue),
+  // and this function only ever paints playing-row gutter digits.
+  ctx.font = cellFont(theme, true);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = color;

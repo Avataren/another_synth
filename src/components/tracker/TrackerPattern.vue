@@ -653,11 +653,15 @@ defineExpose({
 
 /*
  * Playing-row gutter digits: brightened toward the theme's brightest text
- * token during playback, matching TrackerEntry's playing-row cell text.
- * Colour only — the .row-playback-bar pill is untouched.
+ * token and bold during playback, matching TrackerEntry's playing-row cell
+ * text (2026-09-11: "make all text on active rows bold"). `.row-number` has
+ * a fixed 78px column width from `.row-column`/`.row-numbers-container`, so
+ * the extra weight clips/centers within that box rather than shifting it —
+ * the .row-playback-bar pill is untouched either way.
  */
 .row-number.row-playing {
   color: var(--tracker-note-text, #ffffff);
+  font-weight: 700;
 }
 
 .row-playback-bar {

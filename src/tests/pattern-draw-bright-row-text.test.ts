@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  cellFont,
   drawBrightRowNumbers,
   drawBrightRowText,
   drawEntryBox,
@@ -258,6 +259,65 @@ describe('drawBrightRowText', () => {
     expect(drawn).toContain('D-5');
     expect(drawn).not.toContain('C-4');
   });
+
+  /**
+   * Task (2026-09-11, "make all text on active rows bold"): every glyph the
+   * playing row bakes — not just note and macro-digit, which were already
+   * unconditionally bold — takes the cached BOLD font variant. cellFont's
+   * bold and regular strings are cached separately (fontBoldCached /
+   * fontRegularCached), so asserting the exact string pins that this reads
+   * the bold cache entry rather than merely a font that happens to look
+   * bold.
+   */
+  it('bakes every glyph — including instrument and volume — bold', () => {
+    const ctx = makeMockCtx();
+    drawBrightRowText(ctx, layout(1, false, 8), theme, {
+      tracks: [makeTrack('t0', entries)],
+      color: BRIGHT,
+      effectColor: FX_BRIGHT,
+    });
+    const drawn = texts(ctx);
+    expect(drawn.length).toBeGreaterThan(0);
+    const bold = cellFont(theme, true);
+    const regular = cellFont(theme, false);
+    expect(bold).not.toBe(regular);
+    for (const call of drawn) expect(call.font).toBe(bold);
+    // Specifically the columns that are regular weight everywhere else.
+    const instrument = drawn.find((t) => t.text === '01');
+    expect(instrument?.font).toBe(bold);
+  });
+
+  /**
+   * The bright bake and the static grid's regular-weight paint of the same
+   * columns must never collide: baking the playing row bold must not leak
+   * into (or be overwritten by) the static bitmap's regular-weight
+   * instrument/volume glyphs, and vice versa. Painted onto separate mock
+   * contexts — exactly how the two surfaces are separate canvases at
+   * runtime (the static bitmap vs. `brightRowTextSurface`) — so this pins
+   * that the bold/regular choice lives in the font STRING passed to each
+   * draw, not in any shared, order-dependent state.
+   */
+  it('never collides with the static grid\'s regular-weight instrument/volume glyphs', () => {
+    const track = makeTrack('t0', entries);
+
+    const staticCtx = makeMockCtx();
+    drawEntryBox(staticCtx, 0, 0, layout(1, false, 8), theme, track, entries[0], undefined, false);
+    const staticInstrument = texts(staticCtx).find((t) => t.text === '01');
+
+    const brightCtx = makeMockCtx();
+    drawBrightRowText(brightCtx, layout(1, false, 8), theme, {
+      tracks: [track],
+      color: BRIGHT,
+      effectColor: FX_BRIGHT,
+      startRow: 0,
+      endRow: 1,
+    });
+    const brightInstrument = texts(brightCtx).find((t) => t.text === '01');
+
+    expect(staticInstrument?.font).toBe(cellFont(theme, false));
+    expect(brightInstrument?.font).toBe(cellFont(theme, true));
+    expect(staticInstrument?.font).not.toBe(brightInstrument?.font);
+  });
 });
 
 describe('drawBrightRowNumbers', () => {
@@ -277,5 +337,15 @@ describe('drawBrightRowNumbers', () => {
     const ctx = makeMockCtx();
     drawBrightRowNumbers(ctx, layout(1, false, 2), theme, {});
     for (const t of texts(ctx)) expect(t.fillStyle).toBe(theme.noteText);
+  });
+
+  it('bakes the gutter digits bold, matching .row-number.row-playing', () => {
+    const ctx = makeMockCtx();
+    drawBrightRowNumbers(ctx, layout(2, false, 4), theme, { color: BRIGHT });
+    const drawn = texts(ctx);
+    expect(drawn.length).toBeGreaterThan(0);
+    const bold = cellFont(theme, true);
+    expect(bold).not.toBe(cellFont(theme, false));
+    for (const t of drawn) expect(t.font).toBe(bold);
   });
 });

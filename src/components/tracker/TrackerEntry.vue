@@ -308,10 +308,15 @@ function onMouseEnterRow() {
 
 /*
  * Playing-row text: during playback the actively playing row lifts its cell
- * text so it reads clearly against the pill. Colour only — the
- * .active-row-bar fill/border is untouched, and nothing behind the glyphs
- * changes. Derived from --tracker-* tokens so it stays legible on every
- * theme.
+ * text so it reads clearly against the pill, and goes bold (Morten,
+ * 2026-09-11: "make all text on active rows bold" — confirmed no layout
+ * shift, since every `.cell` sits in a fixed `fr` grid track with
+ * `overflow: hidden; white-space: nowrap`, so a heavier glyph clips instead
+ * of widening its column). The .active-row-bar fill/border is untouched, and
+ * nothing behind the glyphs changes. Colour derived from --tracker-* tokens
+ * so it stays legible on every theme; `.note` and `.macro-digit` are already
+ * bold unconditionally (see below), so this rule's `font-weight` only
+ * changes instrument and volume, which are regular weight everywhere else.
  *
  * Note/instrument/volume brighten toward note-text (as shipped). Effect and
  * macro-digit text brightens toward its OWN hue instead (a hue-preserving
@@ -319,10 +324,12 @@ function onMouseEnterRow() {
  * win on specificity and collapse the effect column to white when the
  * editing cursor also sits on the playing row (MINOR-4). The
  * `.effect`/`.macro-digit` rule comes second so it takes that column back at
- * equal specificity.
+ * equal specificity; it does not restate `font-weight` because the base
+ * `.cell` rule above already applies (and `.macro-digit` is bold regardless).
  */
 .tracker-entry.row-playing .cell {
   color: var(--tracker-note-text, #ffffff);
+  font-weight: 700;
 }
 
 .tracker-entry.row-playing .effect,
