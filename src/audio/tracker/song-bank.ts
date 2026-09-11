@@ -78,6 +78,50 @@ export interface SongBankSlot {
  */
 const SYNC_SLOTS_RESUME_WAIT_MS = 500;
 
+/**
+ * How many instruments syncSlots builds per slice before yielding.
+ *
+ * ensureInstrumentInternal's loadPatch() (ModInstrument) decodes and
+ * conditions the sample and builds every anti-alias mip level synchronously
+ * on the main thread (sampler-instrument.ts buildMipLevels). Awaiting a big
+ * Promise.all batch of these back-to-back stacked their synchronous CPU
+ * chunks into one uninterrupted run -- measured as 3 longtasks totalling
+ * ~450 ms right at play start (microstutter investigation, play-start
+ * burst). A small slice keeps each JS turn short; yielding between slices
+ * (see idleYield below) gives the browser a real chance to paint in
+ * between. Small enough to matter, not so small it loses the concurrency
+ * benefit of genuinely async decode work overlapping across instruments.
+ */
+const INSTRUMENT_BUILD_SLICE_SIZE = 2;
+/** Idle-yield timeout between instrument-build slices (see idleYield). */
+const INSTRUMENT_BUILD_IDLE_TIMEOUT_MS = 50;
+
+interface IdleWindow {
+  requestIdleCallback?: (
+    cb: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void,
+    opts?: { timeout: number },
+  ) => number;
+}
+
+/**
+ * Yield to the browser: idle time when it goes idle, else a bounded timeout
+ * so a continuously busy main thread cannot stall this indefinitely (same
+ * contract as PatternCanvas's pre-render/bright-text-rebake idle requests).
+ * Falls back to a macrotask (setTimeout) where requestIdleCallback does not
+ * exist (Safari, and every test environment) -- still a real yield to the
+ * event loop, just not one that waits for actual idle time.
+ */
+function idleYield(timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const w = window as unknown as IdleWindow;
+    if (typeof w.requestIdleCallback === 'function') {
+      w.requestIdleCallback(() => resolve(), { timeout: timeoutMs });
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
 export interface ActiveInstrument {
   instrument: InstrumentV2 | ModInstrument | PooledInstrument;
   patchId: string;
@@ -547,22 +591,28 @@ export class TrackerSongBank implements TrackerSink {
         this.wasSuspended = false;
       }
 
-      // Load instruments in batches to avoid overwhelming the browser
-      // with too many concurrent AudioWorklet/WASM initializations
-      const BATCH_SIZE = 8; // Load 8 instruments at a time
+      // Load instruments in small idle-scheduled slices: a big batch stacks
+      // every instrument's synchronous decode/mip-build work into one
+      // uninterrupted run (see INSTRUMENT_BUILD_SLICE_SIZE above). syncSlots
+      // still only resolves once every instrument in nextDesired is truly
+      // built -- this only paces *how* they get there, not whether the
+      // caller's await sees them all ready. An instrument a note needs before
+      // its slice comes up is still safe: noteOnAtTime/noteOffAtTime already
+      // queue the event and ensureInstrumentIfDesired()-build it on demand,
+      // replaying via flushPendingScheduledEvents once it's ready.
       const entries = Array.from(nextDesired.entries());
       console.log(
-        `[SongBank] Loading ${entries.length} instruments in batches of ${BATCH_SIZE}`,
+        `[SongBank] Loading ${entries.length} instruments in idle-scheduled slices of ${INSTRUMENT_BUILD_SLICE_SIZE}`,
       );
 
-      for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-        const batch = entries.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < entries.length; i += INSTRUMENT_BUILD_SLICE_SIZE) {
+        const slice = entries.slice(i, i + INSTRUMENT_BUILD_SLICE_SIZE);
         console.log(
-          `[SongBank] Loading batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(entries.length / BATCH_SIZE)}: instruments ${batch.map(([id]) => id).join(', ')}`,
+          `[SongBank] Loading slice ${Math.floor(i / INSTRUMENT_BUILD_SLICE_SIZE) + 1}/${Math.ceil(entries.length / INSTRUMENT_BUILD_SLICE_SIZE)}: instruments ${slice.map(([id]) => id).join(', ')}`,
         );
 
         const ensureTasks: Promise<void>[] = [];
-        for (const [instrumentId, patch] of batch) {
+        for (const [instrumentId, patch] of slice) {
           console.log(
             `[SongBank] Ensuring instrument: ${instrumentId}, patch: ${patch?.metadata?.id}`,
           );
@@ -571,9 +621,11 @@ export class TrackerSongBank implements TrackerSink {
 
         await Promise.all(ensureTasks);
 
-        // Small delay between batches to let the browser breathe
-        if (i + BATCH_SIZE < entries.length) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
+        // Yield between slices to let the browser breathe -- idle when the
+        // main thread has room, bounded so a busy thread cannot stall
+        // syncSlots indefinitely.
+        if (i + INSTRUMENT_BUILD_SLICE_SIZE < entries.length) {
+          await idleYield(INSTRUMENT_BUILD_IDLE_TIMEOUT_MS);
         }
       }
 
