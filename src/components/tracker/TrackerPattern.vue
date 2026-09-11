@@ -669,18 +669,18 @@ defineExpose({
   pointer-events: none;
   will-change: transform;
   z-index: 10;
-  border: 2px solid var(--panel-border, rgba(255, 255, 255, 0.25));
+  border: 3px solid var(--panel-border, rgba(255, 255, 255, 0.25));
   background: rgba(255, 255, 255, 0.05);
 }
 
 .playback-pattern .row-playback-bar {
   border-color: var(--tracker-accent-primary, rgb(77, 242, 197));
-  background: var(--tracker-selected-bg, rgba(77, 242, 197, 0.14));
+  background: color-mix(in srgb, var(--tracker-accent-primary, rgb(77, 242, 197)) 28%, transparent);
 }
 
 .playback-song .row-playback-bar {
   border-color: var(--tracker-accent-secondary, rgb(88, 176, 255));
-  background: rgba(88, 176, 255, 0.14);
+  background: color-mix(in srgb, var(--tracker-accent-secondary, rgb(88, 176, 255)) 28%, transparent);
 }
 
 .tracks-wrapper {
@@ -703,18 +703,18 @@ defineExpose({
   transition: none;
   will-change: transform;
   z-index: 10;
-  border: 2px solid transparent;
+  border: 3px solid transparent;
   background: transparent;
 }
 
 .playback-pattern .active-row-bar {
-  background: var(--tracker-selected-bg, rgba(77, 242, 197, 0.14));
-  border: 2px solid var(--tracker-accent-primary, rgb(77, 242, 197));
+  background: color-mix(in srgb, var(--tracker-accent-primary, rgb(77, 242, 197)) 28%, transparent);
+  border: 3px solid var(--tracker-accent-primary, rgb(77, 242, 197));
 }
 
 .playback-song .active-row-bar {
-  background: rgba(88, 176, 255, 0.14);
-  border: 2px solid var(--tracker-accent-secondary, rgb(88, 176, 255));
+  background: color-mix(in srgb, var(--tracker-accent-secondary, rgb(88, 176, 255)) 28%, transparent);
+  border: 3px solid var(--tracker-accent-secondary, rgb(88, 176, 255));
 }
 
 /*

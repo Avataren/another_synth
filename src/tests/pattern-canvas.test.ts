@@ -1640,7 +1640,7 @@ describe('playback bar accents', () => {
     expect(pills).toHaveLength(2);
     expect(pills.every((p) => p.radius === 10)).toBe(true);
     expect(overlayCtx.props.get('strokeStyle')).toBe('#4df2c5');
-    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(77, 242, 197, 0.12)');
+    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(77, 242, 197, 0.28)');
     wrapper.unmount();
   });
 
@@ -1657,7 +1657,7 @@ describe('playback bar accents', () => {
     );
     expect(pills).toHaveLength(2);
     expect(overlayCtx.props.get('strokeStyle')).toBe('rgb(88, 176, 255)');
-    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(88, 176, 255, 0.14)');
+    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(88, 176, 255, 0.28)');
     wrapper.unmount();
   });
 

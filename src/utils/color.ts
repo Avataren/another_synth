@@ -95,6 +95,19 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/**
+ * Re-express a color at a given alpha, e.g. for a translucent fill that must
+ * track a solid accent (the playing-row pill: a saturated border plus a
+ * low-alpha tint of that same color). Unparsable input is returned
+ * unchanged, so a caller can always use the result as a color.
+ */
+export function withAlpha(color: string, alpha: number): string {
+  const rgb = parseRgb(color);
+  if (!rgb) return color;
+  const [r, g, b] = rgb;
+  return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
+}
+
 /** Interpolate hue along the shorter arc, so cyan→blue never sweeps the wheel. */
 export function lerpHue(from: number, to: number, t: number): number {
   const delta = ((to - from + 540) % 360) - 180;

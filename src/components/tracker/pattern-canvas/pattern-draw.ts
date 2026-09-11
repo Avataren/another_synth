@@ -31,6 +31,7 @@ import type {
   TrackerSelectionRect,
   TrackerTrackData,
 } from '../tracker-types';
+import { withAlpha } from 'src/utils/color';
 
 /** Background class of one row, TrackerEntry.vue's rowType computed. */
 export type RowType = 'bar' | 'beat' | 'sub' | 'normal';
@@ -547,6 +548,21 @@ export interface DrawActiveRowBarData {
 export const PLAYBACK_BAR_RADIUS_PX = 10;
 
 /**
+ * Border width of the DOM playback pills (.active-row-bar/.row-playback-bar).
+ * Bumped from 2px (Morten, 2026-09-11: "barely visible, make it pop more").
+ */
+export const PLAYBACK_BAR_BORDER_PX = 3;
+
+/**
+ * Fill alpha of the DOM playback pills' translucent tint (raised from 0.14 in
+ * the same pass). Mixed with the mode's own accent color — not a flat
+ * constant color — so the fill always matches the border's hue on every
+ * built-in theme. Static; no glow, no animation (Morten reverted the
+ * v0.3.35 row-glow in 3 minutes).
+ */
+export const PLAYBACK_BAR_FILL_ALPHA = 0.28;
+
+/**
  * Trace a DOM-style rounded rect (`border-radius` pill) at `radius` px.
  * Uses the native roundRect when the context has one; otherwise the same
  * four arcTo corners, so pre-roundRect browsers still get the pill.
@@ -584,10 +600,10 @@ function roundRectPath(
  * The active-row (playback) indicator, matching the DOM grid's two pills:
  * one across the tracks (`.active-row-bar`, activeRowBarWidthPx wide) and
  * one over the 78px row-number gutter (`.row-playback-bar`), both 10px
- * rounded, rowHeightPx tall, with a 2px mode-colored border over a
- * translucent fill — pattern mode `--tracker-accent-primary` (#4df2c5) on
- * `--tracker-selected-bg`, song mode `--tracker-accent-secondary`
- * (rgb(88, 176, 255)) on rgba(88, 176, 255, 0.14). No gradient or shadow in
+ * rounded, rowHeightPx tall, with a `PLAYBACK_BAR_BORDER_PX` mode-colored
+ * border over a translucent fill at `PLAYBACK_BAR_FILL_ALPHA` of that same
+ * color — pattern mode `--tracker-accent-primary` (#4df2c5), song mode
+ * `--tracker-accent-secondary` (rgb(88, 176, 255)). No gradient or shadow in
  * the DOM styling, so none here either.
  */
 export function drawActiveRowBar(
@@ -598,8 +614,7 @@ export function drawActiveRowBar(
 ): void {
   const borderColor =
     data.mode === 'pattern' ? theme.accentPrimary : theme.accentSecondary;
-  const bgColor =
-    data.mode === 'pattern' ? theme.selectedBg : 'rgba(88, 176, 255, 0.14)';
+  const bgColor = withAlpha(borderColor, PLAYBACK_BAR_FILL_ALPHA);
 
   const trackCount = data.trackCount ?? layout.trackCount;
   const barWidth = activeRowBarWidthPx(trackCount, layout.showExtraEffectColumn);
@@ -608,7 +623,7 @@ export function drawActiveRowBar(
 
   ctx.fillStyle = bgColor;
   ctx.strokeStyle = borderColor;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = PLAYBACK_BAR_BORDER_PX;
   // The tracks pill scrolls with the pattern horizontally, exactly like the
   // DOM's .active-row-bar inside the scrolling tracks-wrapper.
   roundRectPath(ctx, 0, y, width, rowHeightPx, PLAYBACK_BAR_RADIUS_PX);

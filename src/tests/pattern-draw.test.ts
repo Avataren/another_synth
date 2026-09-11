@@ -6,9 +6,13 @@ import {
   drawRowNumbers,
   drawSelectionBar,
   drawStaticGrid,
+  PLAYBACK_BAR_BORDER_PX,
+  PLAYBACK_BAR_FILL_ALPHA,
+  PLAYBACK_BAR_RADIUS_PX,
   rowType,
   trackAccent,
 } from 'src/components/tracker/pattern-canvas/pattern-draw';
+import { withAlpha } from 'src/utils/color';
 import {
   columnFractionOffsets,
   entryHorizontalInsetPx,
@@ -441,34 +445,43 @@ describe('drawSelectionBar', () => {
 describe('drawActiveRowBar', () => {
   const layout4 = layout(4, false, 32);
 
-  it('paints the tracks pill with the DOM fill/stroke values and 2px border', () => {
+  it('paints the tracks pill with the DOM fill/stroke values and 3px border', () => {
     const ctx = makeMockCtx();
     drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7, mode: 'pattern' });
     // Two rounded pills (tracks + row-number gutter), both carrying the
-    // DOM's exact values: fill var(--tracker-selected-bg), stroke
-    // var(--tracker-accent-primary) at 2px — .playback-pattern's styles.
+    // DOM's exact values: fill = accentPrimary at PLAYBACK_BAR_FILL_ALPHA,
+    // stroke var(--tracker-accent-primary) at PLAYBACK_BAR_BORDER_PX —
+    // .playback-pattern's styles.
     const pills = paths(ctx);
     expect(pills).toHaveLength(2);
     for (const pill of pills) {
       expect(pill.y).toBe(7 * 36);
       expect(pill.height).toBe(30);
-      expect(pill.fillStyle).toBe(theme.selectedBg);
+      expect(pill.fillStyle).toBe(withAlpha(theme.accentPrimary, PLAYBACK_BAR_FILL_ALPHA));
       expect(pill.strokeStyle).toBe(theme.accentPrimary);
-      expect(pill.radius).toBe(10); // the DOM's border-radius
+      expect(pill.radius).toBe(PLAYBACK_BAR_RADIUS_PX); // the DOM's border-radius
     }
     const tracksPill = pills.find((c) => c.width === activeRowBarWidthPx(4, false)!);
     expect(tracksPill).toBeDefined();
-    // Border is 2px per .row-playback-bar, recorded at trace time.
-    expect(pills.every((p) => p.lineWidth === 2)).toBe(true);
+    // Border is PLAYBACK_BAR_BORDER_PX per .row-playback-bar, recorded at trace time.
+    expect(pills.every((p) => p.lineWidth === PLAYBACK_BAR_BORDER_PX)).toBe(true);
   });
 
-  it('uses the song-mode colors the DOM hard-codes for .playback-song', () => {
+  it('pins the pop-more geometry: 3px border, 0.28 fill alpha', () => {
+    // Regression for the 2026-09-11 report ("barely visible, make it pop
+    // more"): the border went 2px → 3px and the fill alpha 0.14 → 0.28,
+    // mirroring TrackerPattern.vue's .active-row-bar/.row-playback-bar.
+    expect(PLAYBACK_BAR_BORDER_PX).toBe(3);
+    expect(PLAYBACK_BAR_FILL_ALPHA).toBe(0.28);
+  });
+
+  it('uses the song-mode colors the DOM computes for .playback-song', () => {
     const ctx = makeMockCtx();
     drawActiveRowBar(ctx, layout4, theme, { playbackRow: 0, mode: 'song' });
     expect(theme.accentSecondary).toBe('rgb(88, 176, 255)');
     for (const pill of paths(ctx)) {
       expect(pill.strokeStyle).toBe(theme.accentSecondary);
-      expect(pill.fillStyle).toBe('rgba(88, 176, 255, 0.14)');
+      expect(pill.fillStyle).toBe('rgba(88, 176, 255, 0.28)');
     }
   });
 
