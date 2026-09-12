@@ -55,6 +55,9 @@ interface RectCall {
   y: number;
   width: number;
   height: number;
+  /** Fill colour and composite mode at call time — how the trail is tinted. */
+  fillStyle: string;
+  composite: string;
 }
 interface TextCall {
   op: 'fillText';
@@ -75,13 +78,21 @@ function makeRecordingCtx(): RecordingCtx {
     canvas: null as HTMLCanvasElement | OffscreenCanvas | null,
     calls,
     fillRect(x: number, y: number, width: number, height: number) {
-      calls.push({ op: 'fillRect', x, y, width, height });
+      calls.push({
+        op: 'fillRect',
+        x,
+        y,
+        width,
+        height,
+        fillStyle: String(props.get('fillStyle') ?? ''),
+        composite: String(props.get('globalCompositeOperation') ?? 'source-over'),
+      });
     },
     strokeRect(x: number, y: number, width: number, height: number) {
-      calls.push({ op: 'strokeRect', x, y, width, height });
+      calls.push({ op: 'strokeRect', x, y, width, height, fillStyle: '', composite: '' });
     },
     clearRect(x: number, y: number, width: number, height: number) {
-      calls.push({ op: 'clearRect', x, y, width, height });
+      calls.push({ op: 'clearRect', x, y, width, height, fillStyle: '', composite: '' });
     },
     drawImage(
       image: CanvasImageSource,
@@ -614,6 +625,33 @@ describe('canvas playing-row text trail', () => {
     // Source and destination agree — the bright pixels land on the plain ones.
     for (const t of trail) expect(t.sy).toBeCloseTo(t.dy, 5);
 
+    wrapper.unmount();
+  });
+
+  it('tints the trail toward the playback accent, not toward a brighter white', async () => {
+    // The delta has to be hue: --tracker-note-text is #ffffff and .note is
+    // already bold, so a note's plain and bright states are the same pixels
+    // and fading between them shows nothing ("I can't really see any trails").
+    // Each trail blit is therefore followed by a source-atop fill in the bar's
+    // own accent, which recolours exactly the glyphs just drawn.
+    const wrapper = mountCanvas({ isPlaying: true, playbackRow: 4 });
+    pumpFrame();
+    const overlayCtx = ctxOf(layers(wrapper).overlay);
+    const before = overlayCtx.calls.length;
+    await wrapper.setProps({ playbackRow: 5 } as never);
+    await nextTick();
+    pumpFrame();
+
+    const fills = overlayCtx.calls
+      .slice(before)
+      .filter((c): c is RectCall => c.op === 'fillRect');
+    // Three trail rows × two tracks; the pills fill a path, not a rect, and
+    // the cursor is off, so these are the tint fills and nothing else.
+    expect(fills).toHaveLength(6);
+    for (const fill of fills) {
+      expect(fill.composite).toBe('source-atop');
+      expect(fill.fillStyle).toBe('rgb(77, 242, 197)'); // --tracker-accent-primary
+    }
     wrapper.unmount();
   });
 

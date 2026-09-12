@@ -436,18 +436,23 @@ export function drawBrightRowNumbers(
 /**
  * Alpha of each row of the playing-row TEXT trail, nearest row first.
  *
- * The trail is the bright text fading out behind the playhead: row-1 at
- * `[0]`, row-2 at `[1]`, row-3 at `[2]`. The bright glyphs composite over the
- * plain glyphs the static bitmap already painted, so alpha `a` gives exactly
- * `plain * (1 - a) + bright * a` — an interpolation between the renderer's two
- * text states, done by the compositor for the cost of a drawImage (Morten,
+ * The trail is the played text fading out behind the playhead: row-1 at
+ * `[0]`, row-2 at `[1]`, row-3 at `[2]`. Each row's glyphs are tinted toward
+ * the playback bar's accent at this alpha, giving
+ * `plain * (1 - a) + accent * a` — an interpolation between two text states,
+ * done by the compositor for the cost of a drawImage and a fill (Morten,
  * 2026-09-12: "interpolate between them for say 3 rows").
+ *
+ * Toward the accent, not toward the bright variant: `--tracker-note-text` is
+ * #ffffff and `.note` is already bold, so a note's plain and bright states are
+ * identical pixels and fading between them showed nothing at all ("I can't
+ * really see any trails"). The delta has to be hue.
  *
  * Behind, not ahead: the trail is meant to "match the music", and only rows
  * the playhead has already passed have actually sounded. Lighting the rows
  * below would pre-announce notes that have not played yet.
  */
-export const PLAYBACK_TRAIL_ALPHAS = [0.5, 0.28, 0.14] as const;
+export const PLAYBACK_TRAIL_ALPHAS = [0.65, 0.4, 0.2] as const;
 
 /** One horizontal run of a trail row to light up, in pattern space. */
 export interface TrailSpan {

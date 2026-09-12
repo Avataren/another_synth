@@ -999,19 +999,41 @@ function paintOverlay(vt: number, vl: number): boolean {
       // the overlay's drawImage order reads playhead-last.
       //
       // Only the spans that carry a note or an effect (buildTrailSpanIndex),
-      // each at its row's alpha: the bright glyphs blend into the plain ones
-      // the static bitmap already drew, so alpha interpolates between the two
-      // text states and the pattern's events fade out behind the playhead
-      // instead of a solid block of text.
+      // each at its row's alpha, tinted toward the playback accent.
+      //
+      // The tint is the whole effect (Morten, 2026-09-12: "I can't really see
+      // any trails"). Fading the BRIGHT text in was invisible by construction:
+      // `--tracker-note-text` is #ffffff and `.note` is already bold, so for a
+      // note glyph the plain and bright states are the same pixels — the
+      // interpolation ran from white to white. A trail needs a hue delta, not
+      // a luminance one, so it runs toward the bar's own colour instead: the
+      // playhead's light falling on the notes it just played.
+      //
+      // Per span: blit the baked glyphs at the row's alpha, then recolour
+      // exactly those pixels with `source-atop` (which scales by what is
+      // already there, so the tint inherits the glyph's coverage AND the row's
+      // alpha). Over the plain glyphs beneath, the result is
+      // `plain*(1-a) + accent*a` — still an interpolation between two text
+      // states, just between two that differ.
       if (!trailSpanIndex) trailSpanIndex = buildTrailSpanIndex(l, props.tracks);
+      const trailColor =
+        props.playbackMode === 'song' ? theme.accentSecondary : theme.accentPrimary;
       for (let i = 0; i < PLAYBACK_TRAIL_ALPHAS.length; i++) {
         const row = barRow - 1 - i;
         if (row < 0) break;
         const spans = trailSpanIndex.get(row);
         if (!spans) continue;
-        ctx.globalAlpha = PLAYBACK_TRAIL_ALPHAS[i]!;
         const trailSy = rowY(row) * bitmapDpr;
+        const trailDy = rowY(row);
         for (const span of spans) {
+          ctx.save();
+          // Clip: `source-atop` applies to the whole layer, and this must
+          // recolour only the glyphs of THIS span — not the pills or the
+          // cursor the same overlay carries.
+          ctx.beginPath();
+          ctx.rect(span.x, trailDy, span.width, rowHeightPx);
+          ctx.clip();
+          ctx.globalAlpha = PLAYBACK_TRAIL_ALPHAS[i]!;
           ctx.drawImage(
             strip as CanvasImageSource,
             // Surface x 0 is the gutter's left edge, i.e. pattern x
@@ -1021,10 +1043,19 @@ function paintOverlay(vt: number, vl: number): boolean {
             span.width * bitmapDpr,
             sh,
             span.x,
-            rowY(row),
+            trailDy,
             span.width,
             rowHeightPx,
           );
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = 'source-atop';
+          ctx.fillStyle = trailColor;
+          ctx.fillRect(span.x, trailDy, span.width, rowHeightPx);
+          // Reset explicitly rather than trusting restore() alone: everything
+          // painted after this — the playing row's strip, the cursor cell —
+          // must be plain source-over at full alpha.
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.restore();
         }
       }
       ctx.globalAlpha = 1;
