@@ -27,7 +27,9 @@
 # origin/main: a bump refuses when the local branch is behind it, which is
 # exactly the state that would mint a number the other machine already used.
 # That guard only works if releases actually reach origin -- pass --push (the
-# publishing deploy should), or push the commit and tag yourself.
+# publishing deploy should), or push the commit and tag yourself. The tag is
+# annotated, so `git push --follow-tags` is enough to carry it; it would have
+# skipped a lightweight one without a word.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -81,7 +83,12 @@ do_bump() {
   version="$(node -p "require('./package.json').version")"
   git add "${RELEASE_FILES[@]}"
   git commit -q -m "release: v$version"
-  git tag "v$version"
+  # Annotated, not lightweight: `git push --follow-tags` carries annotated tags
+  # along with the commits and SILENTLY IGNORES lightweight ones. A release
+  # pushed with that flag therefore landed the commit and left its tag behind,
+  # with nothing in the output to say so (2026-09-12: v0.3.42-v0.3.45 all had
+  # to be pushed by hand after the fact). `git describe` also prefers these.
+  git tag -a "v$version" -m "release: v$version"
 
   if [ "$push" = 1 ]; then
     git push --quiet origin HEAD "v$version"
