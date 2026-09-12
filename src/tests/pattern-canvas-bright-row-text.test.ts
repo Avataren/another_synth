@@ -31,6 +31,7 @@ import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 
 const NOTE_TEXT = '#f0ffe0-note-sentinel';
 const EFFECT_BRIGHT = '#00ffaa-effect-bright-sentinel';
+const COMPLEMENT = '#ff8800-accent-complement-sentinel';
 
 interface DrawImageCall {
   op: 'drawImage';
@@ -224,6 +225,7 @@ beforeEach(() => {
           return (name: string) => {
             if (name === '--tracker-note-text') return NOTE_TEXT;
             if (name === '--tracker-effect-text-bright') return EFFECT_BRIGHT;
+            if (name === '--tracker-accent-complement') return COMPLEMENT;
             return target.getPropertyValue(name);
           };
         }
@@ -628,12 +630,13 @@ describe('canvas playing-row text trail', () => {
     wrapper.unmount();
   });
 
-  it('tints the trail toward the playback accent, not toward a brighter white', async () => {
+  it('tints the trail toward the theme complement, not toward a brighter white', async () => {
     // The delta has to be hue: --tracker-note-text is #ffffff and .note is
     // already bold, so a note's plain and bright states are the same pixels
     // and fading between them shows nothing ("I can't really see any trails").
-    // Each trail blit is therefore followed by a source-atop fill in the bar's
-    // own accent, which recolours exactly the glyphs just drawn.
+    // Each trail blit is therefore followed by a source-atop fill, which
+    // recolours exactly the glyphs just drawn — in the theme's COMPLEMENT,
+    // since the accent itself sits near the note text on several themes.
     const wrapper = mountCanvas({ isPlaying: true, playbackRow: 4 });
     pumpFrame();
     const overlayCtx = ctxOf(layers(wrapper).overlay);
@@ -650,7 +653,7 @@ describe('canvas playing-row text trail', () => {
     expect(fills).toHaveLength(6);
     for (const fill of fills) {
       expect(fill.composite).toBe('source-atop');
-      expect(fill.fillStyle).toBe('rgb(77, 242, 197)'); // --tracker-accent-primary
+      expect(fill.fillStyle).toBe(COMPLEMENT); // --tracker-accent-complement
     }
     wrapper.unmount();
   });

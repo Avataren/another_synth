@@ -34,6 +34,8 @@ const theme: PatternTheme = {
   activeBorder: 'rgb(77, 242, 197)',
   accentPrimary: '#4df2c5',
   accentSecondary: 'rgb(88, 176, 255)',
+  accentComplement: 'rgb(242, 122, 77)',
+  accentComplementAlt: 'rgb(255, 167, 88)',
   noteText: '#ffffff',
   instrumentText: 'rgba(255, 255, 255, 0.82)',
   volumeText: '#85b7ff',

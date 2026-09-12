@@ -50,6 +50,20 @@ export interface PatternTheme {
   accentPrimary: string;
   /** Song-mode playback bar border (`--tracker-accent-secondary`). */
   accentSecondary: string;
+  /**
+   * The playing-row trail's tint (`--tracker-accent-complement`), pattern mode.
+   *
+   * The theme's complementary palette (theme-palette.ts), which the store
+   * already publishes for the analyzers — and which resolves to the accent
+   * itself when the "Complementary Analyzer Colors" setting is off, so this
+   * needs no knowledge of that setting. The trail tints toward the complement
+   * rather than the accent because the accent is a near neighbour of the note
+   * text on several themes (Midnight Blue's accent is a pale blue against
+   * near-white blue-white glyphs), and a tint that close reads as nothing.
+   */
+  accentComplement: string;
+  /** The trail's tint in song mode (`--tracker-accent-complement-alt`). */
+  accentComplementAlt: string;
   /** Note text (`--tracker-note-text`). */
   noteText: string;
   /** Instrument text (`--tracker-instrument-text`). */
@@ -113,6 +127,11 @@ const VARS: Array<{ key: PatternThemeVarKey; varName: string; fallback: string }
   { key: 'activeBorder', varName: '--tracker-active-border', fallback: 'var(--tracker-accent, rgb(77, 242, 197))' },
   { key: 'accentPrimary', varName: '--tracker-accent-primary', fallback: 'rgb(77, 242, 197)' },
   { key: 'accentSecondary', varName: '--tracker-accent-secondary', fallback: 'rgb(88, 176, 255)' },
+  // Fallbacks are the accents themselves: that is exactly what the store
+  // writes with the complementary setting off, so a canvas drawn before any
+  // stylesheet lands on the same colour that path would give it.
+  { key: 'accentComplement', varName: '--tracker-accent-complement', fallback: 'rgb(77, 242, 197)' },
+  { key: 'accentComplementAlt', varName: '--tracker-accent-complement-alt', fallback: 'rgb(88, 176, 255)' },
   { key: 'noteText', varName: '--tracker-note-text', fallback: '#ffffff' },
   { key: 'instrumentText', varName: '--tracker-instrument-text', fallback: 'rgba(255, 255, 255, 0.82)' },
   { key: 'volumeText', varName: '--tracker-volume-text', fallback: '#85b7ff' },

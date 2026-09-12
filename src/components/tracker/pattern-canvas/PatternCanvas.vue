@@ -1016,8 +1016,17 @@ function paintOverlay(vt: number, vl: number): boolean {
       // `plain*(1-a) + accent*a` — still an interpolation between two text
       // states, just between two that differ.
       if (!trailSpanIndex) trailSpanIndex = buildTrailSpanIndex(l, props.tracks);
+      // The theme's COMPLEMENT, not its accent (Morten, 2026-09-12: "what if
+      // we used the complimentary palette if thats enabled?"). The accent is a
+      // near neighbour of the note text on several themes — Midnight Blue
+      // tints a #f0f2ff glyph toward a pale blue — so the accent tint was the
+      // white-on-white problem again, one layer down. The complement is a
+      // 180° rotation of that same accent, so it belongs to the theme just as
+      // much while landing far from the text it recolours. With the
+      // complementary setting off the var resolves to the accent itself, so
+      // this follows the user's choice without asking about it.
       const trailColor =
-        props.playbackMode === 'song' ? theme.accentSecondary : theme.accentPrimary;
+        props.playbackMode === 'song' ? theme.accentComplementAlt : theme.accentComplement;
       for (let i = 0; i < PLAYBACK_TRAIL_ALPHAS.length; i++) {
         const row = barRow - 1 - i;
         if (row < 0) break;

@@ -126,6 +126,8 @@ const theme: PatternTheme = {
   activeBorder: 'rgb(77, 242, 197)',
   accentPrimary: 'rgb(77, 242, 197)',
   accentSecondary: 'rgb(88, 176, 255)',
+  accentComplement: 'rgb(242, 122, 77)',
+  accentComplementAlt: 'rgb(255, 167, 88)',
   noteText: '#note-sentinel',
   instrumentText: '#instr-sentinel',
   volumeText: '#vol-sentinel',
