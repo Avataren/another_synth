@@ -56,9 +56,10 @@ interface RectCall {
   y: number;
   width: number;
   height: number;
-  /** Fill colour and composite mode at call time — how the trail is tinted. */
+  /** Fill colour, composite mode and alpha at call time — how tinting works. */
   fillStyle: string;
   composite: string;
+  alpha: number;
 }
 interface TextCall {
   op: 'fillText';
@@ -87,13 +88,14 @@ function makeRecordingCtx(): RecordingCtx {
         height,
         fillStyle: String(props.get('fillStyle') ?? ''),
         composite: String(props.get('globalCompositeOperation') ?? 'source-over'),
+        alpha: Number(props.get('globalAlpha') ?? 1),
       });
     },
     strokeRect(x: number, y: number, width: number, height: number) {
-      calls.push({ op: 'strokeRect', x, y, width, height, fillStyle: '', composite: '' });
+      calls.push({ op: 'strokeRect', x, y, width, height, fillStyle: '', composite: '', alpha: 1 });
     },
     clearRect(x: number, y: number, width: number, height: number) {
-      calls.push({ op: 'clearRect', x, y, width, height, fillStyle: '', composite: '' });
+      calls.push({ op: 'clearRect', x, y, width, height, fillStyle: '', composite: '', alpha: 1 });
     },
     drawImage(
       image: CanvasImageSource,
@@ -321,16 +323,18 @@ describe('canvas playing-row text overlay', () => {
     expect(brightSurface).not.toBe(visible);
     expect(brightSurface).not.toBe(overlay);
 
-    // Bright glyphs were painted into that surface: note columns in the
-    // note-text token, effect/macro columns in their own brighter hue
-    // (MINOR-4) — not one flat colour for every glyph.
+    // The surface is the TINTED text state: every glyph on it is the theme's
+    // complement, one flat colour, which is what lets a plain alpha blit blend
+    // it against the original text on the static bitmap. Per-column tokens
+    // (note-text, the brighter effect hue) belong to the original state and
+    // must not appear here.
     const brightCtx = contexts.find((c) => c.canvas === brightSurface)!;
     const brightGlyphs = brightCtx.calls.filter((c): c is TextCall => c.op === 'fillText');
     expect(brightGlyphs.length).toBeGreaterThan(0);
     const brightStyles = new Set(brightGlyphs.map((g) => g.fillStyle));
-    expect(brightStyles.has(NOTE_TEXT)).toBe(true);
-    expect(brightStyles.has(EFFECT_BRIGHT)).toBe(true);
-    expect(brightStyles).toEqual(new Set([NOTE_TEXT, EFFECT_BRIGHT]));
+    expect(brightStyles).toEqual(new Set([COMPLEMENT]));
+    expect(brightStyles.has(NOTE_TEXT)).toBe(false);
+    expect(brightStyles.has(EFFECT_BRIGHT)).toBe(false);
 
     // Advance several rows: no new offscreen surface, no static repaint, and
     // the overlay keeps blitting the SAME bright surface, tracking the row.
@@ -645,16 +649,24 @@ describe('canvas playing-row text trail', () => {
     await nextTick();
     pumpFrame();
 
-    const fills = overlayCtx.calls
-      .slice(before)
-      .filter((c): c is RectCall => c.op === 'fillRect');
-    // Three trail rows × two tracks; the pills fill a path, not a rect, and
-    // the cursor is off, so these are the tint fills and nothing else.
-    expect(fills).toHaveLength(6);
-    for (const fill of fills) {
-      expect(fill.composite).toBe('source-atop');
-      expect(fill.fillStyle).toBe(COMPLEMENT); // --tracker-accent-complement
-    }
+    const frame = overlayCtx.calls.slice(before);
+    // Nothing is recoloured on the overlay: the tint lives in the bake, so a
+    // playback frame is blits and nothing else. This is the regression that
+    // matters — recolouring here with `source-atop` stained the playing row's
+    // PILL as a solid block, because the pill's translucent fill covers the
+    // whole row and source-atop paints wherever the destination has alpha.
+    expect(frame.filter((c) => c.op === 'fillRect')).toHaveLength(0);
+
+    // The playing row blits the tinted state outright, at full alpha across
+    // the whole row (gutter included) — it is the peak the trail fades from.
+    const blits = frame.filter((c): c is DrawImageCall => c.op === 'drawImage');
+    const strip = blits.at(-1)!;
+    expect(strip.alpha).toBe(1);
+    expect(strip.dx).toBeCloseTo(-GUTTER_WIDTH_PX, 5);
+    expect(strip.dy).toBeCloseTo(5 * rowPitchPx, 5);
+
+    // And the trail blits behind it come from that same tinted surface.
+    for (const blit of blits) expect(blit.image).toBe(strip.image);
     wrapper.unmount();
   });
 

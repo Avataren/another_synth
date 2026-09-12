@@ -697,8 +697,18 @@ function bakeBrightRowTextInner(): void {
   // (matching TrackerEntry's `.row-playing .cell` rule); effect/macro glyphs
   // brighten toward their own hue-preserving bright variant (MINOR-4) — the
   // same `--tracker-effect-text-bright` the DOM path reads.
-  const color = theme.noteText;
-  const effectColor = theme.effectTextBright;
+  // The whole surface is baked in the theme's COMPLEMENT — this is the
+  // "tinted" of the renderer's two text states, and the static bitmap
+  // underneath is the "original". The playing row blits it outright; the rows
+  // behind blit it at descending alpha, which blends the two states into a
+  // fade (Morten, 2026-09-12). One colour for every glyph, so a blit is the
+  // whole effect: no per-span recolour, no composite modes, no clipping.
+  //
+  // Song mode takes the alt complement, matching the pill it plays under, so
+  // the bake is invalidated when the playback mode flips (watch below).
+  const color =
+    props.playbackMode === 'song' ? theme.accentComplementAlt : theme.accentComplement;
+  const effectColor = color;
   drawBrightRowNumbers(ctx, l, theme, { color });
   ctx.save();
   ctx.translate(GUTTER_WIDTH_PX, 0);
@@ -994,39 +1004,25 @@ function paintOverlay(vt: number, vl: number): boolean {
     const strip = brightRowTextBitmap;
     if (strip) {
       const sh = rowHeightPx * bitmapDpr;
-      // Trail first, so the playing row's own strip composites on top of it
-      // (they never overlap, but the playing row stays the last word) and so
-      // the overlay's drawImage order reads playhead-last.
+      // Two text states, blended by the compositor (Morten, 2026-09-12): the
+      // ORIGINAL is the plain text the static bitmap already painted, the
+      // TINTED is this surface, baked entirely in the theme's complement. The
+      // playing row blits the tinted state outright (below); the rows behind
+      // blit it at descending alpha, so each lands at
+      // `original*(1-a) + tinted*a` and the trail is a fade between the two.
+      //
+      // That is the whole effect — one drawImage per span, no recolouring, no
+      // composite modes, no clipping. It replaces a source-atop tint that had
+      // to be clipped per span and still painted the playing row's pill as a
+      // solid block, because source-atop recolours whatever the destination
+      // already has alpha in and the pill fill covers the entire row.
+      //
+      // Trail first, so the playing row's strip composites on top of it (they
+      // never overlap, but the playhead stays the last word).
       //
       // Only the spans that carry a note or an effect (buildTrailSpanIndex),
-      // each at its row's alpha, tinted toward the playback accent.
-      //
-      // The tint is the whole effect (Morten, 2026-09-12: "I can't really see
-      // any trails"). Fading the BRIGHT text in was invisible by construction:
-      // `--tracker-note-text` is #ffffff and `.note` is already bold, so for a
-      // note glyph the plain and bright states are the same pixels — the
-      // interpolation ran from white to white. A trail needs a hue delta, not
-      // a luminance one, so it runs toward the bar's own colour instead: the
-      // playhead's light falling on the notes it just played.
-      //
-      // Per span: blit the baked glyphs at the row's alpha, then recolour
-      // exactly those pixels with `source-atop` (which scales by what is
-      // already there, so the tint inherits the glyph's coverage AND the row's
-      // alpha). Over the plain glyphs beneath, the result is
-      // `plain*(1-a) + accent*a` — still an interpolation between two text
-      // states, just between two that differ.
+      // so what lingers behind the playhead is the music, not the grid.
       if (!trailSpanIndex) trailSpanIndex = buildTrailSpanIndex(l, props.tracks);
-      // The theme's COMPLEMENT, not its accent (Morten, 2026-09-12: "what if
-      // we used the complimentary palette if thats enabled?"). The accent is a
-      // near neighbour of the note text on several themes — Midnight Blue
-      // tints a #f0f2ff glyph toward a pale blue — so the accent tint was the
-      // white-on-white problem again, one layer down. The complement is a
-      // 180° rotation of that same accent, so it belongs to the theme just as
-      // much while landing far from the text it recolours. With the
-      // complementary setting off the var resolves to the accent itself, so
-      // this follows the user's choice without asking about it.
-      const trailColor =
-        props.playbackMode === 'song' ? theme.accentComplementAlt : theme.accentComplement;
       for (let i = 0; i < PLAYBACK_TRAIL_ALPHAS.length; i++) {
         const row = barRow - 1 - i;
         if (row < 0) break;
@@ -1034,15 +1030,8 @@ function paintOverlay(vt: number, vl: number): boolean {
         if (!spans) continue;
         const trailSy = rowY(row) * bitmapDpr;
         const trailDy = rowY(row);
+        ctx.globalAlpha = PLAYBACK_TRAIL_ALPHAS[i]!;
         for (const span of spans) {
-          ctx.save();
-          // Clip: `source-atop` applies to the whole layer, and this must
-          // recolour only the glyphs of THIS span — not the pills or the
-          // cursor the same overlay carries.
-          ctx.beginPath();
-          ctx.rect(span.x, trailDy, span.width, rowHeightPx);
-          ctx.clip();
-          ctx.globalAlpha = PLAYBACK_TRAIL_ALPHAS[i]!;
           ctx.drawImage(
             strip as CanvasImageSource,
             // Surface x 0 is the gutter's left edge, i.e. pattern x
@@ -1056,15 +1045,6 @@ function paintOverlay(vt: number, vl: number): boolean {
             span.width,
             rowHeightPx,
           );
-          ctx.globalAlpha = 1;
-          ctx.globalCompositeOperation = 'source-atop';
-          ctx.fillStyle = trailColor;
-          ctx.fillRect(span.x, trailDy, span.width, rowHeightPx);
-          // Reset explicitly rather than trusting restore() alone: everything
-          // painted after this — the playing row's strip, the cursor cell —
-          // must be plain source-over at full alpha.
-          ctx.globalCompositeOperation = 'source-over';
-          ctx.restore();
         }
       }
       ctx.globalAlpha = 1;
@@ -1535,7 +1515,19 @@ watch(
 );
 
 watch(
-  () => [props.playbackMode, props.activeTrack, props.activeColumn, props.activeMacroNibble],
+  () => props.playbackMode,
+  () => {
+    // The tinted surface is baked in the mode's own complement (pattern takes
+    // `--tracker-accent-complement`, song the alt), so a mode flip restains
+    // every glyph on it: drop the bake and let the next playback frame rebuild
+    // it, exactly like a theme flip.
+    invalidateBrightRowText();
+    schedule(['overlay']);
+  },
+);
+
+watch(
+  () => [props.activeTrack, props.activeColumn, props.activeMacroNibble],
   () => schedule(['overlay']),
 );
 
