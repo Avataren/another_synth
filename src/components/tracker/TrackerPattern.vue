@@ -679,12 +679,12 @@ defineExpose({
 
 .playback-pattern .row-playback-bar {
   border-color: var(--tracker-accent-primary, rgb(77, 242, 197));
-  background: color-mix(in srgb, var(--tracker-accent-primary, rgb(77, 242, 197)) 28%, transparent);
+  background: color-mix(in srgb, var(--tracker-accent-primary, rgb(77, 242, 197)) 34%, transparent);
 }
 
 .playback-song .row-playback-bar {
   border-color: var(--tracker-accent-secondary, rgb(88, 176, 255));
-  background: color-mix(in srgb, var(--tracker-accent-secondary, rgb(88, 176, 255)) 28%, transparent);
+  background: color-mix(in srgb, var(--tracker-accent-secondary, rgb(88, 176, 255)) 34%, transparent);
 }
 
 .tracks-wrapper {
@@ -712,12 +712,12 @@ defineExpose({
 }
 
 .playback-pattern .active-row-bar {
-  background: color-mix(in srgb, var(--tracker-accent-primary, rgb(77, 242, 197)) 28%, transparent);
+  background: color-mix(in srgb, var(--tracker-accent-primary, rgb(77, 242, 197)) 34%, transparent);
   border: 3px solid var(--tracker-accent-primary, rgb(77, 242, 197));
 }
 
 .playback-song .active-row-bar {
-  background: color-mix(in srgb, var(--tracker-accent-secondary, rgb(88, 176, 255)) 28%, transparent);
+  background: color-mix(in srgb, var(--tracker-accent-secondary, rgb(88, 176, 255)) 34%, transparent);
   border: 3px solid var(--tracker-accent-secondary, rgb(88, 176, 255));
 }
 

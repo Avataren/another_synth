@@ -8,6 +8,7 @@ import {
   rowPitchPx,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
 import { setCache } from 'src/components/tracker/pattern-canvas/pattern-theme';
+import { PLAYBACK_TRAIL_ALPHAS } from 'src/components/tracker/pattern-canvas/pattern-draw';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 
 /**
@@ -34,6 +35,11 @@ const EFFECT_BRIGHT = '#00ffaa-effect-bright-sentinel';
 interface DrawImageCall {
   op: 'drawImage';
   image: unknown;
+  /**
+   * `globalAlpha` at the time of the call — how the trail rows fade (the
+   * playing row itself always blits at 1).
+   */
+  alpha: number;
   sx: number;
   sy: number;
   sw: number;
@@ -88,7 +94,19 @@ function makeRecordingCtx(): RecordingCtx {
       dw: number,
       dh: number,
     ) {
-      calls.push({ op: 'drawImage', image, sx, sy, sw, sh, dx, dy, dw, dh });
+      calls.push({
+        op: 'drawImage',
+        image,
+        alpha: Number(props.get('globalAlpha') ?? 1),
+        sx,
+        sy,
+        sw,
+        sh,
+        dx,
+        dy,
+        dw,
+        dh,
+      });
     },
     fillText(text: string) {
       calls.push({ op: 'fillText', text, fillStyle: String(props.get('fillStyle') ?? '') });
@@ -538,6 +556,100 @@ describe('canvas playing-row text overlay — deferred re-bake on edit (MAJOR-2)
     expect(strip.image).toBe(brightSurface);
     expect(strip.sy).toBeCloseTo(3 * rowPitchPx, 5);
 
+    wrapper.unmount();
+  });
+});
+
+/**
+ * The text trail (Morten, 2026-09-12: "interpolate between them for say 3 rows
+ * … only active notes and effects brighten up, that would leave a cool trail
+ * that somewhat matches the music").
+ *
+ * The bright glyphs composite over the plain ones already on the static
+ * bitmap, so blitting a trail row at alpha `a` IS the interpolation between
+ * the renderer's two text states. Two things make it read as music rather
+ * than as a gradient: it runs BEHIND the playhead (only rows that have
+ * actually sounded), and within those rows it lights only the spans that
+ * carry a note or an effect.
+ */
+describe('canvas playing-row text trail', () => {
+  /** One playback tick's overlay blits, in paint order. */
+  function tickBlits(
+    wrapper: ReturnType<typeof mountCanvas>,
+    toRow: number,
+  ): Promise<DrawImageCall[]> {
+    const overlayCtx = ctxOf(layers(wrapper).overlay);
+    const before = drawImagesOn(overlayCtx).length;
+    return wrapper
+      .setProps({ playbackRow: toRow } as never)
+      .then(() => nextTick())
+      .then(() => {
+        pumpFrame();
+        return drawImagesOn(overlayCtx).slice(before);
+      });
+  }
+
+  it('fades the three rows behind the playhead, the playing row last at full strength', async () => {
+    const wrapper = mountCanvas({ isPlaying: true, playbackRow: 4 });
+    pumpFrame();
+    const blits = await tickBlits(wrapper, 5);
+
+    // Last blit is the playing row: the full-width strip (gutter + tracks) at
+    // alpha 1, painted over the trail so the playhead stays the brightest
+    // thing on screen.
+    const strip = blits.at(-1)!;
+    expect(strip.alpha).toBe(1);
+    expect(strip.dx).toBeCloseTo(-GUTTER_WIDTH_PX, 5);
+    expect(strip.dy).toBeCloseTo(5 * rowPitchPx, 5);
+
+    // Before it: rows 4, 3, 2 at the three trail alphas, dimmest furthest
+    // back. Both tracks carry a note on every row here, so two spans per row.
+    const trail = blits.slice(0, -1);
+    const [a0, a1, a2] = PLAYBACK_TRAIL_ALPHAS;
+    expect(trail.map((t) => t.alpha)).toEqual([a0, a0, a1, a1, a2, a2]);
+    expect(trail.map((t) => t.dy)).toEqual([4, 4, 3, 3, 2, 2].map((r) => r * rowPitchPx));
+    // Each trail blit is one cell's note columns, never a whole row: the
+    // filler glyphs around the event stay plain.
+    for (const t of trail) expect(t.dw).toBeLessThan(strip.dw);
+    // Source and destination agree — the bright pixels land on the plain ones.
+    for (const t of trail) expect(t.sy).toBeCloseTo(t.dy, 5);
+
+    wrapper.unmount();
+  });
+
+  it('leaves no trail on rows that sounded nothing', async () => {
+    // Notes on rows 0 and 5 only: with the playhead on 5, rows 4-2 played
+    // nothing, so nothing trails. What lingers is the music, not the grid.
+    const sparse: TrackerTrackData[] = [
+      { id: 't0', name: 't0', entries: [{ row: 0, note: 'C-4' }, { row: 5, note: 'E-4' }] },
+    ];
+    const wrapper = mountCanvas({ isPlaying: true, playbackRow: 4, tracks: sparse });
+    pumpFrame();
+    const blits = await tickBlits(wrapper, 5);
+    expect(blits).toHaveLength(1);
+    expect(blits[0]!.alpha).toBe(1);
+    wrapper.unmount();
+  });
+
+  it('trails an effect on a row that has no note, and ignores filler macros', async () => {
+    const tracks: TrackerTrackData[] = [
+      {
+        id: 't0',
+        name: 't0',
+        entries: [
+          { row: 3, macro: '...' }, // filler: not an event
+          { row: 4, macro: 'A08' }, // effect alone still sounded
+          { row: 5, note: 'C-4' },
+        ],
+      },
+    ];
+    const wrapper = mountCanvas({ isPlaying: true, playbackRow: 4, tracks });
+    pumpFrame();
+    const blits = await tickBlits(wrapper, 5);
+    const trail = blits.slice(0, -1);
+    expect(trail).toHaveLength(1);
+    expect(trail[0]!.dy).toBeCloseTo(4 * rowPitchPx, 5);
+    expect(trail[0]!.alpha).toBe(PLAYBACK_TRAIL_ALPHAS[0]);
     wrapper.unmount();
   });
 });

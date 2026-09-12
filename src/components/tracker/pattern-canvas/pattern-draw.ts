@@ -433,6 +433,94 @@ export function drawBrightRowNumbers(
   beginTextRun();
 }
 
+/**
+ * Alpha of each row of the playing-row TEXT trail, nearest row first.
+ *
+ * The trail is the bright text fading out behind the playhead: row-1 at
+ * `[0]`, row-2 at `[1]`, row-3 at `[2]`. The bright glyphs composite over the
+ * plain glyphs the static bitmap already painted, so alpha `a` gives exactly
+ * `plain * (1 - a) + bright * a` — an interpolation between the renderer's two
+ * text states, done by the compositor for the cost of a drawImage (Morten,
+ * 2026-09-12: "interpolate between them for say 3 rows").
+ *
+ * Behind, not ahead: the trail is meant to "match the music", and only rows
+ * the playhead has already passed have actually sounded. Lighting the rows
+ * below would pre-announce notes that have not played yet.
+ */
+export const PLAYBACK_TRAIL_ALPHAS = [0.5, 0.28, 0.14] as const;
+
+/** One horizontal run of a trail row to light up, in pattern space. */
+export interface TrailSpan {
+  x: number;
+  width: number;
+}
+
+/** Does this entry carry a macro worth lighting (set, and not all dots)? */
+function hasEffect(macro: string | undefined): boolean {
+  if (!macro) return false;
+  const trimmed = macro.trim();
+  return trimmed !== '' && !/^\.+$/.test(trimmed);
+}
+
+/** Does this entry carry a note event (note, or its instrument/volume)? */
+function hasNoteEvent(entry: TrackerEntryData): boolean {
+  return (
+    (entry.note !== undefined && entry.note.trim() !== '') ||
+    (entry.instrument !== undefined && entry.instrument.trim() !== '') ||
+    (entry.volume !== undefined && entry.volume.trim() !== '')
+  );
+}
+
+/**
+ * Row → the spans of that row that actually sounded, for the playing-row text
+ * trail.
+ *
+ * Only notes and effects trail (Morten, 2026-09-12: "only active notes and
+ * effects brighten up, that would leave a cool trail that somewhat matches the
+ * music") — a row's `---` / `...` filler stays plain, so what lingers behind
+ * the playhead is the pattern's actual events, not a solid block of text. The
+ * note event's instrument and volume ride along with its note span: they are
+ * that one event's parameters, not separate glyphs.
+ *
+ * Built once per static invalidation (same lifecycle as the bright-text bake),
+ * never per tick: walking every track's entries on every playback frame is the
+ * cost this index exists to avoid. Spans are pattern-space x runs; the caller
+ * pairs them with the row's y and blits that rect out of the bright surface.
+ */
+export function buildTrailSpanIndex(
+  layout: PatternLayout,
+  tracks: TrackerTrackData[],
+): Map<number, TrailSpan[]> {
+  const index = new Map<number, TrailSpan[]>();
+  const push = (row: number, span: TrailSpan): void => {
+    const spans = index.get(row);
+    if (spans) spans.push(span);
+    else index.set(row, [span]);
+  };
+  for (let trackIndex = 0; trackIndex < layout.trackCount; trackIndex++) {
+    const track = tracks[trackIndex];
+    if (!track) continue;
+    const box = entryBoxRect(trackIndex, 0, layout);
+    const offsets = columnFractionOffsets(box.width, layout.showExtraEffectColumn);
+    const contentX = box.x + entryHorizontalInsetPx;
+    const at = (column: number): number => offsets[column]!;
+    for (const entry of track.entries) {
+      if (entry.row < 0 || entry.row >= layout.rowCount) continue;
+      if (hasNoteEvent(entry)) {
+        // Columns 0-3: note, instrument, both volume digits.
+        push(entry.row, { x: contentX + at(0), width: at(4) - at(0) });
+      }
+      if (hasEffect(entry.macro)) {
+        push(entry.row, { x: contentX + at(4), width: at(5) - at(4) });
+      }
+      if (layout.showExtraEffectColumn && hasEffect(entry.macro2)) {
+        push(entry.row, { x: contentX + at(5), width: at(6) - at(5) });
+      }
+    }
+  }
+  return index;
+}
+
 export interface DrawStaticGridData {
   tracks: TrackerTrackData[];
   /** Rows covered by the current clip; defaults to the whole pattern. */
@@ -577,13 +665,15 @@ export const PLAYBACK_BAR_RADIUS_PX = 10;
 export const PLAYBACK_BAR_BORDER_PX = 3;
 
 /**
- * Fill alpha of the DOM playback pills' translucent tint (raised from 0.14 in
- * the same pass). Mixed with the mode's own accent color — not a flat
- * constant color — so the fill always matches the border's hue on every
- * built-in theme. Static; no glow, no animation (Morten reverted the
- * v0.3.35 row-glow in 3 minutes).
+ * Fill alpha of the DOM playback pills' translucent tint (0.14 → 0.28 → this).
+ * Mixed with the mode's own accent color — not a flat constant color — so the
+ * fill always matches the border's hue on every built-in theme. Static; no
+ * glow, no animation (Morten reverted the v0.3.35 row-glow in 3 minutes), so
+ * "pop more" is spent on the pill's own contrast, plus the text trail behind
+ * it (PLAYBACK_TRAIL_ALPHAS) which leaves the playing row the only fully-lit
+ * row on screen.
  */
-export const PLAYBACK_BAR_FILL_ALPHA = 0.28;
+export const PLAYBACK_BAR_FILL_ALPHA = 0.34;
 
 /**
  * Trace a DOM-style rounded rect (`border-radius` pill) at `radius` px.

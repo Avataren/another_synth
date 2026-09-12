@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildInterpolatedRows,
+  buildTrailSpanIndex,
   drawActiveRowBar,
   drawEntryBox,
   drawRowNumbers,
@@ -19,7 +20,7 @@ import {
   GUTTER_WIDTH_PX,
   macroNibbleWidth,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
-import { trackWidthPx } from 'src/components/tracker/track-metrics';
+import { trackPitchPx, trackWidthPx } from 'src/components/tracker/track-metrics';
 import { activeRowBarWidthPx } from 'src/components/tracker/pattern-buffering';
 import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import { buildTrackAccents } from 'src/components/tracker/pattern-canvas/track-accents';
@@ -442,6 +443,66 @@ describe('drawSelectionBar', () => {
   });
 });
 
+/**
+ * The playing-row text trail's index (Morten, 2026-09-12: "only active notes
+ * and effects brighten up, that would leave a cool trail that somewhat matches
+ * the music"). What it indexes decides what lingers behind the playhead: an
+ * event's own columns, never a row's `---`/`...` filler.
+ */
+describe('buildTrailSpanIndex', () => {
+  const l = layout(2, false, 32);
+  const width = trackWidthPx(2, false);
+  const offsets = columnFractionOffsets(width, false);
+  const noteX = entryHorizontalInsetPx + offsets[0]!;
+  const noteWidth = offsets[4]! - offsets[0]!;
+  const effectX = entryHorizontalInsetPx + offsets[4]!;
+  const effectWidth = offsets[5]! - offsets[4]!;
+
+  it('indexes only the rows that carry a note or an effect', () => {
+    const tracks = [
+      makeTrack([
+        { row: 0, note: 'C-4' },
+        { row: 1, macro: '...' }, // filler macro: nothing sounded
+        { row: 2, macro: 'A08' }, // effect with no note
+        { row: 3, note: 'D-4', macro: 'C40' }, // both: two spans
+        { row: 4 }, // an entry with no content at all
+      ]),
+      makeTrack([]),
+    ];
+    const index = buildTrailSpanIndex(l, tracks);
+    expect([...index.keys()].sort((a, b) => a - b)).toEqual([0, 2, 3]);
+    expect(index.get(0)).toHaveLength(1);
+    expect(index.get(2)).toHaveLength(1);
+    expect(index.get(3)).toHaveLength(2);
+  });
+
+  it('spans an event’s own columns: note+instrument+volume, and the effect', () => {
+    const tracks = [makeTrack([{ row: 1, note: 'C-4', macro: 'A08' }])];
+    const spans = buildTrailSpanIndex(layout(1, false, 32), tracks).get(1)!;
+    const single = trackWidthPx(1, false);
+    const o = columnFractionOffsets(single, false);
+    expect(spans[0]!.x).toBeCloseTo(entryHorizontalInsetPx + o[0]!, 5);
+    expect(spans[0]!.width).toBeCloseTo(o[4]! - o[0]!, 5);
+    expect(spans[1]!.x).toBeCloseTo(entryHorizontalInsetPx + o[4]!, 5);
+    expect(spans[1]!.width).toBeCloseTo(o[5]! - o[4]!, 5);
+  });
+
+  it('offsets spans by the track they sit in', () => {
+    const tracks = [makeTrack([]), makeTrack([{ row: 2, note: 'C-4', macro: 'A08' }])];
+    const spans = buildTrailSpanIndex(l, tracks).get(2)!;
+    const pitch = trackPitchPx(2, false);
+    expect(spans[0]!.x).toBeCloseTo(pitch + noteX, 5);
+    expect(spans[0]!.width).toBeCloseTo(noteWidth, 5);
+    expect(spans[1]!.x).toBeCloseTo(pitch + effectX, 5);
+    expect(spans[1]!.width).toBeCloseTo(effectWidth, 5);
+  });
+
+  it('ignores entries outside the pattern’s rows', () => {
+    const tracks = [makeTrack([{ row: 99, note: 'C-4' }, { row: -1, note: 'C-4' }])];
+    expect(buildTrailSpanIndex(l, tracks).size).toBe(0);
+  });
+});
+
 describe('drawActiveRowBar', () => {
   const layout4 = layout(4, false, 32);
 
@@ -467,12 +528,14 @@ describe('drawActiveRowBar', () => {
     expect(pills.every((p) => p.lineWidth === PLAYBACK_BAR_BORDER_PX)).toBe(true);
   });
 
-  it('pins the pop-more geometry: 3px border, 0.28 fill alpha', () => {
+  it('pins the pop-more geometry: 3px border, 0.34 fill alpha', () => {
     // Regression for the 2026-09-11 report ("barely visible, make it pop
     // more"): the border went 2px → 3px and the fill alpha 0.14 → 0.28,
     // mirroring TrackerPattern.vue's .active-row-bar/.row-playback-bar.
+    // 2026-09-12 ("make the active row pop even more"): 0.28 → 0.34, the
+    // pill's share of that pass — the rest is the text trail behind it.
     expect(PLAYBACK_BAR_BORDER_PX).toBe(3);
-    expect(PLAYBACK_BAR_FILL_ALPHA).toBe(0.28);
+    expect(PLAYBACK_BAR_FILL_ALPHA).toBe(0.34);
   });
 
   it('uses the song-mode colors the DOM computes for .playback-song', () => {
@@ -481,7 +544,7 @@ describe('drawActiveRowBar', () => {
     expect(theme.accentSecondary).toBe('rgb(88, 176, 255)');
     for (const pill of paths(ctx)) {
       expect(pill.strokeStyle).toBe(theme.accentSecondary);
-      expect(pill.fillStyle).toBe('rgba(88, 176, 255, 0.28)');
+      expect(pill.fillStyle).toBe('rgba(88, 176, 255, 0.34)');
     }
   });
 

@@ -12,6 +12,7 @@ import { activeRowBarWidthPx } from 'src/components/tracker/pattern-buffering';
 import { hitTest } from 'src/components/tracker/pattern-canvas/pattern-hit-test';
 import { blitWindow } from 'src/components/tracker/pattern-canvas/pattern-window';
 import { BAND_PAD_PX } from 'src/components/tracker/pattern-canvas/pattern-bands';
+import { PLAYBACK_TRAIL_ALPHAS } from 'src/components/tracker/pattern-canvas/pattern-draw';
 import { setCache } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import { buildTrackAccents } from 'src/components/tracker/pattern-canvas/track-accents';
@@ -1087,14 +1088,19 @@ describe('playback follow: one coalesced frame per row advance', () => {
         .at(-1) as unknown as { sy: number };
       expect(newestBlit.sy).toBeCloseTo(row * rowPitchPx - (VIEWPORT_H - rowHeightPx) / 2, 5);
 
-      // Overlay: bands only — every clear is one row-band tall, never the
-      // whole layer (VIEWPORT_H = 400 would be a full clear).
+      // Overlay: bands only — every clear covers the bar row plus the text
+      // trail above it and no more, never the whole layer (VIEWPORT_H = 400
+      // would be a full clear). The trail rows are overlay pixels like the
+      // pills, so the band spans them; that is 4 row pitches, not 10.
+      const bandHeight =
+        PLAYBACK_TRAIL_ALPHAS.length * rowPitchPx + rowHeightPx + 2 * BAND_PAD_PX;
       const clears = overlayCtx.calls
         .slice(overlayFrameStart)
         .filter((call): call is RectCall => call.op === 'clearRect');
       expect(clears.length).toBeGreaterThan(0);
       for (const clear of clears) {
-        expect(clear.height).toBeLessThanOrEqual(rowHeightPx + 2 * BAND_PAD_PX + 0.5);
+        expect(clear.height).toBeLessThanOrEqual(bandHeight + 0.5);
+        expect(clear.height).toBeLessThan(VIEWPORT_H);
       }
       // And the pills were repainted on the new row, once.
       expect(newestPills(overlayCtx, overlayFrameStart)).toHaveLength(2);
@@ -1640,7 +1646,7 @@ describe('playback bar accents', () => {
     expect(pills).toHaveLength(2);
     expect(pills.every((p) => p.radius === 10)).toBe(true);
     expect(overlayCtx.props.get('strokeStyle')).toBe('#4df2c5');
-    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(77, 242, 197, 0.28)');
+    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(77, 242, 197, 0.34)');
     wrapper.unmount();
   });
 
@@ -1657,7 +1663,7 @@ describe('playback bar accents', () => {
     );
     expect(pills).toHaveLength(2);
     expect(overlayCtx.props.get('strokeStyle')).toBe('rgb(88, 176, 255)');
-    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(88, 176, 255, 0.28)');
+    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(88, 176, 255, 0.34)');
     wrapper.unmount();
   });
 

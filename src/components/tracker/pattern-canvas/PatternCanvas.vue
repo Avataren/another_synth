@@ -94,7 +94,10 @@ import {
 import {
   drawActiveRowBar,
   buildInterpolatedRows,
+  buildTrailSpanIndex,
   cursorCellRect,
+  PLAYBACK_TRAIL_ALPHAS,
+  type TrailSpan,
   drawBrightRowNumbers,
   drawBrightRowText,
   drawCursorCell,
@@ -362,6 +365,14 @@ let brightRowTextValid = false;
 /** Handle of a pending off-critical-path re-bake (idle callback or rAF). */
 let brightRowTextRebakeId: number | null = null;
 let brightRowTextRebakeIsIdle = false;
+/**
+ * Row → the spans of that row that carry a note or an effect, for the text
+ * trail behind the playhead (buildTrailSpanIndex). Shares the bright surface's
+ * lifecycle — same content, same invalidations — but is independent of whether
+ * the surface itself could be allocated, so it is built on its own and stays
+ * cheap: a plain index over the entries, no pixels.
+ */
+let trailSpanIndex: Map<number, TrailSpan[]> | null = null;
 
 /**
  * Drop the bright playing-row text pre-render synchronously; the next
@@ -373,6 +384,7 @@ let brightRowTextRebakeIsIdle = false;
 function invalidateBrightRowText(): void {
   brightRowTextValid = false;
   brightRowTextBitmap = null;
+  trailSpanIndex = null;
 }
 
 /**
@@ -394,6 +406,7 @@ function invalidateBrightRowText(): void {
 function scheduleBrightRowTextRebake(): void {
   brightRowTextValid = false;
   brightRowTextBitmap = null;
+  trailSpanIndex = null;
   // Nothing to defer while stopped: the next playback start bakes fresh.
   if (!props.isPlaying) return;
   // A second invalidation before the callback fires must not double-schedule.
@@ -927,7 +940,15 @@ function paintOverlay(vt: number, vl: number): boolean {
           macroNibble: props.activeMacroNibble,
         })
       : null;
-  const next: OverlayFootprint = { barRow, cursor: cursorRect, viewTop: vt, viewLeft: vl };
+  // The trail is painted above barRow while playing; the footprint carries its
+  // depth so the clear band spans it and a moving playhead leaves no smear.
+  const next: OverlayFootprint = {
+    barRow,
+    trailRows: props.isPlaying && barRow >= 0 ? PLAYBACK_TRAIL_ALPHAS.length : 0,
+    cursor: cursorRect,
+    viewTop: vt,
+    viewLeft: vl,
+  };
 
   ctx.setTransform(dpr.value, 0, 0, dpr.value, 0, 0);
   const full = overlayFullPaint || overlayPainted === null;
@@ -972,8 +993,42 @@ function paintOverlay(vt: number, vl: number): boolean {
     ensureBrightRowText();
     const strip = brightRowTextBitmap;
     if (strip) {
-      const sy = rowY(barRow) * bitmapDpr;
       const sh = rowHeightPx * bitmapDpr;
+      // Trail first, so the playing row's own strip composites on top of it
+      // (they never overlap, but the playing row stays the last word) and so
+      // the overlay's drawImage order reads playhead-last.
+      //
+      // Only the spans that carry a note or an effect (buildTrailSpanIndex),
+      // each at its row's alpha: the bright glyphs blend into the plain ones
+      // the static bitmap already drew, so alpha interpolates between the two
+      // text states and the pattern's events fade out behind the playhead
+      // instead of a solid block of text.
+      if (!trailSpanIndex) trailSpanIndex = buildTrailSpanIndex(l, props.tracks);
+      for (let i = 0; i < PLAYBACK_TRAIL_ALPHAS.length; i++) {
+        const row = barRow - 1 - i;
+        if (row < 0) break;
+        const spans = trailSpanIndex.get(row);
+        if (!spans) continue;
+        ctx.globalAlpha = PLAYBACK_TRAIL_ALPHAS[i]!;
+        const trailSy = rowY(row) * bitmapDpr;
+        for (const span of spans) {
+          ctx.drawImage(
+            strip as CanvasImageSource,
+            // Surface x 0 is the gutter's left edge, i.e. pattern x
+            // −GUTTER_WIDTH_PX — the same mapping the full-row blit below uses.
+            (span.x + GUTTER_WIDTH_PX) * bitmapDpr,
+            trailSy,
+            span.width * bitmapDpr,
+            sh,
+            span.x,
+            rowY(row),
+            span.width,
+            rowHeightPx,
+          );
+        }
+      }
+      ctx.globalAlpha = 1;
+      const sy = rowY(barRow) * bitmapDpr;
       ctx.drawImage(
         strip as CanvasImageSource,
         0,

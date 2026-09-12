@@ -30,6 +30,13 @@ import { GUTTER_WIDTH_PX, rowHeightPx, rowY } from './pattern-layout';
 export interface OverlayFootprint {
   /** Pattern-space row the playback bar was painted on; -1 = no bar. */
   barRow: number;
+  /**
+   * How many rows of bright-text trail were painted ABOVE `barRow`
+   * (PLAYBACK_TRAIL_ALPHAS). The trail is overlay pixels like the pills, so
+   * the clear band has to span it too — otherwise a moving playhead leaves the
+   * brightest trail row behind as a permanent smear. 0 / absent = no trail.
+   */
+  trailRows?: number;
   /** Editing-cursor cell rect in pattern space; null = no cursor. */
   cursor: { x: number; y: number; width: number; height: number } | null;
   /** View origin the footprint's screen positions were derived from. */
@@ -79,12 +86,17 @@ function footprintBands(
     // Both pills scroll with the content (the gutter pill rides the same
     // −viewLeft translate as the tracks pill), so the band is still the
     // whole row: one rect covers whatever remains visible at any origin.
+    // The trail rows sit directly above the bar row, so one taller rect
+    // covers bar + trail rather than one band per row.
+    const topRow = Math.max(0, f.barRow - (f.trailRows ?? 0));
+    const top = rowY(topRow);
+    const bottom = rowY(f.barRow) + rowHeightPx;
     const band = clampBand(
       {
         x: 0,
-        y: rowY(f.barRow) - f.viewTop - BAND_PAD_PX,
+        y: top - f.viewTop - BAND_PAD_PX,
         width: viewportW,
-        height: rowHeightPx + 2 * BAND_PAD_PX,
+        height: bottom - top + 2 * BAND_PAD_PX,
       },
       viewportW,
       viewportH,
