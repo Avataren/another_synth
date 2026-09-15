@@ -61,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   buildEntryLookup,
   entryBoxRect,
@@ -1345,6 +1345,23 @@ watch(
     schedule(['blit', 'overlay']);
   },
 );
+
+/*
+ * Content narrowing (fewer tracks, a wider window) shrinks the hscroll
+ * extent. The browser clamps the proxy's scrollLeft without reliably firing
+ * `scroll`, and once the pattern fits the proxy is hidden -- so a stale
+ * viewLeft would paint the tracks off-screen with no way to scroll back.
+ */
+watch([contentWidth, panelMaxWidth], async () => {
+  await nextTick();
+  const el = hscrollRef.value;
+  const max = hscrollVisible.value && el ? Math.max(0, el.scrollWidth - el.clientWidth) : 0;
+  if (viewLeft.value <= max) return;
+  viewLeft.value = max;
+  if (el && Math.abs(el.scrollLeft - max) >= 0.5) el.scrollLeft = max;
+  emitScroll();
+  schedule(['blit', 'overlay']);
+});
 
 /**
  * Follow the playback row while playing, with the DOM grid's exact behavior:

@@ -574,6 +574,12 @@ watch([trackCount, rowsCount, () => currentPattern.value?.id], () => {
   if (canvasRendererFailed.value) canvasRendererFailed.value = false;
 });
 
+// Each song starts at its first track. Left where the last song was, a
+// narrower song can sit entirely off-screen with nothing left to scroll by.
+watch(host.isLoadingSong, (loading) => {
+  if (!loading) patternAreaScrollLeft.value = 0;
+});
+
 let scrollRafId: number | null = null;
 
 function onPatternAreaScroll(event: Event): void {

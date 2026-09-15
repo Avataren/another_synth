@@ -2542,6 +2542,15 @@ watch(
 
 watch(trackCount, () => refreshVisualizerAlignment());
 
+// A new song starts at its first track. Left where the last song was, a
+// narrower song can sit entirely off-screen with nothing left to scroll by.
+watch(isLoadingSong, async (loading) => {
+  if (loading) return;
+  patternAreaScrollLeft.value = 0;
+  await nextTick();
+  syncTrackScroll(0);
+});
+
 // The extent the renderer failed on has changed: let it try again (see
 // retryCanvasRenderer). Declared here rather than beside the handler
 // because `watch` seeds its getters immediately, and `trackCount` is not
