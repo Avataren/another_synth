@@ -1,5 +1,6 @@
 #![feature(portable_simd)]
 
+pub mod ahx;
 pub mod audio;
 pub mod audio_engine;
 pub mod automation;
