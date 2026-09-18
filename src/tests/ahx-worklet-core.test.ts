@@ -15,6 +15,9 @@ const ROOT = resolve(__dirname, '../..');
 const SAMPLE_RATE = 44100;
 const QUANTUM = 128;
 
+// Load ids only grow within a core; one counter for the file keeps that true.
+let nextId = 0;
+
 const fixture = (name: string) =>
   new Uint8Array(readFileSync(resolve(ROOT, 'public/demos/ahx', name)));
 
@@ -69,7 +72,7 @@ beforeAll(() => {
 describe('AhxProcessorCore over the real wasm', () => {
   it('reproduces the C reference bit-for-bit through the whole worklet path', () => {
     const { core } = newCore();
-    core.handle({ type: 'load-song', bytes: fixture('karma.ahx') });
+    core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
     core.handle({ type: 'play' });
 
     // 44100 Hz, speed multiplier 1: one DecodeFrame is 882 samples.
@@ -90,7 +93,7 @@ describe('AhxProcessorCore over the real wasm', () => {
 
   it('is silent until played and after pause, without advancing', () => {
     const { core, events } = newCore();
-    core.handle({ type: 'load-song', bytes: fixture('karma.ahx') });
+    core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
     expect(render(core, 4410).l.every((s) => s === 0)).toBe(true);
     core.handle({ type: 'play' });
     expect(render(core, 8820).l.some((s) => s !== 0)).toBe(true);
@@ -102,15 +105,16 @@ describe('AhxProcessorCore over the real wasm', () => {
 
   it('reports the song on load and rejects garbage without throwing', () => {
     const { core, events } = newCore();
-    core.handle({ type: 'load-song', bytes: fixture('karma.ahx') });
+    core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
     const loaded = events.find((e) => e.type === 'song-loaded');
     expect(loaded).toMatchObject({
+      id: nextId - 1,
       info: { channels: 4, droppedChannels: 0, sampleRate: SAMPLE_RATE },
     });
 
-    core.handle({ type: 'load-song', bytes: new Uint8Array([1, 2, 3, 4]) });
+    core.handle({ type: 'load-song', id: nextId++, bytes: new Uint8Array([1, 2, 3, 4]) });
     const error = events.filter((e) => e.type === 'error').at(-1);
-    expect(error).toMatchObject({ type: 'error' });
+    expect(error).toMatchObject({ type: 'error', id: nextId - 1 });
     // A failed load leaves nothing playing.
     core.handle({ type: 'play' });
     expect(render(core, 1024).l.every((s) => s === 0)).toBe(true);
@@ -118,7 +122,7 @@ describe('AhxProcessorCore over the real wasm', () => {
 
   it('truncates a 7-channel HVL to the fixed-4 engine and says so', () => {
     const { core, events } = newCore();
-    core.handle({ type: 'load-song', bytes: fixture('drainage_proble.hvl') });
+    core.handle({ type: 'load-song', id: nextId++, bytes: fixture('drainage_proble.hvl') });
     expect(events.find((e) => e.type === 'song-loaded')).toMatchObject({
       info: { channels: 4, droppedChannels: 3 },
     });
@@ -128,7 +132,7 @@ describe('AhxProcessorCore over the real wasm', () => {
     const a = newCore();
     const b = newCore();
     for (const { core } of [a, b]) {
-      core.handle({ type: 'load-song', bytes: fixture('karma.ahx') });
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
     }
     b.core.handle({ type: 'set-gain', gain: 0.5 });
     a.core.handle({ type: 'play' });
@@ -145,7 +149,7 @@ describe('AhxProcessorCore over the real wasm', () => {
 
   it('reports song end once, when sunspots loops', () => {
     const { core, events } = newCore();
-    core.handle({ type: 'load-song', bytes: fixture('sunspots.hvl') });
+    core.handle({ type: 'load-song', id: nextId++, bytes: fixture('sunspots.hvl') });
     core.handle({ type: 'play' });
     // Its golden reaches song end within 3000 DecodeFrames (60 s).
     render(core, 882 * 3000);
@@ -156,7 +160,7 @@ describe('AhxProcessorCore over the real wasm', () => {
     const stereo = newCore();
     const mono = newCore();
     for (const { core } of [stereo, mono]) {
-      core.handle({ type: 'load-song', bytes: fixture('karma.ahx') });
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
       core.handle({ type: 'play' });
     }
     const { l, r } = render(stereo.core, 4410);
@@ -167,5 +171,34 @@ describe('AhxProcessorCore over the real wasm', () => {
     for (let i = 0; i < 4410; i++) {
       expect(m[i]).toBeCloseTo(((l[i] ?? 0) + (r[i] ?? 0)) * 0.5, 7);
     }
+  });
+});
+
+describe('AhxProcessorCore load ids and dispose', () => {
+  it('answers each load with its own id and ignores a stale one', () => {
+    const { core, events } = newCore();
+    const first = nextId++;
+    const second = nextId++;
+    core.handle({ type: 'load-song', id: second, bytes: fixture('karma.ahx') });
+    // Older than one already handled: dropped, not loaded over the newer song.
+    core.handle({ type: 'load-song', id: first, bytes: fixture('sunspots.hvl') });
+    const loaded = events.filter((e) => e.type === 'song-loaded');
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]).toMatchObject({ id: second, info: { name: 'Karma' } });
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(0);
+  });
+
+  it('is terminal after dispose: no commands, silence, and disposed is set', () => {
+    const { core, events } = newCore();
+    core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
+    core.handle({ type: 'play' });
+    expect(core.disposed).toBe(false);
+    core.handle({ type: 'dispose' });
+    expect(core.disposed).toBe(true);
+    const before = events.length;
+    core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
+    core.handle({ type: 'play' });
+    expect(events).toHaveLength(before);
+    expect(render(core, 1024).l.every((s) => s === 0)).toBe(true);
   });
 });

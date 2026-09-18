@@ -82,6 +82,9 @@ class AhxAudioProcessor extends AudioWorkletProcessor {
   }
 
   process(_inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
+    // Returning false lets the browser collect the node once the client has
+    // disposed it; an input-less processor that returns true is never freed.
+    if (this.core?.disposed) return false;
     const channels = outputs[0];
     const left = channels?.[0];
     if (!left) return true;

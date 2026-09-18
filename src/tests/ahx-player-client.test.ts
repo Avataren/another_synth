@@ -176,6 +176,62 @@ describe('createAhxPlayer / AhxPlayerClient', () => {
     await expect(second).resolves.toMatchObject({ channels: 4 });
   });
 
+  it('settles a load with its own answer, not a superseded load\'s', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    const sunspots = readFileSync(resolve(ROOT, 'public/demos/ahx/sunspots.hvl'));
+    // The worklet runs both loads and answers A then B; B must get B's info.
+    const a = player.loadSong(karma);
+    const b = player.loadSong(sunspots);
+    await expect(a).rejects.toThrow(/superseded/);
+    const info = await b;
+    expect(info.name).not.toBe('Karma');
+    expect(player.song).toEqual(info);
+  });
+
+  it('does not let a superseded bad load reject the newer good one', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    const bad = player.loadSong(new Uint8Array([9, 9, 9]));
+    const good = player.loadSong(karma);
+    await expect(bad).rejects.toThrow(/superseded/);
+    await expect(good).resolves.toMatchObject({ name: 'Karma' });
+  });
+
+  it('rejects the pending load and refuses new ones when the processor dies', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    const errors: Error[] = [];
+    player.onError((e) => errors.push(e));
+    const node = FakeWorkletNode.last as FakeWorkletNode;
+    const pending = player.loadSong(karma);
+    node.onprocessorerror?.();
+    await expect(pending).rejects.toThrow(/processor error/);
+    expect(errors).toHaveLength(1);
+    await expect(player.loadSong(karma)).rejects.toThrow(/processor error/);
+    expect(node.closed).toBe(false); // the port is left for dispose() to close
+  });
+
+  it('reports a worklet error with no load behind it, without rejecting a load', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    const errors: Error[] = [];
+    player.onError((e) => errors.push(e));
+    const node = FakeWorkletNode.last as FakeWorkletNode;
+    const pending = player.loadSong(karma);
+    // What AhxProcessorCore posts when a render traps: no id.
+    node.port.onmessage?.({ data: { type: 'error', message: 'AHX render failed: boom' } } as MessageEvent);
+    expect(errors.map((e) => e.message)).toEqual(['AHX render failed: boom']);
+    await expect(pending).resolves.toMatchObject({ name: 'Karma' });
+  });
+
+  it('rejects loadSong at once on a disposed client', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    player.dispose();
+    await expect(player.loadSong(karma)).rejects.toThrow(/disposed/);
+  });
+
   it('rejects loadSong callers when the player is disposed mid-load', async () => {
     stubGlobals();
     const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
@@ -207,16 +263,28 @@ describe('AhxTrackerSink', () => {
     expect(ctx.output.gain.setValueAtTime).toHaveBeenLastCalledWith(0, 10);
   });
 
-  it('maps the stop-the-song calls to pause and ignores note traffic', async () => {
+  it('ignores a non-finite master volume instead of throwing from the AudioParam', async () => {
+    const { sink, ctx } = await makeSink();
+    sink.setMasterVolume(0.5);
+    ctx.output.gain.setValueAtTime.mockClear();
+    sink.setMasterVolume(Number.NaN);
+    sink.setMasterVolume(Number.POSITIVE_INFINITY, 12);
+    expect(ctx.output.gain.setValueAtTime).not.toHaveBeenCalled();
+    sink.setMasterVolume(0.5, Number.NaN); // a bad time falls back to now
+    expect(ctx.output.gain.setValueAtTime).toHaveBeenLastCalledWith(0.5, 10);
+  });
+
+  it('maps the stop-the-song calls to pause; note traffic and scheduled cut-all do nothing', async () => {
     const { sink, pause } = await makeSink();
     sink.noteOnAtTime('01', 60, 1, 0, 0);
     sink.setVoicePitchAtTime('01', 0, 440, 0, 0);
     sink.notesOffForTrack(0);
+    // PlaybackEngine's in-song key-off-all must not stop the whole song.
+    sink.cutAllVoicesAtTime(12);
     expect(pause).not.toHaveBeenCalled();
     sink.allNotesOff();
-    sink.cutAllVoicesAtTime(0);
     sink.cancelAllScheduled();
-    expect(pause).toHaveBeenCalledTimes(3);
+    expect(pause).toHaveBeenCalledTimes(2);
     await expect(sink.prepareInstrument('01')).resolves.toBeUndefined();
   });
 

@@ -50,7 +50,13 @@ export interface AhxSongInfo {
 
 /** Main thread -> worklet. */
 export type AhxCommand =
-  | { type: 'load-song'; bytes: ArrayBuffer | Uint8Array; stereoMode?: number }
+  | {
+      type: 'load-song';
+      /** Monotonic per client; echoed on the `song-loaded` / `error` that answers it. */
+      id: number;
+      bytes: ArrayBuffer | Uint8Array;
+      stereoMode?: number;
+    }
   | { type: 'play' }
   | { type: 'pause' }
   | { type: 'restart'; subsong?: number }
@@ -59,7 +65,7 @@ export type AhxCommand =
 
 /** Worklet -> main thread. */
 export type AhxEvent =
-  | { type: 'song-loaded'; info: AhxSongInfo }
+  | { type: 'song-loaded'; id: number; info: AhxSongInfo }
   | {
       type: 'position';
       position: number;
@@ -68,7 +74,8 @@ export type AhxEvent =
       ticks: number;
     }
   | { type: 'song-end' }
-  | { type: 'error'; message: string };
+  /** `id` is set when the error answers a `load-song`; a render failure has none. */
+  | { type: 'error'; message: string; id?: number };
 
 /** How often `position` events go out while playing (about 25 per second). */
 const POSITION_INTERVAL_SECONDS = 0.04;
@@ -82,6 +89,8 @@ export class AhxProcessorCore {
   private lastRow = -1;
   private songEndReported = false;
   private scratch = new Float32Array(0);
+  private lastLoadId = -1;
+  private disposedFlag = false;
 
   constructor(
     private readonly PlayerCtor: AhxWasmPlayerCtor,
@@ -89,10 +98,19 @@ export class AhxProcessorCore {
     private readonly post: (event: AhxEvent) => void,
   ) {}
 
+  /** True once `dispose` has been handled; the shell stops calling `process`. */
+  get disposed(): boolean {
+    return this.disposedFlag;
+  }
+
   handle(command: AhxCommand): void {
+    if (this.disposedFlag) return;
     switch (command.type) {
       case 'load-song':
-        this.loadSong(command.bytes, command.stereoMode ?? 2);
+        // Ids only grow; a load older than one already handled is stale.
+        if (command.id <= this.lastLoadId) break;
+        this.lastLoadId = command.id;
+        this.loadSong(command.id, command.bytes, command.stereoMode ?? 2);
         break;
       case 'play':
         this.player?.play();
@@ -113,6 +131,7 @@ export class AhxProcessorCore {
         this.player?.set_gain(command.gain);
         break;
       case 'dispose':
+        this.disposedFlag = true;
         this.dropPlayer();
         break;
     }
@@ -154,7 +173,11 @@ export class AhxProcessorCore {
     }
   }
 
-  private loadSong(bytes: ArrayBuffer | Uint8Array, stereoMode: number): void {
+  private loadSong(
+    id: number,
+    bytes: ArrayBuffer | Uint8Array,
+    stereoMode: number,
+  ): void {
     this.dropPlayer();
     try {
       const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -164,6 +187,7 @@ export class AhxProcessorCore {
       this.resetReporting();
       this.post({
         type: 'song-loaded',
+        id,
         info: {
           name: player.song_name(),
           positionCount: player.position_count(),
@@ -175,7 +199,11 @@ export class AhxProcessorCore {
       });
     } catch (error) {
       // The constructor's `Result<_, String>` arrives as the thrown string.
-      this.post({ type: 'error', message: `AHX load failed: ${String(error)}` });
+      this.post({
+        type: 'error',
+        id,
+        message: `AHX load failed: ${String(error)}`,
+      });
     }
   }
 

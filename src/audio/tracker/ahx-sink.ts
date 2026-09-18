@@ -19,9 +19,22 @@ import type { AhxPlayerClient } from 'src/audio/tracker/ahx-player';
  * the transport lifecycle and the master level:
  *
  *  - `setMasterVolume` -> the client's output gain, sample-accurately;
- *  - `allNotesOff` / `cutAllVoicesAtTime` / `cancelAllScheduled` -> pause.
- *    These are the stop-the-song calls of the interface, and for an engine
- *    that owns its voices "silence everything" and "stop" are the same act.
+ *  - `allNotesOff` / `cancelAllScheduled` -> pause. These are the
+ *    stop-the-song calls of the interface, and for an engine that owns its
+ *    voices "silence everything" and "stop" are the same act.
+ *
+ * `cutAllVoicesAtTime` is a no-op, like the per-voice methods: `PlaybackEngine`
+ * uses it for an in-song "key off everything at this tick" effect, which must
+ * not stop the whole AHX song, and a scheduled pause cannot be honoured
+ * sample-accurately from the main thread.
+ *
+ * This is NOT a drop-in sink for `PlaybackEngine`. The worklet owns the
+ * transport, so nothing maps the engine's start to `play()` and no note or
+ * automation call reaches the song: handed to `PlaybackEngine` it would give a
+ * silent song that can only be stopped. Drive playback through
+ * `AhxPlayerClient` (`loadSong` / `play` / `pause` / `onPosition`) and use this
+ * sink only where a `TrackerSink` shape is required for the lifecycle and the
+ * master level.
  *
  * `setVoiceSampleOffsetAtTime` (PT 9xx) is meaningless here, as
  * architecture-map.md predicted.
@@ -155,13 +168,11 @@ export class AhxTrackerSink implements TrackerSink {
   ): void {}
 
   setMasterVolume(volume: number, time?: number): void {
-    const param = this.player.output.gain;
-    const value = Math.max(0, volume);
-    if (time === undefined || time <= this.audioContext.currentTime) {
-      param.setValueAtTime(value, this.audioContext.currentTime);
-    } else {
-      param.setValueAtTime(value, time);
-    }
+    // setValueAtTime throws on a non-finite value, and Math.max(0, NaN) is NaN.
+    if (!Number.isFinite(volume)) return;
+    const now = this.audioContext.currentTime;
+    const at = time !== undefined && time > now ? time : now;
+    this.player.output.gain.setValueAtTime(Math.max(0, volume), at);
   }
 
   // --- transport lifecycle -----------------------------------------------
@@ -173,9 +184,7 @@ export class AhxTrackerSink implements TrackerSink {
     this.player.pause();
   }
 
-  cutAllVoicesAtTime(_time: number): void {
-    this.player.pause();
-  }
+  cutAllVoicesAtTime(_time: number): void {}
 
   cancelAllScheduled(): void {
     this.player.pause();

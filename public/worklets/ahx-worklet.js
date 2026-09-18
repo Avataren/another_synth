@@ -2872,11 +2872,20 @@ var AhxProcessorCore = class {
     __publicField(this, "lastRow", -1);
     __publicField(this, "songEndReported", false);
     __publicField(this, "scratch", new Float32Array(0));
+    __publicField(this, "lastLoadId", -1);
+    __publicField(this, "disposedFlag", false);
+  }
+  /** True once `dispose` has been handled; the shell stops calling `process`. */
+  get disposed() {
+    return this.disposedFlag;
   }
   handle(command) {
+    if (this.disposedFlag) return;
     switch (command.type) {
       case "load-song":
-        this.loadSong(command.bytes, command.stereoMode ?? 2);
+        if (command.id <= this.lastLoadId) break;
+        this.lastLoadId = command.id;
+        this.loadSong(command.id, command.bytes, command.stereoMode ?? 2);
         break;
       case "play":
         this.player?.play();
@@ -2897,6 +2906,7 @@ var AhxProcessorCore = class {
         this.player?.set_gain(command.gain);
         break;
       case "dispose":
+        this.disposedFlag = true;
         this.dropPlayer();
         break;
     }
@@ -2934,7 +2944,7 @@ var AhxProcessorCore = class {
       this.post({ type: "error", message: `AHX render failed: ${String(error)}` });
     }
   }
-  loadSong(bytes, stereoMode) {
+  loadSong(id, bytes, stereoMode) {
     this.dropPlayer();
     try {
       const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -2944,6 +2954,7 @@ var AhxProcessorCore = class {
       this.resetReporting();
       this.post({
         type: "song-loaded",
+        id,
         info: {
           name: player.song_name(),
           positionCount: player.position_count(),
@@ -2954,7 +2965,11 @@ var AhxProcessorCore = class {
         }
       });
     } catch (error) {
-      this.post({ type: "error", message: `AHX load failed: ${String(error)}` });
+      this.post({
+        type: "error",
+        id,
+        message: `AHX load failed: ${String(error)}`
+      });
     }
   }
   report(player, frames) {
@@ -3042,6 +3057,7 @@ var AhxAudioProcessor = class extends AudioWorkletProcessor {
     }
   }
   process(_inputs, outputs) {
+    if (this.core?.disposed) return false;
     const channels = outputs[0];
     const left = channels?.[0];
     if (!left) return true;

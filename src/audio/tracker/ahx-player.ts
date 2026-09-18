@@ -32,11 +32,16 @@ export class AhxPlayerClient {
 
   private positionListeners = new Set<(p: AhxPosition) => void>();
   private songEndListeners = new Set<() => void>();
+  private errorListeners = new Set<(error: Error) => void>();
   private pendingLoad: {
+    id: number;
     resolve: (info: AhxSongInfo) => void;
     reject: (error: Error) => void;
   } | null = null;
+  private nextLoadId = 0;
   private disposed = false;
+  /** Set once the client can no longer talk to the worklet (disposed, or the processor died). */
+  private unusable: Error | null = null;
   private info: AhxSongInfo | null = null;
 
   /** Use `createAhxPlayer`; the node must already be past the wasm handshake. */
@@ -48,6 +53,9 @@ export class AhxPlayerClient {
     node.connect(this.output);
     node.port.onmessage = (event: MessageEvent) =>
       this.onEvent(event.data as AhxEvent);
+    // The handshake's own handler is spent by now and would close the port.
+    node.onprocessorerror = () =>
+      this.fail(new Error('AHX worklet processor error'));
   }
 
   /** The loaded song, or `null` before `loadSong` resolves. */
@@ -58,15 +66,19 @@ export class AhxPlayerClient {
   /**
    * Parse `bytes` (an AHX or HVL file) in the worklet. Resolves with the song
    * once it is ready to `play()`; rejects with the parser's message for a file
-   * the engine cannot read. A load supersedes any previous one.
+   * the engine cannot read. A load supersedes any previous one; the worklet
+   * still runs both, but only the newest one's answer settles anything. Rejects
+   * at once on a disposed client or one whose processor has died.
    */
   loadSong(bytes: ArrayBuffer | Uint8Array, stereoMode = 2): Promise<AhxSongInfo> {
+    if (this.unusable) return Promise.reject(this.unusable);
     this.pendingLoad?.reject(new Error('superseded by a newer loadSong'));
+    const id = this.nextLoadId++;
     return new Promise<AhxSongInfo>((resolve, reject) => {
-      this.pendingLoad = { resolve, reject };
+      this.pendingLoad = { id, resolve, reject };
       // Copied: the caller keeps its buffer, and the worklet gets its own.
       const copy = new Uint8Array(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)).slice();
-      this.send({ type: 'load-song', bytes: copy.buffer, stereoMode }, [copy.buffer]);
+      this.send({ type: 'load-song', id, bytes: copy.buffer, stereoMode }, [copy.buffer]);
     });
   }
 
@@ -94,13 +106,25 @@ export class AhxPlayerClient {
     return () => this.songEndListeners.delete(listener);
   }
 
+  /**
+   * Failures that no `loadSong` promise carries: a render trap in the worklet,
+   * or the processor dying (after which the client is unusable). With no
+   * listener they are logged.
+   */
+  onError(listener: (error: Error) => void): () => void {
+    this.errorListeners.add(listener);
+    return () => this.errorListeners.delete(listener);
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.unusable ??= new Error('player disposed');
     this.pendingLoad?.reject(new Error('player disposed'));
     this.pendingLoad = null;
     this.positionListeners.clear();
     this.songEndListeners.clear();
+    this.errorListeners.clear();
     this.send({ type: 'dispose' });
     this.node.disconnect();
     this.output.disconnect();
@@ -112,19 +136,39 @@ export class AhxPlayerClient {
     this.node.port.postMessage(command, transfer);
   }
 
+  /** The processor is gone: settle what is waiting, tell listeners, refuse new loads. */
+  private fail(error: Error): void {
+    this.unusable ??= error;
+    this.pendingLoad?.reject(error);
+    this.pendingLoad = null;
+    this.notifyError(error);
+  }
+
+  private notifyError(error: Error): void {
+    if (this.errorListeners.size === 0) {
+      console.error(`[AHX] ${error.message}`);
+      return;
+    }
+    for (const listener of this.errorListeners) listener(error);
+  }
+
   private onEvent(event: AhxEvent): void {
     switch (event.type) {
       case 'song-loaded':
+        // An answer to a load that a newer one superseded: not the current song.
+        if (event.id !== this.pendingLoad?.id) break;
         this.info = event.info;
-        this.pendingLoad?.resolve(event.info);
+        this.pendingLoad.resolve(event.info);
         this.pendingLoad = null;
         break;
       case 'error':
-        if (this.pendingLoad) {
+        // Only a load's own error (matching id) rejects it; a stale load's
+        // error, or one with no id (a render trap), must not.
+        if (event.id !== undefined && event.id === this.pendingLoad?.id) {
           this.pendingLoad.reject(new Error(event.message));
           this.pendingLoad = null;
-        } else {
-          console.error(`[AHX] ${event.message}`);
+        } else if (event.id === undefined) {
+          this.notifyError(new Error(event.message));
         }
         break;
       case 'position': {
