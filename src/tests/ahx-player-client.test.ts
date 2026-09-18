@@ -154,6 +154,41 @@ describe('createAhxPlayer / AhxPlayerClient', () => {
     expect(node.closed).toBe(true);
   });
 
+  it('capture is off until asked; then snapshots of every voice reach onWaveforms', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    await player.loadSong(karma);
+    const node = FakeWorkletNode.last as FakeWorkletNode;
+    const seen: Array<{ channels: number; points: number; data: Int16Array }> = [];
+    player.onWaveforms((w) => seen.push(w));
+    player.play();
+    await Promise.resolve();
+    await Promise.resolve();
+    for (let i = 0; i < 400; i++) node.pull();
+    await Promise.resolve();
+    expect(seen).toHaveLength(0);
+
+    player.setCapture(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    for (let i = 0; i < 400; i++) node.pull();
+    await Promise.resolve();
+    expect(seen.length).toBeGreaterThan(0);
+    const w = seen.at(-1) as (typeof seen)[number];
+    expect(w.channels).toBe(4);
+    expect(w.data).toHaveLength(w.channels * w.points);
+    expect(w.data.some((x) => x !== 0)).toBe(true);
+
+    const n = seen.length;
+    player.setCapture(false);
+    await Promise.resolve();
+    await Promise.resolve();
+    for (let i = 0; i < 400; i++) node.pull();
+    await Promise.resolve();
+    expect(seen).toHaveLength(n);
+    player.dispose();
+  });
+
   it('rejects loadSong with the parser message for a bad file', async () => {
     stubGlobals();
     const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);

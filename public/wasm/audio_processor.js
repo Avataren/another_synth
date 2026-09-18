@@ -233,6 +233,22 @@ function passArrayF32ToWasm0(arg, malloc) {
     WASM_VECTOR_LEN = arg.length;
     return ptr;
 }
+
+let cachedUint16ArrayMemory0 = null;
+
+function getUint16ArrayMemory0() {
+    if (cachedUint16ArrayMemory0 === null || cachedUint16ArrayMemory0.byteLength === 0) {
+        cachedUint16ArrayMemory0 = new Uint16Array(wasm.memory.buffer);
+    }
+    return cachedUint16ArrayMemory0;
+}
+
+function passArray16ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 2, 2) >>> 0;
+    getUint16ArrayMemory0().set(arg, ptr / 2);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
 /**
  * @enum {0 | 1}
  */
@@ -397,11 +413,26 @@ export class AhxPlayer {
         return ret >>> 0;
     }
     /**
+     * Per-voice waveform capture for oscilloscopes; off by default and
+     * bit-neutral to the mix (see [`AhxEngine::enable_capture`]).
+     * @param {boolean} on
+     */
+    enable_capture(on) {
+        wasm.ahxplayer_enable_capture(this.__wbg_ptr, on);
+    }
+    /**
      * @returns {number}
      */
     position_count() {
         const ret = wasm.ahxplayer_position_count(this.__wbg_ptr);
         return ret >>> 0;
+    }
+    /**
+     * @returns {boolean}
+     */
+    capture_enabled() {
+        const ret = wasm.ahxplayer_capture_enabled(this.__wbg_ptr);
+        return ret !== 0;
     }
     /**
      * Song channels the engine does not play: 0 for every real file (only a
@@ -420,6 +451,21 @@ export class AhxPlayer {
     song_end_reached() {
         const ret = wasm.ahxplayer_song_end_reached(this.__wbg_ptr);
         return ret !== 0;
+    }
+    /**
+     * Fills `out` with `voice`'s latest waveform (oldest first, `i16`, full
+     * scale `+-8192`) and returns the number of points written; 0 when
+     * capture is off or `voice` is out of range. Reuses the caller's buffer,
+     * so a per-report call allocates nothing on the Rust side.
+     * @param {number} voice
+     * @param {Int16Array} out
+     * @returns {number}
+     */
+    read_channel_snapshot(voice, out) {
+        var ptr0 = passArray16ToWasm0(out, wasm.__wbindgen_malloc);
+        var len0 = WASM_VECTOR_LEN;
+        const ret = wasm.ahxplayer_read_channel_snapshot(this.__wbg_ptr, voice, ptr0, len0, out);
+        return ret >>> 0;
     }
     /**
      * Parses an AHX (`THX`) or HVL file and builds a paused player.
@@ -2803,6 +2849,7 @@ function __wbg_finalize_init(instance, module) {
     __wbg_init.__wbindgen_wasm_module = module;
     cachedDataViewMemory0 = null;
     cachedFloat32ArrayMemory0 = null;
+    cachedUint16ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
 
 

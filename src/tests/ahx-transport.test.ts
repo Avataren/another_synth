@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AhxTransport } from 'src/audio/tracker/ahx-transport';
-import type { AhxPlayerClient, AhxPosition, AhxSongInfo } from 'src/audio/tracker/ahx-player';
+import type {
+  AhxPlayerClient,
+  AhxPosition,
+  AhxSongInfo,
+  AhxWaveforms,
+} from 'src/audio/tracker/ahx-player';
 
 const INFO: AhxSongInfo = {
   name: 'T',
@@ -14,6 +19,7 @@ const INFO: AhxSongInfo = {
 function fakeClient(audioContext: AudioContext) {
   const positionListeners = new Set<(p: AhxPosition) => void>();
   const songEndListeners = new Set<() => void>();
+  const waveformListeners = new Set<(w: AhxWaveforms) => void>();
   const output = { connect: vi.fn() };
   const client = {
     audioContext,
@@ -23,6 +29,7 @@ function fakeClient(audioContext: AudioContext) {
     pause: vi.fn(),
     restart: vi.fn(),
     setStopAtEnd: vi.fn(),
+    setCapture: vi.fn(),
     dispose: vi.fn(),
     onPosition: (l: (p: AhxPosition) => void) => {
       positionListeners.add(l);
@@ -32,12 +39,17 @@ function fakeClient(audioContext: AudioContext) {
       songEndListeners.add(l);
       return () => songEndListeners.delete(l);
     },
+    onWaveforms: (l: (w: AhxWaveforms) => void) => {
+      waveformListeners.add(l);
+      return () => waveformListeners.delete(l);
+    },
   };
   return {
     client: client as unknown as AhxPlayerClient,
     raw: client,
     emitPosition: (p: AhxPosition) => positionListeners.forEach((l) => l(p)),
     emitEnd: () => songEndListeners.forEach((l) => l()),
+    emitWaveforms: (w: AhxWaveforms) => waveformListeners.forEach((l) => l(w)),
   };
 }
 
@@ -122,6 +134,32 @@ describe('AhxTransport', () => {
     expect(fake.raw.setStopAtEnd).toHaveBeenLastCalledWith(true);
     transport.setStopAtEnd(false);
     expect(fake.raw.setStopAtEnd).toHaveBeenLastCalledWith(false);
+  });
+
+  it('applies capture to a client made after it was set, and to a live one; off by default', async () => {
+    const off = setup();
+    await off.transport.load(new Uint8Array([1]));
+    expect(off.fake.raw.setCapture).not.toHaveBeenCalled();
+
+    const { fake, transport } = setup();
+    transport.setCapture(true);
+    await transport.load(new Uint8Array([1]));
+    expect(fake.raw.setCapture).toHaveBeenLastCalledWith(true);
+    transport.setCapture(false);
+    expect(fake.raw.setCapture).toHaveBeenLastCalledWith(false);
+  });
+
+  it('relays waveform snapshots to its listeners, and unsubscribes', async () => {
+    const { fake, transport } = setup();
+    const seen: AhxWaveforms[] = [];
+    const off = transport.onWaveforms((w) => seen.push(w));
+    await transport.load(new Uint8Array([1]));
+    const w = { channels: 4, points: 2, data: new Int16Array(8) };
+    fake.emitWaveforms(w);
+    expect(seen).toEqual([w]);
+    off();
+    fake.emitWaveforms(w);
+    expect(seen).toHaveLength(1);
   });
 
   it('loading the bytes already loaded touches nothing: it does not rewind', async () => {

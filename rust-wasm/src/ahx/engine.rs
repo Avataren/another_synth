@@ -68,6 +68,31 @@ struct Transport {
     playing_time: u32,
 }
 
+/// Frames each voice's capture ring holds (a power of two, so the write index
+/// wraps with a mask). 2048 frames is ~46 ms at 44.1 kHz.
+pub const CAPTURE_FRAMES: usize = 2048;
+const CAPTURE_MASK: usize = CAPTURE_FRAMES - 1;
+
+/// Per-voice scope capture (see [`AhxEngine::enable_capture`]): one ring of
+/// `CAPTURE_FRAMES` mono `i16` per voice, voice-major, plus the total number
+/// of frames written. Write-only from the mixer's side: nothing in the mix
+/// reads it back.
+struct Capture {
+    ring: Vec<i16>,
+    written: u64,
+}
+
+impl Capture {
+    fn new(channels: usize) -> Self {
+        Capture { ring: vec![0; channels * CAPTURE_FRAMES], written: 0 }
+    }
+
+    fn clear(&mut self) {
+        self.ring.fill(0);
+        self.written = 0;
+    }
+}
+
 pub struct AhxEngine {
     song: Song,
     waves: &'static [i8],
@@ -85,6 +110,9 @@ pub struct AhxEngine {
     /// `freq / 50 / speed_multiplier` (`hvl_DecodeFrame:1806`).
     tick_samples: usize,
     tick_remaining: usize,
+    /// `None` (the default) means the mixer runs the capture-free
+    /// monomorphisation of `mix_chunk`.
+    capture: Option<Capture>,
 }
 
 impl AhxEngine {
@@ -142,6 +170,7 @@ impl AhxEngine {
             t: Transport::default(),
             tick_samples,
             tick_remaining: 0,
+            capture: None,
             song,
         };
         engine.init_subsong(0);
@@ -172,7 +201,59 @@ impl AhxEngine {
             })
             .collect();
         self.tick_remaining = 0;
+        // A rewound song must not show the previous run's tail.
+        if let Some(c) = self.capture.as_mut() {
+            c.clear();
+        }
         true
+    }
+
+    /// Turns per-voice waveform capture on or off. Off by default. While on,
+    /// `mix_chunk` also records each voice's own contribution (after ring
+    /// modulation and volume, before pan and mix gain) into a
+    /// [`CAPTURE_FRAMES`]-frame ring, for [`read_channel_snapshot`](Self::read_channel_snapshot).
+    /// It only ever *reads* the values the mix already computed, so the mixed
+    /// output is bit-identical either way (`capture_never_changes_mixed_samples`,
+    /// and the render goldens run with capture on as well as off). Turning it
+    /// off frees the rings; turning it on when it already is keeps them.
+    pub fn enable_capture(&mut self, on: bool) {
+        match (on, self.capture.is_some()) {
+            (true, false) => self.capture = Some(Capture::new(self.channels)),
+            (false, true) => self.capture = None,
+            _ => {}
+        }
+    }
+
+    pub fn capture_enabled(&self) -> bool {
+        self.capture.is_some()
+    }
+
+    /// Fills `out` with the most recent `out.len()` points of `voice`'s
+    /// waveform, oldest first, and returns how many it wrote: 0 with capture
+    /// off, an out-of-range `voice`, or an empty `out`.
+    ///
+    /// The window is `CAPTURE_FRAMES` frames, decimated by box-averaging, so
+    /// `out.len()` is capped at `CAPTURE_FRAMES` and the window shrinks to
+    /// `out.len() * (CAPTURE_FRAMES / out.len())` frames when that does not
+    /// divide evenly. A voice's full-scale value is `+-8192` (`s8 * volume 64`).
+    /// Writes only into `out`; no allocation.
+    pub fn read_channel_snapshot(&self, voice: usize, out: &mut [i16]) -> usize {
+        let Some(c) = self.capture.as_ref() else { return 0 };
+        if voice >= self.channels || out.is_empty() {
+            return 0;
+        }
+        let n = out.len().min(CAPTURE_FRAMES);
+        let stride = CAPTURE_FRAMES / n;
+        let ring = &c.ring[voice * CAPTURE_FRAMES..(voice + 1) * CAPTURE_FRAMES];
+        // Frames not written yet read as the ring's initial zeros; the
+        // wrapping subtraction keeps the low bits (all the mask looks at) right.
+        let start = c.written.wrapping_sub((n * stride) as u64) as usize;
+        for (k, o) in out[..n].iter_mut().enumerate() {
+            let base = start.wrapping_add(k * stride);
+            let sum: i32 = (0..stride).map(|m| ring[(base + m) & CAPTURE_MASK] as i32).sum();
+            *o = (sum / stride as i32) as i16;
+        }
+        n
     }
 
     pub fn sample_rate(&self) -> u32 {
@@ -234,7 +315,12 @@ impl AhxEngine {
                 self.tick_remaining = self.tick_samples;
             }
             let n = self.tick_remaining.min(frames - done);
-            self.mix_chunk(n, &mut out[done * 2..(done + n) * 2]);
+            let chunk = &mut out[done * 2..(done + n) * 2];
+            if self.capture.is_some() {
+                self.mix_chunk::<true>(n, chunk);
+            } else {
+                self.mix_chunk::<false>(n, chunk);
+            }
             self.tick_remaining -= n;
             done += n;
         }
@@ -415,7 +501,11 @@ impl AhxEngine {
     }
 
     /// `hvl_mixchunk`, `hvl_replay.c:1699-1800`, writing interleaved stereo.
-    fn mix_chunk(&mut self, mut samples: usize, out: &mut [i16]) {
+    /// `CAPTURE` is a compile-time switch: the `false` instance is the mixer
+    /// with no capture code in it at all. The `true` instance is the same
+    /// arithmetic plus one store per voice per frame of a value the mix has
+    /// already computed.
+    fn mix_chunk<const CAPTURE: bool>(&mut self, mut samples: usize, out: &mut [i16]) {
         const END: u32 = 0x280 << 16;
         let chans = self.channels;
         let mut delta = [0u32; MAX_CHANNELS];
@@ -440,6 +530,9 @@ impl AhxEngine {
         }
 
         let mut o = 0usize;
+        // Capture bookkeeping; every use is behind `CAPTURE`, and render_block
+        // picks that instance only when a capture is present.
+        let mut written = if CAPTURE { self.capture.as_ref().map_or(0, |c| c.written) } else { 0 };
         while samples > 0 {
             let mut loops = samples;
             for i in 0..chans {
@@ -473,6 +566,11 @@ impl AhxEngine {
                     } else {
                         s * vol[i]
                     };
+                    if CAPTURE {
+                        if let Some(c) = self.capture.as_mut() {
+                            c.ring[i * CAPTURE_FRAMES + ((written as usize) & CAPTURE_MASK)] = j as i16;
+                        }
+                    }
                     a = a.wrapping_add((j * panl[i]) >> 7);
                     b = b.wrapping_add((j * panr[i]) >> 7);
                     pos[i] = pos[i].wrapping_add(delta[i]);
@@ -483,6 +581,14 @@ impl AhxEngine {
                 out[o] = a.clamp(-0x8000, 0x7fff) as i16;
                 out[o + 1] = b.clamp(-0x8000, 0x7fff) as i16;
                 o += 2;
+                if CAPTURE {
+                    written = written.wrapping_add(1);
+                }
+            }
+        }
+        if CAPTURE {
+            if let Some(c) = self.capture.as_mut() {
+                c.written = written;
             }
         }
 

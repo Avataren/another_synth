@@ -7,10 +7,24 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { registerAnimationCallback } from 'src/composables/useAnimationLoop';
+import { AHX_SCOPE_FULL_SCALE } from 'src/audio/worklets/ahx-core';
+import {
+  scopePolyline,
+  scopeTriggerStart,
+  scopeVisiblePoints,
+} from 'src/components/tracker/scope-trace';
 
 interface Props {
   audioNode: AudioNode | null;
   audioContext: AudioContext | null;
+  /**
+   * Draws `scopeChannel`'s waveform from here instead of tapping `audioNode`:
+   * the AHX/HVL engine mixes its voices inside one worklet, so there is no
+   * per-track node to analyse. Returns the newest snapshot (`i16`, oldest
+   * first) or `null` while nothing plays, which draws a flat line.
+   */
+  scopeSource?: ((channel: number) => Int16Array | null) | null;
+  scopeChannel?: number;
 }
 
 const props = defineProps<Props>();
@@ -105,7 +119,8 @@ function setupAnalyser() {
 }
 
 function startVisualization() {
-  if (!canvasRef.value || !analyser || !dataArray) return;
+  // A scope source needs no analyser; the node path needs both.
+  if (!canvasRef.value || (!props.scopeSource && (!analyser || !dataArray))) return;
 
   const canvas = canvasRef.value;
   const ctx = canvas.getContext('2d');
@@ -117,11 +132,45 @@ function startVisualization() {
   // Store references for the draw callback
   const localAnalyser = analyser;
   const localDataArray = dataArray;
+  // Reused every frame by the scope path.
+  let polyline = new Float32Array(0);
+
+  const drawScope = (source: (channel: number) => Int16Array | null) => {
+    const data = source(props.scopeChannel ?? 0);
+    ctx.strokeStyle = cachedWaveformColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    if (!data || data.length < 4) {
+      ctx.moveTo(0, canvasHeight / 2);
+      ctx.lineTo(canvasWidth, canvasHeight / 2);
+    } else {
+      const count = scopeVisiblePoints(data.length);
+      if (polyline.length < count * 2) polyline = new Float32Array(count * 2);
+      const n = scopePolyline(
+        data,
+        scopeTriggerStart(data),
+        count,
+        canvasWidth,
+        canvasHeight,
+        AHX_SCOPE_FULL_SCALE,
+        polyline,
+      );
+      for (let k = 0; k < n; k++) {
+        const x = polyline[2 * k] ?? 0;
+        const y = polyline[2 * k + 1] ?? 0;
+        if (k === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+  };
 
   const draw = () => {
-    if (!localAnalyser || !localDataArray || !ctx || canvasWidth === 0) return;
+    const source = props.scopeSource ?? null;
+    if (!ctx || canvasWidth === 0) return;
+    if (!source && (!localAnalyser || !localDataArray)) return;
 
-    localAnalyser.getByteTimeDomainData(localDataArray);
+    if (!source) localAnalyser!.getByteTimeDomainData(localDataArray!);
 
     // Clear and draw background
     ctx.fillStyle = cachedBgColor;
@@ -135,16 +184,22 @@ function startVisualization() {
     ctx.lineTo(canvasWidth, canvasHeight / 2);
     ctx.stroke();
 
+    if (source) {
+      drawScope(source);
+      return;
+    }
+    const analyserData = localDataArray!;
+
     // Draw waveform
     ctx.strokeStyle = cachedWaveformColor;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
 
-    const sliceWidth = canvasWidth / localDataArray.length;
+    const sliceWidth = canvasWidth / analyserData.length;
     let x = 0;
 
-    for (let i = 0; i < localDataArray.length; i++) {
-      const sample = localDataArray[i] ?? 128;
+    for (let i = 0; i < analyserData.length; i++) {
+      const sample = analyserData[i] ?? 128;
       // Convert from 0-255 range to -1 to +1 range (128 is center/silence)
       const v = (sample - 128) / 128.0;
       // Map to canvas: 0 is top, canvasHeight is bottom, center is canvasHeight/2
@@ -193,7 +248,9 @@ onMounted(() => {
   window.addEventListener('resize', handleResize);
   updateCachedColors();
   setupThemeObserver();
-  if (props.audioContext) {
+  if (props.scopeSource) {
+    startVisualization();
+  } else if (props.audioContext) {
     setupAnalyser();
   }
 });
@@ -210,6 +267,20 @@ onUnmounted(() => {
 watch(
   () => props.audioNode,
   () => setupAnalyser()
+);
+
+// A component instance can outlive a song: the visualizer row stays up when an
+// AHX song replaces a MOD one (or back). Restart the draw loop in the new mode.
+watch(
+  () => props.scopeSource,
+  () => {
+    if (unregisterAnimation) {
+      unregisterAnimation();
+      unregisterAnimation = null;
+    }
+    if (props.scopeSource) startVisualization();
+    else setupAnalyser();
+  }
 );
 </script>
 

@@ -19,6 +19,17 @@ export interface AhxPosition {
 }
 
 /**
+ * One snapshot of every voice's waveform (about 25 per second while capture is
+ * on and the song plays): `channels` runs of `points` `i16`, voice-major,
+ * oldest first. The array is this event's own copy, safe to keep.
+ */
+export interface AhxWaveforms {
+  channels: number;
+  points: number;
+  data: Int16Array;
+}
+
+/**
  * The main-thread handle on the AHX worklet: one `AudioWorkletNode` running
  * the Rust `AhxEngine`, plus the small command/event protocol around it.
  *
@@ -32,6 +43,7 @@ export class AhxPlayerClient {
 
   private positionListeners = new Set<(p: AhxPosition) => void>();
   private songEndListeners = new Set<() => void>();
+  private waveformListeners = new Set<(w: AhxWaveforms) => void>();
   private errorListeners = new Set<(error: Error) => void>();
   private pendingLoad: {
     id: number;
@@ -120,9 +132,24 @@ export class AhxPlayerClient {
     this.send({ type: 'set-stop-at-end', enabled });
   }
 
+  /**
+   * Record each voice's waveform in the worklet and get it back as
+   * `onWaveforms` events. Off by default (the engine then does no capture
+   * work); it outlives the song, so it applies to every load until changed.
+   */
+  setCapture(enabled: boolean): void {
+    this.send({ type: 'set-capture', enabled });
+  }
+
   onPosition(listener: (p: AhxPosition) => void): () => void {
     this.positionListeners.add(listener);
     return () => this.positionListeners.delete(listener);
+  }
+
+  /** Per-voice waveform snapshots; silent unless `setCapture(true)`. */
+  onWaveforms(listener: (w: AhxWaveforms) => void): () => void {
+    this.waveformListeners.add(listener);
+    return () => this.waveformListeners.delete(listener);
   }
 
   /** Fires once when the song first reaches its end (it then keeps looping). */
@@ -149,6 +176,7 @@ export class AhxPlayerClient {
     this.pendingLoad = null;
     this.positionListeners.clear();
     this.songEndListeners.clear();
+    this.waveformListeners.clear();
     this.errorListeners.clear();
     this.send({ type: 'dispose' });
     this.node.disconnect();
@@ -207,6 +235,15 @@ export class AhxPlayerClient {
           ticks: event.ticks,
         };
         for (const listener of this.positionListeners) listener(position);
+        break;
+      }
+      case 'waveforms': {
+        const waveforms: AhxWaveforms = {
+          channels: event.channels,
+          points: event.points,
+          data: event.data,
+        };
+        for (const listener of this.waveformListeners) listener(waveforms);
         break;
       }
       case 'song-end':

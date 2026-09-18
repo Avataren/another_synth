@@ -110,6 +110,24 @@ impl AhxPlayer {
         deinterleave_to_f32(&self.scratch[..frames * 2], left, right, self.gain)
     }
 
+    /// Per-voice waveform capture for oscilloscopes; off by default and
+    /// bit-neutral to the mix (see [`AhxEngine::enable_capture`]).
+    pub fn enable_capture(&mut self, on: bool) {
+        self.engine.enable_capture(on);
+    }
+
+    pub fn capture_enabled(&self) -> bool {
+        self.engine.capture_enabled()
+    }
+
+    /// Fills `out` with `voice`'s latest waveform (oldest first, `i16`, full
+    /// scale `+-8192`) and returns the number of points written; 0 when
+    /// capture is off or `voice` is out of range. Reuses the caller's buffer,
+    /// so a per-report call allocates nothing on the Rust side.
+    pub fn read_channel_snapshot(&self, voice: usize, out: &mut [i16]) -> usize {
+        self.engine.read_channel_snapshot(voice, out)
+    }
+
     pub fn sample_rate(&self) -> u32 {
         self.engine.sample_rate()
     }

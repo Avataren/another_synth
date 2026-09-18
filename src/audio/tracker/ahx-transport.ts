@@ -3,6 +3,7 @@ import {
   type AhxPlayerClient,
   type AhxPosition,
   type AhxSongInfo,
+  type AhxWaveforms,
 } from 'src/audio/tracker/ahx-player';
 
 /** What the transport needs from the song bank: a context and the mix bus. */
@@ -32,9 +33,11 @@ export class AhxTransport {
   private clientUnsubs: Array<() => void> = [];
   /** Remembered here, not just on the client, so a client made later (or replaced) gets it. */
   private stopAtEnd = false;
+  private capture = false;
   private disposed = false;
   private readonly positionListeners = new Set<(p: AhxPosition) => void>();
   private readonly songEndListeners = new Set<() => void>();
+  private readonly waveformListeners = new Set<(w: AhxWaveforms) => void>();
 
   constructor(
     private readonly host: AhxTransportHost,
@@ -66,12 +69,16 @@ export class AhxTransport {
         }
         client.output.connect(this.host.output);
         client.setStopAtEnd(this.stopAtEnd);
+        if (this.capture) client.setCapture(true);
         this.clientUnsubs = [
           client.onPosition((p) => {
             for (const listener of this.positionListeners) listener(p);
           }),
           client.onSongEnd(() => {
             for (const listener of this.songEndListeners) listener();
+          }),
+          client.onWaveforms((w) => {
+            for (const listener of this.waveformListeners) listener(w);
           }),
         ];
         this.client = client;
@@ -90,6 +97,16 @@ export class AhxTransport {
   setStopAtEnd(enabled: boolean): void {
     this.stopAtEnd = enabled;
     this.client?.setStopAtEnd(enabled);
+  }
+
+  /**
+   * Whether the worklet records per-voice waveforms and reports them through
+   * `onWaveforms`. Off by default; remembered here so a client made later (or
+   * replaced) gets it.
+   */
+  setCapture(enabled: boolean): void {
+    this.capture = enabled;
+    this.client?.setCapture(enabled);
   }
 
   /**
@@ -145,6 +162,11 @@ export class AhxTransport {
     return () => this.songEndListeners.delete(listener);
   }
 
+  onWaveforms(listener: (w: AhxWaveforms) => void): () => void {
+    this.waveformListeners.add(listener);
+    return () => this.waveformListeners.delete(listener);
+  }
+
   private disposeClient(): void {
     for (const unsub of this.clientUnsubs) unsub();
     this.clientUnsubs = [];
@@ -159,5 +181,6 @@ export class AhxTransport {
     this.disposeClient();
     this.positionListeners.clear();
     this.songEndListeners.clear();
+    this.waveformListeners.clear();
   }
 }

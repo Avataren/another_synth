@@ -653,7 +653,7 @@
       </div>
 
       <div
-        v-if="waveformVisualizersVisible && !isReadOnly"
+        v-if="waveformVisualizersVisible"
         ref="visualizerRowRef"
         class="visualizer-row"
         :style="{
@@ -676,7 +676,9 @@
             :key="`viz-${track.id}`"
             class="visualizer-cell"
           >
-            <div class="visualizer-controls">
+            <!-- Per-track mute/solo works on the sampler formats' track nodes; the
+                 AHX/HVL engine mixes its voices in one worklet, so no controls. -->
+            <div v-if="!isReadOnly" class="visualizer-controls">
               <button
                 type="button"
                 class="track-btn solo-btn"
@@ -699,6 +701,8 @@
             <TrackWaveform
               :audio-node="trackAudioNodes[index] ?? null"
               :audio-context="audioContext"
+              :scope-source="isReadOnly ? playbackStore.getAhxChannelWaveform : null"
+              :scope-channel="index"
             />
           </div>
         </div>
@@ -1222,6 +1226,14 @@ const spectrumAnalyzerVisible = computed(
 );
 const waveformVisualizersVisible = computed(
   () => userSettings.value.showWaveformVisualizers && !isMobileLayout.value,
+);
+
+// An AHX/HVL song's visualizers are fed by the worklet's per-voice capture,
+// which records nothing unless asked: on while they are showing, off otherwise.
+watch(
+  () => waveformVisualizersVisible.value && isReadOnly.value,
+  (wanted) => playbackStore.setAhxScopesEnabled(wanted),
+  { immediate: true },
 );
 
 // ---------------------------------------------------------------
@@ -2676,6 +2688,8 @@ onBeforeUnmount(() => {
   // Clear the track audio node setter so the store doesn't try to call into unmounted component
   releaseTrackAudioNodeSetter();
   // Don't stop playback - it continues when navigating away
+  // The visualizers go with the page, so the worklet stops recording for them.
+  playbackStore.setAhxScopesEnabled(false);
   // Don't dispose the songBank - it's a singleton managed by trackerAudioStore
   keyboardStore.cleanup();
   keyboardStore.clearAllNotes();

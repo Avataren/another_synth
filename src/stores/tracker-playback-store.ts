@@ -10,7 +10,7 @@ import { useTrackerStore } from './tracker-store';
 import { usePostFxStore } from 'src/stores/post-fx-store';
 import { defaultLookaheadSeconds } from 'src/audio/device-profile';
 import { AhxTransport } from 'src/audio/tracker/ahx-transport';
-import type { AhxPosition } from 'src/audio/tracker/ahx-player';
+import type { AhxPosition, AhxWaveforms } from 'src/audio/tracker/ahx-player';
 import { currentAhxSource } from 'src/audio/tracker/ahx-source';
 
 export type PlaybackMode = 'pattern' | 'song';
@@ -45,6 +45,12 @@ let songEndUnsubscribe: (() => void) | null = null;
 // AHX or HVL song is first played, so the other formats never touch it.
 let ahxTransportInstance: AhxTransport | null = null;
 let ahxUnsubscribes: Array<() => void> = [];
+// Per-voice scope data from the AHX worklet: whether the tracker page wants it
+// (the worklet records nothing otherwise), and the newest snapshot as one view
+// per voice. Module-local and non-reactive on purpose: the scopes read it from
+// their animation callback, and 25 Hz of reactive triggers would buy nothing.
+let ahxScopesWanted = false;
+let ahxScopeViews: Int16Array[] | null = null;
 
 // Position event listeners (for UI components)
 const positionListeners = new Set<PositionListener>();
@@ -380,9 +386,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     if (!ahxTransportInstance) {
       ahxTransportInstance = new AhxTransport(getSongBank());
       ahxTransportInstance.setStopAtEnd(!loopSong.value);
+      if (ahxScopesWanted) ahxTransportInstance.setCapture(true);
       ahxUnsubscribes = [
         ahxTransportInstance.onPosition(handleAhxPosition),
         ahxTransportInstance.onSongEnd(handleAhxSongEnd),
+        ahxTransportInstance.onWaveforms(handleAhxWaveforms),
       ];
     }
     return ahxTransportInstance;
@@ -407,6 +415,36 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     });
   }
 
+  /** One view per voice into the snapshot; a report from a song no longer playing is dropped. */
+  function handleAhxWaveforms(w: AhxWaveforms): void {
+    if (!ahxSongActive || !isPlaying.value) return;
+    ahxScopeViews = Array.from({ length: w.channels }, (_, voice) =>
+      w.data.subarray(voice * w.points, (voice + 1) * w.points),
+    );
+  }
+
+  /**
+   * Ask the AHX worklet to record and report each voice's waveform, or stop
+   * doing so. The tracker page turns it on while its per-track visualizers
+   * are showing an AHX/HVL song; with it off the engine does no capture work.
+   */
+  function setAhxScopesEnabled(enabled: boolean): void {
+    ahxScopesWanted = enabled;
+    ahxTransportInstance?.setCapture(enabled);
+    if (!enabled) ahxScopeViews = null;
+  }
+
+  /**
+   * The newest waveform of one AHX/HVL voice (`i16`, oldest first, full scale
+   * `AHX_SCOPE_FULL_SCALE`), or `null` when nothing is playing or no snapshot
+   * has arrived yet. The array is a view into the latest snapshot: read it,
+   * do not keep it. Not reactive; call it from a draw loop.
+   */
+  function getAhxChannelWaveform(channel: number): Int16Array | null {
+    if (!ahxSongActive || !isPlaying.value) return null;
+    return ahxScopeViews?.[channel] ?? null;
+  }
+
   /**
    * The worklet keeps looping after the song's end; a non-looping song (the
    * jukebox) stops it here and tells the listeners, as the engine does for
@@ -423,6 +461,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   }
 
   function setAhxTransportState(state: 'playing' | 'paused' | 'stopped'): void {
+    // Not playing: the scopes go flat rather than freezing on the last snapshot.
+    if (state !== 'playing') ahxScopeViews = null;
     isPlaying.value = state === 'playing';
     isPaused.value = state === 'paused';
     audioStore.setPlaybackState(state === 'playing');
@@ -441,6 +481,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     ahxEpoch++;
     if (!ahxSongActive) return;
     ahxSongActive = false;
+    ahxScopeViews = null;
     // Not just stopped: with no AHX song left to play, the worklet node would
     // sit idle (and connected to the mix bus) for the life of the app.
     disposeAhxTransport();
@@ -523,6 +564,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     const transport = ensureAhxTransport();
     if (!resuming) {
       transport.stop();
+      ahxScopeViews = null;
       currentSequenceIndex.value = 0;
       selectedSequenceIndex.value = 0;
       playbackRow.value = 0;
@@ -898,6 +940,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
     disposeAhxTransport();
     ahxSongActive = false;
+    ahxScopeViews = null;
     ahxEpoch++;
 
     if (positionUnsubscribe) {
@@ -955,6 +998,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     setBpm,
     setPatternLength,
     setLoopSong,
+
+    // AHX/HVL per-voice scopes
+    setAhxScopesEnabled,
+    getAhxChannelWaveform,
 
     // Mute/Solo
     toggleMute,

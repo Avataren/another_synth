@@ -6,6 +6,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 // mocked for every other test, and this one is about the real bytes.
 import { AhxPlayer, initSync } from '../../public/wasm/audio_processor.js';
 import {
+  AHX_SCOPE_FULL_SCALE,
+  AHX_SCOPE_POINTS,
   AhxProcessorCore,
   type AhxEvent,
   type AhxWasmPlayerCtor,
@@ -214,6 +216,29 @@ describe('AhxProcessorCore over the real wasm', () => {
       expect(Math.abs(left[frames - 1] ?? 1)).toBe(0);
     });
 
+    it('ends on the same quantum, with the same audio, with capture on', () => {
+      const plain = newCore();
+      const captured = newCore();
+      for (const { core } of [plain, captured]) {
+        core.handle({ type: 'set-stop-at-end', enabled: true });
+        core.handle({ type: 'load-song', id: nextId++, bytes: fixture('sunspots.hvl') });
+        core.handle({ type: 'play' });
+      }
+      captured.core.handle({ type: 'set-capture', enabled: true });
+
+      const a = renderToSongEnd(plain.core, plain.events);
+      const b = renderToSongEnd(captured.core, captured.events);
+      expect(b.frames).toBe(a.frames);
+      expect(b.left).toEqual(a.left);
+      expect(captured.events.filter((e) => e.type === 'waveforms').length).toBeGreaterThan(0);
+
+      // Paused for good: silence, and no more reports of any kind.
+      const seen = captured.events.length;
+      const after = render(captured.core, FRAME * 10);
+      expect(after.l.every((s) => s === 0)).toBe(true);
+      expect(captured.events).toHaveLength(seen);
+    });
+
     it('keeps looping (and reports once) when stop-at-end is off, or switched off again', () => {
       const { core, events } = newCore();
       core.handle({ type: 'set-stop-at-end', enabled: true });
@@ -236,6 +261,145 @@ describe('AhxProcessorCore over the real wasm', () => {
       expect(render(core, FRAME * 20).l.some((s) => s !== 0)).toBe(true);
       renderToSongEnd(core, events);
       expect(events.filter((e) => e.type === 'song-end')).toHaveLength(2);
+    });
+  });
+
+  describe('per-voice capture', () => {
+    type Waveforms = Extract<AhxEvent, { type: 'waveforms' }>;
+    const waveforms = (events: AhxEvent[]) =>
+      events.filter((e): e is Waveforms => e.type === 'waveforms');
+
+    /** As `newCore`, but copies each waveforms payload: the core refills one buffer in place. */
+    function capturingCore() {
+      const events: AhxEvent[] = [];
+      const core = new AhxProcessorCore(
+        AhxPlayer as unknown as AhxWasmPlayerCtor,
+        SAMPLE_RATE,
+        (e) => events.push(e.type === 'waveforms' ? { ...e, data: e.data.slice() } : e),
+      );
+      return { core, events };
+    }
+
+    it('is off by default: no waveforms events', () => {
+      const { core, events } = newCore();
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
+      core.handle({ type: 'play' });
+      render(core, SAMPLE_RATE * 2);
+      expect(events.filter((e) => e.type === 'position').length).toBeGreaterThan(0);
+      expect(waveforms(events)).toHaveLength(0);
+    });
+
+    it('posts every voice at about 25 Hz, non-silent, within full scale', () => {
+      const { core, events } = capturingCore();
+      core.handle({ type: 'set-capture', enabled: true });
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
+      core.handle({ type: 'play' });
+      render(core, SAMPLE_RATE * 2);
+
+      const posted = waveforms(events);
+      // One per ~40 ms interval (quantised up to whole 128-frame quanta).
+      expect(posted.length).toBeGreaterThanOrEqual(40);
+      expect(posted.length).toBeLessThanOrEqual(60);
+      const last = posted.at(-1) as Waveforms;
+      expect(last).toMatchObject({ channels: 4, points: AHX_SCOPE_POINTS });
+      expect(last.data).toHaveLength(4 * AHX_SCOPE_POINTS);
+
+      const soundingVoices = new Set<number>();
+      for (const w of posted) {
+        for (let v = 0; v < w.channels; v++) {
+          const run = w.data.subarray(v * w.points, (v + 1) * w.points);
+          if (run.some((x) => x !== 0)) soundingVoices.add(v);
+        }
+        expect(w.data.every((x) => Math.abs(x) <= AHX_SCOPE_FULL_SCALE)).toBe(true);
+      }
+      // karma plays more than one voice in its first two seconds.
+      expect(soundingVoices.size).toBeGreaterThanOrEqual(2);
+    });
+
+    it('reports an HVL at its native channel count', () => {
+      const { core, events } = capturingCore();
+      core.handle({ type: 'set-capture', enabled: true });
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('drainage_proble.hvl') });
+      core.handle({ type: 'play' });
+      render(core, SAMPLE_RATE);
+      const last = waveforms(events).at(-1) as Waveforms;
+      expect(last.channels).toBe(7);
+      expect(last.data).toHaveLength(7 * AHX_SCOPE_POINTS);
+    });
+
+    it('never changes the rendered audio, whether on from the start or toggled mid-song', () => {
+      const song = fixture('sunspots.hvl');
+      const plain = newCore();
+      const on = capturingCore();
+      const toggled = capturingCore();
+      for (const { core } of [plain, on, toggled]) {
+        core.handle({ type: 'load-song', id: nextId++, bytes: song });
+        core.handle({ type: 'play' });
+      }
+      on.core.handle({ type: 'set-capture', enabled: true });
+
+      const frames = SAMPLE_RATE * 3;
+      const ref = render(plain.core, frames);
+      const withCapture = render(on.core, frames);
+      expect(withCapture.l).toEqual(ref.l);
+      expect(withCapture.r).toEqual(ref.r);
+
+      // On for the middle second only.
+      const parts = [SAMPLE_RATE, SAMPLE_RATE, SAMPLE_RATE].map((n, i) => {
+        toggled.core.handle({ type: 'set-capture', enabled: i === 1 });
+        return render(toggled.core, n);
+      });
+      const l = new Float32Array(frames);
+      parts.forEach((p, i) => l.set(p.l, i * SAMPLE_RATE));
+      expect(l).toEqual(ref.l);
+      expect(waveforms(on.events).length).toBeGreaterThan(0);
+      expect(waveforms(toggled.events).length).toBeGreaterThan(0);
+    });
+
+    it('stops reporting when switched off, and survives a reload while on', () => {
+      const { core, events } = capturingCore();
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
+      core.handle({ type: 'play' });
+      core.handle({ type: 'set-capture', enabled: true });
+      render(core, SAMPLE_RATE);
+      expect(waveforms(events).length).toBeGreaterThan(0);
+
+      core.handle({ type: 'set-capture', enabled: false });
+      const n = waveforms(events).length;
+      render(core, SAMPLE_RATE);
+      expect(waveforms(events)).toHaveLength(n);
+
+      // The flag outlives the song: a new load picks it up.
+      core.handle({ type: 'set-capture', enabled: true });
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('drainage_proble.hvl') });
+      core.handle({ type: 'play' });
+      render(core, SAMPLE_RATE);
+      expect(waveforms(events).at(-1)?.channels).toBe(7);
+    });
+
+    it('a pause reports nothing more; a restart begins from a clean window', () => {
+      const { core, events } = capturingCore();
+      core.handle({ type: 'set-capture', enabled: true });
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
+      core.handle({ type: 'play' });
+      render(core, SAMPLE_RATE);
+      core.handle({ type: 'pause' });
+      const n = waveforms(events).length;
+      render(core, SAMPLE_RATE);
+      expect(waveforms(events)).toHaveLength(n);
+
+      core.handle({ type: 'restart' });
+      core.handle({ type: 'play' });
+      render(core, QUANTUM * 15); // just past the first interval
+      const first = waveforms(events)[n] as Waveforms;
+      expect(first).toBeDefined();
+      // The first report lands 14 quanta (1792 frames) in, so the oldest 256
+      // of the window's 2048 frames (32 points) predate the restart: the
+      // rewound engine cleared them, whatever was playing when it paused.
+      for (let v = 0; v < first.channels; v++) {
+        const head = first.data.subarray(v * first.points, v * first.points + 16);
+        expect(Array.from(head)).toEqual(new Array(16).fill(0));
+      }
     });
   });
 

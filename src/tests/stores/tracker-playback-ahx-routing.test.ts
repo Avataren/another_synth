@@ -24,7 +24,9 @@ const h = vi.hoisted(() => ({
     calls: string[];
     loaded: Uint8Array[];
     stopAtEnd: boolean[];
+    capture: boolean[];
     disposed: boolean;
+    emitWaveforms: (w: { channels: number; points: number; data: Int16Array }) => void;
     emitPosition: (p: { position: number; row: number; tempo: number; ticks: number }) => void;
     emitEnd: () => void;
   }>,
@@ -43,12 +45,14 @@ vi.mock('src/audio/tracker/ahx-player', () => ({
   createAhxPlayer: async (audioContext: unknown) => {
     const positionL = new Set<(p: never) => void>();
     const endL = new Set<() => void>();
+    const waveL = new Set<(w: never) => void>();
     const client = {
       audioContext,
       output: { connect: () => {} },
       calls: [] as string[],
       loaded: [] as Uint8Array[],
       stopAtEnd: [] as boolean[],
+      capture: [] as boolean[],
       disposed: false,
       async loadSong(bytes: Uint8Array) {
         client.calls.push('load');
@@ -67,6 +71,7 @@ vi.mock('src/audio/tracker/ahx-player', () => ({
       pause: () => client.calls.push('pause'),
       restart: (n: number) => client.calls.push(`restart:${n}`),
       setStopAtEnd: (enabled: boolean) => client.stopAtEnd.push(enabled),
+      setCapture: (enabled: boolean) => client.capture.push(enabled),
       dispose: () => {
         client.disposed = true;
         client.calls.push('dispose');
@@ -79,6 +84,11 @@ vi.mock('src/audio/tracker/ahx-player', () => ({
         endL.add(l);
         return () => endL.delete(l);
       },
+      onWaveforms: (l: (w: never) => void) => {
+        waveL.add(l);
+        return () => waveL.delete(l);
+      },
+      emitWaveforms: (w: never) => waveL.forEach((l) => l(w)),
       emitPosition: (p: never) => positionL.forEach((l) => l(p)),
       emitEnd: () => endL.forEach((l) => l()),
     };
@@ -432,6 +442,84 @@ describe('AHX song opened through the real load path', () => {
     // Not started: playing needs a running context.
     await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
     expect(host.playbackStore.isPlaying).toBe(false);
+  });
+});
+
+describe('AHX per-voice scopes', () => {
+  /** Two voices of three points each: voice 0 = 1,2,3 and voice 1 = 4,5,6. */
+  const snapshot = () => ({ channels: 2, points: 3, data: Int16Array.from([1, 2, 3, 4, 5, 6]) });
+
+  it('the worklet records nothing until the page asks; then it is asked, and again for a new client', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 0);
+    expect(lastClient().capture).toEqual([]);
+
+    store.setAhxScopesEnabled(true);
+    expect(lastClient().capture).toEqual([true]);
+    store.setAhxScopesEnabled(false);
+    expect(lastClient().capture).toEqual([true, false]);
+
+    // The wish outlives the client: one made later starts recording at once.
+    store.setAhxScopesEnabled(true);
+    store.stop();
+    await store.loadSong(modSong(), 'song'); // hands the transport back: the client is freed
+    await openAhx(host);
+    await store.play(host.buildSong(), 'song', 0, 0);
+    expect(h.clients.length).toBeGreaterThan(1);
+    expect(lastClient().capture).toEqual([true]);
+  });
+
+  it('serves each voice its own run of the newest snapshot while playing', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 0);
+    store.setAhxScopesEnabled(true);
+    expect(store.getAhxChannelWaveform(0)).toBeNull(); // nothing has arrived yet
+
+    lastClient().emitWaveforms(snapshot());
+    expect(Array.from(store.getAhxChannelWaveform(0) ?? [])).toEqual([1, 2, 3]);
+    expect(Array.from(store.getAhxChannelWaveform(1) ?? [])).toEqual([4, 5, 6]);
+    expect(store.getAhxChannelWaveform(2)).toBeNull(); // no such voice
+  });
+
+  it('goes flat (null) on pause and stop, and drops a snapshot already in flight', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 0);
+    lastClient().emitWaveforms(snapshot());
+
+    store.pause();
+    expect(store.getAhxChannelWaveform(0)).toBeNull();
+    lastClient().emitWaveforms(snapshot());
+    expect(store.getAhxChannelWaveform(0)).toBeNull();
+
+    // Resuming does not bring the pre-pause picture back.
+    await store.resume();
+    expect(store.getAhxChannelWaveform(0)).toBeNull();
+    lastClient().emitWaveforms(snapshot());
+    expect(store.getAhxChannelWaveform(0)).not.toBeNull();
+
+    store.stop();
+    expect(store.getAhxChannelWaveform(0)).toBeNull();
+  });
+
+  it('turning the scopes off, or leaving for another format, clears them', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 0);
+    lastClient().emitWaveforms(snapshot());
+    store.setAhxScopesEnabled(false);
+    expect(store.getAhxChannelWaveform(0)).toBeNull();
+
+    lastClient().emitWaveforms(snapshot());
+    expect(store.getAhxChannelWaveform(0)).not.toBeNull();
+    await store.loadSong(modSong(), 'song');
+    expect(store.getAhxChannelWaveform(0)).toBeNull();
   });
 });
 

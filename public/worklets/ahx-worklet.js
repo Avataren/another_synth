@@ -269,6 +269,19 @@ function passArrayF32ToWasm0(arg, malloc) {
   WASM_VECTOR_LEN = arg.length;
   return ptr;
 }
+var cachedUint16ArrayMemory0 = null;
+function getUint16ArrayMemory0() {
+  if (cachedUint16ArrayMemory0 === null || cachedUint16ArrayMemory0.byteLength === 0) {
+    cachedUint16ArrayMemory0 = new Uint16Array(wasm.memory.buffer);
+  }
+  return cachedUint16ArrayMemory0;
+}
+function passArray16ToWasm0(arg, malloc) {
+  const ptr = malloc(arg.length * 2, 2) >>> 0;
+  getUint16ArrayMemory0().set(arg, ptr / 2);
+  WASM_VECTOR_LEN = arg.length;
+  return ptr;
+}
 var FilterSlope = Object.freeze({
   Db12: 0,
   "0": "Db12",
@@ -459,11 +472,26 @@ var AhxPlayer = class {
     return ret >>> 0;
   }
   /**
+   * Per-voice waveform capture for oscilloscopes; off by default and
+   * bit-neutral to the mix (see [`AhxEngine::enable_capture`]).
+   * @param {boolean} on
+   */
+  enable_capture(on) {
+    wasm.ahxplayer_enable_capture(this.__wbg_ptr, on);
+  }
+  /**
    * @returns {number}
    */
   position_count() {
     const ret = wasm.ahxplayer_position_count(this.__wbg_ptr);
     return ret >>> 0;
+  }
+  /**
+   * @returns {boolean}
+   */
+  capture_enabled() {
+    const ret = wasm.ahxplayer_capture_enabled(this.__wbg_ptr);
+    return ret !== 0;
   }
   /**
    * Song channels the engine does not play: 0 for every real file (only a
@@ -482,6 +510,21 @@ var AhxPlayer = class {
   song_end_reached() {
     const ret = wasm.ahxplayer_song_end_reached(this.__wbg_ptr);
     return ret !== 0;
+  }
+  /**
+   * Fills `out` with `voice`'s latest waveform (oldest first, `i16`, full
+   * scale `+-8192`) and returns the number of points written; 0 when
+   * capture is off or `voice` is out of range. Reuses the caller's buffer,
+   * so a per-report call allocates nothing on the Rust side.
+   * @param {number} voice
+   * @param {Int16Array} out
+   * @returns {number}
+   */
+  read_channel_snapshot(voice, out) {
+    var ptr0 = passArray16ToWasm0(out, wasm.__wbindgen_malloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.ahxplayer_read_channel_snapshot(this.__wbg_ptr, voice, ptr0, len0, out);
+    return ret >>> 0;
   }
   /**
    * Parses an AHX (`THX`) or HVL file and builds a paused player.
@@ -2808,6 +2851,7 @@ function __wbg_finalize_init(instance, module) {
   __wbg_init.__wbindgen_wasm_module = module;
   cachedDataViewMemory0 = null;
   cachedFloat32ArrayMemory0 = null;
+  cachedUint16ArrayMemory0 = null;
   cachedUint8ArrayMemory0 = null;
   wasm.__wbindgen_start();
   return wasm;
@@ -2852,6 +2896,7 @@ async function __wbg_init(module_or_path) {
 
 // src/audio/worklets/ahx-core.ts
 var POSITION_INTERVAL_SECONDS = 0.04;
+var AHX_SCOPE_POINTS = 256;
 var END_FADE_FRAMES = 32;
 function fadeOutTail(buffer) {
   const n = Math.min(END_FADE_FRAMES, buffer.length);
@@ -2869,6 +2914,9 @@ var AhxProcessorCore = class {
     __publicField(this, "playing", false);
     __publicField(this, "gain", 1);
     __publicField(this, "stopAtEnd", false);
+    __publicField(this, "capture", false);
+    /** One `waveforms` payload, refilled in place each report (posting clones it). */
+    __publicField(this, "scopeData", new Int16Array(0));
     __publicField(this, "framesSincePosition", 0);
     __publicField(this, "lastPosition", -1);
     __publicField(this, "lastRow", -1);
@@ -2909,6 +2957,10 @@ var AhxProcessorCore = class {
         break;
       case "set-stop-at-end":
         this.stopAtEnd = command.enabled;
+        break;
+      case "set-capture":
+        this.capture = command.enabled;
+        this.player?.enable_capture(command.enabled);
         break;
       case "dispose":
         this.disposedFlag = true;
@@ -2958,6 +3010,7 @@ var AhxProcessorCore = class {
       const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
       const player = new this.PlayerCtor(data, this.sampleRate, stereoMode);
       player.set_gain(this.gain);
+      player.enable_capture(this.capture);
       this.player = player;
       this.resetReporting();
       this.post({
@@ -2998,6 +3051,7 @@ var AhxProcessorCore = class {
       return false;
     }
     this.framesSincePosition = 0;
+    if (this.capture) this.postWaveforms(player);
     const position = player.position();
     const row = player.row();
     if (position === this.lastPosition && row === this.lastRow) return false;
@@ -3011,6 +3065,19 @@ var AhxProcessorCore = class {
       ticks: player.ticks()
     });
     return false;
+  }
+  /** Snapshots every voice into the reused buffer and posts it. Allocates nothing per report. */
+  postWaveforms(player) {
+    const channels = player.channels();
+    const points = AHX_SCOPE_POINTS;
+    if (this.scopeData.length !== channels * points) {
+      this.scopeData = new Int16Array(channels * points);
+    }
+    for (let voice = 0; voice < channels; voice++) {
+      const run = this.scopeData.subarray(voice * points, (voice + 1) * points);
+      if (player.read_channel_snapshot(voice, run) !== points) return;
+    }
+    this.post({ type: "waveforms", channels, points, data: this.scopeData });
   }
   resetReporting() {
     this.framesSincePosition = 0;

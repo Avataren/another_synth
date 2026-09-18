@@ -28,6 +28,9 @@ export interface AhxWasmPlayer {
   track_length(): number;
   channels(): number;
   dropped_channels(): number;
+  enable_capture(on: boolean): void;
+  /** Fills `out` with the voice's latest waveform; returns the points written (0: capture off). */
+  read_channel_snapshot(voice: number, out: Int16Array): number;
   free(): void;
 }
 
@@ -68,6 +71,12 @@ export type AhxCommand =
    * thread) would let them through, so the render thread does it itself.
    */
   | { type: 'set-stop-at-end'; enabled: boolean }
+  /**
+   * Record each voice's waveform for oscilloscopes and report it with the
+   * position reports. Off by default (the engine then runs no capture code);
+   * it outlives the song, so it applies to every load until changed.
+   */
+  | { type: 'set-capture'; enabled: boolean }
   | { type: 'dispose' };
 
 /** Worklet -> main thread. */
@@ -81,11 +90,28 @@ export type AhxEvent =
       ticks: number;
     }
   | { type: 'song-end' }
+  /**
+   * The latest waveform of every voice, sent with the position reports while
+   * capture is on and the song plays. `data` is `channels` runs of `points`
+   * `i16`, voice-major, oldest sample first; the window is the last
+   * `AHX_SCOPE_WINDOW_FRAMES` engine frames (the engine's capture ring),
+   * full scale `+-AHX_SCOPE_FULL_SCALE`.
+   */
+  | { type: 'waveforms'; channels: number; points: number; data: Int16Array }
   /** `id` is set when the error answers a `load-song`; a render failure has none. */
   | { type: 'error'; message: string; id?: number };
 
 /** How often `position` events go out while playing (about 25 per second). */
 const POSITION_INTERVAL_SECONDS = 0.04;
+
+/** Points per voice in a `waveforms` event: the 2048-frame capture ring decimated 8:1. */
+export const AHX_SCOPE_POINTS = 256;
+
+/** Engine frames a `waveforms` snapshot spans (`CAPTURE_FRAMES` in `engine.rs`). */
+export const AHX_SCOPE_WINDOW_FRAMES = 2048;
+
+/** A voice's full-scale sample: an `i8` waveform at volume 64. */
+export const AHX_SCOPE_FULL_SCALE = 8192;
 
 /** Frames faded out at the end of the quantum a stop-at-end pause lands in. */
 const END_FADE_FRAMES = 32;
@@ -104,6 +130,9 @@ export class AhxProcessorCore {
   private playing = false;
   private gain = 1;
   private stopAtEnd = false;
+  private capture = false;
+  /** One `waveforms` payload, refilled in place each report (posting clones it). */
+  private scopeData = new Int16Array(0);
   private framesSincePosition = 0;
   private lastPosition = -1;
   private lastRow = -1;
@@ -152,6 +181,10 @@ export class AhxProcessorCore {
         break;
       case 'set-stop-at-end':
         this.stopAtEnd = command.enabled;
+        break;
+      case 'set-capture':
+        this.capture = command.enabled;
+        this.player?.enable_capture(command.enabled);
         break;
       case 'dispose':
         this.disposedFlag = true;
@@ -210,6 +243,7 @@ export class AhxProcessorCore {
       const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
       const player = new this.PlayerCtor(data, this.sampleRate, stereoMode);
       player.set_gain(this.gain);
+      player.enable_capture(this.capture);
       this.player = player;
       this.resetReporting();
       this.post({
@@ -255,6 +289,7 @@ export class AhxProcessorCore {
       return false;
     }
     this.framesSincePosition = 0;
+    if (this.capture) this.postWaveforms(player);
     const position = player.position();
     const row = player.row();
     if (position === this.lastPosition && row === this.lastRow) return false;
@@ -268,6 +303,20 @@ export class AhxProcessorCore {
       ticks: player.ticks(),
     });
     return false;
+  }
+
+  /** Snapshots every voice into the reused buffer and posts it. Allocates nothing per report. */
+  private postWaveforms(player: AhxWasmPlayer): void {
+    const channels = player.channels();
+    const points = AHX_SCOPE_POINTS;
+    if (this.scopeData.length !== channels * points) {
+      this.scopeData = new Int16Array(channels * points);
+    }
+    for (let voice = 0; voice < channels; voice++) {
+      const run = this.scopeData.subarray(voice * points, (voice + 1) * points);
+      if (player.read_channel_snapshot(voice, run) !== points) return;
+    }
+    this.post({ type: 'waveforms', channels, points, data: this.scopeData });
   }
 
   private resetReporting(): void {
