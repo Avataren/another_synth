@@ -6,6 +6,7 @@ const buildOptions = {
   entryPoints: [
     'src/audio/worklets/synth-worklet.ts',
     'src/audio/worklets/effects-worklet.ts',
+    'src/audio/worklets/ahx-worklet.ts',
   ],
   bundle: true,
   format: 'esm',

@@ -358,6 +358,193 @@ export const Waveform = Object.freeze({
     Custom: 4, "4": "Custom",
 });
 
+const AhxPlayerFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_ahxplayer_free(ptr >>> 0, 1));
+
+export class AhxPlayer {
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        AhxPlayerFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_ahxplayer_free(ptr, 0);
+    }
+    /**
+     * @returns {boolean}
+     */
+    is_playing() {
+        const ret = wasm.ahxplayer_is_playing(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @returns {number}
+     */
+    sample_rate() {
+        const ret = wasm.ahxplayer_sample_rate(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    track_length() {
+        const ret = wasm.ahxplayer_track_length(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    position_count() {
+        const ret = wasm.ahxplayer_position_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * The fixed voice count of the engine (`ENGINE_CHANNELS`).
+     * @returns {number}
+     */
+    static engine_channels() {
+        const ret = wasm.ahxplayer_engine_channels();
+        return ret >>> 0;
+    }
+    /**
+     * Song channels that do not fit the fixed-4 engine and are not played.
+     * @returns {number}
+     */
+    dropped_channels() {
+        const ret = wasm.ahxplayer_dropped_channels(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Set once the song has reached its end (it then loops from its restart
+     * position, as the reference does); cleared by [`restart`](Self::restart).
+     * @returns {boolean}
+     */
+    song_end_reached() {
+        const ret = wasm.ahxplayer_song_end_reached(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Parses an AHX (`THX`) or HVL file and builds a paused player.
+     * `stereo_mode` (0..=4) is AHX's stereo-separation setting; HVL files
+     * carry their own. Songs wider than the fixed-4 engine play their first
+     * four channels, see [`dropped_channels`](Self::dropped_channels).
+     * @param {Uint8Array} bytes
+     * @param {number} sample_rate
+     * @param {number} stereo_mode
+     */
+    constructor(bytes, sample_rate, stereo_mode) {
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.ahxplayer_new(ptr0, len0, sample_rate, stereo_mode);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0] >>> 0;
+        AhxPlayerFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @returns {number}
+     */
+    row() {
+        const ret = wasm.ahxplayer_row(this.__wbg_ptr);
+        return ret;
+    }
+    play() {
+        wasm.ahxplayer_play(this.__wbg_ptr);
+    }
+    /**
+     * Stops rendering (the output is silence) without losing the position.
+     */
+    pause() {
+        wasm.ahxplayer_pause(this.__wbg_ptr);
+    }
+    /**
+     * Ticks per row (the song's current speed).
+     * @returns {number}
+     */
+    tempo() {
+        const ret = wasm.ahxplayer_tempo(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Ticks played so far (50 Hz x speed multiplier).
+     * @returns {number}
+     */
+    ticks() {
+        const ret = wasm.ahxplayer_ticks(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Fills `left`/`right` with planar `f32` and returns the number of
+     * frames written (`min(left.len(), right.len())`). While paused the
+     * engine does not advance and the output is zeroed.
+     * @param {Float32Array} left
+     * @param {Float32Array} right
+     * @returns {number}
+     */
+    render(left, right) {
+        var ptr0 = passArrayF32ToWasm0(left, wasm.__wbindgen_malloc);
+        var len0 = WASM_VECTOR_LEN;
+        var ptr1 = passArrayF32ToWasm0(right, wasm.__wbindgen_malloc);
+        var len1 = WASM_VECTOR_LEN;
+        const ret = wasm.ahxplayer_render(this.__wbg_ptr, ptr0, len0, left, ptr1, len1, right);
+        return ret >>> 0;
+    }
+    /**
+     * Back to the start of `subsong` (0 = the main song), paused. `false`
+     * for an out-of-range subsong, in which case nothing changes.
+     * @param {number} subsong
+     * @returns {boolean}
+     */
+    restart(subsong) {
+        const ret = wasm.ahxplayer_restart(this.__wbg_ptr, subsong);
+        return ret !== 0;
+    }
+    /**
+     * @returns {number}
+     */
+    channels() {
+        const ret = wasm.ahxplayer_channels(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    position() {
+        const ret = wasm.ahxplayer_position(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Linear output gain, clamped to `[0, 2]`; NaN is ignored.
+     * @param {number} gain
+     */
+    set_gain(gain) {
+        wasm.ahxplayer_set_gain(this.__wbg_ptr, gain);
+    }
+    /**
+     * @returns {string}
+     */
+    song_name() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.ahxplayer_song_name(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+}
+if (Symbol.dispose) AhxPlayer.prototype[Symbol.dispose] = AhxPlayer.prototype.free;
+
 const AnalogOscillatorStateUpdateFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_analogoscillatorstateupdate_free(ptr >>> 0, 1));

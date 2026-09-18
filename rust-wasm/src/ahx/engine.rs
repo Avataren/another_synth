@@ -35,6 +35,8 @@ pub enum EngineError {
     SampleRateTooLow,
     /// The song has no positions or no tracks to play.
     EmptySong,
+    /// `with_channel_cap(.., 0)`: an engine needs at least one voice.
+    InvalidChannelCap,
 }
 
 impl std::fmt::Display for EngineError {
@@ -42,6 +44,7 @@ impl std::fmt::Display for EngineError {
         match self {
             EngineError::SampleRateTooLow => write!(f, "sample rate too low for a 50 Hz tick"),
             EngineError::EmptySong => write!(f, "song has no positions or tracks"),
+            EngineError::InvalidChannelCap => write!(f, "channel cap must be at least 1"),
         }
     }
 }
@@ -91,8 +94,14 @@ impl AhxEngine {
     }
 
     /// As [`new`](Self::new) with an explicit channel cap (clamped to
-    /// `MAX_CHANNELS`). Verification hook; see the module docs.
+    /// `MAX_CHANNELS`). Verification hook, not a product mode (the shipped
+    /// engine is fixed-4, see the module docs): hidden from the docs, and a
+    /// cap of 0 is an error rather than a silent zero-voice engine.
+    #[doc(hidden)]
     pub fn with_channel_cap(song: Song, freq: u32, defstereo: u8, cap: usize) -> Result<Self, EngineError> {
+        if cap == 0 {
+            return Err(EngineError::InvalidChannelCap);
+        }
         let tick_samples = (freq / 50 / song.speed_multiplier.max(1) as u32) as usize;
         if tick_samples == 0 {
             return Err(EngineError::SampleRateTooLow);
@@ -158,6 +167,10 @@ impl AhxEngine {
             .collect();
         self.tick_remaining = 0;
         true
+    }
+
+    pub fn sample_rate(&self) -> u32 {
+        self.freq
     }
 
     pub fn channels(&self) -> usize {

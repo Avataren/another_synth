@@ -16,7 +16,7 @@
 //! tone portamento; the 4-channel-truncated HVL cases exercise HVL's second
 //! effect column under the fixed-4 default.
 
-use audio_processor::ahx::engine::{AhxEngine, ENGINE_CHANNELS};
+use audio_processor::ahx::engine::{AhxEngine, EngineError, ENGINE_CHANNELS};
 use audio_processor::ahx::format;
 use audio_processor::ahx::voice::{panning_left, panning_right};
 use audio_processor::ahx::waveform::WAVES;
@@ -41,13 +41,15 @@ struct Golden {
     waves: u64,
     panning: u64,
     channels: usize,
+    /// `songend` line: (song_end_reached, pos_nr, note_nr) after the last frame.
+    end: (bool, i32, i32),
     chunks: Vec<(usize, u64)>,
 }
 
 fn load_golden(name: &str) -> Golden {
     let text = fs::read_to_string(root().join("tests/golden").join(name))
         .unwrap_or_else(|e| panic!("reading golden {name}: {e}"));
-    let mut g = Golden { waves: 0, panning: 0, channels: 0, chunks: Vec::new() };
+    let mut g = Golden { waves: 0, panning: 0, channels: 0, end: (false, 0, 0), chunks: Vec::new() };
     for line in text.lines() {
         let f: Vec<&str> = line.split_whitespace().collect();
         match f.as_slice() {
@@ -56,6 +58,9 @@ fn load_golden(name: &str) -> Golden {
             ["channels", n, ..] => g.channels = n.parse().unwrap(),
             [frame, h] if frame.chars().all(|c| c.is_ascii_digit()) => {
                 g.chunks.push((frame.parse().unwrap(), u64::from_str_radix(h, 16).unwrap()));
+            }
+            ["songend", e, "posnr", p, "notenr", n] => {
+                g.end = (*e != "0", p.parse().unwrap(), n.parse().unwrap());
             }
             _ => {}
         }
@@ -103,6 +108,14 @@ fn check(fixture: &str, freq: u32, defstereo: u8, cap: usize, golden: &str, expe
         );
         prev = upto;
     }
+    // Transport state after the last frame: covers the song-end / restart
+    // path (and its `>=` divergence from the reference's `==`) whenever the
+    // golden is long enough to loop.
+    assert_eq!(
+        (engine.song_end_reached(), engine.pos_nr(), engine.note_nr()),
+        g.end,
+        "{golden}: (song_end_reached, pos_nr, note_nr) after the last frame"
+    );
 }
 
 #[test]
@@ -140,6 +153,43 @@ fn hvl_truncated_to_fixed_four_matches_reference() {
     check("chiprolled.hvl", 44100, 2, 0, "chiprolled.44100.s2.cap4.txt", ENGINE_CHANNELS);
     check("moderate_sellotaping.hvl", 44100, 2, 0, "moderate_sellotaping.44100.s2.cap4.txt", ENGINE_CHANNELS);
     check("sunspots.hvl", 44100, 2, 0, "sunspots.44100.s2.cap4.txt", ENGINE_CHANNELS);
+    check("drainage_proble.hvl", 44100, 2, 0, "drainage_proble.44100.s2.cap4.txt", ENGINE_CHANNELS);
+}
+
+#[test]
+fn illuminated_wraps_past_last_position_and_matches_reference() {
+    // The natural restart branch of `play_irq` (`pos_nr == position_nr` ->
+    // `song_end_reached`, `pos_nr = restart`, `hvl_replay.c:1683-1688`).
+    // The golden runs 64 s; the reference first wraps at 57.6 s.
+    let g = load_golden("illuminated.44100.s2.cap4.txt");
+    assert!(g.end.0, "golden must reach song end to cover the restart path");
+    check("illuminated.hvl", 44100, 2, 0, "illuminated.44100.s2.cap4.txt", ENGINE_CHANNELS);
+}
+
+#[test]
+fn sunspots_loops_via_position_jump_and_matches_reference() {
+    // sunspots is the shortest song (12 positions); its golden runs 60 s and
+    // reaches song end through a Bxx loop-back (`hvl_replay.c:680-683`), then
+    // keeps playing from the jump target. It never walks off the last
+    // position, so it does not cover the natural-wrap branch above.
+    let g = load_golden("sunspots.44100.s2.cap4.txt");
+    assert!(g.end.0, "golden must reach song end to cover the restart path");
+    check("sunspots.hvl", 44100, 2, 0, "sunspots.44100.s2.cap4.txt", ENGINE_CHANNELS);
+}
+
+#[test]
+fn drainage_proble_seven_channels_truncates_to_first_four() {
+    let s = song("drainage_proble.hvl");
+    assert_eq!(s.channels, 7);
+    let e = AhxEngine::new(s, 44100, 2).unwrap();
+    assert_eq!(e.channels(), ENGINE_CHANNELS);
+    assert_eq!(e.dropped_channels(), 3);
+}
+
+#[test]
+fn zero_channel_cap_is_rejected() {
+    let r = AhxEngine::with_channel_cap(song("karma.ahx"), 44100, 2, 0);
+    assert_eq!(r.err(), Some(EngineError::InvalidChannelCap));
 }
 
 #[test]
