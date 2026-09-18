@@ -11,8 +11,8 @@
 //!
 //! The corpus is `tests/golden/cases.manifest`: every fixture in
 //! `public/demos/ahx/` (karma.ahx + the seven .hvl) across sample rates
-//! (22050/44100/48000/96000), AHX stereo modes 0-4, and channel caps (native,
-//! fixed-4 truncation, and a cap strictly between). Runs are 30-64 s. The same
+//! (22050/44100/48000/96000), AHX stereo modes 0-4, and channel caps (native --
+//! the shipped default --, fixed-4 truncation, and a cap strictly between). Runs are 30-64 s. The same
 //! manifest drives `gen_goldens.sh`, so a row cannot exist on one side only;
 //! `manifest_and_goldens_agree` and `manifest_covers_every_fixture` enforce it.
 //!
@@ -21,7 +21,7 @@
 //! square sweep, noise, filter sweep, vibrato, tone portamento, PList and PList
 //! ring modulation (commands 7/8, only at native channel counts).
 
-use audio_processor::ahx::engine::{AhxEngine, EngineError, ENGINE_CHANNELS};
+use audio_processor::ahx::engine::{AhxEngine, EngineError};
 use audio_processor::ahx::format;
 use audio_processor::ahx::voice::{panning_left, panning_right};
 use audio_processor::ahx::waveform::WAVES;
@@ -162,11 +162,12 @@ fn check(c: &Case) {
     let mult = s.speed_multiplier as usize;
     // cap 0 = every native channel; otherwise the first `cap` of them.
     let want_channels = if c.cap == 0 { native } else { native.min(c.cap) };
-    let mut engine = if c.cap == ENGINE_CHANNELS {
-        // The shipped constructor, so the default stays covered by a golden.
+    let mut engine = if c.cap == 0 {
+        // The shipped constructor (song-driven channel count), so the default
+        // stays covered by a golden.
         AhxEngine::new(s, c.freq, c.defstereo)
     } else {
-        AhxEngine::with_channel_cap(s, c.freq, c.defstereo, if c.cap == 0 { native } else { c.cap })
+        AhxEngine::with_channel_cap(s, c.freq, c.defstereo, c.cap)
     }
     .expect("engine builds");
     assert_eq!(engine.channels(), want_channels, "{name}: channel count");
@@ -283,12 +284,13 @@ fn manifest_covers_every_fixture() {
     in_manifest.sort();
     in_manifest.dedup();
     assert_eq!(in_manifest, on_disk, "every fixture needs manifest rows (and a check_fixture test)");
-    // Every fixture has a fixed-4 row, and every >4-channel one a truncation row.
+    // Every fixture has a native-channel row (the shipped default), and every
+    // >4-channel one a cap-4 truncation row.
     for f in &on_disk {
         let rows = cases_for(f);
-        assert!(rows.iter().any(|c| c.cap == ENGINE_CHANNELS || c.cap == 0), "{f}: no default-channel row");
-        if song(f).channels > ENGINE_CHANNELS {
-            assert!(rows.iter().any(|c| c.cap == ENGINE_CHANNELS), "{f}: no cap-4 truncation row");
+        assert!(rows.iter().any(|c| c.cap == 0), "{f}: no native-channel row");
+        if song(f).channels > 4 {
+            assert!(rows.iter().any(|c| c.cap == 4), "{f}: no cap-4 truncation row");
         }
         assert!(rows.iter().any(|c| c.frames >= 1500), "{f}: no run of 30 s or more");
     }
@@ -382,18 +384,18 @@ fn corpus_reaches_both_song_end_paths() {
 }
 
 #[test]
-fn drainage_proble_seven_channels_truncates_to_first_four() {
+fn drainage_proble_plays_all_seven_channels() {
     let s = song("drainage_proble.hvl");
     assert_eq!(s.channels, 7);
     let e = AhxEngine::new(s, 44100, 2).unwrap();
-    assert_eq!(e.channels(), ENGINE_CHANNELS);
-    assert_eq!(e.dropped_channels(), 3);
+    assert_eq!(e.channels(), 7);
+    assert_eq!(e.dropped_channels(), 0);
 }
 
 #[test]
-fn every_hvl_fixture_reports_its_dropped_channels_at_default_cap() {
-    // Native channel counts of the corpus (6/11/7/6/8/6/6): default engine is
-    // fixed-4 and must say how many it dropped.
+fn every_hvl_fixture_plays_its_native_channels_by_default() {
+    // Native channel counts of the corpus (6/11/7/6/8/6/6): the default engine
+    // plays every one and drops none.
     for (f, native) in [
         ("chiprolled.hvl", 6),
         ("doobrey_gubbins.hvl", 11),
@@ -406,8 +408,8 @@ fn every_hvl_fixture_reports_its_dropped_channels_at_default_cap() {
         let s = song(f);
         assert_eq!(s.channels, native, "{f}: native channels");
         let e = AhxEngine::new(s, 44100, 2).unwrap();
-        assert_eq!(e.channels(), ENGINE_CHANNELS, "{f}");
-        assert_eq!(e.dropped_channels(), native - ENGINE_CHANNELS, "{f}");
+        assert_eq!(e.channels(), native, "{f}");
+        assert_eq!(e.dropped_channels(), 0, "{f}");
     }
 }
 
@@ -418,12 +420,28 @@ fn zero_channel_cap_is_rejected() {
 }
 
 #[test]
-fn default_engine_is_fixed_four_and_reports_dropped_channels() {
-    let e = AhxEngine::new(song("illuminated.hvl"), 44100, 2).unwrap();
-    assert_eq!(e.channels(), ENGINE_CHANNELS);
-    assert_eq!(e.dropped_channels(), 2);
+fn default_channel_count_follows_the_song() {
     let e = AhxEngine::new(song("karma.ahx"), 44100, 2).unwrap();
-    assert_eq!(e.dropped_channels(), 0);
+    assert_eq!((e.channels(), e.dropped_channels()), (4, 0));
+    let e = AhxEngine::new(song("illuminated.hvl"), 44100, 2).unwrap();
+    assert_eq!((e.channels(), e.dropped_channels()), (6, 0));
+    // The verification hook still truncates, and says how many it cut.
+    let e = AhxEngine::with_channel_cap(song("illuminated.hvl"), 44100, 2, 4).unwrap();
+    assert_eq!((e.channels(), e.dropped_channels()), (4, 2));
+}
+
+#[test]
+fn default_pan_repeats_left_right_right_left_per_group_of_four() {
+    // hvl_InitSubsong:90-108 -- voices 4..7 (and 8..10) repeat voices 0..3.
+    let e = AhxEngine::new(song("doobrey_gubbins.hvl"), 44100, 2).unwrap();
+    assert_eq!(e.channels(), 11);
+    for i in 4..11 {
+        assert_eq!(
+            (e.voice(i).pan, e.voice(i).pan_mult_left, e.voice(i).pan_mult_right),
+            (e.voice(i % 4).pan, e.voice(i % 4).pan_mult_left, e.voice(i % 4).pan_mult_right),
+            "voice {i}"
+        );
+    }
 }
 
 #[test]

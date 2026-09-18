@@ -9,21 +9,22 @@
 //!
 //! ## Channel count
 //!
-//! Standing decision: AHX-first, fixed-4 voices, the count living in one
-//! constant at the engine boundary -- [`ENGINE_CHANNELS`]. A song with more
-//! channels (every HVL fixture has 6-11) is played with its first
-//! `ENGINE_CHANNELS` channels only; [`AhxEngine::dropped_channels`] says how
-//! many were cut. [`AhxEngine::with_channel_cap`] exists so tests can prove
-//! the mixer is channel-count-generic against the un-truncated reference;
-//! it is a verification hook, not a second product mode.
+//! The song decides: AHX is always 4 voices, HVL plays its native
+//! `(buf[8]>>2)+4` (`hvl_load_hvl:399`, `ht_Channels`). The one boundary point
+//! is [`AhxEngine::new`]; nothing downstream knows a channel count of its own.
+//! Voices beyond the fourth follow the reference unchanged: default pan repeats
+//! L/R/R/L per group of four (`hvl_InitSubsong:90-108`) and every voice mixes
+//! through the same `hvl_mixchunk` loop. The reference sizes its voice array at
+//! [`MAX_CHANNELS`]; a wider (malformed) song is clamped to it and
+//! [`AhxEngine::dropped_channels`] says how many were cut -- 0 for every real
+//! file. [`AhxEngine::with_channel_cap`] truncates on purpose so tests can
+//! compare a partial channel count against the reference; it is a
+//! verification hook, not a product mode.
 
 use super::format::{Song, SongFormat, Step, MAX_CHANNELS};
 use super::voice::{panning_left, panning_right, Voice};
 use super::waveform::WAVES;
 use super::wrap_i16;
-
-/// The one place the fixed-4 decision lives.
-pub const ENGINE_CHANNELS: usize = 4;
 
 /// `defgain[]`, `hvl_load_ahx` (`hvl_replay.c:127`). AHX carries no mix gain
 /// in the file; the caller's stereo-separation choice picks it.
@@ -88,20 +89,25 @@ pub struct AhxEngine {
 
 impl AhxEngine {
     /// `defstereo` (0..=4) is only used for AHX songs (stereo separation and
-    /// mix gain, `hvl_load_ahx:182-185`); HVL songs carry their own.
+    /// mix gain, `hvl_load_ahx:182-185`); HVL songs carry their own. Plays
+    /// every channel of the song (see the module docs).
     pub fn new(song: Song, freq: u32, defstereo: u8) -> Result<Self, EngineError> {
-        Self::with_channel_cap(song, freq, defstereo, ENGINE_CHANNELS)
+        Self::build(song, freq, defstereo, MAX_CHANNELS)
     }
 
-    /// As [`new`](Self::new) with an explicit channel cap (clamped to
-    /// `MAX_CHANNELS`). Verification hook, not a product mode (the shipped
-    /// engine is fixed-4, see the module docs): hidden from the docs, and a
-    /// cap of 0 is an error rather than a silent zero-voice engine.
+    /// As [`new`](Self::new) but plays at most the first `cap` channels
+    /// (clamped to `MAX_CHANNELS`). Verification hook, not a product mode:
+    /// hidden from the docs, and a cap of 0 is an error rather than a silent
+    /// zero-voice engine.
     #[doc(hidden)]
     pub fn with_channel_cap(song: Song, freq: u32, defstereo: u8, cap: usize) -> Result<Self, EngineError> {
         if cap == 0 {
             return Err(EngineError::InvalidChannelCap);
         }
+        Self::build(song, freq, defstereo, cap)
+    }
+
+    fn build(song: Song, freq: u32, defstereo: u8, cap: usize) -> Result<Self, EngineError> {
         let tick_samples = (freq / 50 / song.speed_multiplier.max(1) as u32) as usize;
         if tick_samples == 0 {
             return Err(EngineError::SampleRateTooLow);

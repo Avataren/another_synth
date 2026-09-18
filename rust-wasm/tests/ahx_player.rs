@@ -112,15 +112,14 @@ fn gain_scales_and_restart_rewinds() {
 }
 
 #[test]
-fn metadata_and_channel_truncation_are_exposed() {
+fn metadata_and_native_channel_count_are_exposed() {
     let p = AhxPlayer::new(&fixture("karma.ahx"), 44100, 2).unwrap();
     assert_eq!(p.channels(), 4);
     assert_eq!(p.dropped_channels(), 0);
-    assert_eq!(AhxPlayer::engine_channels(), 4);
     assert_eq!(p.sample_rate(), 44100);
     assert!(p.position_count() > 0 && p.track_length() > 0);
     let h = AhxPlayer::new(&fixture("drainage_proble.hvl"), 48000, 2).unwrap();
-    assert_eq!((h.channels(), h.dropped_channels()), (4, 3));
+    assert_eq!((h.channels(), h.dropped_channels()), (7, 0));
 }
 
 #[test]

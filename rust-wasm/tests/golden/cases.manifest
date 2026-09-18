@@ -6,7 +6,8 @@
 #   frames       = hvl_DecodeFrame calls (50 per second, so 1500 = 30 s)
 #   chunk_frames = frames per hash line (50 = one second)
 #   channel_cap  = 0 plays every channel of the song; N > 0 truncates to the
-#                  first N (4 = the shipped fixed-4 engine, a no-op for karma)
+#                  first N (a test hook: the shipped engine plays
+#                  every channel, so cap 0 is the default path)
 # The golden for a row is <fixture>.<freq>.s<defstereo>.cap<channel_cap>.txt
 # (so that triple must be unique). defstereo only affects AHX songs; HVL
 # carries its own, so the chiprolled 48000 rows differ only in it on purpose.
@@ -23,7 +24,7 @@ karma.ahx               22050 2 1500 50 0
 karma.ahx               22050 4 1500 50 0
 karma.ahx               96000 2 1500 50 0
 
-# --- HVL, fixed-4 truncation (the shipped default; dropped_channels > 0) ---
+# --- HVL, fixed-4 truncation (a hook-only cap; dropped_channels > 0) ---
 # illuminated runs 3200 frames: past its first natural wrap at tick 2880
 # (pos_nr == position_nr -> restart), the only golden on that branch.
 # sunspots reaches song end via its Bxx loop-back well inside 3000 frames.

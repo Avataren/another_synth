@@ -11,7 +11,7 @@
 //! same way `audio_engine/wasm.rs` does it, so the whole class also compiles
 //! and is unit-tested natively.
 
-use super::engine::{AhxEngine, ENGINE_CHANNELS};
+use super::engine::AhxEngine;
 use super::format;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
@@ -54,8 +54,8 @@ pub struct AhxPlayer {
 impl AhxPlayer {
     /// Parses an AHX (`THX`) or HVL file and builds a paused player.
     /// `stereo_mode` (0..=4) is AHX's stereo-separation setting; HVL files
-    /// carry their own. Songs wider than the fixed-4 engine play their first
-    /// four channels, see [`dropped_channels`](Self::dropped_channels).
+    /// carry their own. The channel count follows the song: 4 for AHX, the
+    /// header's native count for HVL, see [`channels`](Self::channels).
     #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
     pub fn new(bytes: &[u8], sample_rate: u32, stereo_mode: u8) -> Result<AhxPlayer, String> {
         let song = format::parse(bytes).map_err(|e| e.to_string())?;
@@ -118,12 +118,8 @@ impl AhxPlayer {
         self.engine.channels()
     }
 
-    /// The fixed voice count of the engine (`ENGINE_CHANNELS`).
-    pub fn engine_channels() -> usize {
-        ENGINE_CHANNELS
-    }
-
-    /// Song channels that do not fit the fixed-4 engine and are not played.
+    /// Song channels the engine does not play: 0 for every real file (only a
+    /// malformed HVL wider than the reference's 16-voice array is cut).
     pub fn dropped_channels(&self) -> usize {
         self.engine.dropped_channels()
     }

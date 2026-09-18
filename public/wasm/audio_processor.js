@@ -404,15 +404,8 @@ export class AhxPlayer {
         return ret >>> 0;
     }
     /**
-     * The fixed voice count of the engine (`ENGINE_CHANNELS`).
-     * @returns {number}
-     */
-    static engine_channels() {
-        const ret = wasm.ahxplayer_engine_channels();
-        return ret >>> 0;
-    }
-    /**
-     * Song channels that do not fit the fixed-4 engine and are not played.
+     * Song channels the engine does not play: 0 for every real file (only a
+     * malformed HVL wider than the reference's 16-voice array is cut).
      * @returns {number}
      */
     dropped_channels() {
@@ -431,8 +424,8 @@ export class AhxPlayer {
     /**
      * Parses an AHX (`THX`) or HVL file and builds a paused player.
      * `stereo_mode` (0..=4) is AHX's stereo-separation setting; HVL files
-     * carry their own. Songs wider than the fixed-4 engine play their first
-     * four channels, see [`dropped_channels`](Self::dropped_channels).
+     * carry their own. The channel count follows the song: 4 for AHX, the
+     * header's native count for HVL, see [`channels`](Self::channels).
      * @param {Uint8Array} bytes
      * @param {number} sample_rate
      * @param {number} stereo_mode

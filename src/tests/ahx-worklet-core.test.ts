@@ -120,11 +120,11 @@ describe('AhxProcessorCore over the real wasm', () => {
     expect(render(core, 1024).l.every((s) => s === 0)).toBe(true);
   });
 
-  it('truncates a 7-channel HVL to the fixed-4 engine and says so', () => {
+  it('plays a 7-channel HVL at its native channel count', () => {
     const { core, events } = newCore();
     core.handle({ type: 'load-song', id: nextId++, bytes: fixture('drainage_proble.hvl') });
     expect(events.find((e) => e.type === 'song-loaded')).toMatchObject({
-      info: { channels: 4, droppedChannels: 3 },
+      info: { channels: 7, droppedChannels: 0 },
     });
   });
 

@@ -41,9 +41,9 @@ export interface AhxSongInfo {
   name: string;
   positionCount: number;
   trackLength: number;
-  /** Channels the engine plays (the fixed-4 engine constant, or fewer). */
+  /** Channels the engine plays: 4 for AHX, the song's native count for HVL. */
   channels: number;
-  /** Song channels beyond the fixed-4 engine that are not played. */
+  /** Song channels not played: 0 unless the song exceeds the engine's 16 voices. */
   droppedChannels: number;
   sampleRate: number;
 }

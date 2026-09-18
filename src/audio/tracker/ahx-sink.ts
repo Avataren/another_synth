@@ -179,7 +179,7 @@ export class AhxTrackerSink implements TrackerSink {
 
   // --- transport lifecycle -----------------------------------------------
 
-  /** A single channel cannot be silenced: the engine owns its four voices. */
+  /** A single channel cannot be silenced: the engine owns its voices. */
   notesOffForTrack(_trackIndex: number): void {}
 
   allNotesOff(): void {
