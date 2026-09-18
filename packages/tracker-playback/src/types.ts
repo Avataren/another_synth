@@ -13,7 +13,7 @@ export type TransportState = 'stopped' | 'playing' | 'paused';
  *
  * See PLAN-module-format-support.md for the roadmap this belongs to.
  */
-export type ModuleFormat = 'native' | 'protracker' | 'xm' | 's3m';
+export type ModuleFormat = 'native' | 'protracker' | 'xm' | 's3m' | 'ahx';
 
 /**
  * Format assumed for songs saved before the format tag existed, when nothing

@@ -62,6 +62,7 @@ export * from './import/xm-patterns';
 export * from './import/xm-samples';
 export * from './import/s3m-patterns';
 export * from './import/s3m-samples';
+export * from './import/ahx-patterns';
 
 // The conversion from that row model into a schedulable `Song`.
 export * from './playback-song-builder';
@@ -71,3 +72,4 @@ export * from './mod-parser';
 export * from './mod-vblank';
 export * from './formats/xm';
 export * from './formats/s3m';
+export * from './formats/ahx';

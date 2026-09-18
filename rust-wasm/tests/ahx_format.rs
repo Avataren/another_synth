@@ -151,7 +151,6 @@ fn karma_ahx_every_instrument_has_a_plist() {
             "instrument {i} ({}) expected a non-empty PList",
             ins.name
         );
-        assert_eq!(ins.plist.entries.len(), ins.plist.entries.len());
     }
 }
 

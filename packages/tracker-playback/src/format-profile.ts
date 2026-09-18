@@ -768,11 +768,31 @@ export const NATIVE_PROFILE: FormatProfile = {
   filterToggleCommand: true,
 };
 
+/**
+ * Placeholder only -- nothing selects this yet.
+ *
+ * AHX's effect vocabulary genuinely doesn't map onto this interface's
+ * period/volume-slide-shaped fields (`architecture-map.md` §"format-
+ * profile.ts": "a `FormatProfile` for AHX would need new fields with no
+ * analogue in the other three... stretches the interface rather than filling
+ * it in"). Filling those in -- `AHX_PROFILE` proper, plus the new
+ * `EffectType` members for arpeggio-via-PList/filter-envelope/buzz -- is P2
+ * work (`.ai/task.md`). This exists only so `ModuleFormat` (which P1 extends
+ * with `'ahx'` for the parser/pattern-builder) has a `Record` entry; P1's
+ * `buildAhxTrackerPatterns` never calls `profileForFormat('ahx', ...)`, so
+ * these ProTracker-borrowed values are never read.
+ */
+export const AHX_PROFILE: FormatProfile = {
+  ...PROTRACKER_PROFILE,
+  format: 'ahx',
+};
+
 const PROFILES: Record<ModuleFormat, FormatProfile> = {
   native: NATIVE_PROFILE,
   protracker: PROTRACKER_PROFILE,
   xm: XM_PROFILE,
   s3m: S3M_PROFILE,
+  ahx: AHX_PROFILE,
 };
 
 export interface ProfileOptions {
