@@ -119,7 +119,55 @@ export type EffectType =
   | 'setEnvelopePos'  // Lxx - Set envelope position (XM)
   | 'noteCut'        // ECx - Note cut after x ticks
   | 'noteDelay'      // EDx - Note delay by x ticks
-  | 'patDelay';      // EEx - Pattern delay by x rows
+  | 'patDelay'       // EEx - Pattern delay by x rows
+  /**
+   * AHX/HVL fx 0x4 ("Filter override", `hvl_replay.c:736-745`
+   * `hvl_process_stepfx_3` case 0x04). One raw byte, two behaviours by
+   * range: 1-0x3f latches `vc_IgnoreFilter`, a value the *next* PList
+   * filter command (case 0, PList-only, out of this phase's scope) reads
+   * instead of its own parameter; 0x41-0x7f sets the channel's filter
+   * cutoff (`vc_FilterPos`) directly to `param-0x40`. 0 and 0x40 are
+   * no-ops. No MOD/XM/S3M command sets a filter's continuous cutoff
+   * directly (the one existing filter command, `filterToggle`, is a
+   * boolean post-fx toggle) so this has no home in the existing union.
+   * `paramX`/`paramY` are consumed as one reconstructed byte, same as
+   * `setVolume`/`setPan`. TrackEffectState.ahxFilterPos/ahxFilterIgnore
+   * carry the result; nothing reads them until the AHX voice sink (P4)
+   * exists.
+   */
+  | 'setFilterPos'
+  /**
+   * AHX/HVL fx 0x9 ("Set squarewave offset", `hvl_replay.c:691-695`
+   * `hvl_process_stepfx_2` case 0x9). Sets the channel's squarewave
+   * duty-cycle read position directly (`vc_SquarePos`) and latches
+   * `vc_IgnoreSquare` so the pending note-trigger step doesn't reset it.
+   * Same "no MOD/XM/S3M analogue, one raw byte, no consumer yet" shape as
+   * `setFilterPos` above; TrackEffectState.ahxSquarePos carries it.
+   */
+  | 'setSquarePos'
+  /**
+   * AHX/HVL fx 0xc ("Volume", `hvl_replay.c:746-767`
+   * `hvl_process_stepfx_3` case 0x0c). One byte, three tiers depending on
+   * range, unlike `setVolume`'s single 0-0x40 range:
+   *   - 0x00-0x40: this channel's *note* volume -- identical to `setVolume`
+   *     and handled the same way in the new switch arm.
+   *   - 0x50-0x90 (i.e. 0x00-0x40 after `-= 0x50`): sets ins_TrackMasterVolume
+   *     on *every* channel at once -- a song-level broadcast effect-processor.ts
+   *     has no access to (per-channel `TrackEffectState` only), same shape as
+   *     `setGlobalVol`'s existing engine.ts-level dispatch. Deferred: the
+   *     switch arm below decodes but does not apply this tier -- see
+   *     p2-report.md.
+   *   - 0xa0-0xe0 (i.e. 0x00-0x40 after `-= 0xa0`): *this* channel's own
+   *     persistent track-master-volume multiplier, distinct from the note
+   *     volume above. TrackEffectState.ahxTrackVolume carries it; nothing
+   *     folds it into the pushed volume yet (same "no consumer yet" status
+   *     as setFilterPos/setSquarePos -- P4's AhxTrackerSink combines it the
+   *     way global volume is combined today).
+   * One EffectType covers all three tiers because the reference itself
+   * reads them from a single command byte with no separate command number
+   * per tier.
+   */
+  | 'setTrackVolume';
 
 /**
  * Extended effect subtypes (Exy commands)
@@ -140,7 +188,21 @@ export type ExtendedEffectSubtype =
   | 'noteDelay'      // EDx
   | 'patDelay'       // EEx
   | 'filterToggle'   // E0x - ProTracker filter on/off (legacy)
-  | 'invertLoop';    // EFx - ProTracker invert loop / funk repeat
+  | 'invertLoop'     // EFx - ProTracker invert loop / funk repeat
+  /**
+   * AHX/HVL extended sub 0x4 (`hvl_replay.c:782-784`, `hvl_process_stepfx_3`
+   * case 0xe sub 0x4, "Vibrato control"). Occupies the *same* nibble slot
+   * MOD/XM's E4x uses for `vibratoWave`, but means something unrelated:
+   * `vc_VibratoDepth = FXParam & 0x0f` directly, no waveform selection at
+   * all (AHX has one vibrato shape, table-driven from `vib_tab`). Mapped to
+   * the existing `'vibrato'` top-level EffectType (its switch arm already
+   * sets `state.vibratoDepth` from a paramY nibble when paramY is nonzero
+   * -- the same operation), branching on this subtype only to skip the
+   * speed-nibble half `vibrato`'s plain form also reads. AHX has no
+   * row-level command that sets vibrato *speed*; that comes from the
+   * instrument (`ins_VibratoSpeed`), outside this phase's scope.
+   */
+  | 'vibratoDepth';
 
 /**
  * A FastTracker 2 volume-column command.

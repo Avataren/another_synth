@@ -183,6 +183,23 @@ export function decodeRawEffect(
     return { type: 'speed', speed: 0 };
   }
 
+  if (
+    profile.plainSpeedCommandByte !== undefined &&
+    cmd === profile.plainSpeedCommandByte
+  ) {
+    // AHX/HVL's Fxx (`hvl_replay.c:679-683`, `hvl_process_stepfx_1` case
+    // 0xf): `ht_Tempo = FXParam` unconditionally -- every value 0-255 sets
+    // ticks-per-row directly, with no MOD/XM-style 0x20 split into a
+    // separate BPM reading (AHX has no per-row BPM command at all; its
+    // audible tempo is the fixed 50Hz-times-speedMultiplier base, set once
+    // at the file header, not per row). Reusing speedTempoCommandByte here
+    // would misread any Fxx with xx >= 0x20 as a bogus tempo-in-BPM. Value
+    // 0 reuses the same `{type:'speed', speed:0}` + `f00StopsSong` path
+    // ProTracker's F00 already established (`ht_SongEndReached=1` on a
+    // zero parameter is the same "stop the song" reading).
+    return { type: 'speed', speed: value };
+  }
+
   if (profile.tempoCommandByte !== undefined && cmd === profile.tempoCommandByte) {
     // Formats with a dedicated tempo command (S3M's Txx). ST3's manual
     // gives tempo the range 20-FF; smaller parameters have no meaning and
@@ -263,7 +280,8 @@ function parseExtendedEffect(
     noteDelay: 'noteDelay',
     patDelay: 'patDelay',
     filterToggle: 'extEffect',
-    invertLoop: 'extEffect'
+    invertLoop: 'extEffect',
+    vibratoDepth: 'vibrato'
   };
 
   return {

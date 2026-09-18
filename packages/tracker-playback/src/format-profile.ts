@@ -72,6 +72,25 @@ export interface FormatProfile {
   readonly portamentoUnitScale: number;
 
   /**
+   * Whether a zero-parameter 1xx/2xx (portamento up/down) reuses the
+   * channel's last non-zero slide speed instead of stopping the slide.
+   *
+   * Every format currently on this profile reuses the memory (`resolvedParam`
+   * in the `portaUp`/`portaDown` switch arm falls back to
+   * `state.lastPortaUp`/`lastPortaDown` unconditionally), so this defaults to
+   * that existing behaviour when absent -- explicitly `undefined` on every
+   * pre-AHX profile, never inherited implicitly (M1).
+   *
+   * AHX/HVL's own 1xx/2xx (`hvl_replay.c:726-735`,
+   * `hvl_process_stepfx_3` cases 0x01/0x02) plainly reassign
+   * `vc_PeriodSlideSpeed = FXParam` (negated for 0x1) every time, with no
+   * memory check at all -- a `10` row sets the slide speed to exactly zero,
+   * stopping it, where the shared MOD/XM/S3M reading would silently resume
+   * the last speed. Set to `false` on `AHX_PROFILE` only.
+   */
+  readonly portamentoHasMemory?: boolean;
+
+  /**
    * ProTracker quirk: an EDx note delay longer than the row's tick count
    * leaks the note into the following row instead of dropping it.
    */
@@ -180,6 +199,24 @@ export interface FormatProfile {
   readonly panSlideUnit: number;
 
   /**
+   * Whether the plain `setPan` command's raw byte is a signed value
+   * (-128..127, 0 = center) rather than MOD/XM's unsigned 0-255 byte
+   * (128 = center).
+   *
+   * AHX/HVL's Panning command (`hvl_replay.c:636-643`,
+   * `hvl_process_stepfx_1` case 0x7, and the PList-only equivalent at
+   * `:1090-1096`) reads its byte as `if (FXParam>127) FXParam-=256;` --
+   * i.e. reinterprets the unsigned byte as signed -- then adds 128 back to
+   * land in `vc_Pan`'s 0-255 internal range. Net effect against MOD's own
+   * `(raw-128)/128` formula: AHX's raw 0x00 means *center*, where MOD's
+   * raw 0x00 means hard left. Reusing MOD's formula unchanged would put
+   * every centered AHX pan hard left. Absent (the MOD/XM/S3M default)
+   * leaves the existing unsigned formula untouched; set `true` only on
+   * `AHX_PROFILE`.
+   */
+  readonly panByteIsSigned?: boolean;
+
+  /**
    * Whether F00 stops the song, as ProTracker's setSpeed does (`F00 - stop
    * song; doStopSong = true;`). FT2 instead sets speed 0, which stalls its
    * own replayer; this engine keeps the pre-existing clamp-to-1 reading for
@@ -284,6 +321,25 @@ export interface FormatProfile {
    * Formats without such a command leave this undefined.
    */
   readonly speedTempoCommandByte: number | undefined;
+
+  /**
+   * The command byte whose entire 0-255 parameter range sets ticks-per-row
+   * directly, with no MOD/XM-style split at 0x20 into a separate tempo
+   * reading.
+   *
+   * AHX/HVL's Fxx is exactly this (`hvl_replay.c:679-683`): `ht_Tempo =
+   * FXParam` unconditionally, for every parameter value, because AHX has no
+   * per-row BPM command at all -- its audible tempo is the file header's
+   * fixed 50Hz-times-speedMultiplier base (`.ai/p0-report.md` item 2), never
+   * touched by a pattern effect. Reusing `speedTempoCommandByte` for this
+   * would misread any Fxx with a parameter >= 0x20 as a bogus BPM. A zero
+   * parameter reuses the same `{type:'speed', speed:0}` +
+   * `f00StopsSong` path ProTracker's F00 already established --
+   * `ht_SongEndReached=1` on a zero parameter is the same "stop the song"
+   * reading (`hvl_replay.c:681-682`). Formats that split Fxx (or have no
+   * such command) leave this undefined.
+   */
+  readonly plainSpeedCommandByte?: number;
 
   /**
    * The command byte that sets tempo outright. ProTracker folds speed and
@@ -769,22 +825,123 @@ export const NATIVE_PROFILE: FormatProfile = {
 };
 
 /**
- * Placeholder only -- nothing selects this yet.
+ * AHX/HVL row/step effect semantics (P2, `.ai/ahx/p2-report.md`).
  *
- * AHX's effect vocabulary genuinely doesn't map onto this interface's
- * period/volume-slide-shaped fields (`architecture-map.md` §"format-
- * profile.ts": "a `FormatProfile` for AHX would need new fields with no
- * analogue in the other three... stretches the interface rather than filling
- * it in"). Filling those in -- `AHX_PROFILE` proper, plus the new
- * `EffectType` members for arpeggio-via-PList/filter-envelope/buzz -- is P2
- * work (`.ai/task.md`). This exists only so `ModuleFormat` (which P1 extends
- * with `'ahx'` for the parser/pattern-builder) has a `Record` entry; P1's
- * `buildAhxTrackerPatterns` never calls `profileForFormat('ahx', ...)`, so
- * these ProTracker-borrowed values are never read.
+ * Scope: the pattern-effect columns only (`stp_FX`/`stp_FXParam` and HVL's
+ * second column `stp_FXb`/`stp_FXbParam`), i.e. `hvl_process_stepfx_1/2/3`
+ * in `hvl_replay.c`. PList (the per-instrument micro-sequencer,
+ * `hvl_plist_command_parse`) is out of scope -- it runs inside the future
+ * dedicated AHX wasm voice on its own tick clock (`verdict.md`'s P3), not
+ * through this per-channel pattern-effect dispatch.
+ *
+ * `pitch` is still a placeholder (inherited from `PROTRACKER_PROFILE`
+ * through the spread below): a faithful AHX `PitchModel` needs the 61-entry
+ * `period_tab` and `Period2Freq`'s mixer-internal fixed-point scale, which
+ * `ahx-patterns.ts`'s own doc comment flags as not yet pinned down. Nothing
+ * in this phase depends on it -- the new switch arms below only read/write
+ * `TrackEffectState` fields, never the pitch model -- so it is left
+ * unresolved rather than guessed at.
+ *
+ * Two step effects this format has (position jump 0x0/0xb, and fx 0xc's
+ * "all channels" volume tier) are deliberately left out of
+ * `effectCommands`/undecoded: both need state or dispatch that lives above
+ * this per-channel profile (a song-level BCD position accumulator, and a
+ * cross-channel broadcast), which is engine.ts territory, not
+ * effect-processor.ts's. See `.ai/ahx/p2-report.md` for the full
+ * code-by-code table and the reasoning for every field below.
  */
 export const AHX_PROFILE: FormatProfile = {
   ...PROTRACKER_PROFILE,
   format: 'ahx',
+
+  // AHX's NoteMaxVolume range is 0-0x40, same scale ProTracker/FT2 use.
+  volumeSlideUnit: 1 / 64,
+  // 0x5/0xa read `vc_VolumeSlideUp = FXParam>>4; vc_VolumeSlideDown =
+  // FXParam&0xf` unconditionally every row (`hvl_replay.c:632-633`) -- no
+  // memory, same as ProTracker (inherited: volumeSlideHasMemory: false,
+  // volumeSlideNibbles: 'modxm').
+  //
+  // But unlike ProTracker, the slide it primes is applied on *every* frame
+  // of the row including the row's own trigger frame
+  // (`hvl_process_frame:1217`'s `vc_NoteMaxVolume += up - down` runs
+  // unconditionally per frame, and `hvl_process_frame` runs on the same
+  // frame `hvl_process_step` just set the slide up on) -- the same
+  // "steps on tick 0 too" shape `fastVolumeSlides` already models for
+  // ST3.00-era S3M files, so it is reused here rather than adding a
+  // second flag for the same behaviour.
+  fastVolumeSlides: true,
+  // 0x1/0x2 plainly reassign the slide speed every row with no zero-param
+  // memory reuse (`hvl_replay.c:726-735`) -- see FormatProfile.portamentoHasMemory.
+  portamentoHasMemory: false,
+  // 1 raw period-table unit per parameter step, both for the ordinary
+  // 0x1/0x2 slide and the extended fine slides 0xE1/0xE2
+  // (`vc_PeriodSlidePeriod -= FXParam&0xf`, `hvl_replay.c:773,778` -- no
+  // <<2 scaling the way MOD/XM's E1x/E2x sometimes carry).
+  portamentoUnitScale: 1,
+  // AHX's 0xE1/0xE2 fine slides reassign unconditionally too
+  // (`hvl_replay.c:772-780`), no FT2-style zero-param memory.
+  fineSlideHasMemory: false,
+  // AHX's panning byte is signed (0 = center) -- see
+  // FormatProfile.panByteIsSigned's doc comment for the full derivation.
+  panByteIsSigned: true,
+  // Fxx: `ht_Tempo = FXParam` unconditionally, no MOD-style 0x20 split into
+  // a separate tempo reading (see FormatProfile.plainSpeedCommandByte).
+  speedTempoCommandByte: undefined,
+  plainSpeedCommandByte: 0xf,
+  // Fxx=0 sets `ht_SongEndReached=1` (`hvl_replay.c:681-682`) -- the same
+  // "stop the song" reading as ProTracker's F00.
+  f00StopsSong: true,
+  // AHX has no row-level arpeggio command (0-15 covers position-jump-hi,
+  // portamento x2, filter override, tone-porta(+vol), panning, square
+  // offset, volume slide, position jump, volume, pattern break, extended,
+  // speed -- no slot left for it; only PList can arpeggiate, out of scope
+  // here). Sentinel value outside the 0-15 command-nibble space so a
+  // legitimate 0x0 (Position Jump HI) row is never misdecoded as arpeggio
+  // by decodeRawEffect's arpeggioCommandByte check, which runs before the
+  // effectCommands table is even consulted.
+  arpeggioCommandByte: 0xff,
+  // AHX has no E0x-equivalent post-fx filter toggle at the pattern level.
+  filterToggleCommand: false,
+  // Unreachable for AHX: 0xE's 0xd sub-slot (note delay) isn't in
+  // extendedSubcommandMap below (see the doc comment there), so this flag
+  // is never consulted. Explicit per the M1 rule regardless.
+  noteDelayOverflowCarries: false,
+  extendedCommandByte: 0xe,
+  extendedSubcommandMap: {
+    0x1: 'finePortaUp', // hvl_replay.c:772-775
+    0x2: 'finePortaDown', // hvl_replay.c:777-780
+    0x4: 'vibratoDepth', // hvl_replay.c:782-784 -- NOT MOD/XM's vibratoWave; see ExtendedEffectSubtype.vibratoDepth's doc comment
+    0xa: 'fineVolUp', // hvl_replay.c:786-791
+    0xb: 'fineVolDown', // hvl_replay.c:793-798
+    0xc: 'noteCut', // hvl_replay.c:663-673
+    // 0xd (note delay) deliberately absent: AHX's EDx
+    // (`hvl_replay.c:834-869`) postpones the *entire* step -- note,
+    // instrument trigger and every other effect on the same row -- until
+    // the delay elapses, checked before any of hvl_process_stepfx_1/2/3
+    // run. The existing 'noteDelay' arm only defers the note trigger while
+    // every other effect on the row still applies immediately, which is a
+    // different, MOD/XM-shaped behaviour. Mapping it here would misapply
+    // that assumption to AHX. Deferred -- see p2-report.md.
+    // 0xf (misc flags / override-transpose) deliberately absent: single
+    // documented use (`hvl_replay.c:800-808`) is an instrument-envelope
+    // interaction with no pattern-visible effect on its own; out of scope.
+  },
+  effectCommands: {
+    // 0x0 (Position Jump HI) and 0xb (Position Jump) deliberately absent --
+    // see this const's doc comment and p2-report.md.
+    0x1: 'portaUp', // hvl_replay.c:726-730
+    0x2: 'portaDown', // hvl_replay.c:731-735
+    0x3: 'tonePorta', // hvl_replay.c:697-716 (falls into the shared 0x5 glide-to-note path)
+    0x4: 'setFilterPos', // hvl_replay.c:736-745
+    0x5: 'tonePortaVol', // hvl_replay.c:630-634 (slide) + 699-716 (glide)
+    0x7: 'setPan', // hvl_replay.c:636-643
+    0x9: 'setSquarePos', // hvl_replay.c:691-695
+    0xa: 'volSlide', // hvl_replay.c:631-634
+    0xc: 'setTrackVolume', // hvl_replay.c:746-767
+    0xd: 'patBreak', // hvl_replay.c:652-658 -- decimal reconstruction already matches this engine's existing Dxx formula
+    // 0xe (extended) is handled via extendedCommandByte/extendedSubcommandMap above.
+    // 0xf (speed) is handled via plainSpeedCommandByte above.
+  },
 };
 
 const PROFILES: Record<ModuleFormat, FormatProfile> = {

@@ -408,6 +408,22 @@ export interface TrackEffectState {
    */
   effectCommandBuffer: ProcessorCommand[];
   volumeCommandBuffer: ProcessorCommand[];
+
+  /**
+   * AHX/HVL only, all four fields (`.ai/ahx/p2-report.md`). None are
+   * consumed anywhere yet -- there is no AHX voice sink in this phase (P4)
+   * -- so these exist purely as the decoded, correctly-typed record of what
+   * the pattern asked for, the same "data now, wiring later" shape
+   * `setGlobalVol`'s song-level state has today.
+   */
+  /** fx 0x4 direct set (`vc_FilterPos = FXParam-0x40`), 0-63. */
+  ahxFilterPos?: number;
+  /** fx 0x4 latched override (`vc_IgnoreFilter`) for a future PList filter command, 0-63. */
+  ahxFilterIgnore?: number;
+  /** fx 0x9 direct set (`vc_SquarePos`). */
+  ahxSquarePos?: number;
+  /** fx 0xc's third tier (`vc_TrackMasterVolume`), 0-1. */
+  ahxTrackVolume?: number;
 }
 
 /**
@@ -737,8 +753,13 @@ function resolveVolumeSlide(
     return { delta: 0, mode: 'normal', firstTick: false };
   }
 
-  if (up) return { delta: up * scale, mode: 'normal', firstTick: false };
-  if (down) return { delta: -down * scale, mode: 'normal', firstTick: false };
+  // Every existing 'modxm'-nibble profile (ProTracker, XM, native) sets
+  // fastVolumeSlides: false explicitly (M1), so this is a no-op for them --
+  // AHX/HVL is the first 'modxm'-nibble format for which it's true (volume
+  // slides apply on tick 0 there too, see AHX_PROFILE's doc comment).
+  const firstTick = state.profile.fastVolumeSlides === true;
+  if (up) return { delta: up * scale, mode: 'normal', firstTick };
+  if (down) return { delta: -down * scale, mode: 'normal', firstTick };
   return { delta: 0, mode: 'normal', firstTick: false };
 }
 
@@ -1256,12 +1277,20 @@ export function processEffectTick0(
       // parameter reuses the last non-zero one and the fine-slide decision
       // is made on the RESOLVED parameter -- an E00 after an EF3 is another
       // one-shot fine step, not a per-tick slide at the 0xE3 speed.
+      //
+      // AHX/HVL has no such memory (`FormatProfile.portamentoHasMemory`,
+      // false only there): `vc_PeriodSlideSpeed = FXParam` reassigns
+      // unconditionally, so a zero parameter is a genuine "stop the slide",
+      // not "repeat the last one".
+      const hasMemory = state.profile.portamentoHasMemory !== false;
       const resolvedParam =
         rawParam !== 0
           ? rawParam
-          : up
-            ? state.lastPortaUp
-            : state.lastPortaDown;
+          : hasMemory
+            ? up
+              ? state.lastPortaUp
+              : state.lastPortaDown
+            : 0;
       // st3play's docmd1 stores the channel-wide memory for EVERY non-zero
       // raw parameter (`if (ch->info > 0) ch->alastnfo = ch->info;`) --
       // including 0xE0/0xF0 rows that move nothing -- so the store happens
@@ -1330,10 +1359,67 @@ export function processEffectTick0(
       break;
 
     case 'vibrato':
+      if (effect.extSubtype === 'vibratoDepth') {
+        // AHX/HVL extended 0xe4: sets depth only, from the whole nibble
+        // (including zero -- `vc_VibratoDepth = FXParam&0xf` is an
+        // unconditional assignment, not "leave depth alone on a zero
+        // param" the way the plain form below treats paramY). AHX has no
+        // row-level speed nibble at all; speed comes from the instrument.
+        state.vibratoDepth = effect.paramY & 0x0f;
+        break;
+      }
       if (effect.paramX) state.vibratoSpeed = effect.paramX;
       if (effect.paramY) state.vibratoDepth = effect.paramY;
       state.lastVibrato = (state.vibratoSpeed << 4) | state.vibratoDepth;
       break;
+
+    case 'setFilterPos': {
+      // AHX/HVL fx 0x4 (`hvl_replay.c:736-745`). One reconstructed byte,
+      // two disjoint ranges; 0 and 0x40 are no-ops.
+      const raw = effect.paramX * 16 + effect.paramY;
+      if (raw !== 0 && raw !== 0x40) {
+        if (raw < 0x40) {
+          state.ahxFilterIgnore = raw;
+        } else if (raw <= 0x7f) {
+          state.ahxFilterPos = raw - 0x40;
+        }
+      }
+      break;
+    }
+
+    case 'setSquarePos':
+      // AHX/HVL fx 0x9 (`hvl_replay.c:691-695`): direct duty-cycle position
+      // set, byte reconstructed the same way as setFilterPos.
+      state.ahxSquarePos = effect.paramX * 16 + effect.paramY;
+      break;
+
+    case 'setTrackVolume': {
+      // AHX/HVL fx 0xc (`hvl_replay.c:746-767`): three tiers on one byte.
+      let raw = effect.paramX * 16 + effect.paramY;
+      if (raw <= 0x40) {
+        // Tier 1: this channel's note volume, identical range/scale to
+        // 'setVolume'.
+        state.currentVolume = Math.min(1, raw / 64);
+        pushVolume(commands, voiceIndex, state.currentVolume, 'step');
+        break;
+      }
+      raw -= 0x50;
+      if (raw < 0) break;
+      if (raw <= 0x40) {
+        // Tier 2: every channel's track-master volume at once -- a
+        // song-level broadcast this per-channel state has no access to.
+        // Decoded, deliberately not applied; see p2-report.md.
+        break;
+      }
+      raw -= 0xa0 - 0x50;
+      if (raw < 0) break;
+      if (raw <= 0x40) {
+        // Tier 3: this channel's own track-master volume, distinct from
+        // the note volume above. No consumer yet (P4).
+        state.ahxTrackVolume = raw / 64;
+      }
+      break;
+    }
 
     case 'tonePortaVol':
       // 5xy: tone portamento continues *and* a volume slide applies.
@@ -1472,6 +1558,14 @@ export function processEffectTick0(
         // of the pan byte, producing a near-silent, barely-left-of-center
         // result regardless of the actual nibble.
         state.currentPan = (effect.paramY / 15) * 2 - 1;
+      } else if (state.profile.panByteIsSigned) {
+        // AHX/HVL: the raw byte is a signed -128..127 value, 0 = center
+        // (`hvl_replay.c:637-638`'s `if(FXParam>127) FXParam-=256`) --
+        // see FormatProfile.panByteIsSigned's doc comment for the full
+        // derivation against MOD's unsigned-byte formula below.
+        const raw = effect.paramX * 16 + effect.paramY;
+        const signed = raw >= 128 ? raw - 256 : raw;
+        state.currentPan = signed / 128;
       } else {
         // 8xx: Set panning (00=left, 80=center, FF=right)
         state.currentPan = (effect.paramX * 16 + effect.paramY - 128) / 128;
