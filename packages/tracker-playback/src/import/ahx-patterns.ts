@@ -52,7 +52,7 @@ function ahxNoteToTrackerText(note: number): string | undefined {
 }
 
 /**
- * Presentation only (D94): the raw fx nibble and param byte rendered as
+ * Presentation only (D94): the raw fx/fxb nibble and param byte rendered as
  * tracker text, with no claim about what the command does. AHX's own
  * effect-command table (`AHX_PROFILE`/new `EffectType` members) is P2 work.
  */
@@ -69,7 +69,12 @@ function ahxStepToTrackerEntry(
 ): TrackerEntryData | undefined {
   const hasNote = step.note > 0;
   const hasInstrument = step.instrument > 0;
-  const hasEffect = step.fx !== 0 || step.fxParam !== 0;
+  // AHX only ever writes fx/fxParam (fxb/fxbParam are always 0 for that
+  // format); HVL's track cell carries a genuine second command
+  // (`hvl_replay.c:484-487`), so a row can carry only column-2 content.
+  const hasEffect1 = step.fx !== 0 || step.fxParam !== 0;
+  const hasEffect2 = step.fxb !== 0 || step.fxbParam !== 0;
+  const hasEffect = hasEffect1 || hasEffect2;
 
   if (!hasNote && !hasInstrument && !hasEffect) return undefined;
 
@@ -91,10 +96,18 @@ function ahxStepToTrackerEntry(
     if (noteText) entry.note = noteText;
   }
 
-  if (hasEffect) {
+  if (hasEffect1) {
     entry.effectCommand = step.fx;
     entry.effectParam = step.fxParam;
     entry.macro = ahxEffectToMacro(step.fx, step.fxParam);
+  }
+
+  // HVL's second effect column rides `macro2`, the same row slot S3M's pan
+  // command and MOD's synthesized pan macro use (s3m-patterns.ts:349,
+  // mod-patterns.ts:476) -- consumed the same way, unconditionally, by
+  // `playback-song-builder.ts`'s `parseEffectCommand(entry?.macro2)`.
+  if (hasEffect2) {
+    entry.macro2 = ahxEffectToMacro(step.fxb, step.fxbParam);
   }
 
   return entry;

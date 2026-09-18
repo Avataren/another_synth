@@ -7,7 +7,11 @@
  * cross-checked against by hand -- the golden numbers here are copied from
  * that already-verified test suite, not re-derived, so a divergence between
  * the Rust and TS decoders on the same fixture bytes shows up as a failing
- * assertion in exactly one of the two suites.
+ * assertion in exactly one of the two suites. That cross-suite divergence
+ * detection only holds for well-formed fixtures: on truncated/malformed
+ * input the two decoders diverge in *kind* (TS degrades via `?? 0`, Rust
+ * returns a `Result::Err`), so a truncation bug need not surface as a
+ * mismatched golden number in either suite.
  */
 
 import { describe, it, expect } from 'vitest';

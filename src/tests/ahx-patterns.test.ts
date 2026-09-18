@@ -111,3 +111,68 @@ describe('buildAhxTrackerPatterns: karma.ahx', () => {
     }
   });
 });
+
+describe('buildAhxTrackerPatterns: chiprolled.hvl second effect column (fxb/fxbParam)', () => {
+  const song = parseAhx(readFixture('chiprolled.hvl'));
+  const patterns = buildAhxTrackerPatterns(song);
+
+  it('stamps macro2 from fxb/fxbParam alongside a first-column command', () => {
+    // Track 1, row 0: note 28, instrument 1, fx=7/fxParam=0 *and*
+    // fxb=15/fxbParam=7 -- both columns populated on the same row.
+    const step = song.tracks[1]![0]!;
+    expect(step).toEqual({
+      note: 28,
+      instrument: 1,
+      fx: 7,
+      fxParam: 0,
+      fxb: 15,
+      fxbParam: 7,
+    });
+
+    const position0 = patterns[0]!;
+    const entry = position0.tracks[0]!.entries.find((e) => e.row === 0);
+    expect(entry).toBeDefined();
+    expect(entry!.effectCommand).toBe(7);
+    expect(entry!.effectParam).toBe(0);
+    expect(entry!.macro).toBe('700');
+    expect(entry!.macro2).toBe('F07');
+  });
+
+  it('keeps a row that carries only a second-column command (previously dropped)', () => {
+    // Track 75, row 2: no note, no instrument, fx/fxParam both zero, only
+    // fxb=12/fxbParam=142 -- the exact "column-2-only" row the MAJOR finding
+    // flagged as silently dropped.
+    const step = song.tracks[75]![2]!;
+    expect(step).toEqual({
+      note: 0,
+      instrument: 0,
+      fx: 0,
+      fxParam: 0,
+      fxb: 12,
+      fxbParam: 142,
+    });
+
+    // Position 184, channel 1 addresses track 75.
+    const position = patterns[184]!;
+    expect(song.positions[184]!.track[1]).toBe(75);
+    const entry = position.tracks[1]!.entries.find((e) => e.row === 2);
+    expect(entry).toBeDefined();
+    expect(entry!.note).toBeUndefined();
+    expect(entry!.effectCommand).toBeUndefined();
+    expect(entry!.effectParam).toBeUndefined();
+    expect(entry!.macro).toBeUndefined();
+    expect(entry!.macro2).toBe('C8E');
+  });
+
+  it('never sets macro2 for karma.ahx, which has no second effect column', () => {
+    const ahxSong = parseAhx(readFixture('karma.ahx'));
+    const ahxPatterns = buildAhxTrackerPatterns(ahxSong);
+    for (const pattern of ahxPatterns) {
+      for (const track of pattern.tracks) {
+        for (const entry of track.entries) {
+          expect(entry.macro2).toBeUndefined();
+        }
+      }
+    }
+  });
+});
