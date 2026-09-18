@@ -132,22 +132,24 @@ export type EffectType =
    * boolean post-fx toggle) so this has no home in the existing union.
    * `paramX`/`paramY` are consumed as one reconstructed byte, same as
    * `setVolume`/`setPan`. TrackEffectState.ahxFilterPos/ahxFilterIgnore
-   * carry the result; nothing reads them until the AHX voice sink (P4)
-   * exists.
+   * carry the result for the row model / editor display only: the AHX
+   * worklet owns the transport and applies this effect itself in Rust, so
+   * nothing in the audio path reads these fields.
    */
   | 'setFilterPos'
   /**
    * AHX/HVL fx 0x9 ("Set squarewave offset", `hvl_replay.c:691-695`
    * `hvl_process_stepfx_2` case 0x9) and latches `vc_IgnoreSquare` so the
    * pending note-trigger step doesn't reset it. Same "no MOD/XM/S3M
-   * analogue, no consumer yet" shape as `setFilterPos` above, EXCEPT this
+   * analogue, display-only" shape as `setFilterPos` above, EXCEPT this
    * one's raw byte is NOT the value the reference stores: `vc_SquarePos =
    * FXParam >> (5 - vc_WaveLength)`, where `vc_WaveLength` is the active
    * instrument's waveform-length setting at trigger time -- voice-render
    * state this decode-time `EffectCommand`/`TrackEffectState` layer does not
    * have. `TrackEffectState.ahxSquarePosRaw` carries the *unshifted* raw
-   * byte; whichever layer holds `vc_WaveLength` (the future AHX voice, P3's
-   * `voice.rs`) must apply the shift before treating it as `vc_SquarePos`.
+   * byte; whichever layer holds `vc_WaveLength` (the Rust AHX voice,
+   * `voice.rs`, which is the one that plays it) applies the shift before
+   * treating it as `vc_SquarePos`.
    */
   | 'setSquarePos'
   /**
@@ -165,9 +167,9 @@ export type EffectType =
    *   - 0xa0-0xe0 (i.e. 0x00-0x40 after `-= 0xa0`): *this* channel's own
    *     persistent track-master-volume multiplier, distinct from the note
    *     volume above. TrackEffectState.ahxTrackVolume carries it; nothing
-   *     folds it into the pushed volume yet (same "no consumer yet" status
-   *     as setFilterPos/setSquarePos -- P4's AhxTrackerSink combines it the
-   *     way global volume is combined today).
+   *     folds it into the pushed volume (same display-only status as
+   *     setFilterPos/setSquarePos: the AHX worklet owns the transport, so
+   *     AhxTrackerSink never sees these arms).
    * One EffectType covers all three tiers because the reference itself
    * reads them from a single command byte with no separate command number
    * per tier.

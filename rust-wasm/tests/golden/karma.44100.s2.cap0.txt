@@ -1,5 +1,6 @@
 waves 7fd89418a057c72f
 panning 687a3f8a7a7684ea
+case karma.ahx 44100 2 3000 50 0
 channels 4 speedmult 1 instruments 31 positions 38 tracklen 64
 50 334ffdee6d46702c
 100 d852acda0c30101a

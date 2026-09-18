@@ -1,5 +1,6 @@
 waves 7fd89418a057c72f
 panning 687a3f8a7a7684ea
+case sunspots.hvl 44100 2 3000 50 4
 channels 4 speedmult 1 instruments 7 positions 12 tracklen 32
 50 061b9ebfbcc9835b
 100 7ea3ad16ced3113d

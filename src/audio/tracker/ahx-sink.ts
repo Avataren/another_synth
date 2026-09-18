@@ -171,7 +171,9 @@ export class AhxTrackerSink implements TrackerSink {
     // setValueAtTime throws on a non-finite value, and Math.max(0, NaN) is NaN.
     if (!Number.isFinite(volume)) return;
     const now = this.audioContext.currentTime;
-    const at = time !== undefined && time > now ? time : now;
+    // Same for a non-finite time: NaN fails `> now` and falls back to now, but
+    // +Infinity would pass it, so test finiteness explicitly.
+    const at = time !== undefined && Number.isFinite(time) && time > now ? time : now;
     this.player.output.gain.setValueAtTime(Math.max(0, volume), at);
   }
 

@@ -51,6 +51,10 @@ int main(int argc, char **argv)
     printf("panning %016llx\n", (unsigned long long)ph);
   }
 
+  /* echo the case so the Rust side can prove a golden matches its manifest row */
+  printf("case %s %u %u %u %u %d\n", strrchr(argv[1], '/') ? strrchr(argv[1], '/') + 1 : argv[1],
+         freq, defstereo, frames, chunk, argc > 6 ? atoi(argv[6]) : 0);
+
   ht = hvl_LoadTune(argv[1], freq, defstereo);
   if (!ht) return 1;
   if (argc > 6 && (uint32)atoi(argv[6]) < ht->ht_Channels) ht->ht_Channels = atoi(argv[6]);

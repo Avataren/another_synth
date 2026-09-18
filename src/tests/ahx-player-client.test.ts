@@ -225,6 +225,40 @@ describe('createAhxPlayer / AhxPlayerClient', () => {
     await expect(pending).resolves.toMatchObject({ name: 'Karma' });
   });
 
+  it('forgets the song and reports play() after a render failure instead of no-oping silently', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    const errors: Error[] = [];
+    player.onError((e) => errors.push(e));
+    const node = FakeWorkletNode.last as FakeWorkletNode;
+    await player.loadSong(karma);
+    expect(player.song).not.toBeNull();
+    node.port.onmessage?.({ data: { type: 'error', message: 'AHX render failed: boom' } } as MessageEvent);
+    expect(player.song).toBeNull();
+    errors.length = 0;
+    player.play();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.message).toMatch(/play\(\) ignored: no song is loaded/);
+    // A fresh load recovers: play() goes through again.
+    await player.loadSong(karma);
+    expect(player.song).not.toBeNull();
+    player.play();
+    expect(errors).toHaveLength(1);
+  });
+
+  it('reports play() with no song ever loaded, but not one queued behind an unawaited loadSong', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    const errors: Error[] = [];
+    player.onError((e) => errors.push(e));
+    player.play();
+    expect(errors).toHaveLength(1);
+    const pending = player.loadSong(karma);
+    player.play(); // ordered after load-song on the port: legitimate
+    expect(errors).toHaveLength(1);
+    await pending;
+  });
+
   it('rejects loadSong at once on a disposed client', async () => {
     stubGlobals();
     const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
@@ -272,6 +306,19 @@ describe('AhxTrackerSink', () => {
     expect(ctx.output.gain.setValueAtTime).not.toHaveBeenCalled();
     sink.setMasterVolume(0.5, Number.NaN); // a bad time falls back to now
     expect(ctx.output.gain.setValueAtTime).toHaveBeenLastCalledWith(0.5, 10);
+  });
+
+  it('falls back to now for an infinite time instead of throwing from the AudioParam', async () => {
+    const { sink, ctx } = await makeSink();
+    // Web Audio's setValueAtTime throws on a non-finite time; model that so a
+    // regression is a thrown error, not just a wrong argument.
+    ctx.output.gain.setValueAtTime.mockImplementation((_v: number, t: number) => {
+      if (!Number.isFinite(t)) throw new TypeError('non-finite time');
+    });
+    expect(() => sink.setMasterVolume(0.5, Number.POSITIVE_INFINITY)).not.toThrow();
+    expect(ctx.output.gain.setValueAtTime).toHaveBeenLastCalledWith(0.5, 10);
+    expect(() => sink.setMasterVolume(0.25, Number.NEGATIVE_INFINITY)).not.toThrow();
+    expect(ctx.output.gain.setValueAtTime).toHaveBeenLastCalledWith(0.25, 10);
   });
 
   it('maps the stop-the-song calls to pause; note traffic and scheduled cut-all do nothing', async () => {

@@ -58,7 +58,10 @@ export class AhxPlayerClient {
       this.fail(new Error('AHX worklet processor error'));
   }
 
-  /** The loaded song, or `null` before `loadSong` resolves. */
+  /**
+   * The loaded song, or `null` before `loadSong` resolves and again after a
+   * render failure (the worklet drops its player then, so the song is gone).
+   */
   get song(): AhxSongInfo | null {
     return this.info;
   }
@@ -82,7 +85,19 @@ export class AhxPlayerClient {
     });
   }
 
+  /**
+   * Start the song. With no song loaded (never loaded, or lost to a render
+   * failure) the worklet would ignore this, so it is reported through
+   * `onError` instead of vanishing. A `play()` right after an unawaited
+   * `loadSong` is fine: commands are ordered on the port.
+   */
   play(): void {
+    if (!this.disposed && !this.info && !this.pendingLoad) {
+      this.notifyError(
+        new Error('AHX play() ignored: no song is loaded (none yet, or it was lost to a render failure)'),
+      );
+      return;
+    }
     this.send({ type: 'play' });
   }
 
@@ -168,6 +183,9 @@ export class AhxPlayerClient {
           this.pendingLoad.reject(new Error(event.message));
           this.pendingLoad = null;
         } else if (event.id === undefined) {
+          // A render failure: the worklet has dropped its player, so the
+          // song we last reported is no longer playable.
+          this.info = null;
           this.notifyError(new Error(event.message));
         }
         break;

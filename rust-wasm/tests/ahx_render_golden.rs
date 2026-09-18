@@ -9,12 +9,17 @@
 //! for a 50-frame chunk (one second at 50 Hz), so a single wrong sample
 //! anywhere in the 20-60 s of audio fails the chunk it lives in.
 //!
-//! Coverage (from the harness's `coverage` line, voice-frames): karma.ahx
-//! exercises hard-cut release, square sweep, noise, filter sweep and vibrato;
-//! illuminated.hvl exercises PList ring modulation (commands 7/8) -- only at
-//! its native 6 channels, hence `with_channel_cap`; sliding_away.hvl exercises
-//! tone portamento; the 4-channel-truncated HVL cases exercise HVL's second
-//! effect column under the fixed-4 default.
+//! The corpus is `tests/golden/cases.manifest`: every fixture in
+//! `public/demos/ahx/` (karma.ahx + the seven .hvl) across sample rates
+//! (22050/44100/48000/96000), AHX stereo modes 0-4, and channel caps (native,
+//! fixed-4 truncation, and a cap strictly between). Runs are 30-64 s. The same
+//! manifest drives `gen_goldens.sh`, so a row cannot exist on one side only;
+//! `manifest_and_goldens_agree` and `manifest_covers_every_fixture` enforce it.
+//!
+//! Feature coverage (the harness's `coverage` line, voice-frames) is asserted
+//! corpus-wide by `corpus_exercises_every_voice_feature`: hard-cut release,
+//! square sweep, noise, filter sweep, vibrato, tone portamento, PList and PList
+//! ring modulation (commands 7/8, only at native channel counts).
 
 use audio_processor::ahx::engine::{AhxEngine, EngineError, ENGINE_CHANNELS};
 use audio_processor::ahx::format;
@@ -44,12 +49,24 @@ struct Golden {
     /// `songend` line: (song_end_reached, pos_nr, note_nr) after the last frame.
     end: (bool, i32, i32),
     chunks: Vec<(usize, u64)>,
+    /// `case` line the C harness echoes: (fixture, freq, defstereo, frames, chunk, cap).
+    case: Option<(String, u32, u8, usize, usize, usize)>,
+    /// `coverage` line: [ring, noise, filter, square, hardcut, vibrato, slide, plist].
+    coverage: Option<[u64; 8]>,
 }
 
 fn load_golden(name: &str) -> Golden {
     let text = fs::read_to_string(root().join("tests/golden").join(name))
         .unwrap_or_else(|e| panic!("reading golden {name}: {e}"));
-    let mut g = Golden { waves: 0, panning: 0, channels: 0, end: (false, 0, 0), chunks: Vec::new() };
+    let mut g = Golden {
+        waves: 0,
+        panning: 0,
+        channels: 0,
+        end: (false, 0, 0),
+        chunks: Vec::new(),
+        case: None,
+        coverage: None,
+    };
     for line in text.lines() {
         let f: Vec<&str> = line.split_whitespace().collect();
         match f.as_slice() {
@@ -58,6 +75,20 @@ fn load_golden(name: &str) -> Golden {
             ["channels", n, ..] => g.channels = n.parse().unwrap(),
             [frame, h] if frame.chars().all(|c| c.is_ascii_digit()) => {
                 g.chunks.push((frame.parse().unwrap(), u64::from_str_radix(h, 16).unwrap()));
+            }
+            ["case", fixture, freq, stereo, frames, chunk, cap] => {
+                g.case = Some((
+                    fixture.to_string(),
+                    freq.parse().unwrap(),
+                    stereo.parse().unwrap(),
+                    frames.parse().unwrap(),
+                    chunk.parse().unwrap(),
+                    cap.parse().unwrap(),
+                ));
+            }
+            ["coverage", "ring", r, "noise", ns, "filter", f, "square", q, "hardcut", h, "vibrato", v, "slide", sl, "plist", pl] => {
+                let n = |x: &&str| x.parse::<u64>().unwrap();
+                g.coverage = Some([n(r), n(ns), n(f), n(q), n(h), n(v), n(sl), n(pl)]);
             }
             ["songend", e, "posnr", p, "notenr", n] => {
                 g.end = (*e != "0", p.parse().unwrap(), n.parse().unwrap());
@@ -75,20 +106,72 @@ fn song(fixture: &str) -> format::Song {
     format::parse(&bytes).unwrap_or_else(|e| panic!("parsing {fixture}: {e}"))
 }
 
-/// Renders the case and compares every chunk hash against the golden.
-/// `cap == 0` means "engine default" (the fixed-4 constant).
-fn check(fixture: &str, freq: u32, defstereo: u8, cap: usize, golden: &str, expect_channels: usize) {
-    let g = load_golden(golden);
-    let s = song(fixture);
+/// One `cases.manifest` row.
+#[derive(Clone, Debug)]
+struct Case {
+    fixture: String,
+    freq: u32,
+    defstereo: u8,
+    frames: usize,
+    chunk: usize,
+    cap: usize,
+}
+
+impl Case {
+    fn golden(&self) -> String {
+        let stem = self.fixture.rsplit_once('.').unwrap().0;
+        format!("{stem}.{}.s{}.cap{}.txt", self.freq, self.defstereo, self.cap)
+    }
+}
+
+fn manifest() -> Vec<Case> {
+    let text = fs::read_to_string(root().join("tests/golden/cases.manifest")).expect("reading cases.manifest");
+    let mut rows = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let f: Vec<&str> = line.split_whitespace().collect();
+        assert_eq!(f.len(), 6, "cases.manifest: bad row {line:?}");
+        rows.push(Case {
+            fixture: f[0].to_string(),
+            freq: f[1].parse().unwrap(),
+            defstereo: f[2].parse().unwrap(),
+            frames: f[3].parse().unwrap(),
+            chunk: f[4].parse().unwrap(),
+            cap: f[5].parse().unwrap(),
+        });
+    }
+    rows
+}
+
+fn cases_for(fixture: &str) -> Vec<Case> {
+    let rows: Vec<Case> = manifest().into_iter().filter(|c| c.fixture == fixture).collect();
+    assert!(!rows.is_empty(), "no manifest rows for {fixture}");
+    rows
+}
+
+/// Renders one manifest row and compares every chunk hash against its golden.
+/// Also asserts the channel count and `dropped_channels` that the cap implies.
+fn check(c: &Case) {
+    let name = c.golden();
+    let g = load_golden(&name);
+    let s = song(&c.fixture);
+    let native = s.channels;
     let mult = s.speed_multiplier as usize;
-    let mut engine = if cap == 0 {
-        AhxEngine::new(s, freq, defstereo)
+    // cap 0 = every native channel; otherwise the first `cap` of them.
+    let want_channels = if c.cap == 0 { native } else { native.min(c.cap) };
+    let mut engine = if c.cap == ENGINE_CHANNELS {
+        // The shipped constructor, so the default stays covered by a golden.
+        AhxEngine::new(s, c.freq, c.defstereo)
     } else {
-        AhxEngine::with_channel_cap(s, freq, defstereo, cap)
+        AhxEngine::with_channel_cap(s, c.freq, c.defstereo, if c.cap == 0 { native } else { c.cap })
     }
     .expect("engine builds");
-    assert_eq!(engine.channels(), expect_channels, "{golden}: channel count");
-    assert_eq!(g.channels, expect_channels, "{golden}: reference channel count");
+    assert_eq!(engine.channels(), want_channels, "{name}: channel count");
+    assert_eq!(engine.dropped_channels(), native - want_channels, "{name}: dropped_channels");
+    assert_eq!(g.channels, want_channels, "{name}: reference channel count");
 
     // One hvl_DecodeFrame = `mult` ticks of `freq/50/mult` samples each.
     let frame_samples = engine.samples_per_tick() * mult;
@@ -103,7 +186,7 @@ fn check(fixture: &str, freq: u32, defstereo: u8, cap: usize, golden: &str, expe
         let got = fnv(FNV_BASIS, &bytes);
         assert_eq!(
             got, want,
-            "{golden}: render diverges from the C reference in DecodeFrames {prev}..{upto} \
+            "{name}: render diverges from the C reference in DecodeFrames {prev}..{upto} \
              (got {got:016x}, want {want:016x})"
         );
         prev = upto;
@@ -114,8 +197,14 @@ fn check(fixture: &str, freq: u32, defstereo: u8, cap: usize, golden: &str, expe
     assert_eq!(
         (engine.song_end_reached(), engine.pos_nr(), engine.note_nr()),
         g.end,
-        "{golden}: (song_end_reached, pos_nr, note_nr) after the last frame"
+        "{name}: (song_end_reached, pos_nr, note_nr) after the last frame"
     );
+}
+
+fn check_fixture(fixture: &str) {
+    for c in cases_for(fixture) {
+        check(&c);
+    }
 }
 
 #[test]
@@ -138,43 +227,158 @@ fn panning_tables_match_reference_bit_for_bit() {
     assert_eq!(h, g.panning);
 }
 
+// One test per fixture so the pool renders them in parallel and a divergence
+// names the fixture. Each replays every manifest row for that fixture.
+
 #[test]
-fn karma_ahx_44100_matches_reference() {
-    check("karma.ahx", 44100, 2, 0, "karma.44100.s2.cap0.txt", 4);
+fn karma_ahx_matches_reference_across_rates_and_stereo_modes() {
+    check_fixture("karma.ahx");
 }
 
 #[test]
-fn karma_ahx_48000_other_stereo_matches_reference() {
-    check("karma.ahx", 48000, 0, 0, "karma.48000.s0.cap0.txt", 4);
+fn chiprolled_matches_reference() {
+    check_fixture("chiprolled.hvl");
 }
 
 #[test]
-fn hvl_truncated_to_fixed_four_matches_reference() {
-    check("chiprolled.hvl", 44100, 2, 0, "chiprolled.44100.s2.cap4.txt", ENGINE_CHANNELS);
-    check("moderate_sellotaping.hvl", 44100, 2, 0, "moderate_sellotaping.44100.s2.cap4.txt", ENGINE_CHANNELS);
-    check("sunspots.hvl", 44100, 2, 0, "sunspots.44100.s2.cap4.txt", ENGINE_CHANNELS);
-    check("drainage_proble.hvl", 44100, 2, 0, "drainage_proble.44100.s2.cap4.txt", ENGINE_CHANNELS);
+fn doobrey_gubbins_matches_reference() {
+    check_fixture("doobrey_gubbins.hvl");
 }
 
 #[test]
-fn illuminated_wraps_past_last_position_and_matches_reference() {
-    // The natural restart branch of `play_irq` (`pos_nr == position_nr` ->
-    // `song_end_reached`, `pos_nr = restart`, `hvl_replay.c:1683-1688`).
-    // The golden runs 64 s; the reference first wraps at 57.6 s.
-    let g = load_golden("illuminated.44100.s2.cap4.txt");
-    assert!(g.end.0, "golden must reach song end to cover the restart path");
-    check("illuminated.hvl", 44100, 2, 0, "illuminated.44100.s2.cap4.txt", ENGINE_CHANNELS);
+fn drainage_proble_matches_reference() {
+    check_fixture("drainage_proble.hvl");
 }
 
 #[test]
-fn sunspots_loops_via_position_jump_and_matches_reference() {
-    // sunspots is the shortest song (12 positions); its golden runs 60 s and
-    // reaches song end through a Bxx loop-back (`hvl_replay.c:680-683`), then
-    // keeps playing from the jump target. It never walks off the last
-    // position, so it does not cover the natural-wrap branch above.
-    let g = load_golden("sunspots.44100.s2.cap4.txt");
-    assert!(g.end.0, "golden must reach song end to cover the restart path");
-    check("sunspots.hvl", 44100, 2, 0, "sunspots.44100.s2.cap4.txt", ENGINE_CHANNELS);
+fn illuminated_matches_reference() {
+    check_fixture("illuminated.hvl");
+}
+
+#[test]
+fn moderate_sellotaping_matches_reference() {
+    check_fixture("moderate_sellotaping.hvl");
+}
+
+#[test]
+fn sliding_away_matches_reference() {
+    check_fixture("sliding_away.hvl");
+}
+
+#[test]
+fn sunspots_matches_reference() {
+    check_fixture("sunspots.hvl");
+}
+
+#[test]
+fn manifest_covers_every_fixture() {
+    let mut on_disk: Vec<String> = fs::read_dir(root().join("../public/demos/ahx"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .filter(|n| n.ends_with(".ahx") || n.ends_with(".hvl"))
+        .collect();
+    on_disk.sort();
+    assert_eq!(on_disk.len(), 8, "fixture corpus changed size: {on_disk:?}");
+    let mut in_manifest: Vec<String> = manifest().into_iter().map(|c| c.fixture).collect();
+    in_manifest.sort();
+    in_manifest.dedup();
+    assert_eq!(in_manifest, on_disk, "every fixture needs manifest rows (and a check_fixture test)");
+    // Every fixture has a fixed-4 row, and every >4-channel one a truncation row.
+    for f in &on_disk {
+        let rows = cases_for(f);
+        assert!(rows.iter().any(|c| c.cap == ENGINE_CHANNELS || c.cap == 0), "{f}: no default-channel row");
+        if song(f).channels > ENGINE_CHANNELS {
+            assert!(rows.iter().any(|c| c.cap == ENGINE_CHANNELS), "{f}: no cap-4 truncation row");
+        }
+        assert!(rows.iter().any(|c| c.frames >= 1500), "{f}: no run of 30 s or more");
+    }
+}
+
+#[test]
+fn manifest_and_goldens_agree() {
+    // Each golden must be the C harness's output for exactly its manifest row
+    // (`case` line), and no golden may exist without a row: nothing hand-baked
+    // or stale survives a manifest edit.
+    let rows = manifest();
+    let mut names: Vec<String> = rows.iter().map(Case::golden).collect();
+    for c in &rows {
+        let g = load_golden(&c.golden());
+        assert_eq!(
+            g.case,
+            Some((c.fixture.clone(), c.freq, c.defstereo, c.frames, c.chunk, c.cap)),
+            "{}: golden's `case` line does not match its manifest row (regenerate with gen_goldens.sh)",
+            c.golden()
+        );
+        assert!(g.coverage.is_some(), "{}: no `coverage` line -- not harness output", c.golden());
+        assert_eq!(g.chunks.last().unwrap().0, c.frames, "{}: last chunk vs frames", c.golden());
+    }
+    names.sort();
+    let before = names.len();
+    names.dedup();
+    assert_eq!(names.len(), before, "two manifest rows map to the same golden file");
+    let mut on_disk: Vec<String> = fs::read_dir(root().join("tests/golden"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .filter(|n| n.ends_with(".txt"))
+        .collect();
+    on_disk.sort();
+    assert_eq!(on_disk, names, "goldens on disk vs manifest rows");
+}
+
+#[test]
+fn hvl_ignores_the_defstereo_argument() {
+    // chiprolled at 48000 has three goldens differing only in defstereo
+    // (0, 2, 4). The C reference produces identical audio for all three, and
+    // the engine must too.
+    let mut hashes = Vec::new();
+    for st in [0u8, 2, 4] {
+        let g = load_golden(&format!("chiprolled.48000.s{st}.cap4.txt"));
+        hashes.push(g.chunks);
+    }
+    assert_eq!(hashes[0], hashes[1]);
+    assert_eq!(hashes[1], hashes[2]);
+}
+
+#[test]
+fn ahx_stereo_modes_produce_distinct_audio() {
+    // Guards against the stereo argument being silently dropped: modes 0-4 of
+    // the same karma render must all differ from each other in the reference.
+    let firsts: Vec<u64> = (0..=4u8)
+        .map(|st| load_golden(&format!("karma.44100.s{st}.cap0.txt")).chunks[10].1)
+        .collect();
+    for i in 0..firsts.len() {
+        for j in i + 1..firsts.len() {
+            assert_ne!(firsts[i], firsts[j], "stereo modes {i} and {j} rendered identically");
+        }
+    }
+}
+
+#[test]
+fn corpus_exercises_every_voice_feature() {
+    // Coverage counters are voice-frames summed per golden by the C harness;
+    // every feature must be hit by at least one golden, or a regression in it
+    // could pass unnoticed.
+    let mut total = [0u64; 8];
+    for c in manifest() {
+        for (t, v) in total.iter_mut().zip(load_golden(&c.golden()).coverage.unwrap()) {
+            *t += v;
+        }
+    }
+    let names = ["ring", "noise", "filter", "square", "hardcut", "vibrato", "slide", "plist"];
+    for (n, t) in names.iter().zip(total) {
+        assert!(t > 0, "no golden exercises {n}");
+    }
+}
+
+#[test]
+fn corpus_reaches_both_song_end_paths() {
+    // illuminated's fixed-4 golden walks off the last position (restart at
+    // `pos_nr == position_nr`, `hvl_replay.c:1683-1688`; first hit at 57.6 s);
+    // sunspots reaches song end through a Bxx loop-back (`:680-683`) and never
+    // walks off the end.
+    for name in ["illuminated.44100.s2.cap4.txt", "sunspots.44100.s2.cap4.txt"] {
+        assert!(load_golden(name).end.0, "{name} must reach song end");
+    }
 }
 
 #[test]
@@ -187,24 +391,30 @@ fn drainage_proble_seven_channels_truncates_to_first_four() {
 }
 
 #[test]
+fn every_hvl_fixture_reports_its_dropped_channels_at_default_cap() {
+    // Native channel counts of the corpus (6/11/7/6/8/6/6): default engine is
+    // fixed-4 and must say how many it dropped.
+    for (f, native) in [
+        ("chiprolled.hvl", 6),
+        ("doobrey_gubbins.hvl", 11),
+        ("drainage_proble.hvl", 7),
+        ("illuminated.hvl", 6),
+        ("moderate_sellotaping.hvl", 8),
+        ("sliding_away.hvl", 6),
+        ("sunspots.hvl", 6),
+    ] {
+        let s = song(f);
+        assert_eq!(s.channels, native, "{f}: native channels");
+        let e = AhxEngine::new(s, 44100, 2).unwrap();
+        assert_eq!(e.channels(), ENGINE_CHANNELS, "{f}");
+        assert_eq!(e.dropped_channels(), native - ENGINE_CHANNELS, "{f}");
+    }
+}
+
+#[test]
 fn zero_channel_cap_is_rejected() {
     let r = AhxEngine::with_channel_cap(song("karma.ahx"), 44100, 2, 0);
     assert_eq!(r.err(), Some(EngineError::InvalidChannelCap));
-}
-
-#[test]
-fn hvl_ring_modulation_full_channels_matches_reference() {
-    check("illuminated.hvl", 44100, 2, 6, "illuminated.44100.s2.cap0.txt", 6);
-}
-
-#[test]
-fn hvl_tone_portamento_full_channels_matches_reference() {
-    check("sliding_away.hvl", 44100, 2, 6, "sliding_away.44100.s2.cap0.txt", 6);
-}
-
-#[test]
-fn hvl_eleven_channels_matches_reference() {
-    check("doobrey_gubbins.hvl", 44100, 2, 11, "doobrey_gubbins.44100.s2.cap0.txt", 11);
 }
 
 #[test]

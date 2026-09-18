@@ -1,5 +1,6 @@
 waves 7fd89418a057c72f
 panning 687a3f8a7a7684ea
+case illuminated.hvl 44100 2 3200 50 4
 channels 4 speedmult 1 instruments 6 positions 20 tracklen 24
 50 a43f660a5e1efcd4
 100 1acefc8064b8ca66
