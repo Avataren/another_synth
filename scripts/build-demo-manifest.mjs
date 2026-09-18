@@ -24,9 +24,10 @@ const COLLECTION_LABELS = {
   amiga: 'Amiga / ProTracker',
   ft2: 'FastTracker 2',
   s3m: 'Scream Tracker 3',
+  ahx: 'AHX / HivelyTracker',
 };
 
-const EXTENSIONS = new Set(['.mod', '.xm', '.s3m']);
+const EXTENSIONS = new Set(['.mod', '.xm', '.s3m', '.ahx', '.hvl']);
 
 /** Read a fixed-length, NUL-terminated ASCII string. */
 function readAscii(buf, offset, length) {
@@ -54,8 +55,37 @@ function modChannels(signature) {
   return undefined;
 }
 
+/**
+ * AHX (`THX` + version 0..2) and HVL (`HVL` + version 0..1) header, mirroring
+ * looksLikeAhx / parseAhxBody / parseHvlBody in packages/tracker-playback.
+ *
+ * Offsets (formats/ahx.ts): u16be at 4 is the name offset, a NUL-terminated
+ * string that is the song title; the low nibble of byte 6 plus byte 7 is the
+ * position count; byte 12 is the instrument count. Both formats share those
+ * fields; HVL alone gives the channel count, as (byte 8 >> 2) + 4 (AHX is 4).
+ * The manifest's `patterns` field is the position count: an AHX song has no
+ * pattern objects, one row-model pattern is built per position.
+ */
+function describeAhx(buf, format) {
+  if (buf.length < 16) return null;
+  const magic = format === 'AHX' ? 'THX' : 'HVL';
+  if (readAscii(buf, 0, 3) !== magic) return null;
+  if (buf[3] >= (format === 'AHX' ? 3 : 2)) return null;
+  const nameOffset = (buf[4] << 8) | buf[5];
+  return {
+    title: readAscii(buf, nameOffset, 128),
+    format,
+    channels: format === 'AHX' ? 4 : (buf[8] >> 2) + 4,
+    patterns: ((buf[6] & 0x0f) << 8) | buf[7],
+    instruments: buf[12],
+  };
+}
+
 function describeModule(buf, file) {
   const ext = path.extname(file).toLowerCase();
+
+  if (ext === '.ahx') return describeAhx(buf, 'AHX');
+  if (ext === '.hvl') return describeAhx(buf, 'HVL');
 
   if (ext === '.xm') {
     if (readAscii(buf, 0, 17) !== 'Extended Module:' || buf[37] !== 0x1a) {

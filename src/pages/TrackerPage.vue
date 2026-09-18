@@ -1015,6 +1015,7 @@ const {
   isLoadingSong,
   handleSaveSongFile,
   handleLoadSongFile,
+  loadSongFromFile,
   loadSongFromUrl,
   formatInstrumentId,
   normalizeInstrumentId,
@@ -2441,7 +2442,25 @@ function handleWindowResize() {
   refreshVisualizerAlignment();
 }
 
+/**
+ * Dropping a module file anywhere on the page opens it, the same as the Open
+ * button. Without a `dragover` handler the browser would navigate to the file.
+ */
+function handleFileDragOver(event: DragEvent): void {
+  if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
+}
+
+function handleFileDrop(event: DragEvent): void {
+  const file = event.dataTransfer?.files[0];
+  if (!file) return;
+  event.preventDefault();
+  if (isLoadingSong.value) return;
+  void loadSongFromFile(file);
+}
+
 onMounted(async () => {
+  window.addEventListener('dragover', handleFileDragOver);
+  window.addEventListener('drop', handleFileDrop);
   trackerContainer.value?.focus();
   // Skip song bank sync if playback is active (returning from instrument editor)
   // The song bank already has the correct instruments loaded
@@ -2624,6 +2643,8 @@ onBeforeUnmount(() => {
   keyboardStore.cleanup();
   keyboardStore.clearAllNotes();
   keyboardStore.cleanupMidiListeners();
+  window.removeEventListener('dragover', handleFileDragOver);
+  window.removeEventListener('drop', handleFileDrop);
   window.removeEventListener('mouseup', handleGlobalMouseUp);
   window.removeEventListener('resize', handleWindowResize);
   teardownTrackScrollSync?.();

@@ -1,7 +1,229 @@
 {
   "version": 1,
-  "generated": "2026-09-18T19:37:28.339Z",
+  "generated": "2026-09-18T20:24:35.247Z",
   "collections": [
+    {
+      "id": "ahx",
+      "name": "AHX / HivelyTracker",
+      "songs": [
+        {
+          "title": "A New Beginning",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 68,
+          "instruments": 22,
+          "file": "ahx/a_new_beginning.ahx",
+          "bytes": 8425
+        },
+        {
+          "title": "A new beginning II",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 60,
+          "instruments": 12,
+          "file": "ahx/a_new_beginning_ii.ahx",
+          "bytes": 6975
+        },
+        {
+          "title": "Blondie",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 96,
+          "instruments": 26,
+          "file": "ahx/blondie.ahx",
+          "bytes": 8917
+        },
+        {
+          "title": "Blue Mazda 323",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 44,
+          "instruments": 13,
+          "file": "ahx/blue_mazda_323.ahx",
+          "bytes": 4025
+        },
+        {
+          "title": "Brain Artifice End",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 12,
+          "instruments": 6,
+          "file": "ahx/brain_artifice.ahx",
+          "bytes": 4280
+        },
+        {
+          "title": "never gonna give you up",
+          "format": "HVL",
+          "channels": 6,
+          "patterns": 196,
+          "instruments": 11,
+          "file": "ahx/chiprolled.hvl",
+          "bytes": 5812
+        },
+        {
+          "title": "Countdown to NIL",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 112,
+          "instruments": 16,
+          "file": "ahx/countdown_to_nil.ahx",
+          "bytes": 9449
+        },
+        {
+          "title": "Depressed",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 72,
+          "instruments": 34,
+          "file": "ahx/depressed.ahx",
+          "bytes": 12918
+        },
+        {
+          "title": "doobrey gubbins",
+          "format": "HVL",
+          "channels": 11,
+          "patterns": 37,
+          "instruments": 8,
+          "file": "ahx/doobrey_gubbins.hvl",
+          "bytes": 5084
+        },
+        {
+          "title": "drainage problem",
+          "format": "HVL",
+          "channels": 7,
+          "patterns": 88,
+          "instruments": 10,
+          "file": "ahx/drainage_proble.hvl",
+          "bytes": 5036
+        },
+        {
+          "title": "GET TO THE CHOPPER!",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 129,
+          "instruments": 30,
+          "file": "ahx/get_to_the_chopper.ahx",
+          "bytes": 14687
+        },
+        {
+          "title": "I Love Holy Daze",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 72,
+          "instruments": 26,
+          "file": "ahx/i_love_holy_daze.ahx",
+          "bytes": 6264
+        },
+        {
+          "title": "illuminated",
+          "format": "HVL",
+          "channels": 6,
+          "patterns": 20,
+          "instruments": 6,
+          "file": "ahx/illuminated.hvl",
+          "bytes": 1499
+        },
+        {
+          "title": "Karma",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 38,
+          "instruments": 31,
+          "file": "ahx/karma.ahx",
+          "bytes": 15788
+        },
+        {
+          "title": "Luminous",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 52,
+          "instruments": 18,
+          "file": "ahx/luminous.ahx",
+          "bytes": 5647
+        },
+        {
+          "title": "Melodious",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 104,
+          "instruments": 17,
+          "file": "ahx/melodious.ahx",
+          "bytes": 3954
+        },
+        {
+          "title": "moderate sellotaping",
+          "format": "HVL",
+          "channels": 8,
+          "patterns": 46,
+          "instruments": 9,
+          "file": "ahx/moderate_sellotaping.hvl",
+          "bytes": 2719
+        },
+        {
+          "title": "New song",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 87,
+          "instruments": 15,
+          "file": "ahx/newsong.ahx",
+          "bytes": 5628
+        },
+        {
+          "title": "Robocop III (J.Tel)",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 107,
+          "instruments": 27,
+          "file": "ahx/robocop_iii_j_tel.ahx",
+          "bytes": 10105
+        },
+        {
+          "title": "sliding away",
+          "format": "HVL",
+          "channels": 6,
+          "patterns": 37,
+          "instruments": 4,
+          "file": "ahx/sliding_away.hvl",
+          "bytes": 2851
+        },
+        {
+          "title": "sunspots",
+          "format": "HVL",
+          "channels": 6,
+          "patterns": 12,
+          "instruments": 7,
+          "file": "ahx/sunspots.hvl",
+          "bytes": 4153
+        },
+        {
+          "title": "That's the Wave it is",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 49,
+          "instruments": 19,
+          "file": "ahx/thats_the_wave_it_is.ahx",
+          "bytes": 7583
+        },
+        {
+          "title": "The Fugitive",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 43,
+          "instruments": 21,
+          "file": "ahx/the_fugitive.ahx",
+          "bytes": 6199
+        },
+        {
+          "title": "Wave Stepper",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 59,
+          "instruments": 43,
+          "file": "ahx/wave_stepper.ahx",
+          "bytes": 19975
+        }
+      ]
+    },
     {
       "id": "amiga",
       "name": "Amiga / ProTracker",

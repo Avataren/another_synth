@@ -6,6 +6,8 @@ import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import { looksLikeMod, importModToTrackerSong } from 'src/audio/tracker/mod-import';
 import { looksLikeXm, importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { looksLikeS3m, importS3mToTrackerSong } from 'src/audio/tracker/s3m-import';
+import { looksLikeAhxModule, importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
+import { ahxSourceOf, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
 import { recordLoadedSongHash } from 'src/composables/song-identity';
 import { usePostFxStore } from 'src/stores/post-fx-store';
 
@@ -115,7 +117,8 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
                 'application/json': ['.cmod', '.json'],
                 'audio/x-mod': ['.mod'],
                 'audio/mod': ['.mod'],
-                'audio/x-xm': ['.xm']
+                'audio/x-xm': ['.xm'],
+                'application/octet-stream': ['.ahx', '.hvl']
               }
             }
           ],
@@ -129,7 +132,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     return await new Promise<ArrayBuffer | null>((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.cmod,application/json,.json,.mod,.xm,.s3m';
+      input.accept = '.cmod,application/json,.json,.mod,.xm,.s3m,.ahx,.hvl';
       input.onchange = () => {
         const file = input.files?.[0];
         if (!file) {
@@ -173,6 +176,17 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
   async function handleLoadSongFile() {
     const data = await promptOpenFile();
     if (!data) return;
+    // The report tool hashes the bytes as loaded, never by re-fetching.
+    recordLoadedSongHash(data);
+    await loadSongFromBuffer(data);
+  }
+
+  /**
+   * Load a song from a `File` the user dropped on the page: the same path as
+   * the picker, minus the picker.
+   */
+  async function loadSongFromFile(file: File): Promise<void> {
+    const data = await file.arrayBuffer();
     // The report tool hashes the bytes as loaded, never by re-fetching.
     recordLoadedSongHash(data);
     await loadSongFromBuffer(data);
@@ -241,6 +255,11 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     if (looksLikeS3m(buffer)) {
       // Scream Tracker 3 module
       return importS3mToTrackerSong(data);
+    }
+    if (looksLikeAhxModule(buffer)) {
+      // AHX / HivelyTracker module: played by the worklet's own engine, this
+      // is only the display model
+      return importAhxToTrackerSong(data);
     }
     // Plain JSON .cmod/.json file
     const decoder = new TextDecoder('utf-8');
@@ -313,6 +332,10 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     // Load song data and rebuild instruments
     console.log('[FileIO] Loading song data');
     context.trackerStore.loadSongFile(songFile);
+    // An AHX/HVL song is played from its file, not from the store: keep the
+    // bytes the import attached for the playback store to hand to the worklet.
+    // Any other song clears them.
+    setCurrentAhxSource(ahxSourceOf(songFile));
 
     // AUTO resets its LED-filter state on every song replacement -- this path
     // covers file open, the demo browser, URL loads and the jukebox (all
@@ -364,6 +387,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     promptOpenFile,
     handleSaveSongFile,
     handleLoadSongFile,
+    loadSongFromFile,
     loadSongFromUrl,
     parseSongBuffer,
     applySongFile

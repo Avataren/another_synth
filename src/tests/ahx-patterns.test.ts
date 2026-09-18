@@ -176,3 +176,19 @@ describe('buildAhxTrackerPatterns: chiprolled.hvl second effect column (fxb/fxbP
     }
   });
 });
+
+describe('buildAhxTrackerPatterns: channel clamp', () => {
+  it('never builds more tracks than the engine plays (16), even if the header claims more', () => {
+    const hvl = parseAhx(readFixture('doobrey_gubbins.hvl'));
+    expect(hvl.channels).toBeLessThanOrEqual(16);
+    const malformed = { ...hvl, channels: 40 };
+    for (const pattern of buildAhxTrackerPatterns(malformed)) {
+      expect(pattern.tracks).toHaveLength(16);
+    }
+  });
+
+  it('still builds a native HVL channel count below the clamp', () => {
+    const hvl = parseAhx(readFixture('doobrey_gubbins.hvl'));
+    expect(buildAhxTrackerPatterns(hvl)[0]!.tracks).toHaveLength(hvl.channels);
+  });
+});

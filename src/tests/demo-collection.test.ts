@@ -4,6 +4,7 @@ import path from 'node:path';
 import { parseMod } from '@another-synth/tracker-playback';
 import { parseXm } from '@another-synth/tracker-playback';
 import { parseS3m } from '@another-synth/tracker-playback';
+import { parseAhx } from '@another-synth/tracker-playback';
 import { TOTAL_SLOTS } from 'src/stores/tracker-store';
 
 /**
@@ -84,7 +85,7 @@ describe('the published demo collection', () => {
       for (const file of fs.readdirSync(path.join(DEMOS, collection.id))) {
         // Only the formats the importer reads. Anything else is deliberately
         // left out of the manifest rather than published unreachable.
-        if (!/\.(mod|xm|s3m)$/i.test(file)) continue;
+        if (!/\.(mod|xm|s3m|ahx|hvl)$/i.test(file)) continue;
         onDisk.add(`${collection.id}/${file}`);
       }
     }
@@ -126,6 +127,12 @@ describe('the published demo collection', () => {
         expect(s3m.patterns.length).toBeGreaterThan(0);
         expect(s3m.channelSettings.length).toBeGreaterThan(0);
         expect(s3m.orders.length).toBeGreaterThan(0);
+      } else if (song.format === 'AHX' || song.format === 'HVL') {
+        const ahx = parseAhx(new Uint8Array(bytes));
+        expect(ahx.format).toBe(song.format.toLowerCase());
+        expect(ahx.positions.length).toBeGreaterThan(0);
+        expect(ahx.channels).toBeGreaterThan(0);
+        expect(ahx.instruments.length).toBeGreaterThan(1);
       } else {
         const mod = parseMod(new Uint8Array(bytes));
         expect(mod.patterns.length).toBeGreaterThan(0);

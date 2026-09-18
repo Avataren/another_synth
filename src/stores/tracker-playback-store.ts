@@ -9,6 +9,9 @@ import { useTrackerAudioStore } from './tracker-audio-store';
 import { useTrackerStore } from './tracker-store';
 import { usePostFxStore } from 'src/stores/post-fx-store';
 import { defaultLookaheadSeconds } from 'src/audio/device-profile';
+import { AhxTransport } from 'src/audio/tracker/ahx-transport';
+import type { AhxPosition } from 'src/audio/tracker/ahx-player';
+import { currentAhxSource } from 'src/audio/tracker/ahx-source';
 
 export type PlaybackMode = 'pattern' | 'song';
 
@@ -37,6 +40,11 @@ let playbackEngineInstance: PlaybackEngine | null = null;
 let positionUnsubscribe: (() => void) | null = null;
 let stateUnsubscribe: (() => void) | null = null;
 let songEndUnsubscribe: (() => void) | null = null;
+
+// The AHX/HVL transport. Unlike the engine above it is created only when an
+// AHX or HVL song is first played, so the other formats never touch it.
+let ahxTransportInstance: AhxTransport | null = null;
+let ahxUnsubscribes: Array<() => void> = [];
 
 // Position event listeners (for UI components)
 const positionListeners = new Set<PositionListener>();
@@ -99,6 +107,14 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
   /** Flag to suppress position updates during seek/stop operations */
   let suppressPositionUpdates = false;
+
+  /**
+   * Whether the song last loaded is an AHX/HVL one, and so owned by the
+   * worklet's Rust engine rather than `PlaybackEngine`. Transport calls
+   * (`stop`, `pause`, `resume`, ...) branch on it; the two engines are never
+   * live at once.
+   */
+  let ahxSongActive = false;
 
   // ============================================
   // Selection helpers
@@ -312,6 +328,175 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   }
 
   /**
+   * Mirror a transport position into the store and tell the UI listeners.
+   * Shared by `PlaybackEngine`'s position events and the AHX worklet's.
+   */
+  function applyPosition(pos: {
+    row: number;
+    patternId?: string | undefined;
+    sequenceIndex?: number | undefined;
+  }): void {
+    // Wrap against the row count of the pattern the position refers to:
+    // patterns can differ in length since song-file v3.
+    const rowsCount = trackerStore.rowsForPattern(
+      pos.patternId ?? trackerStore.currentPatternId,
+    );
+    const row = ((pos.row % rowsCount) + rowsCount) % rowsCount;
+    playbackRow.value = row;
+
+    // Update sequence index if provided
+    if (pos.sequenceIndex !== undefined) {
+      currentSequenceIndex.value = pos.sequenceIndex;
+      selectedSequenceIndex.value = pos.sequenceIndex;
+    }
+
+    // Update current pattern if changed
+    if (pos.patternId && pos.patternId !== trackerStore.currentPatternId) {
+      trackerStore.setCurrentPatternId(pos.patternId);
+    }
+
+    // Broadcast to UI listeners
+    broadcastPosition(row, pos.patternId);
+  }
+
+  // ============================================
+  // AHX / HVL transport
+  // ============================================
+  //
+  // The Rust engine in the AHX worklet owns the transport (ticks, rows, jumps,
+  // speed), so none of `PlaybackEngine`'s scheduling applies: these functions
+  // only start, pause and stop it, and mirror where it reports being. The
+  // song's row model in the tracker store is display only.
+
+  function ensureAhxTransport(): AhxTransport {
+    if (!ahxTransportInstance) {
+      ahxTransportInstance = new AhxTransport(getSongBank());
+      ahxUnsubscribes = [
+        ahxTransportInstance.onPosition(handleAhxPosition),
+        ahxTransportInstance.onSongEnd(handleAhxSongEnd),
+      ];
+    }
+    return ahxTransportInstance;
+  }
+
+  /** The worklet's position index is the sequence index: one pattern per position. */
+  function handleAhxPosition(p: AhxPosition): void {
+    // A report that was already in flight when the song was stopped.
+    if (!ahxSongActive || !isPlaying.value) return;
+    applyPosition({
+      row: p.row,
+      patternId: trackerStore.sequence[p.position],
+      sequenceIndex: p.position,
+    });
+  }
+
+  /**
+   * The worklet keeps looping after the song's end; a non-looping song (the
+   * jukebox) stops it here and tells the listeners, as the engine does for
+   * the other formats.
+   */
+  function handleAhxSongEnd(): void {
+    if (!ahxSongActive || loopSong.value) return;
+    ahxTransportInstance?.stop();
+    setAhxTransportState('stopped');
+    playbackRow.value = 0;
+    for (const listener of songEndListeners) {
+      listener();
+    }
+  }
+
+  function setAhxTransportState(state: 'playing' | 'paused' | 'stopped'): void {
+    isPlaying.value = state === 'playing';
+    isPaused.value = state === 'paused';
+    audioStore.setPlaybackState(state === 'playing');
+  }
+
+  /** Silence `PlaybackEngine` before the AHX engine takes over. */
+  function stopSampleEngine(): void {
+    if (!playbackEngineInstance) return;
+    suppressPositionUpdates = true;
+    playbackEngineInstance.stop();
+    suppressPositionUpdates = false;
+  }
+
+  /** Hand the transport back to `PlaybackEngine`: a non-AHX song is being loaded. */
+  function leaveAhx(): void {
+    if (!ahxSongActive) return;
+    ahxSongActive = false;
+    ahxTransportInstance?.stop();
+  }
+
+  /**
+   * Load an AHX/HVL song into the worklet: the bytes were kept at import
+   * (`ahx-source`), the song passed in is only the display model.
+   *
+   * Throws if the worklet cannot read the file, so a caller loading a
+   * playlist entry can move past it.
+   */
+  async function loadAhxSong(song: PlaybackSong, mode: PlaybackMode): Promise<boolean> {
+    const bytes = currentAhxSource();
+    if (!bytes) {
+      console.warn(
+        '[PlaybackStore] AHX song has no source bytes (a saved .cmod cannot carry them); cannot play',
+      );
+      return false;
+    }
+    if (!song.sequence.length) {
+      console.warn('No patterns available to play.');
+      return false;
+    }
+    stopSampleEngine();
+    playbackMode.value = mode;
+    getSongBank().setModuleFormat(song.moduleFormat, song.linearFrequency, song.amigaLimits);
+    const transport = ensureAhxTransport();
+    const loading = transport.load(bytes);
+    if (getSongBank().audioContext.state === 'running') {
+      await loading;
+    } else {
+      // A suspended context does not run the worklet's render thread, so its
+      // handshake cannot finish until a user gesture resumes it; awaiting it
+      // here would hang a fresh-tab deep-link load. The load carries on, and
+      // `play` (which resumes the context first) joins it.
+      loading.catch((error) => {
+        console.warn('[PlaybackStore] AHX load failed while the context was suspended', error);
+      });
+    }
+    ahxSongActive = true;
+    hasSongLoaded.value = true;
+    return true;
+  }
+
+  async function playAhx(song: PlaybackSong, mode: PlaybackMode, startRow: number): Promise<void> {
+    const songBank = getSongBank();
+    // The engine cannot seek into a song, so a play from the top is the only
+    // "start"; but a paused song whose row is asked for again is a resume.
+    const resuming = ahxSongActive && isPaused.value && startRow === playbackRow.value;
+
+    stopSampleEngine();
+    songBank.cancelAllScheduled();
+    songBank.allNotesOff();
+
+    const contextRunning = await songBank.ensureAudioContextRunning();
+    if (!contextRunning || songBank.audioContext.state !== 'running') {
+      console.warn(
+        `[PlaybackStore] AudioContext not running; skipping AHX playback start (state=${songBank.audioContext.state})`,
+      );
+      return;
+    }
+
+    if (!(await loadAhxSong(song, mode))) return;
+    const transport = ensureAhxTransport();
+    if (!resuming) {
+      transport.stop();
+      currentSequenceIndex.value = 0;
+      selectedSequenceIndex.value = 0;
+      playbackRow.value = 0;
+    }
+    transport.play();
+    setAhxTransportState('playing');
+  }
+
+  /**
    * Ensure PlaybackEngine exists and subscribe to its events
    */
   function ensureEngine(): PlaybackEngine {
@@ -323,28 +508,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     if (!positionUnsubscribe) {
       positionUnsubscribe = playbackEngineInstance.on('position', (pos) => {
         if (suppressPositionUpdates) return;
-
-        // Wrap against the row count of the pattern the position refers to:
-        // patterns can differ in length since song-file v3.
-        const rowsCount = trackerStore.rowsForPattern(
-          pos.patternId ?? trackerStore.currentPatternId,
-        );
-        const row = ((pos.row % rowsCount) + rowsCount) % rowsCount;
-        playbackRow.value = row;
-
-        // Update sequence index if provided
-        if (pos.sequenceIndex !== undefined) {
-          currentSequenceIndex.value = pos.sequenceIndex;
-          selectedSequenceIndex.value = pos.sequenceIndex;
-        }
-
-        // Update current pattern if changed
-        if (pos.patternId && pos.patternId !== trackerStore.currentPatternId) {
-          trackerStore.setCurrentPatternId(pos.patternId);
-        }
-
-        // Broadcast to UI listeners
-        broadcastPosition(row, pos.patternId);
+        applyPosition(pos);
       });
     }
 
@@ -392,6 +556,9 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       return true;
     }
 
+    if (song.moduleFormat === 'ahx') return loadAhxSong(song, mode);
+    leaveAhx();
+
     const engine = ensureEngine();
 
     if (!song.sequence.length) {
@@ -435,6 +602,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     console.log(
       `[PlaybackStore] play() called: mode=${mode}, startRow=${startRow}, startSequenceIndex=${startSequenceIndex ?? 'auto'}`,
     );
+    if (song.moduleFormat === 'ahx') return playAhx(song, mode, startRow);
+    leaveAhx();
     const songBank = getSongBank();
 
     // Resolve and persist the starting sequence index up front so UI selection stays in sync
@@ -485,6 +654,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * Pause playback (keep position)
    */
   function pause(): void {
+    if (ahxSongActive) {
+      ahxTransportInstance?.pause();
+      setAhxTransportState('paused');
+      return;
+    }
     if (!playbackEngineInstance) return;
 
     playbackEngineInstance.pause();
@@ -493,9 +667,27 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   }
 
   /**
+   * Continue a paused song where it stopped.
+   */
+  async function resume(): Promise<void> {
+    if (ahxSongActive) {
+      ahxTransportInstance?.play();
+      setAhxTransportState('playing');
+      return;
+    }
+    await playbackEngineInstance?.play();
+  }
+
+  /**
    * Stop playback and reset to beginning of current pattern
    */
   function stop(): void {
+    if (ahxSongActive) {
+      ahxTransportInstance?.stop();
+      setAhxTransportState('stopped');
+      playbackRow.value = 0;
+      return;
+    }
     if (!playbackEngineInstance) return;
 
     playbackEngineInstance.stop();
@@ -514,7 +706,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * Seek to a specific row
    */
   function seek(row: number): void {
-    if (!playbackEngineInstance) return;
+    // The AHX engine cannot be seeked into a song.
+    if (ahxSongActive || !playbackEngineInstance) return;
     playbackEngineInstance.seek(row);
   }
 
@@ -522,7 +715,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * Update BPM during playback
    */
   function setBpm(bpm: number): void {
-    if (!playbackEngineInstance) return;
+    // The AHX engine's tempo comes from the song's own speed commands.
+    if (ahxSongActive || !playbackEngineInstance) return;
     playbackEngineInstance.setBpm(bpm);
   }
 
@@ -531,7 +725,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * takes effect without restarting playback.
    */
   function setPatternLength(patternId: string | null, rows: number): void {
-    if (!playbackEngineInstance || !patternId) return;
+    if (ahxSongActive || !playbackEngineInstance || !patternId) return;
     playbackEngineInstance.setPatternLength(patternId, rows);
   }
 
@@ -665,6 +859,12 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       playbackEngineInstance.stop();
     }
 
+    for (const unsubscribe of ahxUnsubscribes) unsubscribe();
+    ahxUnsubscribes = [];
+    ahxTransportInstance?.dispose();
+    ahxTransportInstance = null;
+    ahxSongActive = false;
+
     if (positionUnsubscribe) {
       positionUnsubscribe();
       positionUnsubscribe = null;
@@ -714,6 +914,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     loadSong,
     play,
     pause,
+    resume,
     stop,
     seek,
     setBpm,

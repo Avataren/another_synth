@@ -10,7 +10,8 @@
 //! anywhere in the 20-60 s of audio fails the chunk it lives in.
 //!
 //! The corpus is `tests/golden/cases.manifest`: every fixture in
-//! `public/demos/ahx/` (karma.ahx + the seven .hvl) across sample rates
+//! `public/demos/ahx/` (karma.ahx, the seven .hvl and the sixteen corpus .ahx
+//! songs the demo jukebox added) across sample rates
 //! (22050/44100/48000/96000), AHX stereo modes 0-4, and channel caps (native --
 //! the shipped default --, fixed-4 truncation, and a cap strictly between). Runs are 30-64 s. The same
 //! manifest drives `gen_goldens.sh`, so a row cannot exist on one side only;
@@ -272,6 +273,86 @@ fn sunspots_matches_reference() {
 }
 
 #[test]
+fn a_new_beginning_matches_reference() {
+    check_fixture("a_new_beginning.ahx");
+}
+
+#[test]
+fn a_new_beginning_ii_matches_reference() {
+    check_fixture("a_new_beginning_ii.ahx");
+}
+
+#[test]
+fn blondie_matches_reference() {
+    check_fixture("blondie.ahx");
+}
+
+#[test]
+fn blue_mazda_323_matches_reference() {
+    check_fixture("blue_mazda_323.ahx");
+}
+
+#[test]
+fn brain_artifice_matches_reference() {
+    check_fixture("brain_artifice.ahx");
+}
+
+#[test]
+fn countdown_to_nil_matches_reference() {
+    check_fixture("countdown_to_nil.ahx");
+}
+
+#[test]
+fn depressed_matches_reference() {
+    check_fixture("depressed.ahx");
+}
+
+#[test]
+fn get_to_the_chopper_matches_reference() {
+    check_fixture("get_to_the_chopper.ahx");
+}
+
+#[test]
+fn i_love_holy_daze_matches_reference() {
+    check_fixture("i_love_holy_daze.ahx");
+}
+
+#[test]
+fn luminous_matches_reference() {
+    check_fixture("luminous.ahx");
+}
+
+#[test]
+fn melodious_matches_reference() {
+    check_fixture("melodious.ahx");
+}
+
+#[test]
+fn newsong_matches_reference() {
+    check_fixture("newsong.ahx");
+}
+
+#[test]
+fn robocop_iii_j_tel_matches_reference() {
+    check_fixture("robocop_iii_j_tel.ahx");
+}
+
+#[test]
+fn thats_the_wave_it_is_matches_reference() {
+    check_fixture("thats_the_wave_it_is.ahx");
+}
+
+#[test]
+fn the_fugitive_matches_reference() {
+    check_fixture("the_fugitive.ahx");
+}
+
+#[test]
+fn wave_stepper_matches_reference() {
+    check_fixture("wave_stepper.ahx");
+}
+
+#[test]
 fn manifest_covers_every_fixture() {
     let mut on_disk: Vec<String> = fs::read_dir(root().join("../public/demos/ahx"))
         .unwrap()
@@ -279,7 +360,7 @@ fn manifest_covers_every_fixture() {
         .filter(|n| n.ends_with(".ahx") || n.ends_with(".hvl"))
         .collect();
     on_disk.sort();
-    assert_eq!(on_disk.len(), 8, "fixture corpus changed size: {on_disk:?}");
+    assert_eq!(on_disk.len(), 24, "fixture corpus changed size: {on_disk:?}");
     let mut in_manifest: Vec<String> = manifest().into_iter().map(|c| c.fixture).collect();
     in_manifest.sort();
     in_manifest.dedup();

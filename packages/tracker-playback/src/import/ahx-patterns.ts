@@ -27,6 +27,7 @@
  * voice resolves the real formula.
  */
 import type { AhxSong, AhxStep } from '../formats/ahx';
+import { AHX_MAX_CHANNELS } from '../formats/ahx';
 import type {
   TrackerPattern,
   TrackerTrackData,
@@ -114,7 +115,10 @@ function ahxStepToTrackerEntry(
 }
 
 export function buildAhxTrackerPatterns(song: AhxSong): TrackerPattern[] {
-  const channelCount = Math.max(1, song.channels);
+  // The engine plays at most AHX_MAX_CHANNELS voices (the reference's
+  // 16-voice array); a malformed HVL header can claim more, and the editor
+  // would otherwise grow tracks the engine never sounds.
+  const channelCount = Math.min(AHX_MAX_CHANNELS, Math.max(1, song.channels));
 
   // Which instrument each channel has loaded, carried across positions (see
   // the latch note in `ahxStepToTrackerEntry`).

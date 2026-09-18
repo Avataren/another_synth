@@ -81,11 +81,7 @@ function togglePlayPause() {
   if (isPlaying.value) {
     playbackStore.pause();
   } else if (isPaused.value) {
-    // Resume - need to call play on the engine directly
-    const engine = playbackStore.engine;
-    if (engine) {
-      void engine.play();
-    }
+    void playbackStore.resume();
   }
 }
 

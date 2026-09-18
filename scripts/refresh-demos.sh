@@ -13,8 +13,8 @@
 # delete unwanted modules from public/demos/ by hand so the removal is a
 # reviewable part of the commit.
 #
-# Only .mod and .xm are recognised. Anything else in the directory (an .s3m,
-# say) is left alone and stays out of the manifest.
+# .mod, .xm, .s3m, .ahx and .hvl are recognised. Anything else in the directory
+# is left alone and stays out of the manifest.
 #
 #   scripts/refresh-demos.sh [source-root]
 set -euo pipefail
