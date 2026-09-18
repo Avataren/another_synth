@@ -200,10 +200,29 @@ describe('AHX_PROFILE: processEffectTick0 state mutation', () => {
     expect(noop.ahxFilterIgnore).toBeUndefined();
   });
 
-  it('setSquarePos sets ahxSquarePos directly', () => {
+  it('setSquarePos stores the RAW reconstructed byte, not the shifted vc_SquarePos', () => {
+    // hvl_replay.c:691-695 computes vc_SquarePos = FXParam >> (5 -
+    // vc_WaveLength), where vc_WaveLength is the active instrument's
+    // waveform length at trigger time -- state this per-track decode layer
+    // does not carry (see ahxSquarePosRaw's doc on TrackEffectState). So
+    // this asserts the raw byte only; applying the shift is the
+    // responsibility of whichever layer holds vc_WaveLength (the future AHX
+    // voice, P3's voice.rs).
     const state = createTrackEffectState(AHX_PROFILE);
     processEffectTick0(state, { type: 'setSquarePos', paramX: 1, paramY: 4 });
-    expect(state.ahxSquarePos).toBe(0x14);
+    expect(state.ahxSquarePosRaw).toBe(0x14);
+
+    // Concrete evidence the shift is not a no-op to skip: for any
+    // waveLength < 5 (i.e. any waveform shorter than the longest, 5), the
+    // reference's true vc_SquarePos differs from the raw byte above. E.g.
+    // waveLength=3 (a common short square/triangle setting): 0x14 >> (5-3)
+    // = 5, a 4x-smaller value than the raw 0x14 this decode layer stores.
+    // Treating ahxSquarePosRaw as already-shifted reproduces exactly the
+    // bug this field's rename and doc comments exist to prevent.
+    const waveLength = 3;
+    const referenceSquarePos = 0x14 >> (5 - waveLength);
+    expect(referenceSquarePos).toBe(5);
+    expect(referenceSquarePos).not.toBe(state.ahxSquarePosRaw);
   });
 
   it('setTrackVolume: tier 1 sets note volume, tier 2 is decoded but not applied, tier 3 sets ahxTrackVolume', () => {

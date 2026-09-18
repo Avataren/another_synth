@@ -420,8 +420,25 @@ export interface TrackEffectState {
   ahxFilterPos?: number;
   /** fx 0x4 latched override (`vc_IgnoreFilter`) for a future PList filter command, 0-63. */
   ahxFilterIgnore?: number;
-  /** fx 0x9 direct set (`vc_SquarePos`). */
-  ahxSquarePos?: number;
+  /**
+   * fx 0x9's raw reconstructed byte, NOT `vc_SquarePos` itself.
+   *
+   * `hvl_replay.c:691-695` computes `vc_SquarePos = FXParam >>
+   * (5 - vc_WaveLength)`, where `vc_WaveLength` is the *voice's* currently
+   * active instrument's waveform-length setting (latched at instrument
+   * trigger, `hvl_replay.c:903`) -- state that lives on the voice, not on
+   * this per-track decode-time `TrackEffectState`. Threading it through here
+   * would mean widening this record with a running "active instrument's
+   * wave length" field sourced from the song's instrument table, which no
+   * other field here does and which this phase does not need. The shift is
+   * therefore deferred to whichever layer actually holds `vc_WaveLength`:
+   * the future AHX voice (P3's Rust `voice.rs`, which tracks it per
+   * `hvl_replay.c:903` as part of building the waveform generator anyway).
+   * That consumer MUST right-shift this raw byte by `5 - waveLength` before
+   * treating it as `vc_SquarePos` -- reading it verbatim reproduces the bug
+   * this field was renamed to prevent.
+   */
+  ahxSquarePosRaw?: number;
   /** fx 0xc's third tier (`vc_TrackMasterVolume`), 0-1. */
   ahxTrackVolume?: number;
 }
@@ -1388,9 +1405,12 @@ export function processEffectTick0(
     }
 
     case 'setSquarePos':
-      // AHX/HVL fx 0x9 (`hvl_replay.c:691-695`): direct duty-cycle position
-      // set, byte reconstructed the same way as setFilterPos.
-      state.ahxSquarePos = effect.paramX * 16 + effect.paramY;
+      // AHX/HVL fx 0x9 (`hvl_replay.c:691-695`): byte reconstructed the same
+      // way as setFilterPos, but stored RAW -- the reference's `>> (5 -
+      // vc_WaveLength)` shift needs the active instrument's waveform length,
+      // which this per-track decode state does not carry. See
+      // ahxSquarePosRaw's doc for why and who applies the shift.
+      state.ahxSquarePosRaw = effect.paramX * 16 + effect.paramY;
       break;
 
     case 'setTrackVolume': {

@@ -138,11 +138,16 @@ export type EffectType =
   | 'setFilterPos'
   /**
    * AHX/HVL fx 0x9 ("Set squarewave offset", `hvl_replay.c:691-695`
-   * `hvl_process_stepfx_2` case 0x9). Sets the channel's squarewave
-   * duty-cycle read position directly (`vc_SquarePos`) and latches
-   * `vc_IgnoreSquare` so the pending note-trigger step doesn't reset it.
-   * Same "no MOD/XM/S3M analogue, one raw byte, no consumer yet" shape as
-   * `setFilterPos` above; TrackEffectState.ahxSquarePos carries it.
+   * `hvl_process_stepfx_2` case 0x9) and latches `vc_IgnoreSquare` so the
+   * pending note-trigger step doesn't reset it. Same "no MOD/XM/S3M
+   * analogue, no consumer yet" shape as `setFilterPos` above, EXCEPT this
+   * one's raw byte is NOT the value the reference stores: `vc_SquarePos =
+   * FXParam >> (5 - vc_WaveLength)`, where `vc_WaveLength` is the active
+   * instrument's waveform-length setting at trigger time -- voice-render
+   * state this decode-time `EffectCommand`/`TrackEffectState` layer does not
+   * have. `TrackEffectState.ahxSquarePosRaw` carries the *unshifted* raw
+   * byte; whichever layer holds `vc_WaveLength` (the future AHX voice, P3's
+   * `voice.rs`) must apply the shift before treating it as `vc_SquarePos`.
    */
   | 'setSquarePos'
   /**
