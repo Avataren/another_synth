@@ -29,6 +29,8 @@ export interface AhxWasmPlayer {
   channels(): number;
   dropped_channels(): number;
   enable_capture(on: boolean): void;
+  /** Bit masks, bit `i` = voice `i`: muted voices, and (when non-zero) the only voices heard. */
+  set_mute_solo(mute: number, solo: number): void;
   /** Fills `out` with the voice's latest waveform; returns the points written (0: capture off). */
   read_channel_snapshot(voice: number, out: Int16Array): number;
   free(): void;
@@ -77,6 +79,14 @@ export type AhxCommand =
    * it outlives the song, so it applies to every load until changed.
    */
   | { type: 'set-capture'; enabled: boolean }
+  /**
+   * Live per-voice mute and solo, as bit masks (bit `i` = voice `i`): a muted
+   * voice contributes nothing to the mix, and while `solo` is non-zero only
+   * its voices are heard. Like capture it outlives the song: every load
+   * starts with the last state set. Scopes see it too (a silenced voice's
+   * waveform is flat).
+   */
+  | { type: 'set-mute-solo'; mute: number; solo: number }
   | { type: 'dispose' };
 
 /** Worklet -> main thread. */
@@ -131,6 +141,8 @@ export class AhxProcessorCore {
   private gain = 1;
   private stopAtEnd = false;
   private capture = false;
+  private mute = 0;
+  private solo = 0;
   /** One `waveforms` payload, refilled in place each report (posting clones it). */
   private scopeData = new Int16Array(0);
   private framesSincePosition = 0;
@@ -185,6 +197,11 @@ export class AhxProcessorCore {
       case 'set-capture':
         this.capture = command.enabled;
         this.player?.enable_capture(command.enabled);
+        break;
+      case 'set-mute-solo':
+        this.mute = command.mute >>> 0;
+        this.solo = command.solo >>> 0;
+        this.player?.set_mute_solo(this.mute, this.solo);
         break;
       case 'dispose':
         this.disposedFlag = true;
@@ -244,6 +261,7 @@ export class AhxProcessorCore {
       const player = new this.PlayerCtor(data, this.sampleRate, stereoMode);
       player.set_gain(this.gain);
       player.enable_capture(this.capture);
+      player.set_mute_solo(this.mute, this.solo);
       this.player = player;
       this.resetReporting();
       this.post({

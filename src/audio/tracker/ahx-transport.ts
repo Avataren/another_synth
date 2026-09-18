@@ -34,6 +34,8 @@ export class AhxTransport {
   /** Remembered here, not just on the client, so a client made later (or replaced) gets it. */
   private stopAtEnd = false;
   private capture = false;
+  private mute = 0;
+  private solo = 0;
   private disposed = false;
   private readonly positionListeners = new Set<(p: AhxPosition) => void>();
   private readonly songEndListeners = new Set<() => void>();
@@ -70,6 +72,7 @@ export class AhxTransport {
         client.output.connect(this.host.output);
         client.setStopAtEnd(this.stopAtEnd);
         if (this.capture) client.setCapture(true);
+        if (this.mute || this.solo) client.setMuteSolo(this.mute, this.solo);
         this.clientUnsubs = [
           client.onPosition((p) => {
             for (const listener of this.positionListeners) listener(p);
@@ -107,6 +110,18 @@ export class AhxTransport {
   setCapture(enabled: boolean): void {
     this.capture = enabled;
     this.client?.setCapture(enabled);
+  }
+
+  /**
+   * Per-voice mute and solo as bit masks (bit `i` = voice `i`): muted voices
+   * drop out of the mix, and while `solo` is non-zero only its voices are
+   * heard. Remembered here so a client made later (or replaced) gets it; the
+   * worklet keeps it across song loads.
+   */
+  setMuteSolo(mute: number, solo: number): void {
+    this.mute = mute >>> 0;
+    this.solo = solo >>> 0;
+    this.client?.setMuteSolo(this.mute, this.solo);
   }
 
   /**

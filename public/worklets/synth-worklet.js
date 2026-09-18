@@ -498,6 +498,16 @@ var AhxPlayer = class {
     return ret >>> 0;
   }
   /**
+   * Live per-voice mute and solo as bit masks (bit `i` = voice `i`); see
+   * [`AhxEngine::set_mute_solo`]. The state belongs to this player and is
+   * kept across `rewind`; all zero (the default) leaves the mix untouched.
+   * @param {number} mute
+   * @param {number} solo
+   */
+  set_mute_solo(mute, solo) {
+    wasm.ahxplayer_set_mute_solo(this.__wbg_ptr, mute, solo);
+  }
+  /**
    * Per-voice waveform capture for oscilloscopes; off by default and
    * bit-neutral to the mix (see [`AhxEngine::enable_capture`]).
    * @param {boolean} on

@@ -120,6 +120,13 @@ impl AhxPlayer {
         self.engine.capture_enabled()
     }
 
+    /// Live per-voice mute and solo as bit masks (bit `i` = voice `i`); see
+    /// [`AhxEngine::set_mute_solo`]. The state belongs to this player and is
+    /// kept across `rewind`; all zero (the default) leaves the mix untouched.
+    pub fn set_mute_solo(&mut self, mute: u32, solo: u32) {
+        self.engine.set_mute_solo(mute, solo);
+    }
+
     /// Fills `out` with `voice`'s latest waveform (oldest first, `i16`, full
     /// scale `+-8192`) and returns the number of points written; 0 when
     /// capture is off or `voice` is out of range. Reuses the caller's buffer,

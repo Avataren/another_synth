@@ -403,6 +403,97 @@ describe('AhxProcessorCore over the real wasm', () => {
     });
   });
 
+  describe('per-voice mute and solo', () => {
+    type Waveforms = Extract<AhxEvent, { type: 'waveforms' }>;
+    const waveforms = (events: AhxEvent[]) =>
+      events.filter((e): e is Waveforms => e.type === 'waveforms');
+    const peak = (w: Waveforms, voice: number) =>
+      w.data.subarray(voice * w.points, (voice + 1) * w.points).reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+
+    function started(setup?: (core: AhxProcessorCore) => void, song = 'karma.ahx') {
+      const events: AhxEvent[] = [];
+      const core = new AhxProcessorCore(
+        AhxPlayer as unknown as AhxWasmPlayerCtor,
+        SAMPLE_RATE,
+        (e) => events.push(e.type === 'waveforms' ? { ...e, data: e.data.slice() } : e),
+      );
+      setup?.(core);
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture(song) });
+      core.handle({ type: 'play' });
+      return { core, events };
+    }
+
+    it('nothing set renders exactly like a core that never heard of it', () => {
+      const plain = started();
+      const cleared = started((core) => {
+        core.handle({ type: 'set-mute-solo', mute: 0b1111, solo: 0b0001 });
+        core.handle({ type: 'set-mute-solo', mute: 0, solo: 0 });
+      });
+      const a = render(plain.core, SAMPLE_RATE * 2);
+      const b = render(cleared.core, SAMPLE_RATE * 2);
+      expect(b.l).toEqual(a.l);
+      expect(b.r).toEqual(a.r);
+    });
+
+    it('mute-all is digital silence, live, and un-muting brings the song back in step', () => {
+      const plain = started();
+      const { core } = started();
+      const ref = render(plain.core, SAMPLE_RATE * 3);
+
+      const first = render(core, SAMPLE_RATE);
+      core.handle({ type: 'set-mute-solo', mute: 0b1111, solo: 0 });
+      const silent = render(core, SAMPLE_RATE);
+      core.handle({ type: 'set-mute-solo', mute: 0, solo: 0 });
+      const last = render(core, SAMPLE_RATE);
+
+      expect(first.l).toEqual(ref.l.subarray(0, SAMPLE_RATE));
+      expect(silent.l.every((x) => x === 0) && silent.r.every((x) => x === 0)).toBe(true);
+      expect(last.l).toEqual(ref.l.subarray(SAMPLE_RATE * 2));
+    });
+
+    it('is remembered across a load, like capture', () => {
+      const { core } = started((c) => c.handle({ type: 'set-mute-solo', mute: 0xffff, solo: 0 }));
+      expect(render(core, SAMPLE_RATE).l.every((x) => x === 0)).toBe(true);
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('sunspots.hvl') });
+      core.handle({ type: 'play' });
+      const after = render(core, SAMPLE_RATE);
+      expect(after.l.every((x) => x === 0)).toBe(true);
+      // The HVL's voices past the fourth are covered too.
+      core.handle({ type: 'set-mute-solo', mute: 0, solo: 0 });
+      expect(render(core, SAMPLE_RATE).l.some((x) => x !== 0)).toBe(true);
+    });
+
+    it('a muted voice flattens in the scope report while the others keep playing', () => {
+      const { core, events } = started((c) => c.handle({ type: 'set-capture', enabled: true }));
+      render(core, SAMPLE_RATE);
+      const heard = waveforms(events).at(-1) as Waveforms;
+      const audible = [...Array(heard.channels).keys()].filter((v) => peak(heard, v) > 0);
+      expect(audible.length).toBeGreaterThanOrEqual(2);
+
+      const [victim, other] = audible as [number, number];
+      core.handle({ type: 'set-mute-solo', mute: 1 << victim, solo: 0 });
+      // A whole capture window later nothing of the old signal is left in it.
+      render(core, SAMPLE_RATE);
+      const after = waveforms(events).at(-1) as Waveforms;
+      expect(peak(after, victim)).toBe(0);
+      expect(audible.filter((v) => v !== victim).some((v) => peak(after, v) > 0)).toBe(true);
+      expect(other).not.toBe(victim);
+    });
+
+    it('solo leaves only that voice in the scope report', () => {
+      const { core, events } = started((c) => c.handle({ type: 'set-capture', enabled: true }));
+      render(core, SAMPLE_RATE);
+      const heard = waveforms(events).at(-1) as Waveforms;
+      const solo = [...Array(heard.channels).keys()].find((v) => peak(heard, v) > 0) as number;
+      core.handle({ type: 'set-mute-solo', mute: 0, solo: 1 << solo });
+      render(core, SAMPLE_RATE * 2);
+      const after = waveforms(events).at(-1) as Waveforms;
+      for (let v = 0; v < after.channels; v++) {
+        if (v !== solo) expect(peak(after, v)).toBe(0);
+      }
+    });
+  });
+
   it('averages to mono when the output has one channel', () => {
     const stereo = newCore();
     const mono = newCore();

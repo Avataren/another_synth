@@ -141,6 +141,15 @@ export class AhxPlayerClient {
     this.send({ type: 'set-capture', enabled });
   }
 
+  /**
+   * Per-voice mute and solo as bit masks (bit `i` = voice `i`); see the
+   * `set-mute-solo` command. It outlives the song, so it applies to every
+   * load until changed.
+   */
+  setMuteSolo(mute: number, solo: number): void {
+    this.send({ type: 'set-mute-solo', mute: mute >>> 0, solo: solo >>> 0 });
+  }
+
   onPosition(listener: (p: AhxPosition) => void): () => void {
     this.positionListeners.add(listener);
     return () => this.positionListeners.delete(listener);

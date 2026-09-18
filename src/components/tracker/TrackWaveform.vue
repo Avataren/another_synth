@@ -10,6 +10,7 @@ import { registerAnimationCallback } from 'src/composables/useAnimationLoop';
 import { AHX_SCOPE_FULL_SCALE } from 'src/audio/worklets/ahx-core';
 import {
   scopePolyline,
+  scopeFullScale,
   scopeTriggerStart,
   scopeVisiblePoints,
 } from 'src/components/tracker/scope-trace';
@@ -25,6 +26,8 @@ interface Props {
    */
   scopeSource?: ((channel: number) => Int16Array | null) | null;
   scopeChannel?: number;
+  /** Fixed display gain for the scope path (1, 2 or 4; clipped at the edge). */
+  scopeGain?: number;
 }
 
 const props = defineProps<Props>();
@@ -152,7 +155,7 @@ function startVisualization() {
         count,
         canvasWidth,
         canvasHeight,
-        AHX_SCOPE_FULL_SCALE,
+        scopeFullScale(AHX_SCOPE_FULL_SCALE, props.scopeGain),
         polyline,
       );
       for (let k = 0; k < n; k++) {

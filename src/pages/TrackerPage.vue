@@ -676,9 +676,10 @@
             :key="`viz-${track.id}`"
             class="visualizer-cell"
           >
-            <!-- Per-track mute/solo works on the sampler formats' track nodes; the
-                 AHX/HVL engine mixes its voices in one worklet, so no controls. -->
-            <div v-if="!isReadOnly" class="visualizer-controls">
+            <!-- Per-track mute/solo: the sampler formats' track nodes, or for
+                 AHX/HVL the worklet's per-voice mute/solo (same buttons, same
+                 store state; see tracker-playback-store syncAhxMuteSolo). -->
+            <div class="visualizer-controls">
               <button
                 type="button"
                 class="track-btn solo-btn"
@@ -703,6 +704,7 @@
               :audio-context="audioContext"
               :scope-source="isReadOnly ? playbackStore.getAhxChannelWaveform : null"
               :scope-channel="index"
+              :scope-gain="userSettings.ahxScopeGain"
             />
           </div>
         </div>

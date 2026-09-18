@@ -47,3 +47,17 @@ export function scopePolyline(
   }
   return n;
 }
+
+/** Display gains the settings offer; anything else is treated as 1. */
+export const SCOPE_GAINS = [1, 2, 4] as const;
+
+/**
+ * The full-scale value to hand `scopePolyline` for a fixed display gain: a
+ * gain of 2 makes half the signal reach the scope's edge, and `scopePolyline`
+ * clamps anything beyond it. A gain that is not one of `SCOPE_GAINS` (a stale
+ * or hand-edited setting) means no gain.
+ */
+export function scopeFullScale(fullScale: number, gain: number | undefined): number {
+  const g = (SCOPE_GAINS as readonly number[]).includes(gain ?? 1) ? (gain ?? 1) : 1;
+  return fullScale / g;
+}

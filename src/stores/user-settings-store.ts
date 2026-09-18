@@ -24,6 +24,13 @@ export interface UserSettings {
   showSpectrumAnalyzer: boolean;
   showWaveformVisualizers: boolean;
   /**
+   * Fixed display gain (1, 2 or 4) for the AHX/HVL per-channel scopes, so a
+   * quiet voice is readable. Display only, and clipped at the scope's edge
+   * rather than rescaled per frame: the trace stays comparable between
+   * channels and over time.
+   */
+  ahxScopeGain: number;
+  /**
    * 0.0 to 1.0. Defaults to half scale for headroom, not to taste: nothing in
    * the tracker path limits, so a multi-channel module sums straight past full
    * scale -- see the level meters beside the instrument list.
@@ -188,6 +195,7 @@ export const defaultSettings: UserSettings = {
   uiFont: 'Inter',
   showSpectrumAnalyzer: true,
   showWaveformVisualizers: true,
+  ahxScopeGain: 1,
   masterVolume: 0.5,
   enableMidi: false,
   showTrackerExtraEffectColumn: false,

@@ -162,6 +162,9 @@
             <TrackWaveform
               :audio-node="trackAudioNodes[index - 1] ?? null"
               :audio-context="audioContext"
+              :scope-source="isAhxSong ? playbackStore.getAhxChannelWaveform : null"
+              :scope-channel="index - 1"
+              :scope-gain="userSettings.ahxScopeGain"
             />
             <div class="scope-label">{{ index }}</div>
           </div>
@@ -510,6 +513,17 @@ const patternAreaHeight = ref(600);
  * and the playlist as a full-screen sheet rather than a 300px dock.
  */
 const isMobileLayout = useMobileLayout();
+
+// An AHX/HVL song has no per-track audio nodes to tap: the scope row is fed
+// by the worklet's per-voice capture, which records nothing unless asked. On
+// while the row is showing an AHX song, off otherwise (and when leaving).
+const isAhxSong = computed(() => trackerStore.isReadOnly);
+watch(
+  () => isAhxSong.value && !isMobileLayout.value,
+  (wanted) => playbackStore.setAhxScopesEnabled(wanted),
+  { immediate: true },
+);
+
 const spectrumAnalyzerVisible = computed(
   () => userSettings.value.showSpectrumAnalyzer && !isMobileLayout.value,
 );
@@ -618,6 +632,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  playbackStore.setAhxScopesEnabled(false);
   host.releaseTrackAudioNodeSetter();
   window.removeEventListener('resize', updatePatternAreaHeight);
   teardownSongEnd?.();

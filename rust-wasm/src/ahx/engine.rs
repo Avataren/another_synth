@@ -113,6 +113,10 @@ pub struct AhxEngine {
     /// `None` (the default) means the mixer runs the capture-free
     /// monomorphisation of `mix_chunk`.
     capture: Option<Capture>,
+    /// Bit `i` set: voice `i` is muted (contributes 0 to the mix).
+    mute_mask: u32,
+    /// Any bit set: only the voices with their bit set are heard.
+    solo_mask: u32,
 }
 
 impl AhxEngine {
@@ -171,6 +175,8 @@ impl AhxEngine {
             tick_samples,
             tick_remaining: 0,
             capture: None,
+            mute_mask: 0,
+            solo_mask: 0,
             song,
         };
         engine.init_subsong(0);
@@ -226,6 +232,42 @@ impl AhxEngine {
 
     pub fn capture_enabled(&self) -> bool {
         self.capture.is_some()
+    }
+
+    /// Live mute/solo. Bit `i` of `mute` mutes voice `i`; when `solo` has any
+    /// bit set, only the voices with their solo bit set are heard (a soloed
+    /// voice that is also muted stays silent). A silenced voice still runs --
+    /// its oscillator, envelope and effects advance exactly as if it were
+    /// audible -- it just contributes 0 to the mix, so un-muting it picks up
+    /// in step and the song timing never depends on the state. With both masks
+    /// 0 (the default) the mixer sees the unmodified voice volumes: the output
+    /// is bit-identical to an engine that never heard of this
+    /// (`mute_solo_off_is_bit_identical`, and the render goldens). The state
+    /// belongs to the engine, not the song position: a rewind keeps it.
+    ///
+    /// Capture records what the mixer used, so a silenced voice's scope trace
+    /// is flat: the scopes show what you hear.
+    pub fn set_mute_solo(&mut self, mute: u32, solo: u32) {
+        self.mute_mask = mute;
+        self.solo_mask = solo;
+    }
+
+    /// `(mute, solo)` as last set.
+    pub fn mute_solo(&self) -> (u32, u32) {
+        (self.mute_mask, self.solo_mask)
+    }
+
+    /// Whether the mix currently drops voice `i` (muted, or not soloed while
+    /// some other voice is).
+    pub fn voice_silenced(&self, i: usize) -> bool {
+        let bit = 1u32.checked_shl(i as u32).unwrap_or(0);
+        self.mute_mask & bit != 0 || (self.solo_mask != 0 && self.solo_mask & bit == 0)
+    }
+
+    /// The output gain applied after the voices are summed (`ahx_defgain`).
+    #[doc(hidden)]
+    pub fn mix_gain(&self) -> i32 {
+        self.mixgain
     }
 
     /// Fills `out` with the most recent `out.len()` points of `voice`'s
@@ -517,10 +559,13 @@ impl AhxEngine {
         let mut panr = [0i32; MAX_CHANNELS];
         let mut ring = [false; MAX_CHANNELS];
 
+        // A silenced voice mixes at volume 0: `j` is then exactly 0, and
+        // everything else about the voice (position, ring mod) advances as usual.
+        let gated = self.mute_mask != 0 || self.solo_mask != 0;
         for i in 0..chans {
             let v = &self.voices[i];
             delta[i] = v.delta;
-            vol[i] = v.voice_volume;
+            vol[i] = if gated && self.voice_silenced(i) { 0 } else { v.voice_volume };
             pos[i] = v.sample_pos;
             panl[i] = v.pan_mult_left;
             panr[i] = v.pan_mult_right;

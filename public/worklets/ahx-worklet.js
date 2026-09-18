@@ -472,6 +472,16 @@ var AhxPlayer = class {
     return ret >>> 0;
   }
   /**
+   * Live per-voice mute and solo as bit masks (bit `i` = voice `i`); see
+   * [`AhxEngine::set_mute_solo`]. The state belongs to this player and is
+   * kept across `rewind`; all zero (the default) leaves the mix untouched.
+   * @param {number} mute
+   * @param {number} solo
+   */
+  set_mute_solo(mute, solo) {
+    wasm.ahxplayer_set_mute_solo(this.__wbg_ptr, mute, solo);
+  }
+  /**
    * Per-voice waveform capture for oscilloscopes; off by default and
    * bit-neutral to the mix (see [`AhxEngine::enable_capture`]).
    * @param {boolean} on
@@ -2915,6 +2925,8 @@ var AhxProcessorCore = class {
     __publicField(this, "gain", 1);
     __publicField(this, "stopAtEnd", false);
     __publicField(this, "capture", false);
+    __publicField(this, "mute", 0);
+    __publicField(this, "solo", 0);
     /** One `waveforms` payload, refilled in place each report (posting clones it). */
     __publicField(this, "scopeData", new Int16Array(0));
     __publicField(this, "framesSincePosition", 0);
@@ -2961,6 +2973,11 @@ var AhxProcessorCore = class {
       case "set-capture":
         this.capture = command.enabled;
         this.player?.enable_capture(command.enabled);
+        break;
+      case "set-mute-solo":
+        this.mute = command.mute >>> 0;
+        this.solo = command.solo >>> 0;
+        this.player?.set_mute_solo(this.mute, this.solo);
         break;
       case "dispose":
         this.disposedFlag = true;
@@ -3011,6 +3028,7 @@ var AhxProcessorCore = class {
       const player = new this.PlayerCtor(data, this.sampleRate, stereoMode);
       player.set_gain(this.gain);
       player.enable_capture(this.capture);
+      player.set_mute_solo(this.mute, this.solo);
       this.player = player;
       this.resetReporting();
       this.post({

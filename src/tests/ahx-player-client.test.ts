@@ -189,6 +189,27 @@ describe('createAhxPlayer / AhxPlayerClient', () => {
     player.dispose();
   });
 
+  it('setMuteSolo reaches the worklet: mute-all is silent, clearing it brings the song back', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    await player.loadSong(karma);
+    const node = FakeWorkletNode.last as FakeWorkletNode;
+    player.play();
+    player.setMuteSolo(0b1111, 0);
+    await Promise.resolve();
+    await Promise.resolve();
+    let heard = false;
+    for (let i = 0; i < 300; i++) if (node.pull().l.some((s) => s !== 0)) heard = true;
+    expect(heard).toBe(false);
+
+    player.setMuteSolo(0, 0);
+    await Promise.resolve();
+    await Promise.resolve();
+    for (let i = 0; i < 300; i++) if (node.pull().l.some((s) => s !== 0)) heard = true;
+    expect(heard).toBe(true);
+    player.dispose();
+  });
+
   it('rejects loadSong with the parser message for a bad file', async () => {
     stubGlobals();
     const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);

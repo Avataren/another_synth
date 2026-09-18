@@ -157,7 +157,18 @@ fn cases_for(fixture: &str) -> Vec<Case> {
 /// Also asserts the channel count and `dropped_channels` that the cap implies.
 /// `capture` turns on per-voice waveform capture (`enable_capture`) for the
 /// run: the mix must stay bit-exact against the same golden either way.
-fn check(c: &Case, capture: bool) {
+/// `mode`: how the engine is prepared before the reference render. Every mode
+/// must land on the same golden.
+#[derive(Clone, Copy)]
+enum Mode {
+    Plain,
+    Capture,
+    /// Mute/solo set to something audible-changing and then cleared again:
+    /// the cleared state must be indistinguishable from never having been set.
+    MuteSoloCleared,
+}
+
+fn check(c: &Case, mode: Mode) {
     let name = c.golden();
     let g = load_golden(&name);
     let s = song(&c.fixture);
@@ -173,8 +184,20 @@ fn check(c: &Case, capture: bool) {
         AhxEngine::with_channel_cap(s, c.freq, c.defstereo, c.cap)
     }
     .expect("engine builds");
-    engine.enable_capture(capture);
-    let name = format!("{name} (capture {})", if capture { "on" } else { "off" });
+    let label = match mode {
+        Mode::Plain => "capture off",
+        Mode::Capture => "capture on",
+        Mode::MuteSoloCleared => "mute/solo set then cleared",
+    };
+    match mode {
+        Mode::Plain => {}
+        Mode::Capture => engine.enable_capture(true),
+        Mode::MuteSoloCleared => {
+            engine.set_mute_solo(0xffff, 0b101);
+            engine.set_mute_solo(0, 0);
+        }
+    }
+    let name = format!("{name} ({label})");
     assert_eq!(engine.channels(), want_channels, "{name}: channel count");
     assert_eq!(engine.dropped_channels(), native - want_channels, "{name}: dropped_channels");
     assert_eq!(g.channels, want_channels, "{name}: reference channel count");
@@ -209,8 +232,9 @@ fn check(c: &Case, capture: bool) {
 
 fn check_fixture(fixture: &str) {
     for c in cases_for(fixture) {
-        check(&c, false);
-        check(&c, true);
+        check(&c, Mode::Plain);
+        check(&c, Mode::Capture);
+        check(&c, Mode::MuteSoloCleared);
     }
 }
 

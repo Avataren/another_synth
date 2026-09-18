@@ -387,6 +387,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       ahxTransportInstance = new AhxTransport(getSongBank());
       ahxTransportInstance.setStopAtEnd(!loopSong.value);
       if (ahxScopesWanted) ahxTransportInstance.setCapture(true);
+      syncAhxMuteSolo();
       ahxUnsubscribes = [
         ahxTransportInstance.onPosition(handleAhxPosition),
         ahxTransportInstance.onSongEnd(handleAhxSongEnd),
@@ -508,6 +509,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     }
     stopSampleEngine();
     playbackMode.value = mode;
+    // A mute/solo left over from a wider song must not outlive its track: a
+    // solo on a voice this song lacks would silence every voice it has.
+    const voices = song.patterns[0]?.tracks.length;
+    if (voices) sanitizeMuteSoloState(voices);
     getSongBank().setModuleFormat(song.moduleFormat, song.linearFrequency, song.amigaLimits);
     const transport = ensureAhxTransport();
     // Claimed before the await, not after: a stop or a MOD load that lands
@@ -812,6 +817,34 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   // ============================================
 
   /**
+   * Push the mute/solo the UI shows to whoever mixes the tracks: the AHX
+   * worklet while it plays (voice `i` is track `i`), otherwise the song bank's
+   * per-track sampler nodes.
+   */
+  function applyAudibilityChange(before: boolean[], trackCount: number): void {
+    if (ahxSongActive) {
+      syncAhxMuteSolo();
+      return;
+    }
+    muteInaudibleTracks(before, getAudibilitySnapshot(trackCount));
+  }
+
+  /**
+   * The store's mute and solo sets as the bit masks the AHX worklet takes.
+   * The worklet keeps them across song loads; a transport made later gets
+   * them when it is created (`ensureAhxTransport`).
+   */
+  function syncAhxMuteSolo(): void {
+    if (!ahxTransportInstance) return;
+    const mask = (tracks: Set<number>) => {
+      let bits = 0;
+      for (const i of tracks) if (i >= 0 && i < 32) bits |= 1 << i;
+      return bits >>> 0;
+    };
+    ahxTransportInstance.setMuteSolo(mask(mutedTracks.value), mask(soloedTracks.value));
+  }
+
+  /**
    * Toggle mute state for a track
    */
   function toggleMute(trackIndex: number, trackCount: number): void {
@@ -825,8 +858,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     }
     mutedTracks.value = newMuted;
 
-    const after = getAudibilitySnapshot(trackCount);
-    muteInaudibleTracks(before, after);
+    applyAudibilityChange(before, trackCount);
   }
 
   /**
@@ -843,8 +875,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     }
     soloedTracks.value = newSoloed;
 
-    const after = getAudibilitySnapshot(trackCount);
-    muteInaudibleTracks(before, after);
+    applyAudibilityChange(before, trackCount);
   }
 
   /**
@@ -866,6 +897,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
     mutedTracks.value = newMuted;
     soloedTracks.value = newSoloed;
+    syncAhxMuteSolo();
   }
 
   // ============================================

@@ -241,6 +241,32 @@
                     </div>
                   </label>
 
+                  <div class="select-setting">
+                    <label class="select-label" for="ahx-scope-gain">
+                      AHX/HVL scope gain
+                    </label>
+                    <select
+                      id="ahx-scope-gain"
+                      class="setting-select"
+                      :value="String(settings.ahxScopeGain)"
+                      @change="
+                        updateSetting(
+                          'ahxScopeGain',
+                          Number(($event.target as HTMLSelectElement).value),
+                        )
+                      "
+                    >
+                      <option value="1">1x — full scale</option>
+                      <option value="2">2x</option>
+                      <option value="4">4x</option>
+                    </select>
+                    <span class="toggle-description">
+                      Magnifies each AHX/HVL channel's waveform so quiet
+                      voices are readable; a loud one is clipped at the edge
+                      of its scope. Display only.
+                    </span>
+                  </div>
+
                   <label class="toggle-setting">
                     <input
                       type="checkbox"

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  scopeFullScale,
   scopePolyline,
   scopeTriggerStart,
   scopeVisiblePoints,
@@ -56,5 +57,29 @@ describe('scopePolyline', () => {
     const out = new Float32Array(2);
     expect(scopePolyline([0], 0, 1, 10, 10, 8192, out)).toBe(1);
     expect(Array.from(out)).toEqual([0, 5]);
+  });
+});
+
+describe('scopeFullScale (fixed display gain)', () => {
+  it('divides the full scale by 1, 2 or 4', () => {
+    expect(scopeFullScale(8192, 1)).toBe(8192);
+    expect(scopeFullScale(8192, 2)).toBe(4096);
+    expect(scopeFullScale(8192, 4)).toBe(2048);
+  });
+
+  it('treats a missing or unknown gain as none', () => {
+    for (const g of [undefined, 0, -2, 3, 1000, NaN]) expect(scopeFullScale(8192, g)).toBe(8192);
+  });
+
+  it('a x4 trace of a quiet voice reaches a quarter of the scope, and a loud one clips at the edge', () => {
+    const out = new Float32Array(4);
+    // A quarter-scale voice (2048) is at the very top edge at x4, half way up at x2.
+    scopePolyline([2048, -2048], 0, 2, 10, 20, scopeFullScale(8192, 4), out);
+    expect(Array.from(out)).toEqual([0, 0, 10, 20]);
+    scopePolyline([2048, -2048], 0, 2, 10, 20, scopeFullScale(8192, 2), out);
+    expect(Array.from(out)).toEqual([0, 5, 10, 15]);
+    // Full scale at x4 does not leave the canvas.
+    scopePolyline([8192, -8192], 0, 2, 10, 20, scopeFullScale(8192, 4), out);
+    expect(Array.from(out)).toEqual([0, 0, 10, 20]);
   });
 });

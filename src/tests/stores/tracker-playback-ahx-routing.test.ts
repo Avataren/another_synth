@@ -25,6 +25,7 @@ const h = vi.hoisted(() => ({
     loaded: Uint8Array[];
     stopAtEnd: boolean[];
     capture: boolean[];
+    muteSolo: Array<[number, number]>;
     disposed: boolean;
     emitWaveforms: (w: { channels: number; points: number; data: Int16Array }) => void;
     emitPosition: (p: { position: number; row: number; tempo: number; ticks: number }) => void;
@@ -53,6 +54,7 @@ vi.mock('src/audio/tracker/ahx-player', () => ({
       loaded: [] as Uint8Array[],
       stopAtEnd: [] as boolean[],
       capture: [] as boolean[],
+      muteSolo: [] as Array<[number, number]>,
       disposed: false,
       async loadSong(bytes: Uint8Array) {
         client.calls.push('load');
@@ -72,6 +74,7 @@ vi.mock('src/audio/tracker/ahx-player', () => ({
       restart: (n: number) => client.calls.push(`restart:${n}`),
       setStopAtEnd: (enabled: boolean) => client.stopAtEnd.push(enabled),
       setCapture: (enabled: boolean) => client.capture.push(enabled),
+      setMuteSolo: (mute: number, solo: number) => client.muteSolo.push([mute, solo]),
       dispose: () => {
         client.disposed = true;
         client.calls.push('dispose');
@@ -160,6 +163,7 @@ vi.mock('src/stores/tracker-audio-store', () => {
     allNotesOff: () => {},
     ensureAudioContextRunning: async () => h.audioState.value === 'running',
     prepareInstrument: async () => undefined,
+    notesOffForTrack: (track: number) => h.bankCalls.push(`off:${track}`),
   };
   return {
     useTrackerAudioStore: () => ({
@@ -523,6 +527,50 @@ describe('AHX per-voice scopes', () => {
   });
 });
 
+describe('AHX per-voice mute and solo', () => {
+  it('sends the masks the UI state implies, and leaves the sampler notes-off alone', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 0);
+    // Nothing set yet: whatever the worklet has been told is "nothing".
+    expect(lastClient().muteSolo.flat().every((x) => x === 0)).toBe(true);
+
+    store.toggleMute(1, 4);
+    expect(lastClient().muteSolo.at(-1)).toEqual([0b0010, 0]);
+    store.toggleMute(3, 4);
+    expect(lastClient().muteSolo.at(-1)).toEqual([0b1010, 0]);
+    store.toggleSolo(2, 4);
+    expect(lastClient().muteSolo.at(-1)).toEqual([0b1010, 0b0100]);
+    // The audibility the buttons show is the state the masks carry.
+    expect([0, 1, 2, 3].map((i) => store.isTrackAudible(i))).toEqual([false, false, true, false]);
+
+    store.toggleSolo(2, 4);
+    store.toggleMute(1, 4);
+    store.toggleMute(3, 4);
+    expect(lastClient().muteSolo.at(-1)).toEqual([0, 0]);
+    expect(h.bankCalls.filter((c) => c.startsWith('off:'))).toEqual([]);
+  });
+
+  it('a client made later starts with the state; a song with fewer voices drops the stale part', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 0);
+    store.toggleMute(0, 4);
+    store.toggleSolo(6, 8); // a voice karma does not have
+
+    store.stop();
+    await store.loadSong(modSong(), 'song'); // hands the transport back
+    await openAhx(host);
+    await store.play(host.buildSong(), 'song', 0, 0);
+    // Voice 6 does not exist in a 4-voice song: its solo is gone, else it would silence all four.
+    expect(store.soloedTracks.size).toBe(0);
+    expect(store.mutedTracks.has(0)).toBe(true);
+    expect(lastClient().muteSolo.at(-1)).toEqual([0b0001, 0]);
+  });
+});
+
 describe('a load in flight', () => {
   /** Open karma while the worklet's load is held; resolves to the release and the open. */
   async function openHeld(host: ReturnType<typeof setupHost>) {
@@ -608,6 +656,17 @@ describe('other formats', () => {
     expect(store.isPaused).toBe(false);
     expect(store.isPlaying).toBe(false);
     expect(client.calls).toHaveLength(before);
+  });
+
+  it('mute and solo on a MOD still go to the sampler tracks and never reach the AHX worklet', async () => {
+    const store = useTrackerPlaybackStore();
+    await store.play(modSong(), 'song', 0, 0);
+    store.toggleMute(1, 4);
+    store.toggleSolo(2, 4);
+    expect(h.bankCalls.filter((c) => c.startsWith('off:'))).toEqual(['off:1', 'off:0', 'off:3']);
+    expect(store.isTrackAudible(2)).toBe(true);
+    expect(store.isTrackAudible(1)).toBe(false);
+    expect(h.clients).toHaveLength(0);
   });
 
   it('MOD then AHX: the engine is stopped and its "stopped" event does not leave the AHX song looking stopped', async () => {
