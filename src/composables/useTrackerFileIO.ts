@@ -49,6 +49,32 @@ export interface TrackerFileIOContext {
   initializePlayback: (mode: 'pattern' | 'song', skipIfPlaying?: boolean) => Promise<boolean>;
   stopPlayback: () => void;
   resetSequenceIndex: () => void;
+
+  /**
+   * Tell the user something in the UI. Optional so a host without a toast
+   * (a test, a headless caller) still works; it then falls back to the log.
+   */
+  notify?: (message: string) => void;
+}
+
+/**
+ * Extensions a dropped file may have to be opened as a song. The drop handler
+ * filters on it so an image or WAV dragged onto the page is left alone.
+ */
+export const SONG_FILE_EXTENSIONS = [
+  '.cmod',
+  '.json',
+  '.mod',
+  '.xm',
+  '.s3m',
+  '.ahx',
+  '.hvl',
+] as const;
+
+/** Whether `name` looks like a song file `parseSongBuffer` might read. */
+export function hasSongFileExtension(name: string): boolean {
+  const lower = name.toLowerCase();
+  return SONG_FILE_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
 /**
@@ -152,6 +178,20 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
    * Save the current song to a .cmod file (zipped JSON)
    */
   async function handleSaveSongFile() {
+    // An AHX/HVL song is played from the original file's bytes; the store only
+    // holds a display model of it, which a .cmod cannot turn back into sound.
+    // Saving one would write a file that never plays, so say so instead.
+    if (context.trackerStore.moduleFormat === 'ahx') {
+      const message =
+        'AHX/HVL songs cannot be saved as .cmod: the song plays from the original file, which is unchanged.';
+      if (context.notify) {
+        context.notify(message);
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(message);
+      }
+      return;
+    }
     try {
       const songFile = context.trackerStore.serializeSong();
       const json = JSON.stringify(songFile, null, 2);
@@ -176,8 +216,6 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
   async function handleLoadSongFile() {
     const data = await promptOpenFile();
     if (!data) return;
-    // The report tool hashes the bytes as loaded, never by re-fetching.
-    recordLoadedSongHash(data);
     await loadSongFromBuffer(data);
   }
 
@@ -186,10 +224,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
    * the picker, minus the picker.
    */
   async function loadSongFromFile(file: File): Promise<void> {
-    const data = await file.arrayBuffer();
-    // The report tool hashes the bytes as loaded, never by re-fetching.
-    recordLoadedSongHash(data);
-    await loadSongFromBuffer(data);
+    await loadSongFromBuffer(await file.arrayBuffer());
   }
 
   /**
@@ -201,10 +236,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       if (!response.ok) {
         throw new Error(`${response.status} ${response.statusText}`);
       }
-      const data = await response.arrayBuffer();
-      // The report tool hashes the bytes as loaded, never by re-fetching.
-      recordLoadedSongHash(data);
-      await loadSongFromBuffer(data);
+      await loadSongFromBuffer(await response.arrayBuffer());
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(`Failed to load song from ${url}`, error);
@@ -276,7 +308,12 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
   async function loadSongFromBuffer(data: ArrayBuffer) {
     try {
       context.isLoadingSong.value = true;
-      await applySongFile(await parseSongBuffer(data));
+      const songFile = await parseSongBuffer(data);
+      // The report tool hashes the bytes as loaded, never by re-fetching. Only
+      // once they parse: bytes that were not a song must not replace the hash
+      // of the song that is still loaded.
+      recordLoadedSongHash(data);
+      await applySongFile(songFile);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to load song', error);

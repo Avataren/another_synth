@@ -61,6 +61,13 @@ export type AhxCommand =
   | { type: 'pause' }
   | { type: 'restart'; subsong?: number }
   | { type: 'set-gain'; gain: number }
+  /**
+   * Pause at the song's end instead of looping on. The engine sets its
+   * end flag one tick before the intro's first notes sound; a stop that had to
+   * come back from the main thread (a round trip through a possibly busy
+   * thread) would let them through, so the render thread does it itself.
+   */
+  | { type: 'set-stop-at-end'; enabled: boolean }
   | { type: 'dispose' };
 
 /** Worklet -> main thread. */
@@ -80,10 +87,23 @@ export type AhxEvent =
 /** How often `position` events go out while playing (about 25 per second). */
 const POSITION_INTERVAL_SECONDS = 0.04;
 
+/** Frames faded out at the end of the quantum a stop-at-end pause lands in. */
+const END_FADE_FRAMES = 32;
+
+/** Linear fade to silence over the last `END_FADE_FRAMES` of `buffer`. */
+function fadeOutTail(buffer: Float32Array): void {
+  const n = Math.min(END_FADE_FRAMES, buffer.length);
+  const start = buffer.length - n;
+  for (let i = 0; i < n; i++) {
+    buffer[start + i] = (buffer[start + i] ?? 0) * (1 - (i + 1) / n);
+  }
+}
+
 export class AhxProcessorCore {
   private player: AhxWasmPlayer | null = null;
   private playing = false;
   private gain = 1;
+  private stopAtEnd = false;
   private framesSincePosition = 0;
   private lastPosition = -1;
   private lastRow = -1;
@@ -130,6 +150,9 @@ export class AhxProcessorCore {
         this.gain = command.gain;
         this.player?.set_gain(command.gain);
         break;
+      case 'set-stop-at-end':
+        this.stopAtEnd = command.enabled;
+        break;
       case 'dispose':
         this.disposedFlag = true;
         this.dropPlayer();
@@ -162,7 +185,11 @@ export class AhxProcessorCore {
           left[i] = ((left[i] ?? 0) + (target[i] ?? 0)) * 0.5;
         }
       }
-      if (this.playing) this.report(player, left.length);
+      if (this.playing && this.report(player, left.length)) {
+        // Paused at the song's end, mid-tick: the cut would click.
+        fadeOutTail(left);
+        if (right) fadeOutTail(right);
+      }
     } catch (error) {
       // A wasm trap leaves the instance unusable; go silent rather than
       // throw into the render thread.
@@ -207,21 +234,30 @@ export class AhxProcessorCore {
     }
   }
 
-  private report(player: AhxWasmPlayer, frames: number): void {
+  /** Returns true when this quantum ended the song and the player was paused. */
+  private report(player: AhxWasmPlayer, frames: number): boolean {
     if (player.song_end_reached()) {
       if (!this.songEndReported) {
         this.songEndReported = true;
         this.post({ type: 'song-end' });
+        if (this.stopAtEnd) {
+          // The flag is raised one tick (20 ms at the default rate) before
+          // the wrapped-to intro is played, and a quantum is 3 ms: pausing
+          // here is always ahead of it.
+          player.pause();
+          this.playing = false;
+          return true;
+        }
       }
     }
     this.framesSincePosition += frames;
     if (this.framesSincePosition < this.sampleRate * POSITION_INTERVAL_SECONDS) {
-      return;
+      return false;
     }
     this.framesSincePosition = 0;
     const position = player.position();
     const row = player.row();
-    if (position === this.lastPosition && row === this.lastRow) return;
+    if (position === this.lastPosition && row === this.lastRow) return false;
     this.lastPosition = position;
     this.lastRow = row;
     this.post({
@@ -231,6 +267,7 @@ export class AhxProcessorCore {
       tempo: player.tempo(),
       ticks: player.ticks(),
     });
+    return false;
   }
 
   private resetReporting(): void {

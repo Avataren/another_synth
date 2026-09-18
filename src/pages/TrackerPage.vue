@@ -94,6 +94,8 @@
             type="button"
             class="edit-mode-toggle toolbar-edit-toggle"
             :class="{ active: isEditMode }"
+            :disabled="isReadOnly"
+            :title="isReadOnly ? readOnlyHint : 'Edit mode'"
             @click="toggleEditMode"
           >
             Edit
@@ -174,7 +176,8 @@
             type="button"
             class="song-button"
             @click="addTrack"
-            :disabled="trackCount >= 32"
+            :disabled="isReadOnly || trackCount >= 32"
+            :title="isReadOnly ? readOnlyHint : 'Add a track'"
           >
             + Track
           </button>
@@ -182,7 +185,8 @@
             type="button"
             class="song-button ghost"
             @click="removeTrack"
-            :disabled="trackCount <= 1"
+            :disabled="isReadOnly || trackCount <= 1"
+            :title="isReadOnly ? readOnlyHint : 'Remove the current track'"
           >
             - Track
           </button>
@@ -253,6 +257,8 @@
             type="button"
             class="edit-mode-toggle toolbar-edit-toggle"
             :class="{ active: isEditMode }"
+            :disabled="isReadOnly"
+            :title="isReadOnly ? readOnlyHint : 'Edit mode (F2)'"
             @click="toggleEditMode"
           >
             Edit (F2)
@@ -288,6 +294,7 @@
           :current-pattern-id="currentPatternId"
           :current-sequence-index="currentSequenceIndex"
           :is-playing="isPlaying"
+          :readonly="isReadOnly"
           @select-pattern="handleSelectPattern"
           @add-pattern-to-sequence="handleAddPatternToSequence"
           @remove-pattern-from-sequence="handleRemovePatternFromSequence"
@@ -336,6 +343,8 @@
                 class="bpm-input"
                 v-model.number="currentSong.bpm"
                 type="number"
+                :disabled="isReadOnly"
+                :title="isReadOnly ? 'AHX/HVL songs set their own tempo' : ''"
                 min="32"
                 max="255"
                 placeholder="120"
@@ -363,6 +372,8 @@
                   :min="1"
                   :max="256"
                   :value="rowsCount"
+                  :disabled="isReadOnly"
+                  :title="isReadOnly ? readOnlyHint : ''"
                   @change="onPatternLengthInput($event)"
                   @blur="refocusTracker"
                   @keydown.enter="($event.target as HTMLInputElement).blur()"
@@ -599,7 +610,8 @@
                   <button
                     type="button"
                     class="icon-action-button"
-                    title="New patch"
+                    :title="isReadOnly ? readOnlyHint : 'New patch'"
+                    :disabled="isReadOnly"
                     @click.stop="
                       createNewSongPatch(slot.slot);
                       refocusTracker();
@@ -620,7 +632,7 @@
                     type="button"
                     class="icon-action-button danger"
                     title="Clear instrument"
-                    :disabled="!slot.patchId"
+                    :disabled="isReadOnly || !slot.patchId"
                     @click.stop="
                       clearInstrument(slot.slot);
                       refocusTracker();
@@ -641,7 +653,7 @@
       </div>
 
       <div
-        v-if="waveformVisualizersVisible"
+        v-if="waveformVisualizersVisible && !isReadOnly"
         ref="visualizerRowRef"
         class="visualizer-row"
         :style="{
@@ -923,6 +935,7 @@ import {
   type BugReportPreset,
 } from 'src/composables/bug-report-context';
 import { getLoadedSongHash } from 'src/composables/song-identity';
+import { handleSongDragOver, handleSongDrop } from 'src/composables/song-drop';
 import { useTrackerInstruments } from 'src/composables/useTrackerInstruments';
 import type { TrackerInstrumentsContext } from 'src/composables/useTrackerInstruments';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
@@ -1042,7 +1055,24 @@ const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
 const activeMacroNibble = ref(0);
-const isEditMode = ref(false);
+/**
+ * An AHX/HVL song's row model is display only (the worklet plays the file), so
+ * the page is read-only for it: edit mode cannot be entered, and the
+ * structural controls are disabled rather than left to do nothing.
+ */
+const isReadOnly = computed(() => trackerStore.isReadOnly);
+const readOnlyHint = 'AHX/HVL songs are read-only: the song plays from its file';
+const editModeRequested = ref(false);
+const isEditMode = computed<boolean>({
+  get: () => editModeRequested.value && !isReadOnly.value,
+  set: (value) => {
+    if (!isReadOnly.value) editModeRequested.value = value;
+  },
+});
+watch(isReadOnly, (readOnly) => {
+  // Do not let edit mode come back on by itself when a MOD is loaded next.
+  if (readOnly) editModeRequested.value = false;
+});
 const isFullscreen = ref(false);
 const columnsPerTrack = computed(() =>
   userSettings.value.showTrackerExtraEffectColumn ? 6 : 5,
@@ -1275,6 +1305,7 @@ const selectionContext: TrackerSelectionContext = {
   activeRow,
   activeTrack,
   isEditMode,
+  isReadOnly,
   rowsCount,
   currentPattern,
   pushHistory: () => trackerStore.pushHistory(),
@@ -1968,8 +1999,10 @@ function handleGlobalMouseUp() {
 // Set up song builder composable (must be before playback)
 // Reload playback after structural edits (transpose) without forcing a stop/start cycle
 async function restartPlaybackIfActive() {
-  // Only hot-reload playback while actively playing; keep stopped/paused idle
-  if (!isPlaying.value) return;
+  // Only hot-reload playback while actively playing; keep stopped/paused idle.
+  // Never for an AHX/HVL song: its row model is display only, so a "reload"
+  // would restart it from the top and sound exactly the same.
+  if (!isPlaying.value || isReadOnly.value) return;
   const mode = playbackMode.value;
   const startRow = playbackRow.value;
   const song = buildPlaybackSong(mode);
@@ -1977,16 +2010,19 @@ async function restartPlaybackIfActive() {
 }
 
 function transposeSelection(semitones: number) {
+  if (isReadOnly.value) return;
   rawTransposeSelection(semitones);
   void restartPlaybackIfActive();
 }
 
 function transposeTrack(semitones: number) {
+  if (isReadOnly.value) return;
   rawTransposeTrack(semitones);
   void restartPlaybackIfActive();
 }
 
 function transposePattern(semitones: number) {
+  if (isReadOnly.value) return;
   rawTransposePattern(semitones);
   void restartPlaybackIfActive();
 }
@@ -2345,7 +2381,7 @@ const keyboardContext: TrackerKeyboardContext = {
   setStepSizeInput,
 
   // Store actions
-  undo: () => trackerStore.undo(),
+  undo: () => trackerStore.undo(), // no-ops on a read-only song
   redo: () => trackerStore.redo(),
 
   // Track/Pattern operations
@@ -2405,6 +2441,7 @@ const {
 } = useTrackerExport(exportContext);
 
 function handleCreatePattern() {
+  if (isReadOnly.value) return;
   trackerStore.pushHistory();
   const newPatternId = trackerStore.createPattern();
   trackerStore.addPatternToSequence(newPatternId);
@@ -2443,23 +2480,23 @@ function handleWindowResize() {
 }
 
 /**
- * Dropping a module file anywhere on the page opens it, the same as the Open
- * button. Without a `dragover` handler the browser would navigate to the file.
+ * Dropping a song file anywhere on the page opens it, the same as the Open
+ * button; other files are refused (see `song-drop.ts`).
  */
-function handleFileDragOver(event: DragEvent): void {
-  if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
-}
-
 function handleFileDrop(event: DragEvent): void {
-  const file = event.dataTransfer?.files[0];
-  if (!file) return;
-  event.preventDefault();
-  if (isLoadingSong.value) return;
-  void loadSongFromFile(file);
+  handleSongDrop(event, {
+    isBusy: () => isLoadingSong.value,
+    load: (file) => void loadSongFromFile(file),
+    reject: (file) =>
+      $q.notify({
+        type: 'warning',
+        message: `${file.name} is not a song file (.cmod, .json, .mod, .xm, .s3m, .ahx, .hvl)`,
+      }),
+  });
 }
 
 onMounted(async () => {
-  window.addEventListener('dragover', handleFileDragOver);
+  window.addEventListener('dragover', handleSongDragOver);
   window.addEventListener('drop', handleFileDrop);
   trackerContainer.value?.focus();
   // Skip song bank sync if playback is active (returning from instrument editor)
@@ -2643,7 +2680,7 @@ onBeforeUnmount(() => {
   keyboardStore.cleanup();
   keyboardStore.clearAllNotes();
   keyboardStore.cleanupMidiListeners();
-  window.removeEventListener('dragover', handleFileDragOver);
+  window.removeEventListener('dragover', handleSongDragOver);
   window.removeEventListener('drop', handleFileDrop);
   window.removeEventListener('mouseup', handleGlobalMouseUp);
   window.removeEventListener('resize', handleWindowResize);

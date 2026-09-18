@@ -156,6 +156,89 @@ describe('AhxProcessorCore over the real wasm', () => {
     expect(events.filter((e) => e.type === 'song-end')).toHaveLength(1);
   });
 
+  describe('stop at end', () => {
+    // sunspots reaches song end inside its first 3000 DecodeFrames (60 s).
+    const FRAME = 882;
+
+    /** Renders quantum by quantum until `song-end` is posted; returns the left channel so far. */
+    function renderToSongEnd(core: AhxProcessorCore, events: AhxEvent[]) {
+      const ends = () => events.filter((e) => e.type === 'song-end').length;
+      const before = ends();
+      const chunks: Float32Array[] = [];
+      while (ends() === before && chunks.length * QUANTUM < FRAME * 3500) {
+        const l = new Float32Array(QUANTUM);
+        core.process(l, new Float32Array(QUANTUM));
+        chunks.push(l);
+      }
+      const left = new Float32Array(chunks.length * QUANTUM);
+      chunks.forEach((c, i) => left.set(c, i * QUANTUM));
+      return { frames: left.length, left };
+    }
+
+    it('pauses itself in the quantum that reaches the end, and renders silence after', () => {
+      const { core, events } = newCore();
+      core.handle({ type: 'set-stop-at-end', enabled: true });
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('sunspots.hvl') });
+      core.handle({ type: 'play' });
+
+      const { frames } = renderToSongEnd(core, events);
+      expect(events.filter((e) => e.type === 'song-end')).toHaveLength(1);
+      expect(frames).toBeLessThan(FRAME * 3500);
+
+      // Nothing more is played: the worklet did not loop into the intro
+      // while a message made its way to the main thread and back.
+      const after = render(core, FRAME * 10);
+      expect(after.l.every((s) => s === 0)).toBe(true);
+      expect(after.r.every((s) => s === 0)).toBe(true);
+      // And no more position reports either.
+      const positions = events.filter((e) => e.type === 'position').length;
+      render(core, FRAME * 10);
+      expect(events.filter((e) => e.type === 'position')).toHaveLength(positions);
+    });
+
+    it('is bit-identical to a looping run up to the ending quantum, then fades that quantum out', () => {
+      const looping = newCore();
+      looping.core.handle({ type: 'load-song', id: nextId++, bytes: fixture('sunspots.hvl') });
+      looping.core.handle({ type: 'play' });
+      const stopping = newCore();
+      stopping.core.handle({ type: 'set-stop-at-end', enabled: true });
+      stopping.core.handle({ type: 'load-song', id: nextId++, bytes: fixture('sunspots.hvl') });
+      stopping.core.handle({ type: 'play' });
+
+      const { frames, left } = renderToSongEnd(stopping.core, stopping.events);
+      const reference = render(looping.core, frames).l;
+      // Everything before the ending quantum is what the looping player made.
+      const upto = frames - QUANTUM;
+      expect(left.subarray(0, upto)).toEqual(reference.subarray(0, upto));
+      // The ending quantum's last sample is faded to silence.
+      expect(Math.abs(left[frames - 1] ?? 1)).toBe(0);
+    });
+
+    it('keeps looping (and reports once) when stop-at-end is off, or switched off again', () => {
+      const { core, events } = newCore();
+      core.handle({ type: 'set-stop-at-end', enabled: true });
+      core.handle({ type: 'set-stop-at-end', enabled: false });
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('sunspots.hvl') });
+      core.handle({ type: 'play' });
+      renderToSongEnd(core, events);
+      const after = render(core, FRAME * 20);
+      expect(after.l.some((s) => s !== 0)).toBe(true);
+    });
+
+    it('a restart afterwards plays the song again and can end again', () => {
+      const { core, events } = newCore();
+      core.handle({ type: 'set-stop-at-end', enabled: true });
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('sunspots.hvl') });
+      core.handle({ type: 'play' });
+      renderToSongEnd(core, events);
+      core.handle({ type: 'restart' });
+      core.handle({ type: 'play' });
+      expect(render(core, FRAME * 20).l.some((s) => s !== 0)).toBe(true);
+      renderToSongEnd(core, events);
+      expect(events.filter((e) => e.type === 'song-end')).toHaveLength(2);
+    });
+  });
+
   it('averages to mono when the output has one channel', () => {
     const stereo = newCore();
     const mono = newCore();

@@ -22,6 +22,7 @@ function fakeClient(audioContext: AudioContext) {
     play: vi.fn(),
     pause: vi.fn(),
     restart: vi.fn(),
+    setStopAtEnd: vi.fn(),
     dispose: vi.fn(),
     onPosition: (l: (p: AhxPosition) => void) => {
       positionListeners.add(l);
@@ -112,5 +113,45 @@ describe('AhxTransport', () => {
     transport.dispose();
     expect(fake.raw.dispose).toHaveBeenCalledOnce();
     expect(transport.info).toBeNull();
+  });
+
+  it('applies stop-at-end to a client made after it was set, and to a live one', async () => {
+    const { fake, transport } = setup();
+    transport.setStopAtEnd(true);
+    await transport.load(new Uint8Array([1]));
+    expect(fake.raw.setStopAtEnd).toHaveBeenLastCalledWith(true);
+    transport.setStopAtEnd(false);
+    expect(fake.raw.setStopAtEnd).toHaveBeenLastCalledWith(false);
+  });
+
+  it('loading the bytes already loaded touches nothing: it does not rewind', async () => {
+    const { fake, transport } = setup();
+    const bytes = new Uint8Array([1]);
+    await transport.load(bytes);
+    fake.raw.restart.mockClear();
+    fake.raw.pause.mockClear();
+    await transport.load(bytes);
+    expect(fake.raw.loadSong).toHaveBeenCalledOnce();
+    expect(fake.raw.restart).not.toHaveBeenCalled();
+    expect(fake.raw.pause).not.toHaveBeenCalled();
+  });
+
+  it('a client still starting when the transport is disposed is disposed, not attached', async () => {
+    const ctx = {} as AudioContext;
+    const fake = fakeClient(ctx);
+    let finish!: () => void;
+    const create = vi.fn(
+      () =>
+        new Promise<AhxPlayerClient>((resolve) => {
+          finish = () => resolve(fake.client);
+        }),
+    );
+    const transport = new AhxTransport({ audioContext: ctx, output: {} as AudioNode }, create);
+    const loading = transport.load(new Uint8Array([1]));
+    transport.dispose();
+    finish();
+    await expect(loading).rejects.toThrow(/disposed/);
+    expect(fake.raw.dispose).toHaveBeenCalledOnce();
+    expect(fake.raw.output.connect).not.toHaveBeenCalled();
   });
 });

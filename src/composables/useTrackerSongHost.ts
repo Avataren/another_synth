@@ -11,6 +11,7 @@ import {
 } from 'src/audio/tracker/instrument-ids';
 import { useTrackerSongBuilder } from 'src/composables/useTrackerSongBuilder';
 import type { TrackerSongBuilderContext } from 'src/composables/useTrackerSongBuilder';
+import { Notify } from 'quasar';
 import { useTrackerFileIO } from 'src/composables/useTrackerFileIO';
 import type { TrackerFileIOContext } from 'src/composables/useTrackerFileIO';
 import { useMobileLayout } from 'src/composables/useMobileLayout';
@@ -304,6 +305,16 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
     resetSequenceIndex: () => {
       playbackStore.setSequenceIndex(0);
       options.onSequenceReset?.();
+    },
+    notify: (message) => {
+      try {
+        Notify.create({ type: 'warning', message, timeout: 6000 });
+      } catch {
+        // No Notify plugin installed (a bare test harness): the log is all
+        // there is.
+        // eslint-disable-next-line no-console
+        console.warn(message);
+      }
     },
   };
 

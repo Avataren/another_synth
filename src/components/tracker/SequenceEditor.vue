@@ -15,7 +15,7 @@
           'is-playing': index === currentSequenceIndex && isPlaying
         }"
         @click="handleSelect(patternId, index)"
-        @dblclick.stop="startRename(patternId)"
+        @dblclick.stop="!readonly && startRename(patternId)"
       >
         <div class="pattern-name-wrapper">
           <div class="sequence-number">{{ index + 1 }}.</div>
@@ -38,14 +38,17 @@
             </span>
           </div>
         </div>
-        <div class="item-actions">
+        <div v-if="!readonly" class="item-actions">
           <button @click.stop="$emit('move-sequence-item', index, index - 1)" :disabled="index === 0">&uarr;</button>
           <button @click.stop="$emit('move-sequence-item', index, index + 1)" :disabled="index === sequence.length - 1">&darr;</button>
           <button @click.stop="$emit('remove-pattern-from-sequence', index)">&times;</button>
         </div>
       </div>
     </div>
-    <div class="sequence-controls">
+    <div v-if="readonly" class="sequence-readonly-note">
+      Read-only: this song plays from its file
+    </div>
+    <div v-else class="sequence-controls">
       <q-select
         v-model="selectedPatternId"
         :options="patternOptions"
@@ -78,6 +81,8 @@ const props = defineProps<{
   currentPatternId: string | null;
   currentSequenceIndex?: number;
   isPlaying?: boolean;
+  /** The sequence cannot be edited (an AHX/HVL song); selecting still works. */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -243,6 +248,11 @@ defineExpose({
   padding: 10px 12px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
   contain: layout style paint;
+}
+.sequence-readonly-note {
+  color: var(--text-secondary, rgba(232, 243, 255, 0.6));
+  font-size: 11px;
+  padding: 2px 4px;
 }
 .sequence-list-container {
   display: flex;

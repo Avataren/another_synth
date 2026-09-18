@@ -30,6 +30,9 @@ export class AhxTransport {
   /** A load under way, so a second ask for the same bytes joins it rather than superseding it. */
   private loading: { bytes: Uint8Array; promise: Promise<AhxSongInfo> } | null = null;
   private clientUnsubs: Array<() => void> = [];
+  /** Remembered here, not just on the client, so a client made later (or replaced) gets it. */
+  private stopAtEnd = false;
+  private disposed = false;
   private readonly positionListeners = new Set<(p: AhxPosition) => void>();
   private readonly songEndListeners = new Set<() => void>();
 
@@ -56,7 +59,13 @@ export class AhxTransport {
     if (this.client) return this.client;
     this.creating ??= this.createPlayer(this.host.audioContext)
       .then((client) => {
+        // Disposed while the worklet was starting: nobody is left to use it.
+        if (this.disposed) {
+          client.dispose();
+          throw new Error('AHX transport disposed');
+        }
         client.output.connect(this.host.output);
+        client.setStopAtEnd(this.stopAtEnd);
         this.clientUnsubs = [
           client.onPosition((p) => {
             for (const listener of this.positionListeners) listener(p);
@@ -75,9 +84,18 @@ export class AhxTransport {
   }
 
   /**
+   * Whether the worklet pauses itself at the song's end (a non-looping play)
+   * rather than looping on until `stop()` reaches it from the main thread.
+   */
+  setStopAtEnd(enabled: boolean): void {
+    this.stopAtEnd = enabled;
+    this.client?.setStopAtEnd(enabled);
+  }
+
+  /**
    * Hand the file to the worklet. Loading the bytes already loaded is a no-op
-   * (the tracker's load and its first play both ask), except that it leaves
-   * the song at the top, paused.
+   * that touches nothing: the song stays wherever it is, playing or paused
+   * (`loadNow` returns early). Callers that want the top call `stop()`.
    */
   load(bytes: Uint8Array): Promise<AhxSongInfo> {
     if (this.loading?.bytes === bytes) return this.loading.promise;
@@ -137,6 +155,7 @@ export class AhxTransport {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.disposeClient();
     this.positionListeners.clear();
     this.songEndListeners.clear();

@@ -35,6 +35,12 @@ export interface TrackerSelectionContext {
   activeRow: Ref<number>;
   activeTrack: Ref<number>;
   isEditMode: Ref<boolean>;
+  /**
+   * The song cannot be edited at all (an AHX/HVL row model). The track and
+   * pattern operations below switch edit mode on themselves before they
+   * write, so `isEditMode` alone would not stop them.
+   */
+  isReadOnly?: Readonly<Ref<boolean>>;
   rowsCount: Ref<number>;
   currentPattern: ComputedRef<TrackerPattern | undefined>;
 
@@ -265,6 +271,7 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
    * Cut the current track (copy and clear)
    */
   function cutTrack() {
+    if (context.isReadOnly?.value) return;
     if (!context.currentPattern.value) return;
 
     copyTrack();
@@ -283,6 +290,7 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
    * Paste track from clipboard to current track
    */
   function pasteTrack() {
+    if (context.isReadOnly?.value) return;
     if (!trackClipboard.value) return;
     if (!context.currentPattern.value) return;
 
@@ -300,6 +308,7 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
    * Transpose all notes in the current track
    */
   function transposeTrack(semitones: number) {
+    if (context.isReadOnly?.value) return;
     if (!context.currentPattern.value) return;
 
     const track = context.currentPattern.value.tracks[context.activeTrack.value];
@@ -343,6 +352,7 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
    * Cut the entire current pattern (copy and clear all tracks)
    */
   function cutPattern() {
+    if (context.isReadOnly?.value) return;
     if (!context.currentPattern.value) return;
 
     copyPattern();
@@ -360,6 +370,7 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
    * Paste pattern from clipboard to current pattern
    */
   function pastePattern() {
+    if (context.isReadOnly?.value) return;
     if (!patternClipboard.value) return;
     if (!context.currentPattern.value) return;
 
@@ -414,6 +425,7 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
    * Transpose all notes in the entire current pattern
    */
   function transposePattern(semitones: number) {
+    if (context.isReadOnly?.value) return;
     if (!context.currentPattern.value) return;
 
     // Auto-enable edit mode for modifications

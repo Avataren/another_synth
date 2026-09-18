@@ -2852,6 +2852,14 @@ async function __wbg_init(module_or_path) {
 
 // src/audio/worklets/ahx-core.ts
 var POSITION_INTERVAL_SECONDS = 0.04;
+var END_FADE_FRAMES = 32;
+function fadeOutTail(buffer) {
+  const n = Math.min(END_FADE_FRAMES, buffer.length);
+  const start = buffer.length - n;
+  for (let i = 0; i < n; i++) {
+    buffer[start + i] = (buffer[start + i] ?? 0) * (1 - (i + 1) / n);
+  }
+}
 var AhxProcessorCore = class {
   constructor(PlayerCtor, sampleRate2, post) {
     this.PlayerCtor = PlayerCtor;
@@ -2860,6 +2868,7 @@ var AhxProcessorCore = class {
     __publicField(this, "player", null);
     __publicField(this, "playing", false);
     __publicField(this, "gain", 1);
+    __publicField(this, "stopAtEnd", false);
     __publicField(this, "framesSincePosition", 0);
     __publicField(this, "lastPosition", -1);
     __publicField(this, "lastRow", -1);
@@ -2898,6 +2907,9 @@ var AhxProcessorCore = class {
         this.gain = command.gain;
         this.player?.set_gain(command.gain);
         break;
+      case "set-stop-at-end":
+        this.stopAtEnd = command.enabled;
+        break;
       case "dispose":
         this.disposedFlag = true;
         this.dropPlayer();
@@ -2929,7 +2941,10 @@ var AhxProcessorCore = class {
           left[i] = ((left[i] ?? 0) + (target[i] ?? 0)) * 0.5;
         }
       }
-      if (this.playing) this.report(player, left.length);
+      if (this.playing && this.report(player, left.length)) {
+        fadeOutTail(left);
+        if (right) fadeOutTail(right);
+      }
     } catch (error) {
       this.dropPlayer();
       left.fill(0);
@@ -2965,21 +2980,27 @@ var AhxProcessorCore = class {
       });
     }
   }
+  /** Returns true when this quantum ended the song and the player was paused. */
   report(player, frames) {
     if (player.song_end_reached()) {
       if (!this.songEndReported) {
         this.songEndReported = true;
         this.post({ type: "song-end" });
+        if (this.stopAtEnd) {
+          player.pause();
+          this.playing = false;
+          return true;
+        }
       }
     }
     this.framesSincePosition += frames;
     if (this.framesSincePosition < this.sampleRate * POSITION_INTERVAL_SECONDS) {
-      return;
+      return false;
     }
     this.framesSincePosition = 0;
     const position = player.position();
     const row = player.row();
-    if (position === this.lastPosition && row === this.lastRow) return;
+    if (position === this.lastPosition && row === this.lastRow) return false;
     this.lastPosition = position;
     this.lastRow = row;
     this.post({
@@ -2989,6 +3010,7 @@ var AhxProcessorCore = class {
       tempo: player.tempo(),
       ticks: player.ticks()
     });
+    return false;
   }
   resetReporting() {
     this.framesSincePosition = 0;

@@ -346,6 +346,14 @@ export const useTrackerStore = defineStore('trackerStore', {
   },
   getters: {
     /**
+     * The song's row model is display only. An AHX/HVL song is played from
+     * its file by the worklet's own engine; the patterns here mirror it for
+     * the eye, so an edit to them would never reach the audio.
+     */
+    isReadOnly(): boolean {
+      return this.moduleFormat === 'ahx';
+    },
+    /**
      * Row count of the pattern currently being edited. This is what the grid,
      * navigation and selection should size themselves against -- not the
      * song-level default, which only seeds new patterns.
@@ -442,6 +450,8 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     /** Push the current state onto the undo stack and clear redo history. */
     pushHistory() {
+      // Read-only: nothing can change, so there is nothing to undo to.
+      if (this.isReadOnly) return;
       const snapshot = this.createSnapshot();
       this.undoStack.push(snapshot);
       const MAX_HISTORY = 100;
@@ -483,6 +493,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.redoStack = [];
     },
     undo() {
+      if (this.isReadOnly) return;
       if (this.undoStack.length === 0) return;
       const snapshot = this.undoStack.pop() as TrackerSnapshot;
       const current = this.createSnapshot();
@@ -490,6 +501,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.applySnapshot(snapshot);
     },
     redo() {
+      if (this.isReadOnly) return;
       if (this.redoStack.length === 0) return;
       const snapshot = this.redoStack.pop() as TrackerSnapshot;
       const current = this.createSnapshot();
@@ -501,6 +513,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.baseOctave = clamped;
     },
     addTrack(): boolean {
+      if (this.isReadOnly) return false;
       const maxTracks = 32;
       if (!this.patterns.length) return false;
       const currentCount = this.patterns[0]?.tracks.length ?? 0;
@@ -521,6 +534,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       return true;
     },
     removeTrack(_trackIndex: number): boolean {
+      if (this.isReadOnly) return false;
       const minTracks = 1;
       if (!this.patterns.length) return false;
       const currentCount = this.patterns[0]?.tracks.length ?? 0;
@@ -568,6 +582,7 @@ export const useTrackerStore = defineStore('trackerStore', {
      * song-level control behaved before per-pattern lengths existed.
      */
     setPatternRows(rows: number, patternId?: string) {
+      if (this.isReadOnly) return;
       const targetId = patternId ?? this.currentPatternId;
       const pattern = this.patterns.find(p => p.id === targetId);
       if (!pattern) return;
@@ -576,6 +591,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.defaultPatternRows = clamped;
     },
     deletePattern(patternId: string) {
+      if (this.isReadOnly) return;
       if (this.patterns.length <= 1) {
         // eslint-disable-next-line no-console
         console.warn('Cannot delete the last pattern');
@@ -593,20 +609,24 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
     },
     addPatternToSequence(patternId: string) {
+      if (this.isReadOnly) return;
       this.sequence.push(patternId);
     },
     removePatternFromSequence(index: number) {
+      if (this.isReadOnly) return;
       if (index >= 0 && index < this.sequence.length) {
         this.sequence.splice(index, 1);
       }
     },
     setPatternName(patternId: string, name: string) {
+      if (this.isReadOnly) return;
       const pattern = this.patterns.find(p => p.id === patternId);
       if (pattern) {
         pattern.name = name;
       }
     },
     moveSequenceItem(fromIndex: number, toIndex: number) {
+      if (this.isReadOnly) return;
       if (
         fromIndex < 0 ||
         fromIndex >= this.sequence.length ||
@@ -634,6 +654,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       slot.instrumentName = name?.trim() ?? '';
     },
     clearSlot(slotNumber: number) {
+      if (this.isReadOnly) return;
       const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
       if (slot) {
         // Remove patch from song patches if no other slot uses it
@@ -700,6 +721,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     /** Assign a patch to a slot (copies it to song patches) */
     assignPatchToSlot(slotNumber: number, patch: Patch, bankName: string) {
+      if (this.isReadOnly) return;
       if (!patch.metadata?.id) return;
 
       const slot = this.instrumentSlots.find(s => s.slot === slotNumber);

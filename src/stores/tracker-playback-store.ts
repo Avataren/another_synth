@@ -116,6 +116,14 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    */
   let ahxSongActive = false;
 
+  /**
+   * Bumped whenever an AHX load or start in flight stops being wanted: the
+   * transport is stopped, or handed back to `PlaybackEngine`. A load that
+   * comes back from its `await` to a different value than it left with does
+   * not go on to mark the song loaded (or start it).
+   */
+  let ahxEpoch = 0;
+
   // ============================================
   // Selection helpers
   // ============================================
@@ -371,12 +379,21 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   function ensureAhxTransport(): AhxTransport {
     if (!ahxTransportInstance) {
       ahxTransportInstance = new AhxTransport(getSongBank());
+      ahxTransportInstance.setStopAtEnd(!loopSong.value);
       ahxUnsubscribes = [
         ahxTransportInstance.onPosition(handleAhxPosition),
         ahxTransportInstance.onSongEnd(handleAhxSongEnd),
       ];
     }
     return ahxTransportInstance;
+  }
+
+  /** Free the worklet node and its wasm instance; the next AHX song makes a new one. */
+  function disposeAhxTransport(): void {
+    for (const unsubscribe of ahxUnsubscribes) unsubscribe();
+    ahxUnsubscribes = [];
+    ahxTransportInstance?.dispose();
+    ahxTransportInstance = null;
   }
 
   /** The worklet's position index is the sequence index: one pattern per position. */
@@ -421,9 +438,12 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
   /** Hand the transport back to `PlaybackEngine`: a non-AHX song is being loaded. */
   function leaveAhx(): void {
+    ahxEpoch++;
     if (!ahxSongActive) return;
     ahxSongActive = false;
-    ahxTransportInstance?.stop();
+    // Not just stopped: with no AHX song left to play, the worklet node would
+    // sit idle (and connected to the mix bus) for the life of the app.
+    disposeAhxTransport();
   }
 
   /**
@@ -449,9 +469,22 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     playbackMode.value = mode;
     getSongBank().setModuleFormat(song.moduleFormat, song.linearFrequency, song.amigaLimits);
     const transport = ensureAhxTransport();
+    // Claimed before the await, not after: a stop or a MOD load that lands
+    // while the worklet is loading must see an AHX song and take the AHX
+    // branch (`leaveAhx` / the transport stop), not the engine's.
+    const wasActive = ahxSongActive;
+    ahxSongActive = true;
+    const epoch = ahxEpoch;
     const loading = transport.load(bytes);
     if (getSongBank().audioContext.state === 'running') {
-      await loading;
+      try {
+        await loading;
+      } catch (error) {
+        if (epoch === ahxEpoch) ahxSongActive = wasActive;
+        throw error;
+      }
+      // Stopped, or another format took over, while the worklet was loading.
+      if (epoch !== ahxEpoch) return false;
     } else {
       // A suspended context does not run the worklet's render thread, so its
       // handshake cannot finish until a user gesture resumes it; awaiting it
@@ -461,7 +494,6 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
         console.warn('[PlaybackStore] AHX load failed while the context was suspended', error);
       });
     }
-    ahxSongActive = true;
     hasSongLoaded.value = true;
     return true;
   }
@@ -471,6 +503,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // The engine cannot seek into a song, so a play from the top is the only
     // "start"; but a paused song whose row is asked for again is a resume.
     const resuming = ahxSongActive && isPaused.value && startRow === playbackRow.value;
+    const epoch = ahxEpoch;
 
     stopSampleEngine();
     songBank.cancelAllScheduled();
@@ -483,6 +516,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       );
       return;
     }
+    // Stopped while the context was being resumed.
+    if (epoch !== ahxEpoch) return;
 
     if (!(await loadAhxSong(song, mode))) return;
     const transport = ensureAhxTransport();
@@ -683,6 +718,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    */
   function stop(): void {
     if (ahxSongActive) {
+      ahxEpoch++;
       ahxTransportInstance?.stop();
       setAhxTransportState('stopped');
       playbackRow.value = 0;
@@ -838,6 +874,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   function setLoopSong(loop: boolean): void {
     loopSong.value = loop;
     playbackEngineInstance?.setLoopSong(loop);
+    ahxTransportInstance?.setStopAtEnd(!loop);
   }
 
   /**
@@ -859,11 +896,9 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       playbackEngineInstance.stop();
     }
 
-    for (const unsubscribe of ahxUnsubscribes) unsubscribe();
-    ahxUnsubscribes = [];
-    ahxTransportInstance?.dispose();
-    ahxTransportInstance = null;
+    disposeAhxTransport();
     ahxSongActive = false;
+    ahxEpoch++;
 
     if (positionUnsubscribe) {
       positionUnsubscribe();

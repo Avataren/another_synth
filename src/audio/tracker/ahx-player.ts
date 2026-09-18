@@ -110,6 +110,16 @@ export class AhxPlayerClient {
     this.send({ type: 'restart', subsong });
   }
 
+  /**
+   * Have the worklet pause itself when the song reaches its end, rather than
+   * looping into the intro until the main thread gets round to pausing it.
+   * `song-end` is still reported either way. Off by default; it outlives the
+   * song, so it applies to every load until changed.
+   */
+  setStopAtEnd(enabled: boolean): void {
+    this.send({ type: 'set-stop-at-end', enabled });
+  }
+
   onPosition(listener: (p: AhxPosition) => void): () => void {
     this.positionListeners.add(listener);
     return () => this.positionListeners.delete(listener);
