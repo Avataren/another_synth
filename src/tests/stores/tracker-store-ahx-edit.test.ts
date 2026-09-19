@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { parseAhx, type AhxInstrument } from '@another-synth/tracker-playback';
 import {
@@ -9,6 +9,13 @@ import {
   type TrackerSongFile,
 } from 'src/stores/tracker-store';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
+import {
+  ahxSourceInfo,
+  ahxSourceRecordOf,
+  attachAhxSource,
+  currentAhxInstrumentEdits,
+  setCurrentAhxSource,
+} from 'src/audio/tracker/ahx-source';
 import { createDefaultPatchMetadata, createEmptySynthState } from 'src/audio/types/preset-types';
 import type { Patch } from 'src/audio/types/preset-types';
 
@@ -41,7 +48,9 @@ describe('tracker store: editing an AHX instrument', () => {
     edited.volume = 12;
     edited.envelope.dVolume = 5;
     edited.name = 'renamed';
-    expect(store.updateAhxInstrument(1, edited)).toBe(true);
+    // No AHX song's bytes are current here (only the display model was loaded):
+    // the edit is kept in the slot and cannot be heard, and the caller is told.
+    expect(store.updateAhxInstrument(1, edited)).toBe('kept');
     expect(store.instrumentSlots[0]!.ahxData).toMatchObject({
       volume: 12,
       envelope: { dVolume: 5 },
@@ -54,10 +63,10 @@ describe('tracker store: editing an AHX instrument', () => {
     const before = clone(store.instrumentSlots[0]!.ahxData);
     const bad = clone(before!);
     bad.waveLength = 9;
-    expect(store.updateAhxInstrument(1, bad)).toBe(false);
-    expect(store.updateAhxInstrument(1, { ...clone(before!), plist: null } as unknown as AhxInstrument)).toBe(false);
-    expect(store.updateAhxInstrument(60, clone(before!))).toBe(false); // an empty slot
-    expect(store.updateAhxInstrument(999, clone(before!))).toBe(false); // no such slot
+    expect(store.updateAhxInstrument(1, bad)).toBe('rejected');
+    expect(store.updateAhxInstrument(1, { ...clone(before!), plist: null } as unknown as AhxInstrument)).toBe('rejected');
+    expect(store.updateAhxInstrument(60, clone(before!))).toBe('rejected'); // an empty slot
+    expect(store.updateAhxInstrument(999, clone(before!))).toBe('rejected'); // no such slot
     expect(store.instrumentSlots[0]!.ahxData).toEqual(before);
   });
 
@@ -66,7 +75,7 @@ describe('tracker store: editing an AHX instrument', () => {
     const edited = clone(store.instrumentSlots[0]!.ahxData!);
     edited.envelope.aFrames = 9;
     edited.plist.entries.push({ note: 30, waveform: 3, fixed: true, fx: [4, 12], fxParam: [0, 0x40] });
-    expect(store.updateAhxInstrument(1, edited)).toBe(true);
+    expect(store.updateAhxInstrument(1, edited)).toBe('kept');
 
     const saved = JSON.parse(JSON.stringify(store.serializeSong())) as TrackerSongFile;
     setActivePinia(createPinia());
@@ -74,6 +83,69 @@ describe('tracker store: editing an AHX instrument', () => {
     reloaded.loadSongFile(saved);
     expect(reloaded.instrumentSlots[0]!.ahxData).toEqual(store.instrumentSlots[0]!.ahxData);
     expect(reloaded.instrumentSlots[0]!.ahxData!.plist.entries.at(-1)).toEqual(edited.plist.entries.at(-1));
+  });
+});
+
+describe('tracker store: the format and version of the song', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    setCurrentAhxSource(null);
+  });
+  afterEach(() => setCurrentAhxSource(null));
+
+  it('an edit of a song with bytes is applied (heard), and reaches the recorded edits in the song\'s format', () => {
+    const store = loadedKarma();
+    const file = importAhxToTrackerSong(demo('karma.ahx'));
+    const rec = ahxSourceRecordOf(file)!;
+    setCurrentAhxSource(rec.bytes, rec);
+    expect(ahxSourceInfo.value).toEqual({ format: 'ahx', version: rec.version });
+    const edited = clone(store.instrumentSlots[0]!.ahxData!);
+    edited.volume = 20;
+    expect(store.updateAhxInstrument(1, edited)).toBe('applied');
+    expect(currentAhxInstrumentEdits()).toHaveLength(1);
+    expect(currentAhxInstrumentEdits()[0]!.bytes[0]).toBe(20);
+  });
+
+  it('an HVL song\'s instrument keeps the commands and the wide PList layout only HVL has', () => {
+    const store = loadedKarma();
+    const hvl = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/ahx/sunspots.hvl'));
+    const bytes = new Uint8Array(hvl.buffer.slice(hvl.byteOffset, hvl.byteOffset + hvl.byteLength));
+    setCurrentAhxSource(bytes);
+    expect(ahxSourceInfo.value!.format).toBe('hvl');
+    const edited = clone(store.instrumentSlots[0]!.ahxData!);
+    edited.plist.entries = [{ note: 10, waveform: 3, fixed: false, fx: [9, 0], fxParam: [1, 0] }];
+    // Command 9 exists in HVL's PList only: an AHX-hard-coded store would reject the edit.
+    expect(store.updateAhxInstrument(1, edited)).toBe('applied');
+    expect(store.instrumentSlots[0]!.ahxData!.plist.entries[0]!.fx[0]).toBe(9);
+    // HVL entries are 5 bytes wide: 22 + 5.
+    expect(currentAhxInstrumentEdits()[0]!.bytes.length).toBe(22 + 5);
+  });
+
+  it('a version-0 AHX song keeps no high nibble on a filter-toggle parameter, as the engine reads it', () => {
+    const store = loadedKarma();
+    setCurrentAhxSource(new Uint8Array([0x54, 0x48, 0x58, 0]));
+    expect(ahxSourceInfo.value).toEqual({ format: 'ahx', version: 0 });
+    const edited = clone(store.instrumentSlots[0]!.ahxData!);
+    edited.plist.entries = [{ note: 10, waveform: 3, fixed: false, fx: [4, 5], fxParam: [0xa7, 0xb3] }];
+    expect(store.updateAhxInstrument(1, edited)).toBe('applied');
+    // fx 4 (filter toggle) is stripped to its low nibble; fx 5 (a jump) is not.
+    expect(store.instrumentSlots[0]!.ahxData!.plist.entries[0]!.fxParam).toEqual([0x07, 0xb3]);
+  });
+
+  it('an HVL song\'s slot with HVL-only commands survives a load; the same data in an AHX song does not', () => {
+    const file = importAhxToTrackerSong(demo('karma.ahx'));
+    const saved = clone(file);
+    const slot = saved.data.instrumentSlots[0] as InstrumentSlot;
+    slot.ahxData!.plist.entries = [{ note: 1, waveform: 1, fixed: false, fx: [9, 0], fxParam: [0, 0] }];
+    const asAhx = useTrackerStore();
+    asAhx.loadSongFile(saved);
+    expect(asAhx.instrumentSlots[0]!.ahxData).toBeUndefined();
+
+    setActivePinia(createPinia());
+    const asHvl = useTrackerStore();
+    attachAhxSource(saved, new Uint8Array([0x48, 0x56, 0x4c, 1]), { format: 'hvl', version: 1 });
+    asHvl.loadSongFile(saved);
+    expect(asHvl.instrumentSlots[0]!.ahxData!.plist.entries[0]!.fx[0]).toBe(9);
   });
 });
 

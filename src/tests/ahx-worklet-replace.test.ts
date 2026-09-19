@@ -231,3 +231,65 @@ describe('replace-instrument in the worklet, over the real wasm', () => {
     expect(holds[1]?.type === 'warm-hold' && holds[1].ticks).toBe(0);
   });
 });
+
+describe('replace-instruments (a batch) in the worklet, over the real wasm', () => {
+  const song = () => {
+    const { core, events } = newCore();
+    core.handle({ type: 'load-song', id: nextId++, bytes: karmaBytes });
+    core.handle({ type: 'play' });
+    render(core, 1);
+    return { core, events };
+  };
+  const batch = (core: AhxProcessorCore, events: AhxEvent[], edits: Array<[number, Uint8Array]>) => {
+    const wireEdits = edits.map(([instrument, bytes]) => ({ id: nextReplaceId++, instrument, bytes }));
+    core.handle({ type: 'replace-instruments', edits: wireEdits });
+    return wireEdits.map(({ id }) => {
+      const answer = events.find((e) => e.type === 'instrument-replaced' && e.id === id);
+      if (!answer || answer.type !== 'instrument-replaced') throw new Error('no answer');
+      return answer;
+    });
+  };
+  const stats = (core: AhxProcessorCore, events: AhxEvent[]) => {
+    const before = events.length;
+    core.handle({ type: 'get-hifi-stats' });
+    const stat = events.slice(before).find((e) => e.type === 'hifi-stats');
+    if (!stat || stat.type !== 'hifi-stats') throw new Error('no stats');
+    return stat;
+  };
+
+  it('answers every edit of the batch, and plays what the same edits one by one play', () => {
+    const edits: Array<[number, Uint8Array]> = [
+      [16, wire(setAhxNumber(instrument(16), 'volume', 4))],
+      [3, wire(setAhxNumber(instrument(3), 'waveLength', 4))],
+      [5, wire(setAhxEnvelope(instrument(5), 'dVolume', 7))],
+    ];
+    const one = song();
+    for (const [idx, bytes] of edits) replace(one.core, one.events, idx, bytes);
+    const outOne = render(one.core, 5);
+
+    const all = song();
+    const answers = batch(all.core, all.events, edits);
+    expect(answers.map((a) => [a.instrument, a.ok])).toEqual([[16, true], [3, true], [5, true]]);
+    expect(Array.from(render(all.core, 5))).toEqual(Array.from(outOne));
+    expect(stats(all.core, all.events).misses).toBe(0);
+    expect(stats(all.core, all.events).locked).toBe(true);
+  });
+
+  it('a refused edit is answered as refused and does not stop the others of the batch', () => {
+    const { core, events } = song();
+    const answers = batch(core, events, [
+      [1, wire(instrument(1)).slice(0, 30)],
+      [999, wire(instrument(1))],
+      [16, wire(setAhxNumber(instrument(16), 'volume', 4))],
+    ]);
+    expect(answers.map((a) => a.ok)).toEqual([false, false, true]);
+    expect(answers[0]!.message).toBeTruthy();
+    expect(answers[1]!.message).toMatch(/no instrument 999/);
+  });
+
+  it('with no song loaded, refuses each edit without throwing', () => {
+    const { core, events } = newCore();
+    const answers = batch(core, events, [[1, wire(instrument(1))], [2, wire(instrument(2))]]);
+    expect(answers.map((a) => [a.ok, a.message])).toEqual([[false, 'no song is loaded'], [false, 'no song is loaded']]);
+  });
+});

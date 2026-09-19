@@ -241,6 +241,28 @@ export class AhxPlayerClient {
   }
 
   /**
+   * Replace several instruments as one command: the worklet swaps them all and
+   * walks the song for hi-fi tables once, where `replaceInstrument` per
+   * instrument would walk it once each. One promise per edit, in order, each
+   * settling as `replaceInstrument`'s does (after the walk).
+   */
+  replaceInstruments(edits: ReadonlyArray<{ instrument: number; bytes: Uint8Array }>): Promise<void>[] {
+    if (edits.length === 0) return [];
+    if (this.unusable) return edits.map(() => Promise.reject(this.unusable));
+    const wire: Array<{ id: number; instrument: number; bytes: ArrayBuffer }> = [];
+    const promises = edits.map(({ instrument, bytes }) => {
+      const id = this.nextReplaceId++;
+      const copy = bytes.slice();
+      wire.push({ id, instrument, bytes: copy.buffer });
+      return new Promise<void>((resolve, reject) => {
+        this.pendingReplaces.set(id, { resolve, reject });
+      });
+    });
+    this.send({ type: 'replace-instruments', edits: wire }, wire.map((edit) => edit.bytes));
+    return promises;
+  }
+
+  /**
    * Ticks a preview note-on's prewarm holds the key down for `instrument`
    * (bounded by what the instrument can produce, at most 1000); 0 with no such
    * instrument. Diagnostics and tests.

@@ -77,6 +77,14 @@ export interface AhxWasmPlayer {
    * song lacks.
    */
   replace_instrument(instrument: number, bytes: Uint8Array): void;
+  /**
+   * `replace_instrument` without the hi-fi walk it may owe: the instrument is
+   * swapped now, and the walk waits for `finish_instrument_edits`, so a batch
+   * of edits costs one walk of the song.
+   */
+  replace_instrument_deferred(instrument: number, bytes: Uint8Array): void;
+  /** Pays the walk the deferred edits owe (nothing when none does). */
+  finish_instrument_edits(): void;
   instrument_count(): number;
   /** Ticks a preview note-on's prewarm holds the key down for `instrument` (0 for none). */
   preview_warm_hold_ticks(instrument: number): number;
@@ -215,6 +223,13 @@ export type AhxCommand =
    * instrument. Answered with `instrument-replaced` carrying the same `id`.
    */
   | { type: 'replace-instrument'; id: number; instrument: number; bytes: ArrayBuffer | Uint8Array }
+  /**
+   * Several `replace-instrument`s as one command: every instrument is swapped,
+   * then the song is walked once for the hi-fi tables the edited song needs
+   * (instead of once per instrument). Each edit is answered with its own
+   * `instrument-replaced` (its own `id`), all after the walk.
+   */
+  | { type: 'replace-instruments'; edits: Array<{ id: number; instrument: number; bytes: ArrayBuffer | Uint8Array }> }
   /** Ask for a `hifi-stats` event: diagnostics, and what the E2E asserts on. */
   | { type: 'get-hifi-stats' }
   /** Ask for a `warm-hold` event: the preview prewarm's hold for one instrument. */
@@ -386,6 +401,9 @@ export class AhxProcessorCore {
       case 'replace-instrument':
         this.replaceInstrument(command.id, command.instrument, command.bytes);
         break;
+      case 'replace-instruments':
+        this.replaceInstruments(command.edits);
+        break;
       case 'get-warm-hold':
         this.post({
           type: 'warm-hold',
@@ -522,6 +540,41 @@ export class AhxProcessorCore {
       // song is as it was.
       this.post({ type: 'instrument-replaced', id, instrument, ok: false, message: String(error) });
     }
+  }
+
+  /** `replace-instruments`: each edit swapped, one hi-fi walk for all, each answered. */
+  private replaceInstruments(
+    edits: Array<{ id: number; instrument: number; bytes: ArrayBuffer | Uint8Array }>,
+  ): void {
+    const player = this.player;
+    if (!player) {
+      for (const { id, instrument } of edits) {
+        this.post({ type: 'instrument-replaced', id, instrument, ok: false, message: 'no song is loaded' });
+      }
+      return;
+    }
+    const answers: AhxEvent[] = [];
+    for (const { id, instrument, bytes } of edits) {
+      try {
+        player.replace_instrument_deferred(instrument, toBytes(bytes));
+        answers.push({ type: 'instrument-replaced', id, instrument, ok: true });
+      } catch (error) {
+        answers.push({ type: 'instrument-replaced', id, instrument, ok: false, message: String(error) });
+      }
+    }
+    // The walk, once. Answered after it, like a single replace: an `ok` means
+    // the tables are built.
+    try {
+      player.finish_instrument_edits();
+    } catch (error) {
+      for (const answer of answers) {
+        if (answer.type === 'instrument-replaced' && answer.ok) {
+          answer.ok = false;
+          answer.message = String(error);
+        }
+      }
+    }
+    for (const answer of answers) this.post(answer);
   }
 
   /**

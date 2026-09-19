@@ -50,6 +50,8 @@ export class AhxPreview {
     ) => Promise<AhxPlayerClient> = createAhxPlayer,
     /** The instrument edits a load applies on top of the file's own bytes. */
     private readonly editsToApply: () => readonly AhxInstrumentEdit[] = currentAhxInstrumentEdits,
+    /** Told the instruments (1-based) of the edits a load applied that the engine refused, when there were any. */
+    private readonly onRejectedEdits?: (instruments: number[]) => void,
   ) {}
 
   /** Whether a preview worklet currently exists (for tests and diagnostics). */
@@ -154,8 +156,11 @@ export class AhxPreview {
     const client = await this.ensureClient();
     if (this.loadedSource === bytes) return client;
     this.loadedSource = null;
-    await client.loadSong(bytes, 2, this.editsToApply());
+    const info = await client.loadSong(bytes, 2, this.editsToApply());
     this.loadedSource = bytes;
+    if (info.rejectedInstruments && info.rejectedInstruments.length > 0) {
+      this.onRejectedEdits?.(info.rejectedInstruments);
+    }
     return this.disposed ? null : client;
   }
 

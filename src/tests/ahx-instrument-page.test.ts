@@ -20,6 +20,7 @@ import AhxInstrumentPage from 'pages/AhxInstrumentPage.vue';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import { currentAhxInstrumentEdits, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
+import { clearAhxNotices, reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 
 const karma = (): ArrayBuffer => {
   const b = readFileSync(resolve(__dirname, '../../public/demos/ahx/karma.ahx'));
@@ -63,8 +64,34 @@ describe('AhxInstrumentPage as an editor', () => {
   it('says it edits the song, and is not read-only', async () => {
     load();
     const w = await mountEditor(1);
-    expect(w.get('[data-testid="ahx-editable-badge"]').text()).toBe('Edits the song');
+    expect(w.get('[data-testid="ahx-editable-badge"]').text()).toBe('Edits this session');
     expect(w.text()).not.toMatch(/read-only/i);
+    // No promise that saving keeps anything: an AHX song cannot be saved as .cmod.
+    expect(w.get('[data-testid="ahx-editable-badge"]').attributes('title')).not.toMatch(/saving keeps/i);
+    expect(w.find('[data-testid="ahx-source-missing"]').exists()).toBe(false);
+    expect((w.get('[data-testid="ahx-audition-60"]').element as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('with no source bytes it says edits cannot be heard, and the audition keys are off', async () => {
+    const store = useTrackerStore();
+    store.loadSongFile(importAhxToTrackerSong(karma()));
+    setCurrentAhxSource(null); // a song loaded from a saved file
+    const w = await mountEditor(1);
+    expect(w.get('[data-testid="ahx-editable-badge"]').text()).toBe('Edits not audible');
+    expect(w.get('[data-testid="ahx-source-missing"]').text()).toMatch(/nothing can be heard/);
+    const key = w.get('[data-testid="ahx-audition-60"]');
+    expect((key.element as HTMLButtonElement).disabled).toBe(true);
+    preview.on.length = 0;
+    await key.trigger('pointerdown');
+    expect(preview.on).toEqual([]);
+  });
+
+  it('shows what the engine refused, not only the console', async () => {
+    load();
+    reportAhxNotice('Instrument #3: the song did not accept the edit (x), so it plays as before.');
+    const w = await mountEditor(1);
+    expect(w.get('[data-testid="ahx-notice"]').text()).toMatch(/Instrument #3/);
+    clearAhxNotices();
   });
 
   it('every control writes through to the slot’s ahxData and to the song’s recorded edits at once', async () => {

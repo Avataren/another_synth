@@ -694,13 +694,6 @@ impl Voice {
         self.plant_square = false;
     }
 
-    fn resolve_source<'a>(&'a self, source: AudioSourceRef, waves: &'a [i8], block: usize) -> &'a [i8] {
-        match source {
-            AudioSourceRef::Waves(offset) => &waves[offset..offset + block],
-            AudioSourceRef::SquareTemp => &self.square_temp_buffer[0..block],
-        }
-    }
-
     /// Hi-fi mode's per-tick pick, run after [`set_audio`](Self::set_audio):
     /// the band-limited oscillator for the cycle the voice is about to play
     /// (`voice_buffer[..4 << wave_length]`, which is whatever table the
@@ -748,15 +741,13 @@ impl Voice {
         // Harmless (deterministic content) and ported as-is, not "fixed".
         if self.new_waveform {
             if self.waveform == WAVEFORM_NOISE {
-                let scratch: Vec<i8> = self.resolve_source(self.audio_source, waves, 0x280).to_vec();
-                self.voice_buffer[0..0x280].copy_from_slice(&scratch);
+                let source = source_slice(self.audio_source, waves, &self.square_temp_buffer, 0x280);
+                self.voice_buffer[0..0x280].copy_from_slice(source);
             } else {
                 let block = 4usize * (1usize << self.wave_length);
                 let wave_loops = (1usize << ((5 - self.wave_length).max(0) as u32)) * 5;
-                let scratch: Vec<i8> = self.resolve_source(self.audio_source, waves, block).to_vec();
-                for i in 0..wave_loops {
-                    self.voice_buffer[i * block..i * block + block].copy_from_slice(&scratch);
-                }
+                let source = source_slice(self.audio_source, waves, &self.square_temp_buffer, block);
+                fill_cycles(&mut self.voice_buffer, source, block, wave_loops);
             }
             self.voice_buffer[0x280] = self.voice_buffer[0];
         }
@@ -778,14 +769,40 @@ impl Voice {
             if let Some(source) = self.ring_audio_source {
                 let block = 4usize * (1usize << self.wave_length);
                 let wave_loops = (1usize << ((5 - self.wave_length).max(0) as u32)) * 5;
-                let scratch: Vec<i8> = self.resolve_source(source, waves, block).to_vec();
-                for i in 0..wave_loops {
-                    self.ring_voice_buffer[i * block..i * block + block].copy_from_slice(&scratch);
-                }
+                let source = source_slice(source, waves, &self.square_temp_buffer, block);
+                fill_cycles(&mut self.ring_voice_buffer, source, block, wave_loops);
                 self.ring_voice_buffer[0x280] = self.ring_voice_buffer[0];
                 self.ring_mix_active = true;
             }
         }
+    }
+}
+
+/// The `block` bytes of the wave an [`AudioSourceRef`] names. Takes the square
+/// buffer as an argument, not the voice, so the caller can keep writing to its
+/// other buffers while it holds the slice (no per-tick copy to get around the
+/// borrow).
+fn source_slice<'a>(source: AudioSourceRef, waves: &'a [i8], square_temp: &'a [i8], block: usize) -> &'a [i8] {
+    match source {
+        AudioSourceRef::Waves(offset) => &waves[offset..offset + block],
+        AudioSourceRef::SquareTemp => &square_temp[0..block],
+    }
+}
+
+/// `dst[..block * loops]` = `src[..block]` repeated `loops` times, by doubling
+/// (`hvl_set_audio`'s per-cycle copy loop, with the same result: 160 copies of
+/// 4 bytes become 8).
+fn fill_cycles(dst: &mut [i8], src: &[i8], block: usize, loops: usize) {
+    let total = block * loops;
+    if total == 0 {
+        return;
+    }
+    dst[..block].copy_from_slice(&src[..block]);
+    let mut filled = block;
+    while filled < total {
+        let n = filled.min(total - filled);
+        dst.copy_within(0..n, filled);
+        filled += n;
     }
 }
 

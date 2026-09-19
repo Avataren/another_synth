@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter, type RouteRecordRaw } from 'vue-router';
 import routes from 'src/router/routes';
-import { ahxSlotRedirect } from 'src/router/ahx-slot-guard';
+import { computed, nextTick } from 'vue';
+import { ahxSlotRedirect, watchAhxSlotRedirect } from 'src/router/ahx-slot-guard';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 
@@ -83,5 +84,48 @@ describe('legacy synth-editor URLs and AHX slots', () => {
     const router = makeRouter();
     await router.push('/patch/instrument/1');
     expect(router.currentRoute.value.path).toBe('/tracker');
+  });
+});
+
+describe('a deep link whose song loads after the route was entered', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('is sent to the AHX editor when the song arrives, though the route never changed', async () => {
+    const store = useTrackerStore();
+    const router = makeRouter();
+    // A fresh tab: the route is entered with no song, so the guard lets the synth editor take it.
+    await router.push('/patch/instrument/2');
+    expect(router.currentRoute.value.name).toBe('patch-instrument-editor');
+    // What IndexPage does: the route's slot, watched for where it should go.
+    const slot = computed(() => {
+      const raw = router.currentRoute.value.params.slot;
+      return router.currentRoute.value.name === 'patch-instrument-editor' ? Number(raw) : null;
+    });
+    const stop = watchAhxSlotRedirect(slot, router);
+    await nextTick();
+    expect(router.currentRoute.value.name).toBe('patch-instrument-editor');
+
+    store.loadSongFile(importAhxToTrackerSong(karma()));
+    await nextTick();
+    await router.isReady();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(router.currentRoute.value.name).toBe('ahx-instrument-display');
+    expect(router.currentRoute.value.params.slot).toBe('2');
+    stop();
+  });
+
+  it('leaves a non-AHX slot on the synth editor, song loaded or not', async () => {
+    const store = useTrackerStore();
+    const router = makeRouter();
+    await router.push('/patch/instrument/2');
+    const slot = computed(() => (router.currentRoute.value.name === 'patch-instrument-editor' ? 2 : null));
+    const stop = watchAhxSlotRedirect(slot, router);
+    store.initializeIfNeeded();
+    await nextTick();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(router.currentRoute.value.name).toBe('patch-instrument-editor');
+    stop();
   });
 });

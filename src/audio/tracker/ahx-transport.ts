@@ -183,6 +183,16 @@ export class AhxTransport {
     return this.client ? this.client.replaceInstrument(instrument, bytes) : Promise.resolve();
   }
 
+  /**
+   * `replaceInstrument` for several at once: one walk of the song for hi-fi
+   * tables however many instruments changed (`AhxPlayerClient.replaceInstruments`).
+   * One promise per edit; nothing to do (all resolved) with no worklet yet: its
+   * load applies every recorded edit.
+   */
+  replaceInstruments(edits: ReadonlyArray<AhxInstrumentEdit>): Promise<void>[] {
+    return this.client ? this.client.replaceInstruments(edits) : edits.map(() => Promise.resolve());
+  }
+
   play(): void {
     this.client?.play();
   }

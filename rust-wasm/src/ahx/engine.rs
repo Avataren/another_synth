@@ -635,6 +635,11 @@ impl AhxEngine {
         let saved_subsong = self.subsong;
         let saved_remaining = self.tick_remaining;
         let saved_capture = self.capture.take();
+        // A song that loops one position never raises its end flag, so with
+        // "play pattern" on every subsong would burn the whole tick cap and
+        // build tables for that position alone. The walk is of the song's own
+        // flow, like `seek`'s replay; the setting is put back afterwards.
+        let saved_loop = std::mem::replace(&mut self.loop_position, false);
 
         let cap = PREWARM_MAX_TICKS * self.song.speed_multiplier.max(1) as u64;
         let (mut ticks, mut laps, mut converged) = (0u64, 0u32, true);
@@ -669,6 +674,7 @@ impl AhxEngine {
         self.subsong = saved_subsong;
         self.tick_remaining = saved_remaining;
         self.capture = saved_capture;
+        self.loop_position = saved_loop;
 
         let bank = self.hifi.as_mut().expect("still on");
         bank.set_mode(BankMode::Locked);
@@ -916,8 +922,28 @@ impl AhxEngine {
         let tables_may_differ = !same_tables(&self.song.instruments[idx], &ins);
         ins.name = std::mem::take(&mut self.song.instruments[idx].name);
         self.song.instruments[idx] = ins;
-        self.live_warm.retain(|&(instrument, _)| instrument as usize != idx);
+        // What `live_warm` recorded is only stale if the edit can reach other
+        // tables: the bank is keyed by table contents, and an edit that leaves
+        // `same_tables` true asks for exactly the keys the old one did (and the
+        // hold length, a function of the same fields, is unchanged), so the
+        // next note-on need not walk the instrument again.
+        if tables_may_differ {
+            self.live_warm.retain(|&(instrument, _)| instrument as usize != idx);
+        }
         Some(tables_may_differ)
+    }
+
+    /// Whether any step of any track of the song triggers instrument `idx`
+    /// (1-based). A voice only ever holds an instrument a step triggered, so an
+    /// instrument for which this is false can never ask the hi-fi bank for a
+    /// table, and an edit of it needs no prewarm walk. It looks at every track,
+    /// not just those a position lists: an over-approximation, never a miss.
+    /// Live (preview) mode plays instruments no step names, but it prewarms per
+    /// note-on and never walks the song.
+    pub fn instrument_is_triggered(&self, idx: usize) -> bool {
+        idx >= 1
+            && idx <= u8::MAX as usize
+            && self.song.tracks.iter().any(|track| track.iter().any(|step| step.instrument as usize == idx))
     }
 
     /// [`prewarm_hifi`](Self::prewarm_hifi) for after an instrument edit: the
@@ -1711,6 +1737,29 @@ mod tests {
         assert_eq!(e.replace_instrument(0, Instrument::default()), None, "0 is the placeholder, not an instrument");
         assert_eq!(e.replace_instrument(count + 1, Instrument::default()), None);
         assert_eq!(e.song().instruments[0], Instrument::default());
+    }
+
+    /// A preview's record of what it prewarmed for an instrument goes stale only
+    /// when an edit can reach other tables: a volume or envelope edit keeps it.
+    #[test]
+    fn a_table_free_edit_keeps_the_previews_warm_record_and_a_table_edit_drops_it() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx/karma.ahx");
+        let song = crate::ahx::format::parse(&std::fs::read(&path).unwrap()).unwrap();
+        let mut e = AhxEngine::new(song, 44100, 2).unwrap();
+        e.set_hifi(true);
+        e.enable_live();
+        assert!(e.live_note_on(1, 30, 127));
+        assert!(e.live_warm.contains(&(1, 30)));
+
+        let mut quieter = e.song().instruments[1].clone();
+        quieter.volume = quieter.volume.wrapping_sub(3);
+        quieter.envelope.d_volume = quieter.envelope.d_volume.wrapping_sub(1);
+        assert_eq!(e.replace_instrument(1, quieter.clone()), Some(false));
+        assert!(e.live_warm.contains(&(1, 30)), "no table can differ: the record stands");
+
+        quieter.wave_length = if quieter.wave_length == 0 { 1 } else { quieter.wave_length - 1 };
+        assert_eq!(e.replace_instrument(1, quieter), Some(true));
+        assert!(!e.live_warm.contains(&(1, 30)), "a table edit: the next note-on prewarms again");
     }
 
     /// A voice that is holding an instrument when its PList shrinks (or empties)

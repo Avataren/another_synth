@@ -18,6 +18,7 @@ import {
   ahxPListCommandsFor,
   type AhxInstrument,
   type AhxPListEntry,
+  type AhxSongFormat,
 } from '@another-synth/tracker-playback';
 
 /** Wave lengths the engine has tables for: 4 << 0 .. 4 << 5 samples. */
@@ -113,8 +114,16 @@ export type AhxPListEdit =
   | { field: 'fx'; slot: 0 | 1; value: number }
   | { field: 'fxParam'; slot: 0 | 1; value: number };
 
-/** Change one field of PList row `row`; an unknown row leaves the instrument as it is. */
-export function editAhxPListEntry(ins: AhxInstrument, row: number, edit: AhxPListEdit): AhxInstrument {
+/**
+ * Change one field of PList row `row`; an unknown row leaves the instrument as
+ * it is. `format` is the song's: it decides which commands a row can be given.
+ */
+export function editAhxPListEntry(
+  ins: AhxInstrument,
+  row: number,
+  edit: AhxPListEdit,
+  format: AhxSongFormat = 'ahx',
+): AhxInstrument {
   const next = copy(ins);
   const entry = next.plist.entries[row];
   if (!entry) return next;
@@ -129,8 +138,8 @@ export function editAhxPListEntry(ins: AhxInstrument, row: number, edit: AhxPLis
       entry.fixed = edit.value;
       break;
     case 'fx': {
-      // Only commands the AHX PList can hold; anything else is not written.
-      if (ahxPListCommandsFor('ahx').includes(edit.value)) entry.fx[edit.slot] = edit.value;
+      // Only commands the song format's PList can hold; anything else is not written.
+      if (ahxPListCommandsFor(format).includes(edit.value)) entry.fx[edit.slot] = edit.value;
       break;
     }
     case 'fxParam':
