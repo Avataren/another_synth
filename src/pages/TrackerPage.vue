@@ -6,6 +6,7 @@
       :class="{ 'edit-mode': isEditMode, 'is-mobile': isMobileLayout }"
       tabindex="0"
       @keydown="onKeyDown"
+      @pointerdown="onContainerPointerDown"
     >
       <div
         v-if="isLoadingSong"
@@ -725,6 +726,7 @@
         <div
           ref="patternAreaRef"
           class="pattern-area"
+          data-selection-surface
           @scroll.passive="onPatternAreaScroll"
         >
           <!--
@@ -829,6 +831,7 @@
           v-show="trackScrollbarWidth > 0"
           ref="trackScrollbarRef"
           class="track-scrollbar"
+          data-selection-surface
           :style="{
             marginLeft: `${trackScrollbarInset.left}px`,
             marginRight: `${trackScrollbarInset.right}px`,
@@ -933,6 +936,7 @@ import type { TrackerKeyboardContext } from 'src/composables/keyboard/types';
 import { useTrackerExport } from 'src/composables/useTrackerExport';
 import type { TrackerExportContext } from 'src/composables/useTrackerExport';
 import { useTrackerSelection } from 'src/composables/useTrackerSelection';
+import { createClearSelectionOnPress } from 'src/composables/useClearSelectionOnOutsidePress';
 import type { TrackerSelectionContext } from 'src/composables/useTrackerSelection';
 import { useTrackerEditing } from 'src/composables/useTrackerEditing';
 import type { TrackerEditingContext } from 'src/composables/useTrackerEditing';
@@ -2045,6 +2049,16 @@ function onPatternLengthInput(event: Event) {
     setPatternRows(value);
   }
 }
+
+// A primary press on a dead area (no control, not the pattern grid) drops the
+// selection. The grid is tagged `data-selection-surface`, so a drag-select
+// that starts there is never cleared by this. Sequence rows are clickable
+// divs, so they count as controls.
+const onContainerPointerDown = createClearSelectionOnPress(
+  () => clearSelection(),
+  () => selectionAnchor.value !== null,
+  { isExempt: (target) => target.closest('.sequence-item') !== null }
+);
 
 function handleGlobalMouseUp() {
   if (isMouseSelecting.value) {
