@@ -1,4 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, it, expect, beforeEach } from 'vitest';
+import { parseAhx } from '@another-synth/tracker-playback';
 import { setActivePinia, createPinia } from 'pinia';
 import {
   useTrackerStore,
@@ -9,6 +12,10 @@ import {
 } from 'src/stores/tracker-store';
 import type { Patch } from 'src/audio/types/preset-types';
 import { createDefaultPatchMetadata, createEmptySynthState } from 'src/audio/types/preset-types';
+
+function bytes(demo: string): Uint8Array {
+  return new Uint8Array(fs.readFileSync(path.resolve(__dirname, '../../../public/demos', demo)));
+}
 
 function slot(n: number, o: Partial<SerializedInstrumentSlot> = {}): InstrumentSlot {
   // Old files hold the legacy 'mod' type; the cast is the loader's input contract.
@@ -120,6 +127,55 @@ describe('song file v4: instrument tags', () => {
     });
     expect(store.instrumentSlots[0]!.patchId).toBeUndefined();
     expect(store.instrumentSlots[0]!.oplData).toEqual(oplData);
+  });
+
+  it("lets a synth patch beat a stale 'mod' slot type on load", () => {
+    const store = useTrackerStore();
+    store.loadSongFile(
+      file(3, {
+        moduleFormat: 'protracker',
+        instrumentSlots: [slot(1, { instrumentType: 'mod', patchId: 'p1' })],
+        songPatches: { p1: patch('p1', 'synth') },
+      }),
+    );
+    expect(store.instrumentSlots[0]).toMatchObject({
+      instrumentType: 'synth',
+      instrumentFormat: 'native',
+    });
+  });
+
+  it('keeps an AHX slot and its parsed instrument through serialize and load', () => {
+    const store = useTrackerStore();
+    const instrument = parseAhx(bytes('ahx/karma.ahx')).instruments[1]!;
+    store.loadSongFile(
+      file(4, {
+        moduleFormat: 'ahx',
+        instrumentSlots: [
+          slot(1, {
+            instrumentType: 'ahx',
+            instrumentFormat: 'ahx',
+            instrumentName: instrument.name,
+            ahxData: instrument,
+          }),
+        ],
+      }),
+    );
+    expect(store.instrumentSlots[0]).toMatchObject({
+      instrumentType: 'ahx',
+      instrumentFormat: 'ahx',
+    });
+    expect(store.instrumentSlots[0]!.patchId).toBeUndefined();
+    expect(store.instrumentSlots[0]!.ahxData).toEqual(instrument);
+
+    const saved = store.serializeSong();
+    expect(saved.data.instrumentSlots[0]!.ahxData).toEqual(instrument);
+    store.resetToNewSong();
+    store.loadSongFile(JSON.parse(JSON.stringify(saved)));
+    expect(store.instrumentSlots[0]!.ahxData).toEqual(instrument);
+    expect(store.instrumentSlots[0]).toMatchObject({
+      instrumentType: 'ahx',
+      instrumentFormat: 'ahx',
+    });
   });
 
   it('round-trips v4 tags through serialize and load', () => {

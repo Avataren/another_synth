@@ -539,10 +539,10 @@
                 class="instrument-row"
                 :class="{
                   active: activeInstrumentId === formatInstrumentId(slot.slot),
-                  empty: !slot.patchId,
+                  empty: !slot.patchId && !isAhxSlot(slot),
                   'mod-instrument': !!instrumentBadgeLabel(slot),
                 }"
-                :title="slot.patchId ? `Bank: ${slot.bankName}` : ''"
+                :title="slot.patchId || isAhxSlot(slot) ? `Bank: ${slot.bankName}` : ''"
                 @click="setActiveInstrument(slot.slot)"
               >
                 <div class="slot-number">
@@ -607,6 +607,7 @@
                     :decimals="2"
                     scale="mini"
                     :unitFunc="formatGainAsDb"
+                    :disable="isAhxSlot(slot)"
                     @update:model-value="onSlotVolumeChange(slot.slot, $event)"
                   />
                 </div>
@@ -626,8 +627,8 @@
                   <button
                     type="button"
                     class="icon-action-button"
-                    title="Edit patch"
-                    :disabled="!slot.patchId"
+                    :title="isAhxSlot(slot) ? 'View instrument' : 'Edit patch'"
+                    :disabled="!canEditSlot(slot)"
                     @click.stop="editSlotPatch(slot.slot)"
                   >
                     <q-icon name="edit" size="16px" />
@@ -953,7 +954,11 @@ import { usePostFxStore } from 'src/stores/post-fx-store';
 import PostFxFilterControl from 'src/components/PostFxFilterControl.vue';
 import { useMobileLayout } from 'src/composables/useMobileLayout';
 import { storeToRefs } from 'pinia';
-import { instrumentBadgeLabel } from 'src/audio/tracker/instrument-types';
+import {
+  canEditSlot,
+  instrumentBadgeLabel,
+  isAhxSlot,
+} from 'src/audio/tracker/instrument-types';
 
 const router = useRouter();
 const $q = useQuasar();

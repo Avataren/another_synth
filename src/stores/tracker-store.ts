@@ -23,6 +23,7 @@ import {
   type TrackerSongFileVersion,
   type TrackerPattern,
   type OplInstrumentData,
+  type AhxInstrument,
 } from '@another-synth/tracker-playback';
 
 export type {
@@ -83,6 +84,15 @@ export interface InstrumentSlot {
    * the existing synth's FM primitives is designed here or wanted.
    */
   oplData?: OplInstrumentData;
+  /**
+   * The AHX instrument this slot lists, exactly as the parser decoded it
+   * (envelope, filter/square/vibrato settings, the PList), kept for the AHX
+   * instrument editor (Task 5) the way `oplData` is kept for OPL. The whole
+   * parsed struct is held rather than a trimmed view: it is a few hundred
+   * plain numbers per instrument, and the editor phases need every field.
+   * Never read on the audio path -- the worklet plays the file's own bytes.
+   */
+  ahxData?: AhxInstrument;
 }
 
 // `OplInstrumentData` is re-exported from the library; see the import above.
@@ -707,6 +717,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         slot.instrumentType = undefined;
         slot.instrumentFormat = undefined;
         delete slot.oplData;
+        delete slot.ahxData;
       }
     },
     /** Add or update a patch in the song's patch library */
@@ -781,6 +792,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         slot.instrumentType = normalizeInstrumentType(patchCopy.metadata.instrumentType) ?? 'synth';
         slot.instrumentFormat = 'native';
         delete slot.oplData;
+        delete slot.ahxData;
       }
 
       // If the slot previously pointed at a different patch that no other
@@ -929,6 +941,9 @@ export const useTrackerStore = defineStore('trackerStore', {
         if (tags.instrumentFormat) mapped.instrumentFormat = tags.instrumentFormat;
         if (slot?.oplData) {
           mapped.oplData = slot.oplData;
+        }
+        if (slot?.ahxData) {
+          mapped.ahxData = slot.ahxData;
         }
         if (slot?.volume !== undefined) {
           mapped.volume = slot.volume;

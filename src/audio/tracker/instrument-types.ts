@@ -45,6 +45,7 @@ export interface TaggableSlot {
   instrumentType?: LegacyInstrumentType | undefined;
   instrumentFormat?: InstrumentFormat | undefined;
   oplData?: unknown;
+  ahxData?: unknown;
 }
 
 /** Map any stored type value onto the current vocabulary; unknown -> undefined. */
@@ -80,7 +81,10 @@ export function isSamplerInstrumentType(raw: unknown): boolean {
  *   - empty slot        -> untagged: there is no instrument to describe.
  *
  * `patchType` is the referenced patch's own `metadata.instrumentType`, when
- * known; a sampler patch in a slot without a tag is still a sampler.
+ * known. Where an untagged slot's own type and its patch's disagree (a pre-v4
+ * `'mod'` slot whose patch was since replaced by a synth patch), the patch
+ * wins: it is what actually plays, and `assignPatchToSlot` never rewrote the
+ * old slot type. Fully tagged (v4) slots are trusted as they are.
  */
 export function inferSlotTags(
   slot: TaggableSlot,
@@ -97,8 +101,9 @@ export function inferSlotTags(
     return { instrumentType: 'opl', instrumentFormat: format ?? 's3m' };
   }
 
+  const patchResolved = slot.patchId ? normalizeInstrumentType(patchType) : undefined;
   const resolvedType =
-    type ?? (slot.patchId ? normalizeInstrumentType(patchType) ?? 'synth' : undefined);
+    patchResolved ?? type ?? (slot.patchId ? 'synth' : undefined);
   if (!resolvedType) return {};
 
   if (format) return { instrumentType: resolvedType, instrumentFormat: format };
@@ -131,9 +136,10 @@ export function inferSlotTags(
  *   'sampler-patch' the sampler view of that page, for module-imported PCM
  *                   instruments (MOD / XM / S3M); today it is the same page
  *                   with the synth-only sections hidden
- *   'ahx-display'   the read-only AHX/HVL instrument display. Task 5 builds
- *                   the real editor behind this id; until then AHX songs carry
- *                   no editable slots, so nothing can open it.
+ *   'ahx-display'   the read-only AHX instrument display (waveforms,
+ *                   envelope, PList) on its own page. Task 5 builds the real
+ *                   editor behind this id. It never shares a page with the
+ *                   synth patch editor: an AHX instrument is not a `Patch`.
  */
 export type InstrumentEditorId = 'synth-patch' | 'sampler-patch' | 'ahx-display';
 
@@ -147,13 +153,14 @@ export const INSTRUMENT_EDITOR_BY_FORMAT: Readonly<Record<InstrumentFormat, Inst
 };
 
 /**
- * Router route per editor. Every editor still resolves to the one existing
- * page; a dedicated route per editor lands with each editor.
+ * Router route per editor. The synth and sampler editors are still the one
+ * existing page; the AHX display has its own, since it edits no `Patch`. A
+ * dedicated route per editor lands with each editor.
  */
 export const INSTRUMENT_EDITOR_ROUTE: Readonly<Record<InstrumentEditorId, string>> = {
   'synth-patch': 'patch-instrument-editor',
   'sampler-patch': 'patch-instrument-editor',
-  'ahx-display': 'patch-instrument-editor',
+  'ahx-display': 'ahx-instrument-display',
 };
 
 /**
@@ -169,6 +176,22 @@ export function resolveInstrumentEditor(slot: TaggableSlot): InstrumentEditorId 
   const format = normalizeInstrumentFormat(slot.instrumentFormat);
   if (format) return INSTRUMENT_EDITOR_BY_FORMAT[format];
   return slot.patchId ? 'synth-patch' : null;
+}
+
+/**
+ * True when the slot holds an instrument the Edit button can open: a patch
+ * for the patch editors, the preserved AHX instrument for the AHX display
+ * (an AHX slot has no patch by design).
+ */
+export function canEditSlot(slot: TaggableSlot): boolean {
+  const editor = resolveInstrumentEditor(slot);
+  if (!editor) return false;
+  return editor === 'ahx-display' ? !!slot.ahxData : !!slot.patchId;
+}
+
+/** True for an AHX-imported slot: it lists an instrument but has no patch. */
+export function isAhxSlot(slot: TaggableSlot): boolean {
+  return normalizeInstrumentType(slot.instrumentType) === 'ahx';
 }
 
 /** Router route name for a slot's editor, or null. */

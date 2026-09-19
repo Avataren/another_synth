@@ -30,6 +30,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/IndexPage.vue'),
       },
       {
+        // Read-only AHX instrument display (Task 5 B1). Its own page: an AHX
+        // instrument is not a synth `Patch`, so it must not open IndexPage.
+        path: 'ahx/instrument/:slot(\\d+)',
+        name: 'ahx-instrument-display',
+        component: () => import('pages/AhxInstrumentPage.vue'),
+      },
+      {
         path: 'tracker',
         component: () => import('pages/TrackerPage.vue'),
         beforeEnter: (to) => {

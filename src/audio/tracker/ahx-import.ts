@@ -1,6 +1,7 @@
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { CURRENT_SONG_FILE_VERSION } from 'src/stores/tracker-store';
 import { attachAhxSource } from 'src/audio/tracker/ahx-source';
+import { buildAhxSlots } from 'src/audio/tracker/instrument-slots';
 import {
   looksLikeAhx as looksLikeAhxInternal,
   parseAhx,
@@ -10,10 +11,14 @@ import {
 /**
  * Assembly only, like the other `*-import.ts` files: the parse and the row
  * model live in the library. What is specific to AHX is what is *missing*: no
- * instrument slots or patches (the instruments are waveform/envelope/filter
- * descriptors inside the file and the worklet's engine plays them), and no
- * timing fields (the engine owns the transport). The song file is the display
+ * patches (the instruments are waveform/envelope/filter descriptors inside
+ * the file and the worklet's engine plays them), and no timing fields (the engine owns the transport). The song file is the display
  * model; the file's bytes ride along via `ahx-source`.
+ *
+ * An AHX song lists its instruments as name-only slots (`ahx`/`ahx`, no
+ * patch) that keep the parsed instrument for the display editor. An HVL song
+ * keeps no slots for now: it needs an `instrumentFormat` of its own, and
+ * stamping it `ahx` would be wrong.
  */
 export const looksLikeAhxModule = looksLikeAhxInternal;
 
@@ -41,7 +46,7 @@ export function importAhxToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
       patterns,
       sequence: sequenceIds,
       currentPatternId: sequenceIds[0] ?? null,
-      instrumentSlots: [],
+      instrumentSlots: song.format === 'ahx' ? buildAhxSlots(song) : [],
       activeInstrumentId: null,
       currentInstrumentPage: 0,
       songPatches: {},

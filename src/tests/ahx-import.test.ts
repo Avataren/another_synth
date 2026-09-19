@@ -9,6 +9,7 @@ import {
   looksLikeS3m,
   parseAhx,
 } from '@another-synth/tracker-playback';
+import { TOTAL_SLOTS } from '@another-synth/tracker-playback';
 import { importAhxToTrackerSong, looksLikeAhxModule } from 'src/audio/tracker/ahx-import';
 import { ahxSourceOf } from 'src/audio/tracker/ahx-source';
 
@@ -98,9 +99,40 @@ describe('importAhxToTrackerSong', () => {
     expect(songFile.data.patternRows).toBe(song.trackLength);
   });
 
-  it('has no sampler instruments: the worklet plays the file', () => {
-    expect(songFile.data.instrumentSlots).toEqual([]);
+  // Task 5 B1 changed this: it used to pin `instrumentSlots: []` (AHX songs
+  // listed no instruments). Morten approved listing them, so an AHX song now
+  // has one name-only slot per file instrument -- still no patch, still no
+  // sampler: the worklet plays the file, and the slot only lists the
+  // instrument and keeps its parsed data (`ahxData`) for the display editor.
+  it('lists each AHX instrument as a name-only ahx/ahx slot with no patch', () => {
+    const filled = songFile.data.instrumentSlots.filter((s) => s.instrumentType);
+    expect(filled).toHaveLength(song.instrumentNr);
+    for (const slot of filled) {
+      const instrument = song.instruments[slot.slot]!;
+      expect(slot.instrumentType).toBe('ahx');
+      expect(slot.instrumentFormat).toBe('ahx');
+      expect(slot.patchId).toBeUndefined();
+      expect(slot.oplData).toBeUndefined();
+      expect(slot.instrumentName).toBe(instrument.name.trim() || slot.instrumentName);
+      expect(slot.instrumentName).not.toBe('');
+      expect(slot.ahxData).toEqual(instrument);
+    }
+    // Slots are addressed by the file's own instrument number, the number the
+    // row model prints, and every other slot stays empty and untagged.
+    expect(filled.map((s) => s.slot)).toEqual(
+      Array.from({ length: song.instrumentNr }, (_, i) => i + 1),
+    );
+    expect(songFile.data.instrumentSlots).toHaveLength(TOTAL_SLOTS);
     expect(songFile.data.songPatches).toEqual({});
+  });
+
+  it('leaves HVL songs without instrument slots (they need their own format tag)', () => {
+    const hvl = bytes('ahx/doobrey_gubbins.hvl');
+    const file = importAhxToTrackerSong(
+      hvl.buffer.slice(hvl.byteOffset, hvl.byteOffset + hvl.byteLength) as ArrayBuffer,
+    );
+    expect(file.data.instrumentSlots).toEqual([]);
+    expect(file.data.songPatches).toEqual({});
   });
 
   it('keeps the file bytes alongside, keyed by the song file', () => {

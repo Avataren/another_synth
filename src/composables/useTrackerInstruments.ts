@@ -4,7 +4,7 @@ import type { Patch } from 'src/audio/types/preset-types';
 import { createDefaultPatchMetadata, createEmptySynthState } from 'src/audio/types/preset-types';
 import type { InstrumentSlot, useTrackerStore } from 'src/stores/tracker-store';
 import type { usePatchStore } from 'src/stores/patch-store';
-import { resolveInstrumentEditorRoute } from 'src/audio/tracker/instrument-types';
+import { canEditSlot, resolveInstrumentEditorRoute } from 'src/audio/tracker/instrument-types';
 
 /**
  * Patch option from a bank
@@ -242,7 +242,7 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
       await pending.catch(() => undefined);
     }
     const slot = context.instrumentSlots.value.find((s) => s.slot === slotNumber);
-    if (!slot?.patchId) return;
+    if (!slot || !canEditSlot(slot)) return;
 
     // The slot's format picks the editor (see INSTRUMENT_EDITOR_BY_FORMAT).
     const route = resolveInstrumentEditorRoute(slot);

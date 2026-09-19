@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   INSTRUMENT_EDITOR_BY_FORMAT,
   INSTRUMENT_EDITOR_ROUTE,
+  canEditSlot,
   inferSlotTags,
   instrumentBadgeLabel,
   isSamplerInstrumentType,
@@ -77,6 +78,25 @@ describe('inferSlotTags', () => {
     expect(inferSlotTags({}, 'xm')).toEqual({});
   });
 
+  it('lets the patch type win over a disagreeing untagged slot type', () => {
+    // A pre-v4 'mod' slot whose patch was later replaced by a synth patch:
+    // assignPatchToSlot never rewrote the slot type, but the patch is what plays.
+    expect(inferSlotTags({ patchId: 'p', instrumentType: 'mod' }, 'protracker', 'synth')).toEqual({
+      instrumentType: 'synth',
+      instrumentFormat: 'native',
+    });
+    // And the other way round.
+    expect(inferSlotTags({ patchId: 'p', instrumentType: 'synth' }, 'xm', 'sampler')).toEqual({
+      instrumentType: 'sampler',
+      instrumentFormat: 'xm',
+    });
+    // No known patch type: the slot's own type stands.
+    expect(inferSlotTags({ patchId: 'p', instrumentType: 'mod' }, 'xm')).toEqual({
+      instrumentType: 'sampler',
+      instrumentFormat: 'xm',
+    });
+  });
+
   it('keeps tags a v4 slot already has', () => {
     const slot = {
       patchId: 'p',
@@ -125,13 +145,28 @@ describe('editor routing table', () => {
     ).toBeNull();
   });
 
-  it('maps every editor to a route (all the existing page for now)', () => {
-    for (const editor of Object.values(INSTRUMENT_EDITOR_BY_FORMAT)) {
+  it('routes the AHX display to its own page, never the synth patch editor', () => {
+    expect(INSTRUMENT_EDITOR_ROUTE['ahx-display']).toBe('ahx-instrument-display');
+    for (const editor of ['synth-patch', 'sampler-patch'] as const) {
       expect(INSTRUMENT_EDITOR_ROUTE[editor]).toBe('patch-instrument-editor');
     }
     expect(
+      resolveInstrumentEditorRoute({ instrumentType: 'ahx', instrumentFormat: 'ahx' }),
+    ).toBe('ahx-instrument-display');
+    expect(
       resolveInstrumentEditorRoute({ patchId: 'p', instrumentType: 'sampler', instrumentFormat: 'xm' }),
     ).toBe('patch-instrument-editor');
+  });
+});
+
+describe('canEditSlot', () => {
+  it('needs a patch for the patch editors and the AHX payload for the AHX display', () => {
+    expect(canEditSlot({ patchId: 'p', instrumentType: 'synth', instrumentFormat: 'native' })).toBe(true);
+    expect(canEditSlot({ instrumentType: 'sampler', instrumentFormat: 'xm' })).toBe(false);
+    expect(canEditSlot({ instrumentType: 'ahx', instrumentFormat: 'ahx', ahxData: {} })).toBe(true);
+    expect(canEditSlot({ instrumentType: 'ahx', instrumentFormat: 'ahx' })).toBe(false);
+    expect(canEditSlot({ instrumentType: 'opl', instrumentFormat: 's3m', oplData: {} })).toBe(false);
+    expect(canEditSlot({})).toBe(false);
   });
 });
 
@@ -145,6 +180,7 @@ describe('instrumentBadgeLabel', () => {
     expect(instrumentBadgeLabel(sampler('xm'))).toBe('XM');
     expect(instrumentBadgeLabel(sampler('s3m'))).toBe('S3M');
     expect(instrumentBadgeLabel({ instrumentType: 'opl', instrumentFormat: 's3m' })).toBe('OPL');
+    expect(instrumentBadgeLabel({ instrumentType: 'ahx', instrumentFormat: 'ahx' })).toBe('AHX');
     expect(instrumentBadgeLabel({ instrumentType: 'synth', instrumentFormat: 'native' })).toBe('');
     expect(instrumentBadgeLabel({})).toBe('');
     expect(instrumentBadgeLabel({ instrumentType: 'mod' })).toBe('MOD');
