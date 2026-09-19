@@ -557,7 +557,8 @@ var AhxPlayer = class {
   /**
    * Plays `instrument` (1-based) at `note` (1..=60, the AHX pitch table's
    * index) with `velocity` (0..=127), retriggering the voice on the next
-   * tick. `false`, changing nothing, outside preview mode or for an
+   * tick. With hi-fi on, builds the tables this note will want first, so
+   * call it from a message handler and not from the render callback. `false`, changing nothing, outside preview mode or for an
    * instrument the song does not have.
    * @param {number} instrument
    * @param {number} note
@@ -744,10 +745,16 @@ var AhxPlayer = class {
    * reference render byte for byte. The setting belongs to this player and
    * is kept across `rewind`.
    *
-   * Turning it on *prewarms* (see [`AhxEngine::prewarm_hifi`]): every table
-   * the song needs is built before this returns, so `render` never builds
-   * one. That blocks the caller for the duration (measured in
-   * `tests/ahx_hifi.rs`); call it before `play`, or accept one hiccup.
+   * Turning it on *prewarms* a song player (see
+   * [`AhxEngine::prewarm_hifi`]): every table the song needs is built before
+   * this returns, so `render` never builds one. That blocks the caller for
+   * the duration (measured in `tests/ahx_hifi.rs`); call it before `play`,
+   * or accept one hiccup. A *preview* player has no song to walk: its bank
+   * starts empty and locked, and each
+   * [`preview_note_on`](Self::preview_note_on) prewarms the pressed
+   * instrument at the pressed pitch, in that call, so `render` still never
+   * builds -- a table the note reaches that the prewarm did not is a miss
+   * ([`hifi_miss_count`](Self::hifi_miss_count)), degraded for that tick.
    * @param {boolean} on
    */
   set_hifi(on) {

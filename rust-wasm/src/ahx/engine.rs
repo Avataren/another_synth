@@ -26,6 +26,7 @@ use super::hifi::{BankMode, HifiBank, FRAC_BITS};
 use super::voice::{panning_left, panning_right, Voice};
 use super::waveform::WAVES;
 use super::wrap_i16;
+use rustc_hash::FxHashSet;
 
 /// `defgain[]`, `hvl_load_ahx` (`hvl_replay.c:127`). AHX carries no mix gain
 /// in the file; the caller's stereo-separation choice picks it.
@@ -158,6 +159,9 @@ pub struct AhxEngine {
     /// `Some` in live (keyboard preview) mode; `None`, the default, is the
     /// song player, and `play_irq` never looks further than this check.
     live: Option<Live>,
+    /// Live mode: `(instrument, note)` pairs whose tables have been prewarmed
+    /// (see [`live_note_on`](AhxEngine::live_note_on)); cleared with the bank.
+    live_warm: FxHashSet<(u8, i32)>,
 }
 
 /// Live-mode state (see [`AhxEngine::enable_live`]): one monophonic voice
@@ -176,6 +180,15 @@ struct Live {
 /// Frames of ramp a release with neither release frames nor hard-cut frames
 /// gets, so that a cut does not click (the reference cuts a note dead).
 const LIVE_CUT_FRAMES: i32 = 2;
+
+/// Ticks a live note-on's prewarm holds the scratch key down (20 s at 50 Hz):
+/// long enough for a filter or square sweep to cover its range, or to repeat.
+/// A held note that outlasts it and reaches a table the run did not is a miss.
+const LIVE_WARM_HOLD_TICKS: u32 = 1000;
+
+/// Ticks the prewarm gives the release after the hold (an instrument's release
+/// is at most 255 frames).
+const LIVE_WARM_RELEASE_TICKS: u32 = 300;
 
 /// How a [`seek`](AhxEngine::seek) got to its target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -258,6 +271,7 @@ impl AhxEngine {
             subsong: 0,
             loop_position: false,
             live: None,
+            live_warm: FxHashSet::default(),
             song,
         };
         engine.init_subsong(0);
@@ -416,9 +430,17 @@ impl AhxEngine {
     /// it survives a rewind.
     pub fn set_hifi(&mut self, on: bool) {
         match (on, self.hifi.is_some()) {
-            (true, false) => self.hifi = Some(HifiBank::new()),
+            (true, false) => {
+                let mut bank = HifiBank::new();
+                if self.live.is_some() {
+                    bank.set_mode(BankMode::Locked);
+                }
+                self.hifi = Some(bank);
+                self.live_warm.clear();
+            }
             (false, true) => {
                 self.hifi = None;
+                self.live_warm.clear();
                 for v in self.voices.iter_mut() {
                     v.hifi = None;
                 }
@@ -686,6 +708,12 @@ impl AhxEngine {
     /// enters: the song player never sets it, so its render is untouched.
     pub fn enable_live(&mut self) {
         self.live = Some(Live::default());
+        // A preview has no song to walk: whatever hi-fi bank there is from here
+        // on only looks up, and note-on fills it (`live_note_on`).
+        if let Some(bank) = self.hifi.as_mut() {
+            bank.set_mode(BankMode::Locked);
+        }
+        self.live_warm.clear();
         self.init_subsong(0);
         if let Some(v) = self.voices.first_mut() {
             v.pan = 128;
@@ -706,12 +734,13 @@ impl AhxEngine {
     /// does. Returns `false`, changing nothing, when not in live mode or when
     /// `instrument` is 0 or beyond the song's last.
     pub fn live_note_on(&mut self, instrument: usize, note: i32, velocity: u32) -> bool {
-        let Some(live) = self.live.as_mut() else { return false };
-        if instrument == 0 || instrument > self.song.instrument_nr as usize {
+        if self.live.is_none() || instrument == 0 || instrument > self.song.instrument_nr as usize {
             return false;
         }
         let note = note.clamp(1, super::voice::PERIOD_TAB.len() as i32 - 1);
         let volume = ((velocity.min(127) as i32 * 0x40) + 63) / 127;
+        self.warm_live(instrument as u8, note);
+        let live = self.live.as_mut().expect("checked above");
         live.pending_on = Some((instrument as u8, note, volume.max(1)));
         live.pending_off = false;
         true
@@ -729,8 +758,18 @@ impl AhxEngine {
     /// 0 with no transport, no patterns and no other voice.
     fn live_irq(&mut self) {
         let Some(mut live) = self.live else { return };
-        let voice = &mut self.voices[0];
+        Self::live_tick(&mut self.voices[0], &mut live, &self.song, self.waves, self.t.tempo);
+        self.live = Some(live);
 
+        self.voices[0].set_audio(self.waves, self.freq_f);
+        if let Some(bank) = self.hifi.as_mut() {
+            self.voices[0].select_hifi(bank);
+        }
+    }
+
+    /// The voice-state half of a live tick, shared by the real one and by the
+    /// prewarm's scratch run so the two cannot drift apart.
+    fn live_tick(voice: &mut Voice, live: &mut Live, song: &Song, waves: &[i8], tempo: i32) {
         if let Some((instrument, note, volume)) = live.pending_on.take() {
             // The instrument branch of `process_step`, for a step with a note
             // and an instrument and no effects.
@@ -739,7 +778,7 @@ impl AhxEngine {
             voice.override_transpose = 1000;
             voice.note_delay_on = false;
             voice.note_cut_on = false;
-            let ins = &self.song.instruments[instrument as usize];
+            let ins = &song.instruments[instrument as usize];
             voice.trigger_instrument(instrument, ins);
             voice.track_master_volume = volume;
             voice.period_slide_on = false;
@@ -749,7 +788,7 @@ impl AhxEngine {
             live.released = false;
         }
 
-        let ins = &self.song.instruments[voice.instrument_idx as usize];
+        let ins = &song.instruments[voice.instrument_idx as usize];
         if live.pending_off {
             live.pending_off = false;
             if live.held && !live.released && voice.instrument_idx != 0 {
@@ -772,18 +811,51 @@ impl AhxEngine {
             voice.adsr.s_frames = voice.adsr.s_frames.max(2);
         }
 
-        voice.process_frame_dsp(ins, self.waves, self.t.tempo, 0);
+        voice.process_frame_dsp(ins, waves, tempo, 0);
 
         if live.released && voice.adsr.r_frames <= 0 {
             // The release is over; a non-zero release level must not hold on.
             voice.note_max_volume = 0;
         }
-        self.live = Some(live);
+    }
 
-        self.voices[0].set_audio(self.waves, self.freq_f);
-        if let Some(bank) = self.hifi.as_mut() {
-            self.voices[0].select_hifi(bank);
+    /// Builds, ahead of the note, the hi-fi tables that `instrument` at `note`
+    /// will ask for, so that the render path only looks them up (see
+    /// `hifi.rs`). Runs the instrument's ticks -- held for
+    /// [`LIVE_WARM_HOLD_TICKS`], then released -- on a scratch voice, with the
+    /// bank in `Prewarm`; the real voice and the miss count are untouched.
+    /// Done once per (instrument, note) until the bank is rebuilt. If the bank
+    /// hits its cap it is dropped and rebuilt for this note alone: a sound
+    /// already playing keeps its own tables, and it is the right moment to
+    /// pay for it, in the message handler and not in `render`.
+    fn warm_live(&mut self, instrument: u8, note: i32) {
+        let Some(bank) = self.hifi.as_mut() else { return };
+        if self.live_warm.contains(&(instrument, note)) {
+            return;
         }
+        for attempt in 0..2 {
+            bank.set_mode(BankMode::Prewarm);
+            let mut voice = Voice::new();
+            let mut live = Live { pending_on: Some((instrument, note, 0x40)), ..Live::default() };
+            for tick in 0..LIVE_WARM_HOLD_TICKS + LIVE_WARM_RELEASE_TICKS {
+                if tick == LIVE_WARM_HOLD_TICKS {
+                    live.pending_off = true;
+                }
+                Self::live_tick(&mut voice, &mut live, &self.song, self.waves, self.t.tempo);
+                voice.set_audio(self.waves, self.freq_f);
+                voice.select_hifi(bank);
+                if bank.is_full() || (live.released && voice.adsr.r_frames <= 0) {
+                    break;
+                }
+            }
+            bank.relock();
+            if !bank.is_full() || attempt == 1 {
+                break;
+            }
+            bank.clear();
+            self.live_warm.clear();
+        }
+        self.live_warm.insert((instrument, note));
     }
 
     /// `hvl_play_irq`, `hvl_replay.c:1635-1697`.

@@ -146,19 +146,81 @@ fn the_preview_voice_is_centred() {
 }
 
 #[test]
-fn hifi_in_preview_mode_builds_lazily_and_still_sounds() {
+fn hifi_in_preview_mode_is_locked_at_once_and_note_on_prewarms_the_pressed_instrument() {
     let mut p = preview_player("karma.ahx");
     p.set_hifi(true);
-    // No song walk: nothing is built until a note asks for it.
+    // No song walk, and no building on the render path: locked and empty.
+    assert!(p.hifi_locked());
     assert_eq!(p.hifi_table_count(), 0);
-    assert!(!p.hifi_locked());
-    for instrument in 1..=8usize {
-        p.preview_note_on(instrument, 30, 127);
-        let (peak, ..) = render(&mut p, 0.5);
-        if peak > 0.0 {
-            assert!(p.hifi_table_count() > 0);
-            return;
+    let mut heard = 0;
+    for instrument in 1..=31usize {
+        for note in [30, 44] {
+            assert!(p.preview_note_on(instrument, note, 127));
+            let built = p.hifi_table_count();
+            let (attack, ..) = render(&mut p, 0.4);
+            // A held note (long enough for envelope, sweeps and vibrato), then its release.
+            render(&mut p, 3.0);
+            p.preview_note_off();
+            render(&mut p, 6.0);
+            if attack > 0.0 {
+                heard += 1;
+            }
+            assert_eq!(p.hifi_table_count(), built, "instrument {instrument} note {note}: render built a table");
+            assert_eq!(p.hifi_miss_count(), 0.0, "instrument {instrument} note {note}: render missed a table");
         }
     }
-    panic!("no instrument made a sound");
+    assert!(heard > 0, "no instrument made a sound");
+    assert!(p.hifi_table_count() > 0, "note-on prewarmed nothing");
+    assert!(p.hifi_locked());
+}
+
+#[test]
+fn hifi_is_locked_whichever_way_round_preview_and_hifi_are_switched_on() {
+    let mut p = AhxPlayer::new(&fixture("karma.ahx"), RATE as u32, 2).unwrap();
+    p.set_hifi(true);
+    p.enable_preview();
+    assert!(p.hifi_locked());
+    // (What the song walk built before the switch stays; it is just unused.)
+    assert!(p.preview_note_on(1, 30, 127));
+    render(&mut p, 1.0);
+    assert_eq!(p.hifi_miss_count(), 0.0);
+}
+
+#[test]
+fn a_held_note_outlasts_the_envelope_and_a_released_one_does_not() {
+    use audio_processor::ahx::engine::AhxEngine;
+    use audio_processor::ahx::format::parse;
+
+    fn peak_after(engine: &mut AhxEngine, seconds: f32) -> i32 {
+        let mut buf = vec![0i16; (seconds * RATE as f32) as usize * 2];
+        engine.render_block(&mut buf);
+        buf.iter().map(|&x| (x as i32).abs()).max().unwrap()
+    }
+
+    // Instrument 1 of karma: a+d+s+r is 108 ticks (2.2 s at 50 Hz), so its own
+    // envelope is over long before 4 s; only a key held down keeps it going.
+    for instrument in [1usize, 2, 4] {
+        // Sustain 0 releases right after the decay in a song; on the keyboard the
+        // hold makes it a drone for as long as the key is down (a deliberate
+        // difference, see `AhxEngine::live_tick`), so both must stay up.
+        for s_frames in [None, Some(0u8)] {
+            let mut song = parse(&fixture("karma.ahx")).unwrap();
+            if let Some(s) = s_frames {
+                song.instruments[instrument].envelope.s_frames = s;
+            }
+            let mut held = AhxEngine::new(song.clone(), RATE as u32, 2).unwrap();
+            held.enable_live();
+            held.live_note_on(instrument, 30, 127);
+            assert!(peak_after(&mut held, 0.3) > 0, "instrument {instrument} is silent");
+            assert!(peak_after(&mut held, 3.7) > 0, "instrument {instrument} died while held (s_frames {s_frames:?})");
+
+            let mut released = AhxEngine::new(song, RATE as u32, 2).unwrap();
+            released.enable_live();
+            released.live_note_on(instrument, 30, 127);
+            assert!(peak_after(&mut released, 0.3) > 0);
+            released.live_note_off();
+            peak_after(&mut released, 2.6);
+            assert_eq!(peak_after(&mut released, 1.1), 0, "instrument {instrument} kept sounding after note-off");
+        }
+    }
 }

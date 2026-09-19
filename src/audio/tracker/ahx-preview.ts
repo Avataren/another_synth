@@ -5,9 +5,6 @@ import {
 } from 'src/audio/tracker/ahx-player';
 import type { AhxTransportHost } from 'src/audio/tracker/ahx-transport';
 
-/** How long an idle preview keeps its worklet before dropping it (a note re-creates it). */
-const IDLE_DROP_MS = 30_000;
-
 /**
  * Playing an AHX song's instruments from the keyboard.
  *
@@ -16,8 +13,15 @@ const IDLE_DROP_MS = 30_000;
  * instrument. So the preview is a second worklet node running its own engine
  * instance in live mode (`AhxPlayer.enable_preview`): the same bytes, so the
  * same instruments, waveforms and PList, but one mono voice driven by
- * note-on / note-off. It is created on the first key and dropped again after a
- * while idle; the song can play, pause or be replaced without it noticing.
+ * note-on / note-off. The song can play, pause or be replaced without it
+ * noticing.
+ *
+ * It is created ahead of the first key, by `preload` (an AHX slot is selected,
+ * an AHX song loads), so that the first key sounds at once instead of paying
+ * for a worklet, a wasm instance and a song load. It then stays for as long as
+ * that song does: there is no idle timeout, and the owner disposes it when the
+ * song changes or is unloaded. (The note-on itself still prewarms the pressed
+ * instrument's hi-fi tables in the worklet's message handler; see `hifi.rs`.)
  *
  * Routed like the song: into the song bank's mix bus, so the master volume,
  * post-fx rack, meters and recorder treat it like any other sound.
@@ -33,7 +37,6 @@ export class AhxPreview {
   private loading: { bytes: Uint8Array; promise: Promise<AhxPlayerClient | null> } | null = null;
   /** The key that should be sounding: set at note-on, cleared by its note-off. */
   private wanted: { midi: number } | null = null;
-  private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
 
   constructor(
@@ -44,12 +47,26 @@ export class AhxPreview {
     private readonly createPlayer: (
       ctx: AudioContext,
     ) => Promise<AhxPlayerClient> = createAhxPlayer,
-    private readonly idleDropMs: number = IDLE_DROP_MS,
   ) {}
 
   /** Whether a preview worklet currently exists (for tests and diagnostics). */
   get active(): boolean {
     return this.client !== null;
+  }
+
+  /**
+   * Get the worklet created and the song `bytes` loaded, ahead of the first
+   * key. Resolves when it is ready to be played (or has failed; the failure is
+   * logged and the first key tries again). Does not resume a suspended
+   * context: a key does, and shares this load when it arrives.
+   */
+  async preload(bytes: Uint8Array): Promise<void> {
+    if (this.disposed) return;
+    try {
+      await this.ready(bytes);
+    } catch (error) {
+      if (!this.disposed) console.warn('[AhxPreview] could not prepare the preview voice', error);
+    }
   }
 
   /**
@@ -68,7 +85,6 @@ export class AhxPreview {
     if (note === undefined || this.disposed) return;
     const key = { midi };
     this.wanted = key;
-    this.clearIdleTimer();
     let client: AhxPlayerClient | null;
     try {
       // `wanted` is already set: a key-up that lands during any of these
@@ -88,20 +104,17 @@ export class AhxPreview {
     if (this.wanted?.midi !== midi) return;
     this.wanted = null;
     this.client?.previewNoteOff();
-    this.armIdleTimer();
   }
 
   /** Release whatever sounds (focus lost, song changed). */
   allNotesOff(): void {
     this.wanted = null;
     this.client?.previewNoteOff();
-    this.armIdleTimer();
   }
 
   dispose(): void {
     this.disposed = true;
     this.wanted = null;
-    this.clearIdleTimer();
     this.disposeClient();
   }
 
@@ -140,8 +153,8 @@ export class AhxPreview {
         }
         client.output.connect(this.host.output);
         // Before the load: the worklet puts the song in preview mode as it
-        // loads it, and (hi-fi on) builds the band-limited tables lazily
-        // rather than walking a song that is never played.
+        // loads it, and (hi-fi on) leaves the band-limited tables to each
+        // note-on's prewarm rather than walking a song that is never played.
         client.setPreview(true);
         client.setHifi(true);
         this.client = client;
@@ -151,20 +164,6 @@ export class AhxPreview {
         this.creating = null;
       });
     return this.creating;
-  }
-
-  private armIdleTimer(): void {
-    this.clearIdleTimer();
-    if (this.disposed || !this.client) return;
-    this.idleTimer = setTimeout(() => {
-      this.idleTimer = null;
-      if (this.wanted === null) this.disposeClient();
-    }, this.idleDropMs);
-  }
-
-  private clearIdleTimer(): void {
-    if (this.idleTimer !== null) clearTimeout(this.idleTimer);
-    this.idleTimer = null;
   }
 
   private disposeClient(): void {
