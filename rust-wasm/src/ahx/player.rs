@@ -107,6 +107,19 @@ impl AhxPlayer {
         self.engine.loop_position()
     }
 
+    /// Keep the wave phase across instrument triggers (the 68k behaviour)
+    /// instead of restarting it at 0; see
+    /// [`AhxEngine::set_continue_phase_on_trigger`]. Off by default, so a bare
+    /// `AhxPlayer` renders the reference goldens; the app's worklet turns it
+    /// on for every song it loads.
+    pub fn set_continue_phase_on_trigger(&mut self, on: bool) {
+        self.engine.set_continue_phase_on_trigger(on);
+    }
+
+    pub fn continue_phase_on_trigger(&self) -> bool {
+        self.engine.continue_phase_on_trigger()
+    }
+
     pub fn is_playing(&self) -> bool {
         self.playing
     }

@@ -169,6 +169,9 @@ describe('ahx-worklet.js in an AudioWorkletGlobalScope shim', () => {
   it('routes load-song / play through to audio, bit-exact with the C reference', () => {
     const { processor, send, handshake, ofType } = newProcessor();
     handshake();
+    // The reference restarts the wave phase at every trigger; the shipped default
+    // (phase-continue on) deliberately does not, so ask for the reference.
+    send({ type: 'set-continue-phase', enabled: false });
     send({ type: 'load-song', id: 7, bytes: fixture('karma.ahx') });
     expect(ofType('song-loaded')).toMatchObject([
       { id: 7, info: { name: 'Karma', channels: 4, droppedChannels: 0, sampleRate: SAMPLE_RATE } },

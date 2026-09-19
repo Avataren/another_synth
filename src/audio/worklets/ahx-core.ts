@@ -25,6 +25,11 @@ export interface AhxWasmPlayer {
   seek(position: number, row: number): number;
   /** Loop the current order position instead of moving on from it. */
   set_loop_position(on: boolean): void;
+  /**
+   * Keep each voice's wave phase across instrument triggers instead of
+   * restarting it at 0 (the 68k behaviour, see `AhxPlayer::set_continue_phase_on_trigger`).
+   */
+  set_continue_phase_on_trigger(on: boolean): void;
   set_gain(gain: number): void;
   render(left: Float32Array, right: Float32Array): number;
   position(): number;
@@ -57,6 +62,17 @@ export interface AhxWasmPlayer {
   read_channel_snapshot(voice: number, out: Int16Array): number;
   free(): void;
 }
+
+/**
+ * Shipped playback starts with phase-continue on. The reference replayer
+ * (Hively) restarts the wave read pointer at every instrument trigger
+ * (`hvl_replay.c:893`), so each new note begins at wave[0], the worst-case
+ * step for a saw or square. The 68k player never touches it: AUDxLC is written
+ * once at init and Paula free-runs over the 640-byte buffer
+ * (`.ai/ahx/68k-investigation.md` sections 2a/4). The Rust default stays off
+ * so the bit-exact goldens keep proving the reference.
+ */
+const CONTINUE_PHASE_ON_TRIGGER = true;
 
 export type AhxWasmPlayerCtor = new (
   bytes: Uint8Array,
@@ -131,6 +147,13 @@ export type AhxCommand =
    * before playback: a load answers `song-loaded` only once that is done.
    */
   | { type: 'set-hifi'; enabled: boolean }
+  /**
+   * Wave phase across instrument triggers: on (the default here) keeps it, the
+   * 68k behaviour; off restarts it at 0 like the reference replayer, which is
+   * what the bit-exact-with-the-C-reference tests need. Like hi-fi it outlives
+   * the song: every load starts with the last state set.
+   */
+  | { type: 'set-continue-phase'; enabled: boolean }
   /** Ask for a `hifi-stats` event: diagnostics, and what the E2E asserts on. */
   | { type: 'get-hifi-stats' }
   | { type: 'dispose' };
@@ -203,6 +226,7 @@ export class AhxProcessorCore {
   private mute = 0;
   private solo = 0;
   private hifi = false;
+  private continuePhase = CONTINUE_PHASE_ON_TRIGGER;
   private loopPosition = false;
   /** One `waveforms` payload, refilled in place each report (posting clones it). */
   private scopeData = new Int16Array(0);
@@ -274,6 +298,10 @@ export class AhxProcessorCore {
       case 'set-hifi':
         this.hifi = command.enabled;
         this.player?.set_hifi(command.enabled);
+        break;
+      case 'set-continue-phase':
+        this.continuePhase = command.enabled;
+        this.player?.set_continue_phase_on_trigger(command.enabled);
         break;
       case 'get-hifi-stats': {
         const p = this.player;
@@ -347,6 +375,7 @@ export class AhxProcessorCore {
       player.set_mute_solo(this.mute, this.solo);
       player.set_hifi(this.hifi);
       player.set_loop_position(this.loopPosition);
+      player.set_continue_phase_on_trigger(this.continuePhase);
       this.player = player;
       this.resetReporting();
       this.post({

@@ -525,6 +525,24 @@ export class AhxPlayer {
         return ret >>> 0;
     }
     /**
+     * @returns {boolean}
+     */
+    continue_phase_on_trigger() {
+        const ret = wasm.ahxplayer_continue_phase_on_trigger(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Keep the wave phase across instrument triggers (the 68k behaviour)
+     * instead of restarting it at 0; see
+     * [`AhxEngine::set_continue_phase_on_trigger`]. Off by default, so a bare
+     * `AhxPlayer` renders the reference goldens; the app's worklet turns it
+     * on for every song it loads.
+     * @param {boolean} on
+     */
+    set_continue_phase_on_trigger(on) {
+        wasm.ahxplayer_set_continue_phase_on_trigger(this.__wbg_ptr, on);
+    }
+    /**
      * Parses an AHX (`THX`) or HVL file and builds a paused player.
      * `stereo_mode` (0..=4) is AHX's stereo-separation setting; HVL files
      * carry their own. The channel count follows the song: 4 for AHX, the

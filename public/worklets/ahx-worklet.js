@@ -584,6 +584,24 @@ var AhxPlayer = class {
     return ret >>> 0;
   }
   /**
+   * @returns {boolean}
+   */
+  continue_phase_on_trigger() {
+    const ret = wasm.ahxplayer_continue_phase_on_trigger(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * Keep the wave phase across instrument triggers (the 68k behaviour)
+   * instead of restarting it at 0; see
+   * [`AhxEngine::set_continue_phase_on_trigger`]. Off by default, so a bare
+   * `AhxPlayer` renders the reference goldens; the app's worklet turns it
+   * on for every song it loads.
+   * @param {boolean} on
+   */
+  set_continue_phase_on_trigger(on) {
+    wasm.ahxplayer_set_continue_phase_on_trigger(this.__wbg_ptr, on);
+  }
+  /**
    * Parses an AHX (`THX`) or HVL file and builds a paused player.
    * `stereo_mode` (0..=4) is AHX's stereo-separation setting; HVL files
    * carry their own. The channel count follows the song: 4 for AHX, the
@@ -2983,6 +3001,7 @@ async function __wbg_init(module_or_path) {
 }
 
 // src/audio/worklets/ahx-core.ts
+var CONTINUE_PHASE_ON_TRIGGER = true;
 var POSITION_INTERVAL_SECONDS = 0.04;
 var AHX_SCOPE_POINTS = 256;
 var END_FADE_FRAMES = 32;
@@ -3006,6 +3025,7 @@ var AhxProcessorCore = class {
     __publicField(this, "mute", 0);
     __publicField(this, "solo", 0);
     __publicField(this, "hifi", false);
+    __publicField(this, "continuePhase", CONTINUE_PHASE_ON_TRIGGER);
     __publicField(this, "loopPosition", false);
     /** One `waveforms` payload, refilled in place each report (posting clones it). */
     __publicField(this, "scopeData", new Int16Array(0));
@@ -3070,6 +3090,10 @@ var AhxProcessorCore = class {
         this.hifi = command.enabled;
         this.player?.set_hifi(command.enabled);
         break;
+      case "set-continue-phase":
+        this.continuePhase = command.enabled;
+        this.player?.set_continue_phase_on_trigger(command.enabled);
+        break;
       case "get-hifi-stats": {
         const p = this.player;
         this.post({
@@ -3133,6 +3157,7 @@ var AhxProcessorCore = class {
       player.set_mute_solo(this.mute, this.solo);
       player.set_hifi(this.hifi);
       player.set_loop_position(this.loopPosition);
+      player.set_continue_phase_on_trigger(this.continuePhase);
       this.player = player;
       this.resetReporting();
       this.post({

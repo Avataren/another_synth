@@ -155,6 +155,8 @@ pub struct AhxEngine {
     /// When set, a position that runs off its last row starts over instead of
     /// moving on (see [`set_loop_position`](AhxEngine::set_loop_position)).
     loop_position: bool,
+    /// See [`set_continue_phase_on_trigger`](AhxEngine::set_continue_phase_on_trigger).
+    continue_phase_on_trigger: bool,
 }
 
 /// How a [`seek`](AhxEngine::seek) got to its target.
@@ -237,6 +239,7 @@ impl AhxEngine {
             hifi: None,
             subsong: 0,
             loop_position: false,
+            continue_phase_on_trigger: false,
             song,
         };
         engine.init_subsong(0);
@@ -351,6 +354,30 @@ impl AhxEngine {
                     ((v.ring_sample_pos as u64 % END + samples as u64 * v.ring_delta as u64) % END) as u32;
             }
         }
+    }
+
+    /// Keep each voice's wave read position when an instrument triggers,
+    /// instead of restarting it at 0 (`hvl_replay.c:893`). Off by default,
+    /// and off is the reference replayer byte for byte: every golden is
+    /// rendered with it off. The app's wasm player turns it on.
+    ///
+    /// This is a deliberate divergence from the Hively reference, toward the
+    /// original 68k AHX player. `.ai/ahx/68k-investigation.md` sections 2a/4:
+    /// AUDxLC is written once at init and Paula free-runs over a 640-byte
+    /// buffer; an instrument trigger does NOT restart the wave read pointer.
+    /// `sample_pos = 0` is inherited from Hively and makes every new note
+    /// start at wave[0], the worst-case step for a saw or square.
+    ///
+    /// Only future triggers are affected, so it may be flipped at any time
+    /// (a [`seek`](Self::seek) replay runs with the current setting, and
+    /// `skip_mix` keeps the phase the mixer would have, so a seek stays
+    /// exact under either setting). Kept across `init_subsong` and `seek`.
+    pub fn set_continue_phase_on_trigger(&mut self, on: bool) {
+        self.continue_phase_on_trigger = on;
+    }
+
+    pub fn continue_phase_on_trigger(&self) -> bool {
+        self.continue_phase_on_trigger
     }
 
     /// Loop the current position: when it runs off its last row it starts over
@@ -803,7 +830,7 @@ impl AhxEngine {
 
         if instr != 0 && instr <= self.song.instrument_nr {
             let ins = &self.song.instruments[instr as usize];
-            voice.trigger_instrument(instr, ins);
+            voice.trigger_instrument(instr, ins, self.continue_phase_on_trigger);
         }
 
         voice.period_slide_on = false;
