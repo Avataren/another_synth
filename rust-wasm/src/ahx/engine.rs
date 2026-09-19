@@ -27,6 +27,9 @@ use super::voice::{panning_left, panning_right, Voice};
 use super::waveform::WAVES;
 use super::wrap_i16;
 use rustc_hash::FxHashSet;
+use std::simd::cmp::SimdOrd;
+use std::simd::num::SimdInt;
+use std::simd::{i32x4, i64x4};
 
 /// `defgain[]`, `hvl_load_ahx` (`hvl_replay.c:127`). AHX carries no mix gain
 /// in the file; the caller's stereo-separation choice picks it.
@@ -148,6 +151,11 @@ pub struct AhxEngine {
     mute_mask: u32,
     /// Any bit set: only the voices with their bit set are heard.
     solo_mask: u32,
+    /// Mix four frames per voice at a time (see `mix_chunk`). On by default;
+    /// the scalar loop is the same arithmetic and stays as the reference for
+    /// the tail, the ring-mod and capture instances, and for the tests that
+    /// prove the two agree byte for byte.
+    mix_lanes: bool,
     /// `Some` while hi-fi rendering is on (see `hifi.rs`); the bank is the
     /// lazy mip cache. `None` (the default) is the reference mixer, untouched.
     hifi: Option<HifiBank>,
@@ -392,6 +400,7 @@ impl AhxEngine {
             capture: None,
             mute_mask: 0,
             solo_mask: 0,
+            mix_lanes: true,
             hifi: None,
             subsong: 0,
             loop_position: false,
@@ -597,6 +606,14 @@ impl AhxEngine {
             }
             _ => {}
         }
+    }
+
+    /// Mixer four-frame lanes on or off (on by default). Both produce the same
+    /// bytes; this exists so a test or a timing run can hold the scalar loop
+    /// up against the lanes on identical state. Not a product setting.
+    #[doc(hidden)]
+    pub fn set_mix_lanes(&mut self, on: bool) {
+        self.mix_lanes = on;
     }
 
     pub fn hifi_enabled(&self) -> bool {
@@ -1311,6 +1328,12 @@ impl AhxEngine {
             ring[i] = v.ring_mix_active;
         }
 
+        // Four frames at a time per voice when nothing needs the per-frame
+        // detail: no capture, and no voice ring-modulating (its second phase
+        // has its own wrap points). Integer arithmetic only, so it is the
+        // scalar loop's result, not an approximation of it.
+        let lanes = !CAPTURE && self.mix_lanes && !ring[..chans].iter().any(|&r| r);
+
         let mut o = 0usize;
         // Capture bookkeeping; every use is behind `CAPTURE`, and render_block
         // picks that instance only when a capture is present.
@@ -1335,7 +1358,60 @@ impl AhxEngine {
 
             samples -= loops;
 
-            for _ in 0..loops {
+            let mut left = loops;
+            if lanes {
+                while left >= 4 {
+                    let mut a = i32x4::splat(0);
+                    let mut b = i32x4::splat(0);
+                    for i in 0..chans {
+                        let v = &self.voices[i];
+                        let d = delta[i];
+                        let p1 = pos[i].wrapping_add(d);
+                        let p2 = p1.wrapping_add(d);
+                        let p3 = p2.wrapping_add(d);
+                        let at = [pos[i], p1, p2, p3];
+                        let bytes = |buf: &[i8]| {
+                            i32x4::from_array([
+                                buf[(at[0] >> 16) as usize] as i32,
+                                buf[(at[1] >> 16) as usize] as i32,
+                                buf[(at[2] >> 16) as usize] as i32,
+                                buf[(at[3] >> 16) as usize] as i32,
+                            ])
+                        };
+                        let s = if HIFI {
+                            match &v.hifi {
+                                Some(h) => h.sample4(at),
+                                None => bytes(&v.voice_buffer) << i32x4::splat(FRAC_BITS as i32),
+                            }
+                        } else {
+                            bytes(&v.voice_buffer)
+                        };
+                        let j = s * i32x4::splat(vol[i]);
+                        a += (j * i32x4::splat(panl[i])) >> i32x4::splat(7);
+                        b += (j * i32x4::splat(panr[i])) >> i32x4::splat(7);
+                        pos[i] = p3.wrapping_add(d);
+                    }
+                    if HIFI {
+                        let g = i64x4::splat(self.mixgain as i64);
+                        let sh = i64x4::splat((8 + FRAC_BITS) as i64);
+                        a = ((a.cast::<i64>() * g) >> sh).cast::<i32>();
+                        b = ((b.cast::<i64>() * g) >> sh).cast::<i32>();
+                    } else {
+                        let g = i32x4::splat(self.mixgain);
+                        a = (a * g) >> i32x4::splat(8);
+                        b = (b * g) >> i32x4::splat(8);
+                    }
+                    let lo = i32x4::splat(-0x8000);
+                    let hi = i32x4::splat(0x7fff);
+                    let (l, r) = a.simd_clamp(lo, hi).cast::<i16>().interleave(b.simd_clamp(lo, hi).cast::<i16>());
+                    l.copy_to_slice(&mut out[o..o + 4]);
+                    r.copy_to_slice(&mut out[o + 4..o + 8]);
+                    o += 8;
+                    left -= 4;
+                }
+            }
+
+            for _ in 0..left {
                 let mut a: i32 = 0;
                 let mut b: i32 = 0;
                 for i in 0..chans {

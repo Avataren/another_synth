@@ -105,6 +105,7 @@
 
 use rustc_hash::FxHashMap;
 use rustfft::{num_complex::Complex, Fft, FftPlanner};
+use std::simd::i32x4;
 use std::sync::{Arc, OnceLock};
 
 /// Samples per band-limited cycle (a power of two). At the top level
@@ -198,6 +199,26 @@ impl HifiOsc {
         let a = self.table[i] as i32;
         let b = self.table[(i + 1) & (TABLE_SIZE - 1)] as i32;
         a + (((b - a) * frac) >> 16)
+    }
+
+    /// [`sample`](Self::sample) at four positions at once: the phase and the two
+    /// table reads stay scalar (wasm has no gather), the interpolation is one
+    /// vector expression. Lane `k` is `sample(pos[k])` exactly -- the same
+    /// integer ops in the same order, so nothing here can round differently.
+    #[inline]
+    pub fn sample4(&self, pos: [u32; 4]) -> i32x4 {
+        let mut a = [0i32; 4];
+        let mut b = [0i32; 4];
+        let mut frac = [0i32; 4];
+        for k in 0..4 {
+            let p = (pos[k] as u64 * self.ratio) & PHASE_MASK;
+            let i = (p >> 16) as usize;
+            frac[k] = (p & 0xffff) as i32;
+            a[k] = self.table[i] as i32;
+            b[k] = self.table[(i + 1) & (TABLE_SIZE - 1)] as i32;
+        }
+        let (a, b, frac) = (i32x4::from_array(a), i32x4::from_array(b), i32x4::from_array(frac));
+        a + (((b - a) * frac) >> i32x4::splat(16))
     }
 }
 
