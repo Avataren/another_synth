@@ -388,7 +388,29 @@ impl Voice {
 
     /// The instrument-trigger branch of `hvl_process_step`, `hvl_replay.c:878-964`
     /// (everything gated by `Instr && Instr <= InstrumentNr`).
-    pub fn trigger_instrument(&mut self, instrument_idx: u8, ins: &Instrument) {
+    ///
+    /// `continue_phase` is the one deliberate departure from the reference
+    /// (see `AhxEngine::set_continue_phase_on_trigger`). `false` is
+    /// `hvl_replay.c:893` exactly: the wave read pointer restarts at 0.
+    /// `true` leaves `sample_pos` where the free-running mixer has it, which
+    /// is what the 68k player does.
+    ///
+    /// 68k evidence (`.ai/ahx/68k-investigation.md` sections 2a/4): AUDxLC
+    /// is written once at init and Paula free-runs over the 640-byte buffer;
+    /// an instrument trigger never touches the read pointer, so a new note
+    /// starts wherever the previous phase happened to be. `sample_pos = 0` is
+    /// a Hively-inherited deviation that starts every note at wave[0], the
+    /// worst-case step for a saw or square.
+    ///
+    /// Pos semantics stay simple: `sample_pos` keeps its value. The 68k's
+    /// caveat about the phase inside a *new* wave length is a non-issue here,
+    /// because `voice_buffer` is the same 640-byte domain and the waveform is
+    /// planted repeated to fill it (`set_audio`: `wave_loops` copies of a
+    /// `4 << wave_length` block, and every such block length divides 640), so
+    /// the continuing position already lands at `pos mod newLen`.
+    /// `ring_sample_pos` is still cleared: the ring modulator is not part of
+    /// the 68k evidence.
+    pub fn trigger_instrument(&mut self, instrument_idx: u8, ins: &Instrument, continue_phase: bool) {
         self.pan = self.set_pan;
         self.pan_mult_left = panning_left(self.pan as usize);
         self.pan_mult_right = panning_right(self.pan as usize);
@@ -400,7 +422,9 @@ impl Voice {
         self.perf_sub_volume = 0x40;
         self.adsr = AdsrState::trigger(&ins.envelope);
         self.instrument_idx = instrument_idx;
-        self.sample_pos = 0;
+        if !continue_phase {
+            self.sample_pos = 0;
+        }
 
         // The decoder masks `wave_length` to 3 bits (0..=7) but the reference's
         // `Offsets[]`/`5 - WaveLength` shifts are only defined for 0..=5
@@ -798,7 +822,7 @@ mod tests {
     fn trigger_resets_expected_fields() {
         let ins = silent_instrument();
         let mut v = Voice::new();
-        v.trigger_instrument(1, &ins);
+        v.trigger_instrument(1, &ins, false);
         assert_eq!(v.instrument_idx, 1);
         assert_eq!(v.sample_pos, 0);
         assert_eq!(v.wave_length, 3);
@@ -828,6 +852,54 @@ mod tests {
         assert_eq!(v.calc_period(1, false), base - 30);
     }
 
+    /// The first sample the mixer would read after a trigger, for a voice whose
+    /// free-running phase is `phase` samples into the 640-byte domain when the
+    /// instrument triggers on `waveform`. `mix_chunk` reads
+    /// `voice_buffer[sample_pos >> 16]`, so this is exactly that.
+    fn first_sample_after_trigger(waveform: i32, phase: u32, continue_phase: bool) -> (i8, i8, u32) {
+        let waves = &*waveform::WAVES;
+        let mut ins = silent_instrument();
+        ins.square_lower_limit = 0x20;
+        ins.square_upper_limit = 0x3f;
+        let mut v = Voice::new();
+        v.sample_pos = phase << 16; // mid-cycle, as after a note that has been sounding
+        v.trigger_instrument(1, &ins, continue_phase);
+        v.square.pos = 8; // a 50% duty square (`8 << (5 - 3)` = 0x20), not the all-low row 0
+        v.track_period = 25;
+        v.instr_period = 25;
+        v.waveform = waveform;
+        v.new_waveform = true;
+        v.process_frame_dsp(&ins, waves, 6, 0);
+        v.set_audio(waves, 44100.0);
+        (v.voice_buffer[(v.sample_pos >> 16) as usize], v.voice_buffer[0], v.sample_pos)
+    }
+
+    #[test]
+    fn phase_continue_keeps_the_wave_read_position_across_a_trigger() {
+        for waveform in [WAVEFORM_SAWTOOTH, WAVEFORM_SQUARE] {
+            // Off is hvl_replay.c:893: the pointer restarts, so the first sample is wave[0].
+            let (off, wave0, pos_off) = first_sample_after_trigger(waveform, 20, false);
+            assert_eq!(pos_off, 0);
+            assert_eq!(off, wave0, "flag off starts at wave[0]");
+
+            // On: the pointer stays mid-cycle, and there the wave is not at wave[0].
+            let (on, wave0_on, pos_on) = first_sample_after_trigger(waveform, 20, true);
+            assert_eq!(pos_on, 20 << 16, "the position is untouched");
+            assert_eq!(wave0_on, wave0, "same table either way");
+            assert_ne!(on, wave0_on, "waveform {waveform}: first sample is not wave[0]");
+            assert_ne!(on, off, "waveform {waveform}: differs from the flag-off result");
+        }
+    }
+
+    #[test]
+    fn phase_continue_does_not_touch_the_ring_position() {
+        let ins = silent_instrument();
+        let mut v = Voice::new();
+        v.ring_sample_pos = 7 << 16;
+        v.trigger_instrument(1, &ins, true);
+        assert_eq!(v.ring_sample_pos, 0);
+    }
+
     #[test]
     fn trigger_clears_ring_mix_but_keeps_ring_audio_source() {
         // hvl_replay.c:960: only vc_RingMixSource is NULLed on a trigger.
@@ -835,7 +907,7 @@ mod tests {
         let mut v = Voice::new();
         v.ring_audio_source = Some(AudioSourceRef::Waves(0));
         v.ring_mix_active = true;
-        v.trigger_instrument(1, &ins);
+        v.trigger_instrument(1, &ins, false);
         assert!(!v.ring_mix_active);
         assert!(v.ring_audio_source.is_some());
     }
@@ -845,7 +917,7 @@ mod tests {
         let mut ins = silent_instrument();
         ins.wave_length = 7; // the 3-bit decoder can produce 6 and 7
         let mut v = Voice::new();
-        v.trigger_instrument(1, &ins);
+        v.trigger_instrument(1, &ins, false);
         assert_eq!(v.wave_length, 5);
     }
 
@@ -854,7 +926,7 @@ mod tests {
         let waves = &*waveform::WAVES;
         let ins = silent_instrument();
         let mut v = Voice::new();
-        v.trigger_instrument(1, &ins);
+        v.trigger_instrument(1, &ins, false);
         v.track_period = 25; // some mid-range note
         v.instr_period = 25;
         v.waveform = WAVEFORM_TRIANGLE;

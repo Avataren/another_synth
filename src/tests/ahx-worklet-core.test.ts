@@ -74,6 +74,9 @@ beforeAll(() => {
 describe('AhxProcessorCore over the real wasm', () => {
   it('reproduces the C reference bit-for-bit through the whole worklet path', () => {
     const { core } = newCore();
+    // The reference restarts the wave phase at every trigger; the shipped default
+    // (phase-continue on) deliberately does not, so ask for the reference.
+    core.handle({ type: 'set-continue-phase', enabled: false });
     core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
     core.handle({ type: 'play' });
 
@@ -91,6 +94,24 @@ describe('AhxProcessorCore over the real wasm', () => {
       expect(fnv(new Uint8Array(i16.buffer))).toBe(want);
       prev = upto;
     }
+  });
+
+  it('plays with phase-continue on by default, and set-continue-phase switches it', () => {
+    const song = fixture('karma.ahx');
+    const frames = 44100;
+    const run = (before?: boolean): Float32Array => {
+      const { core } = newCore();
+      if (before !== undefined) core.handle({ type: 'set-continue-phase', enabled: before });
+      core.handle({ type: 'load-song', id: nextId++, bytes: song });
+      core.handle({ type: 'play' });
+      return render(core, frames).l;
+    };
+    const dflt = run();
+    const on = run(true);
+    const off = run(false);
+    expect(Array.from(dflt)).toEqual(Array.from(on));
+    expect(Array.from(off)).not.toEqual(Array.from(on));
+    expect(on.some((s) => s !== 0)).toBe(true);
   });
 
   it('is silent until played and after pause, without advancing', () => {
