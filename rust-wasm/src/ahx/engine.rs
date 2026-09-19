@@ -155,7 +155,27 @@ pub struct AhxEngine {
     /// When set, a position that runs off its last row starts over instead of
     /// moving on (see [`set_loop_position`](AhxEngine::set_loop_position)).
     loop_position: bool,
+    /// `Some` in live (keyboard preview) mode; `None`, the default, is the
+    /// song player, and `play_irq` never looks further than this check.
+    live: Option<Live>,
 }
+
+/// Live-mode state (see [`AhxEngine::enable_live`]): one monophonic voice
+/// played by note-on / note-off instead of by the song's pattern data.
+#[derive(Debug, Clone, Copy, Default)]
+struct Live {
+    /// A key is down: the envelope holds its sustain.
+    held: bool,
+    /// Note-off has started the release; once it has run out the voice is cut.
+    released: bool,
+    /// `(instrument, note, master volume)` waiting for the next tick.
+    pending_on: Option<(u8, i32, i32)>,
+    pending_off: bool,
+}
+
+/// Frames of ramp a release with neither release frames nor hard-cut frames
+/// gets, so that a cut does not click (the reference cuts a note dead).
+const LIVE_CUT_FRAMES: i32 = 2;
 
 /// How a [`seek`](AhxEngine::seek) got to its target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -237,6 +257,7 @@ impl AhxEngine {
             hifi: None,
             subsong: 0,
             loop_position: false,
+            live: None,
             song,
         };
         engine.init_subsong(0);
@@ -654,8 +675,123 @@ impl AhxEngine {
             .unwrap_or_default()
     }
 
+    /// Switches the engine to live mode: the song's transport is never run
+    /// again, and voice 0 is played by [`live_note_on`](Self::live_note_on) /
+    /// [`live_note_off`](Self::live_note_off) with the song's own instruments
+    /// (their waveform, envelope, filter, square, vibrato and PList all run as
+    /// they do in the song). Every voice is reset, and voice 0 sits in the
+    /// centre of the stereo field rather than where the song would pan it.
+    ///
+    /// This is a separate engine instance's mode, not something a playing song
+    /// enters: the song player never sets it, so its render is untouched.
+    pub fn enable_live(&mut self) {
+        self.live = Some(Live::default());
+        self.init_subsong(0);
+        if let Some(v) = self.voices.first_mut() {
+            v.pan = 128;
+            v.set_pan = 128;
+            v.pan_mult_left = panning_left(128);
+            v.pan_mult_right = panning_right(128);
+        }
+    }
+
+    pub fn live_enabled(&self) -> bool {
+        self.live.is_some()
+    }
+
+    /// Starts `instrument` (1-based, as a pattern step numbers it) at `note`
+    /// (1..=60, the reference's `period_tab` index; clamped) on the next tick,
+    /// with `velocity` (0..=127) scaling the voice's master volume. It
+    /// retriggers exactly as a pattern step with an instrument and a note
+    /// does. Returns `false`, changing nothing, when not in live mode or when
+    /// `instrument` is 0 or beyond the song's last.
+    pub fn live_note_on(&mut self, instrument: usize, note: i32, velocity: u32) -> bool {
+        let Some(live) = self.live.as_mut() else { return false };
+        if instrument == 0 || instrument > self.song.instrument_nr as usize {
+            return false;
+        }
+        let note = note.clamp(1, super::voice::PERIOD_TAB.len() as i32 - 1);
+        let volume = ((velocity.min(127) as i32 * 0x40) + 63) / 127;
+        live.pending_on = Some((instrument as u8, note, volume.max(1)));
+        live.pending_off = false;
+        true
+    }
+
+    /// Key up: from the next tick the voice releases, over the instrument's
+    /// release frames, or its hard-cut frames when it releases by hard cut.
+    pub fn live_note_off(&mut self) {
+        if let Some(live) = self.live.as_mut() {
+            live.pending_off = true;
+        }
+    }
+
+    /// The live counterpart of [`play_irq`](Self::play_irq): one tick of voice
+    /// 0 with no transport, no patterns and no other voice.
+    fn live_irq(&mut self) {
+        let Some(mut live) = self.live else { return };
+        let voice = &mut self.voices[0];
+
+        if let Some((instrument, note, volume)) = live.pending_on.take() {
+            // The instrument branch of `process_step`, for a step with a note
+            // and an instrument and no effects.
+            voice.volume_slide_up = 0;
+            voice.volume_slide_down = 0;
+            voice.override_transpose = 1000;
+            voice.note_delay_on = false;
+            voice.note_cut_on = false;
+            let ins = &self.song.instruments[instrument as usize];
+            voice.trigger_instrument(instrument, ins);
+            voice.track_master_volume = volume;
+            voice.period_slide_on = false;
+            voice.track_period = note;
+            voice.plant_period = true;
+            live.held = true;
+            live.released = false;
+        }
+
+        let ins = &self.song.instruments[voice.instrument_idx as usize];
+        if live.pending_off {
+            live.pending_off = false;
+            if live.held && !live.released && voice.instrument_idx != 0 {
+                live.held = false;
+                live.released = true;
+                let frames = if ins.hard_cut_release && ins.hard_cut_release_frames > 0 {
+                    ins.hard_cut_release_frames as i32
+                } else if ins.envelope.r_frames > 0 {
+                    ins.envelope.r_frames as i32
+                } else {
+                    LIVE_CUT_FRAMES
+                };
+                // A release from wherever the envelope is, to the instrument's
+                // release level; stops attack, decay and sustain.
+                voice.adsr.hard_cut_release(&ins.envelope, frames);
+            }
+        } else if live.held && voice.adsr.a_frames == 0 && voice.adsr.d_frames == 0 {
+            // Sustain lasts as long as the key is down (AHX's own is a fixed
+            // frame count): keep it from running out.
+            voice.adsr.s_frames = voice.adsr.s_frames.max(2);
+        }
+
+        voice.process_frame_dsp(ins, self.waves, self.t.tempo, 0);
+
+        if live.released && voice.adsr.r_frames <= 0 {
+            // The release is over; a non-zero release level must not hold on.
+            voice.note_max_volume = 0;
+        }
+        self.live = Some(live);
+
+        self.voices[0].set_audio(self.waves, self.freq_f);
+        if let Some(bank) = self.hifi.as_mut() {
+            self.voices[0].select_hifi(bank);
+        }
+    }
+
     /// `hvl_play_irq`, `hvl_replay.c:1635-1697`.
     fn play_irq(&mut self) {
+        if self.live.is_some() {
+            self.live_irq();
+            return;
+        }
         let position_nr = self.song.position_nr as i32;
 
         if self.t.step_wait_frames == 0 {

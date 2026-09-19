@@ -30,6 +30,10 @@ class FakeWorkletNode {
   connected: unknown[] = [];
   closed = false;
   private core: AhxProcessorCore | null = null;
+  /** Whether the worklet core heard `dispose` (it then frees its wasm player and stops rendering). */
+  get coreDisposed(): boolean {
+    return this.core?.disposed ?? false;
+  }
   port: {
     onmessage: ((e: MessageEvent) => void) | null;
     postMessage: (data: unknown, transfer?: Transferable[]) => void;
@@ -152,6 +156,10 @@ describe('createAhxPlayer / AhxPlayerClient', () => {
     expect(positions.length).toBeGreaterThan(0);
     player.dispose();
     expect(node.closed).toBe(true);
+    // The command must still reach the worklet: it is what frees the wasm
+    // player and lets the browser collect the node.
+    await Promise.resolve();
+    expect(node.coreDisposed).toBe(true);
   });
 
   it('capture is off until asked; then snapshots of every voice reach onWaveforms', async () => {

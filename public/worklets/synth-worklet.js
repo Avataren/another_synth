@@ -538,6 +538,19 @@ var AhxPlayer = class {
     wasm.ahxplayer_enable_capture(this.__wbg_ptr, on);
   }
   /**
+   * Live (keyboard preview) mode: this player stops playing the song and
+   * is played by [`preview_note_on`](Self::preview_note_on) /
+   * [`preview_note_off`](Self::preview_note_off) instead, one mono voice
+   * with the song's instruments (see [`AhxEngine::enable_live`]). It starts
+   * rendering at once (a preview has no transport to `play`) and there is no
+   * way back: make a separate player for the song. Turning hi-fi on after
+   * this builds its tables lazily instead of walking the song, which a
+   * preview never plays.
+   */
+  enable_preview() {
+    wasm.ahxplayer_enable_preview(this.__wbg_ptr);
+  }
+  /**
    * @returns {number}
    */
   position_count() {
@@ -561,6 +574,27 @@ var AhxPlayer = class {
     return ret;
   }
   /**
+   * @returns {boolean}
+   */
+  preview_enabled() {
+    const ret = wasm.ahxplayer_preview_enabled(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * Plays `instrument` (1-based) at `note` (1..=60, the AHX pitch table's
+   * index) with `velocity` (0..=127), retriggering the voice on the next
+   * tick. `false`, changing nothing, outside preview mode or for an
+   * instrument the song does not have.
+   * @param {number} instrument
+   * @param {number} note
+   * @param {number} velocity
+   * @returns {boolean}
+   */
+  preview_note_on(instrument, note, velocity) {
+    const ret = wasm.ahxplayer_preview_note_on(this.__wbg_ptr, instrument, note, velocity);
+    return ret !== 0;
+  }
+  /**
    * Song channels the engine does not play: 0 for every real file (only a
    * malformed HVL wider than the reference's 16-voice array is cut).
    * @returns {number}
@@ -576,6 +610,12 @@ var AhxPlayer = class {
   hifi_table_count() {
     const ret = wasm.ahxplayer_hifi_table_count(this.__wbg_ptr);
     return ret >>> 0;
+  }
+  /**
+   * Releases the previewed note (the instrument's release, or its hard cut).
+   */
+  preview_note_off() {
+    wasm.ahxplayer_preview_note_off(this.__wbg_ptr);
   }
   /**
    * Set once the song has reached its end (it then loops from its restart

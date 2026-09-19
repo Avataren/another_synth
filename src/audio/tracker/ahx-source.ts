@@ -19,6 +19,7 @@ import type { TrackerSongFile } from 'src/stores/tracker-store';
 const attached = new WeakMap<TrackerSongFile, Uint8Array>();
 
 let current: Uint8Array | null = null;
+const changeListeners = new Set<() => void>();
 
 export function attachAhxSource(songFile: TrackerSongFile, bytes: Uint8Array): void {
   attached.set(songFile, bytes);
@@ -30,7 +31,19 @@ export function ahxSourceOf(songFile: TrackerSongFile): Uint8Array | null {
 
 /** Called when a song is applied: the new song's bytes, or `null` for any other format. */
 export function setCurrentAhxSource(bytes: Uint8Array | null): void {
+  if (bytes === current) return;
   current = bytes;
+  for (const listener of changeListeners) listener();
+}
+
+/**
+ * Called whenever the current song's bytes change (a different AHX song, or a
+ * non-AHX one). What was built from the old bytes, like the keyboard preview
+ * voice, is stale from then on.
+ */
+export function onCurrentAhxSourceChange(listener: () => void): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
 }
 
 export function currentAhxSource(): Uint8Array | null {

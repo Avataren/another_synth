@@ -10,8 +10,9 @@ import { useTrackerStore } from './tracker-store';
 import { usePostFxStore } from 'src/stores/post-fx-store';
 import { defaultLookaheadSeconds } from 'src/audio/device-profile';
 import { AhxTransport } from 'src/audio/tracker/ahx-transport';
+import { AhxPreview } from 'src/audio/tracker/ahx-preview';
 import type { AhxPosition, AhxWaveforms } from 'src/audio/tracker/ahx-player';
-import { currentAhxSource } from 'src/audio/tracker/ahx-source';
+import { currentAhxSource, onCurrentAhxSourceChange } from 'src/audio/tracker/ahx-source';
 
 export type PlaybackMode = 'pattern' | 'song';
 
@@ -45,6 +46,9 @@ let songEndUnsubscribe: (() => void) | null = null;
 // AHX or HVL song is first played, so the other formats never touch it.
 let ahxTransportInstance: AhxTransport | null = null;
 let ahxUnsubscribes: Array<() => void> = [];
+/** The keyboard-preview voice: its own worklet, apart from the song's (`AhxTransport`). */
+let ahxPreviewInstance: AhxPreview | null = null;
+let ahxSourceUnsubscribe: (() => void) | null = null;
 // Per-voice scope data from the AHX worklet: whether the tracker page wants it
 // (the worklet records nothing otherwise), and the newest snapshot as one view
 // per voice. Module-local and non-reactive on purpose: the scopes read it from
@@ -414,6 +418,39 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     ahxTransportInstance = null;
   }
 
+  /**
+   * Play an AHX instrument from the keyboard: `instrument` (1-based, the
+   * file's numbering, which is also the slot number) at `midi`. Sounded by a
+   * preview voice of its own that the song's transport knows nothing about, so
+   * it works with the song stopped, paused or playing and never disturbs it.
+   * `false` when no AHX song is loaded.
+   */
+  async function previewAhxNoteOn(instrument: number, midi: number, velocity = 127): Promise<boolean> {
+    const bytes = currentAhxSource();
+    if (!bytes) {
+      // Not (or no longer) an AHX song: nothing left for a preview to sound.
+      disposeAhxPreview();
+      return false;
+    }
+    ahxPreviewInstance ??= new AhxPreview(getSongBank());
+    await ahxPreviewInstance.noteOn(bytes, instrument, midi, velocity);
+    return true;
+  }
+
+  function previewAhxNoteOff(midi: number): void {
+    ahxPreviewInstance?.noteOff(midi);
+  }
+
+  function disposeAhxPreview(): void {
+    ahxPreviewInstance?.dispose();
+    ahxPreviewInstance = null;
+  }
+
+  // A new song (AHX or not) makes the preview voice stale: drop it at once
+  // rather than leaving its worklet, and a held note, until the idle timeout.
+  ahxSourceUnsubscribe?.();
+  ahxSourceUnsubscribe = onCurrentAhxSourceChange(disposeAhxPreview);
+
   /** The worklet's position index is the sequence index: one pattern per position. */
   function handleAhxPosition(p: AhxPosition): void {
     if (ahxSongActive) ahxPlace = { position: p.position, row: p.row };
@@ -491,6 +528,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   /** Hand the transport back to `PlaybackEngine`: a non-AHX song is being loaded. */
   function leaveAhx(): void {
     ahxEpoch++;
+    disposeAhxPreview();
     if (!ahxSongActive) return;
     ahxSongActive = false;
     ahxPlace = null;
@@ -1028,6 +1066,9 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     }
 
     disposeAhxTransport();
+    disposeAhxPreview();
+    ahxSourceUnsubscribe?.();
+    ahxSourceUnsubscribe = null;
     ahxSongActive = false;
     ahxScopeViews = null;
     ahxEpoch++;
@@ -1087,6 +1128,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     setBpm,
     setPatternLength,
     setLoopSong,
+
+    // AHX keyboard preview
+    previewAhxNoteOn,
+    previewAhxNoteOff,
 
     // AHX/HVL per-voice scopes
     setAhxScopesEnabled,

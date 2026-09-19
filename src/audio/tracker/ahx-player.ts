@@ -181,6 +181,29 @@ export class AhxPlayerClient {
   }
 
   /**
+   * Make this worklet a keyboard-preview voice: songs loaded into it from now
+   * on are not played but sounded with `previewNoteOn` / `previewNoteOff`.
+   * Send it before `loadSong`.
+   */
+  setPreview(enabled: boolean): void {
+    this.send({ type: 'set-preview', enabled });
+  }
+
+  /**
+   * Preview mode: sound `instrument` (1-based, as a pattern step numbers it)
+   * at AHX note index `note` (1..=60) and `velocity` (0..=127). One voice: it
+   * retriggers whatever was sounding. Ordered after the load on the port.
+   */
+  previewNoteOn(instrument: number, note: number, velocity = 127): void {
+    this.send({ type: 'preview-note-on', instrument, note, velocity });
+  }
+
+  /** Preview mode: release the sounding note. */
+  previewNoteOff(): void {
+    this.send({ type: 'preview-note-off' });
+  }
+
+  /**
    * The worklet's hi-fi bank state, for diagnostics and tests. The worklet
    * answers in order, so a stats request sent after `setHifi` sees its effect.
    */
@@ -237,7 +260,10 @@ export class AhxPlayerClient {
     this.songEndListeners.clear();
     this.waveformListeners.clear();
     this.errorListeners.clear();
-    this.send({ type: 'dispose' });
+    // Straight to the port: `send` refuses once `disposed` is set, and the
+    // worklet only frees its wasm player (and lets the node be collected)
+    // when it hears this.
+    this.node.port.postMessage({ type: 'dispose' } satisfies AhxCommand);
     this.node.disconnect();
     this.output.disconnect();
     this.node.port.close();

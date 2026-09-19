@@ -46,6 +46,17 @@ const AHX_MAX_NOTE_INDEX = 60;
  * its five octaves -- lands on that same C-1. */
 const AHX_NOTE_INDEX_TO_MIDI_OFFSET = 23; // note index 1 -> MIDI 24
 
+/**
+ * The AHX note index (1..=60, the engine's `period_tab` row) a MIDI note plays
+ * at: the inverse of the mapping above, clamped to the format's five octaves.
+ * The engine turns the index into a period itself, so this is the whole pitch
+ * model a live player needs. `undefined` for a non-finite `midi`.
+ */
+export function ahxNoteIndexFromMidi(midi: number): number | undefined {
+  if (!Number.isFinite(midi)) return undefined;
+  return Math.max(1, Math.min(AHX_MAX_NOTE_INDEX, Math.round(midi) - AHX_NOTE_INDEX_TO_MIDI_OFFSET));
+}
+
 function ahxNoteToTrackerText(note: number): string | undefined {
   if (note <= 0) return undefined;
   const clamped = Math.min(note, AHX_MAX_NOTE_INDEX);

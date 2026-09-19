@@ -1515,6 +1515,18 @@ watch(
     if (!Number.isFinite(midi)) return;
     if (!playbackStore.isTrackAudible(activeTrack.value)) return;
 
+    // An AHX instrument has no patch: it is sounded by the AHX preview voice,
+    // called at once (no await first) so that a quick key-up cannot overtake it.
+    const ahxInstrument = ahxInstrumentNumberFor(instrumentId);
+    if (ahxInstrument !== undefined) {
+      if (event.velocity <= 0.0001) {
+        playbackStore.previewAhxNoteOff(midi);
+      } else {
+        void playbackStore.previewAhxNoteOn(ahxInstrument, midi, event.velocity);
+      }
+      return;
+    }
+
     void (async () => {
       if (!hasPatchForInstrument(instrumentId)) return;
       await songBank.ensureAudioContextRunning();
@@ -1903,6 +1915,14 @@ function applyBaseOctave(midi: number): number {
   const offset = (baseOctave.value - DEFAULT_BASE_OCTAVE) * 12;
   const adjusted = midi + offset;
   return Math.max(0, Math.min(127, Math.round(adjusted)));
+}
+
+/** The AHX instrument number (1-based; the slot number) behind `instrumentId`, if it is an AHX slot. */
+function ahxInstrumentNumberFor(instrumentId: string): number | undefined {
+  const slot = instrumentSlots.value.find(
+    (candidate) => formatInstrumentId(candidate.slot) === instrumentId,
+  );
+  return slot && isAhxSlot(slot) && slot.ahxData ? slot.slot : undefined;
 }
 
 function hasPatchForInstrument(instrumentId: string): boolean {

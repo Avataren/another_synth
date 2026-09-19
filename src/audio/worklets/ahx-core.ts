@@ -55,6 +55,15 @@ export interface AhxWasmPlayer {
   hifi_miss_count(): number;
   /** Fills `out` with the voice's latest waveform; returns the points written (0: capture off). */
   read_channel_snapshot(voice: number, out: Int16Array): number;
+  /**
+   * Keyboard-preview mode: the player stops playing the song and is played by
+   * `preview_note_on` / `preview_note_off` (one mono voice, the song's own
+   * instruments). Renders at once; hi-fi then builds its tables lazily.
+   */
+  enable_preview(): void;
+  /** `false` (nothing changed) outside preview mode or for an instrument the song lacks. */
+  preview_note_on(instrument: number, note: number, velocity: number): boolean;
+  preview_note_off(): void;
   free(): void;
 }
 
@@ -131,6 +140,21 @@ export type AhxCommand =
    * before playback: a load answers `song-loaded` only once that is done.
    */
   | { type: 'set-hifi'; enabled: boolean }
+  /**
+   * Keyboard-preview worklet: every song loaded from now on is put in preview
+   * mode (see `AhxWasmPlayer.enable_preview`) instead of being a song to play,
+   * so this instance is a live voice for the song's instruments and the
+   * transport commands mean nothing to it. Send it before the load.
+   */
+  | { type: 'set-preview'; enabled: boolean }
+  /**
+   * Preview mode: play `instrument` (1-based) at `note` (the AHX note index,
+   * 1..=60) with `velocity` (0..=127), retriggering the one voice. Ignored
+   * with no preview song loaded.
+   */
+  | { type: 'preview-note-on'; instrument: number; note: number; velocity: number }
+  /** Preview mode: release the note (the instrument's release or hard cut). */
+  | { type: 'preview-note-off' }
   /** Ask for a `hifi-stats` event: diagnostics, and what the E2E asserts on. */
   | { type: 'get-hifi-stats' }
   | { type: 'dispose' };
@@ -203,6 +227,7 @@ export class AhxProcessorCore {
   private mute = 0;
   private solo = 0;
   private hifi = false;
+  private preview = false;
   private loopPosition = false;
   /** One `waveforms` payload, refilled in place each report (posting clones it). */
   private scopeData = new Int16Array(0);
@@ -275,6 +300,15 @@ export class AhxProcessorCore {
         this.hifi = command.enabled;
         this.player?.set_hifi(command.enabled);
         break;
+      case 'set-preview':
+        this.preview = command.enabled;
+        break;
+      case 'preview-note-on':
+        this.player?.preview_note_on(command.instrument, command.note, command.velocity);
+        break;
+      case 'preview-note-off':
+        this.player?.preview_note_off();
+        break;
       case 'get-hifi-stats': {
         const p = this.player;
         this.post({
@@ -345,6 +379,8 @@ export class AhxProcessorCore {
       player.set_gain(this.gain);
       player.enable_capture(this.capture);
       player.set_mute_solo(this.mute, this.solo);
+      // Before hi-fi, which prewarms for a song that a preview never plays.
+      if (this.preview) player.enable_preview();
       player.set_hifi(this.hifi);
       player.set_loop_position(this.loopPosition);
       this.player = player;

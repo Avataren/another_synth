@@ -107,6 +107,36 @@ impl AhxPlayer {
         self.engine.loop_position()
     }
 
+    /// Live (keyboard preview) mode: this player stops playing the song and
+    /// is played by [`preview_note_on`](Self::preview_note_on) /
+    /// [`preview_note_off`](Self::preview_note_off) instead, one mono voice
+    /// with the song's instruments (see [`AhxEngine::enable_live`]). It starts
+    /// rendering at once (a preview has no transport to `play`) and there is no
+    /// way back: make a separate player for the song. Turning hi-fi on after
+    /// this builds its tables lazily instead of walking the song, which a
+    /// preview never plays.
+    pub fn enable_preview(&mut self) {
+        self.engine.enable_live();
+        self.playing = true;
+    }
+
+    pub fn preview_enabled(&self) -> bool {
+        self.engine.live_enabled()
+    }
+
+    /// Plays `instrument` (1-based) at `note` (1..=60, the AHX pitch table's
+    /// index) with `velocity` (0..=127), retriggering the voice on the next
+    /// tick. `false`, changing nothing, outside preview mode or for an
+    /// instrument the song does not have.
+    pub fn preview_note_on(&mut self, instrument: usize, note: i32, velocity: u32) -> bool {
+        self.engine.live_note_on(instrument, note, velocity)
+    }
+
+    /// Releases the previewed note (the instrument's release, or its hard cut).
+    pub fn preview_note_off(&mut self) {
+        self.engine.live_note_off();
+    }
+
     pub fn is_playing(&self) -> bool {
         self.playing
     }
@@ -157,7 +187,7 @@ impl AhxPlayer {
     pub fn set_hifi(&mut self, on: bool) {
         let was = self.engine.hifi_enabled();
         self.engine.set_hifi(on);
-        if on && !was {
+        if on && !was && !self.engine.live_enabled() {
             self.engine.prewarm_hifi();
         }
     }
