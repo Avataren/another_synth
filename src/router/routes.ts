@@ -1,4 +1,5 @@
 import type { RouteRecordRaw } from 'vue-router';
+import { ahxSlotRedirect, slotOf } from './ahx-slot-guard';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -15,6 +16,9 @@ const routes: RouteRecordRaw[] = [
           if (slotQuery) {
             const slotNumber = parseInt(slotQuery as string, 10);
             if (!Number.isNaN(slotNumber)) {
+              // An AHX slot has no patch for the synth editor to open.
+              const ahx = ahxSlotRedirect(slotNumber);
+              if (ahx) return ahx;
               return {
                 name: 'patch-instrument-editor',
                 params: { slot: slotNumber },
@@ -28,10 +32,16 @@ const routes: RouteRecordRaw[] = [
         path: 'patch/instrument/:slot(\\d+)',
         name: 'patch-instrument-editor',
         component: () => import('pages/IndexPage.vue'),
+        // `#/patch/instrument/N` for an AHX slot: the AHX editor, never the synth's.
+        beforeEnter: (to) => {
+          const slotNumber = slotOf(to.params.slot);
+          return (slotNumber === null ? null : ahxSlotRedirect(slotNumber)) ?? true;
+        },
       },
       {
-        // Read-only AHX instrument display (Task 5 B1). Its own page: an AHX
-        // instrument is not a synth `Patch`, so it must not open IndexPage.
+        // The AHX instrument editor (Task 5 B1 display, B2 editing). Its own
+        // page: an AHX instrument is not a synth `Patch`, so it must not open
+        // IndexPage.
         path: 'ahx/instrument/:slot(\\d+)',
         name: 'ahx-instrument-display',
         component: () => import('pages/AhxInstrumentPage.vue'),
@@ -44,6 +54,8 @@ const routes: RouteRecordRaw[] = [
           if (to.query.editSongPatch) {
             const slotNumber = parseInt(to.query.editSongPatch as string, 10);
             if (!Number.isNaN(slotNumber)) {
+              const ahx = ahxSlotRedirect(slotNumber);
+              if (ahx) return ahx;
               return {
                 name: 'patch-instrument-editor',
                 params: { slot: slotNumber },

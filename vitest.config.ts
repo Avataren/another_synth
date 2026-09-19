@@ -26,6 +26,11 @@ export default defineConfig({
         new URL('./tests/__mocks__/q-app-wrappers.ts', import.meta.url),
       ),
       stores: path.resolve(__dirname, './src/stores'),
+      // The router's lazy `import('layouts/...')` / `import('pages/...')`
+      // (quasar aliases): a test that loads `src/router/routes.ts` to drive the
+      // real route guards needs them to resolve, though it never renders them.
+      layouts: path.resolve(__dirname, './src/layouts'),
+      pages: path.resolve(__dirname, './src/pages'),
       'app/public/wasm/audio_processor': audioProcessorMock,
       'app/public/wasm/audio_processor.js': audioProcessorMock,
       // Resolve the tracker replay library to its TypeScript source rather

@@ -587,6 +587,14 @@ var AhxPlayer = class {
     return ret >>> 0;
   }
   /**
+   * Instruments the song has (1-based numbering runs `1..=instrument_count`).
+   * @returns {number}
+   */
+  instrument_count() {
+    const ret = wasm.ahxplayer_instrument_count(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
    * Releases the previewed note (the instrument's release, or its hard cut).
    */
   preview_note_off() {
@@ -610,6 +618,39 @@ var AhxPlayer = class {
     wasm.ahxplayer_set_loop_position(this.__wbg_ptr, on);
   }
   /**
+   * Replaces instrument `instrument` (1-based, as a pattern step numbers it)
+   * of the loaded song with the one in `bytes`: the 22-byte instrument core
+   * followed by its PList entries in the song's own layout (4 bytes each in
+   * AHX, 5 in HVL), no name, exactly as long as its length byte says. The
+   * bytes are decoded by the file loader's own functions
+   * ([`format::parse_instrument`]), the name is kept, and the song's
+   * instrument list is what changes: a song player plays the new instrument
+   * from its next trigger (a voice already holding it also picks up PList and
+   * envelope changes at once, see [`AhxEngine::replace_instrument`]) and a
+   * preview player from its next note-on. Nothing is reloaded and the
+   * transport does not move.
+   *
+   * With hi-fi on, a song player rebuilds the tables the edited song asks
+   * for before this returns (see [`AhxEngine::prewarm_hifi_after_edit`]) --
+   * unless the edit reaches no table (volume, envelope, hard cut), which
+   * costs nothing; a preview player only forgets what it prewarmed for that
+   * instrument. Both happen here, in the caller's message handler, never in
+   * `render`.
+   *
+   * An error, with the song untouched, for bytes the format does not decode
+   * to one instrument or an `instrument` the song does not have.
+   * @param {number} instrument
+   * @param {Uint8Array} bytes
+   */
+  replace_instrument(instrument, bytes) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.ahxplayer_replace_instrument(this.__wbg_ptr, instrument, ptr0, len0);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
    * Fills `out` with `voice`'s latest waveform (oldest first, `i16`, full
    * scale `+-8192`) and returns the number of points written; 0 when
    * capture is off or `voice` is out of range. Reuses the caller's buffer,
@@ -622,6 +663,18 @@ var AhxPlayer = class {
     var ptr0 = passArray16ToWasm0(out, wasm.__wbindgen_malloc);
     var len0 = WASM_VECTOR_LEN;
     const ret = wasm.ahxplayer_read_channel_snapshot(this.__wbg_ptr, voice, ptr0, len0, out);
+    return ret >>> 0;
+  }
+  /**
+   * Ticks a note-on's prewarm holds a key down for `instrument` (1-based)
+   * before releasing it, bounded by what the instrument can produce (see
+   * [`live_warm_hold_ticks`](super::engine::live_warm_hold_ticks)); 0 for an
+   * instrument the song does not have. Diagnostics.
+   * @param {number} instrument
+   * @returns {number}
+   */
+  preview_warm_hold_ticks(instrument) {
+    const ret = wasm.ahxplayer_preview_warm_hold_ticks(this.__wbg_ptr, instrument);
     return ret >>> 0;
   }
   /**
@@ -3059,6 +3112,7 @@ function fadeOutTail(buffer) {
     buffer[start + i] = (buffer[start + i] ?? 0) * (1 - (i + 1) / n);
   }
 }
+var toBytes = (bytes) => bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
 var AhxProcessorCore = class {
   constructor(PlayerCtor, sampleRate2, post) {
     this.PlayerCtor = PlayerCtor;
@@ -3095,7 +3149,7 @@ var AhxProcessorCore = class {
       case "load-song":
         if (command.id <= this.lastLoadId) break;
         this.lastLoadId = command.id;
-        this.loadSong(command.id, command.bytes, command.stereoMode ?? 2);
+        this.loadSong(command.id, command.bytes, command.stereoMode ?? 2, command.instruments ?? []);
         break;
       case "play":
         this.player?.play();
@@ -3151,6 +3205,16 @@ var AhxProcessorCore = class {
         this.continuePhase = command.enabled;
         this.player?.set_continue_phase_on_trigger(command.enabled);
         break;
+      case "replace-instrument":
+        this.replaceInstrument(command.id, command.instrument, command.bytes);
+        break;
+      case "get-warm-hold":
+        this.post({
+          type: "warm-hold",
+          instrument: command.instrument,
+          ticks: this.player?.preview_warm_hold_ticks(command.instrument) ?? 0
+        });
+        break;
       case "get-hifi-stats": {
         const p = this.player;
         this.post({
@@ -3204,11 +3268,19 @@ var AhxProcessorCore = class {
       this.post({ type: "error", message: `AHX render failed: ${String(error)}` });
     }
   }
-  loadSong(id, bytes, stereoMode) {
+  loadSong(id, bytes, stereoMode, instruments) {
     this.dropPlayer();
     try {
       const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
       const player = new this.PlayerCtor(data, this.sampleRate, stereoMode);
+      const rejected = [];
+      for (const edit of instruments) {
+        try {
+          player.replace_instrument(edit.instrument, toBytes(edit.bytes));
+        } catch {
+          rejected.push(edit.instrument);
+        }
+      }
       player.set_gain(this.gain);
       player.enable_capture(this.capture);
       player.set_mute_solo(this.mute, this.solo);
@@ -3227,7 +3299,8 @@ var AhxProcessorCore = class {
           trackLength: player.track_length(),
           channels: player.channels(),
           droppedChannels: player.dropped_channels(),
-          sampleRate: this.sampleRate
+          sampleRate: this.sampleRate,
+          ...rejected.length > 0 ? { rejectedInstruments: rejected } : {}
         }
       });
     } catch (error) {
@@ -3236,6 +3309,19 @@ var AhxProcessorCore = class {
         id,
         message: `AHX load failed: ${String(error)}`
       });
+    }
+  }
+  /** `replace-instrument`: an edit of the loaded song, answered either way. */
+  replaceInstrument(id, instrument, bytes) {
+    if (!this.player) {
+      this.post({ type: "instrument-replaced", id, instrument, ok: false, message: "no song is loaded" });
+      return;
+    }
+    try {
+      this.player.replace_instrument(instrument, toBytes(bytes));
+      this.post({ type: "instrument-replaced", id, instrument, ok: true });
+    } catch (error) {
+      this.post({ type: "instrument-replaced", id, instrument, ok: false, message: String(error) });
     }
   }
   /**

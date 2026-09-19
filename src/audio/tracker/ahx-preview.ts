@@ -4,6 +4,7 @@ import {
   type AhxPlayerClient,
 } from 'src/audio/tracker/ahx-player';
 import type { AhxTransportHost } from 'src/audio/tracker/ahx-transport';
+import { currentAhxInstrumentEdits, type AhxInstrumentEdit } from 'src/audio/tracker/ahx-source';
 
 /**
  * Playing an AHX song's instruments from the keyboard.
@@ -47,6 +48,8 @@ export class AhxPreview {
     private readonly createPlayer: (
       ctx: AudioContext,
     ) => Promise<AhxPlayerClient> = createAhxPlayer,
+    /** The instrument edits a load applies on top of the file's own bytes. */
+    private readonly editsToApply: () => readonly AhxInstrumentEdit[] = currentAhxInstrumentEdits,
   ) {}
 
   /** Whether a preview worklet currently exists (for tests and diagnostics). */
@@ -106,6 +109,19 @@ export class AhxPreview {
     this.client?.previewNoteOff();
   }
 
+  /**
+   * The song's instrument `instrument` was edited: the preview worklet swaps it
+   * in (the same song data the song player plays), so the next key on it sounds
+   * the edit without a reload, and forgets the hi-fi tables it prewarmed for the
+   * old one (the next note-on prewarms the new one, in the worklet's message
+   * handler). A note already sounding carries on with what its trigger copied,
+   * and picks up PList and envelope changes at once. Resolves at once with no
+   * worklet yet (its load applies every edit).
+   */
+  replaceInstrument(instrument: number, bytes: Uint8Array): Promise<void> {
+    return this.client ? this.client.replaceInstrument(instrument, bytes) : Promise.resolve();
+  }
+
   /** Release whatever sounds (focus lost, song changed). */
   allNotesOff(): void {
     this.wanted = null;
@@ -138,7 +154,7 @@ export class AhxPreview {
     const client = await this.ensureClient();
     if (this.loadedSource === bytes) return client;
     this.loadedSource = null;
-    await client.loadSong(bytes);
+    await client.loadSong(bytes, 2, this.editsToApply());
     this.loadedSource = bytes;
     return this.disposed ? null : client;
   }

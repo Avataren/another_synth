@@ -21,7 +21,7 @@
 //! compare a partial channel count against the reference; it is a
 //! verification hook, not a product mode.
 
-use super::format::{Song, SongFormat, Step, MAX_CHANNELS};
+use super::format::{Instrument, Song, SongFormat, Step, MAX_CHANNELS};
 use super::hifi::{BankMode, HifiBank, FRAC_BITS};
 use super::voice::{panning_left, panning_right, Voice};
 use super::waveform::WAVES;
@@ -183,13 +183,115 @@ struct Live {
 /// gets, so that a cut does not click (the reference cuts a note dead).
 const LIVE_CUT_FRAMES: i32 = 2;
 
-/// Ticks a live note-on's prewarm holds the scratch key down (20 s at 50 Hz):
-/// long enough for a filter or square sweep to cover its range, or to repeat.
-/// A held note that outlasts it and reaches a table the run did not is a miss.
+/// Most ticks a live note-on's prewarm holds the scratch key down (20 s at
+/// 50 Hz): long enough for a filter or square sweep to cover its range, or to
+/// repeat. A held note that outlasts it and reaches a table the run did not is
+/// a miss. An instrument that can produce nothing new for that long is held for
+/// less, see [`live_warm_hold_ticks`].
 const LIVE_WARM_HOLD_TICKS: u32 = 1000;
 
-/// Ticks the prewarm gives the release after the hold (an instrument's release
-/// is at most 255 frames).
+/// Fewest ticks a prewarm holds a key down, whatever the instrument.
+const LIVE_WARM_MIN_HOLD_TICKS: u32 = 16;
+
+/// Ticks the prewarm of a live note-on on `ins` holds the scratch key down: as
+/// long as the instrument can still be *producing* a wave table it has not
+/// produced yet, and no longer (at most [`LIVE_WARM_HOLD_TICKS`]).
+///
+/// What can change which table a held note plays, in live mode (no pattern
+/// effects, so only the instrument's own data acts):
+///
+/// * the PList: each row picks a waveform and can set the filter position or
+///   square position, and lasts its speed in ticks (the instrument's, or a
+///   `F` command's, at most 255, plus the tick that runs it). Every row has run
+///   after the sum of those. A jump (`5`) only repeats rows already run, and
+///   its loop is the same states again, so it is not counted twice;
+/// * the sweeps, which only a PList `4` starts (`plist::process_command`): a
+///   filter sweep walks `(upper - lower)` positions each way, `f_max` per step
+///   and `speed - 3` ticks between steps; a square sweep walks its (subsampled)
+///   range one position per `speed + 1` ticks. Sliding in to a limit and one
+///   bounce there and back is one full cycle of its tables;
+/// * the pitch: a vibrato (after its delay, one 64-step cycle), and a PList
+///   pitch slide, which has no end and takes the whole hold; a vibrato together
+///   with a sweep takes the whole hold too (see below);
+/// * the attack and decay, after which the envelope sits at sustain and adds
+///   nothing to the wave (volume is not part of a table).
+///
+/// It is a bound, not an estimate: it uses the largest speed any row can
+/// set, and assumes both sweeps run.
+pub fn live_warm_hold_ticks(ins: &Instrument) -> u32 {
+    let entries = &ins.plist.entries;
+    let mut max_speed = ins.plist.speed as u32;
+    for entry in entries {
+        for k in 0..2 {
+            if entry.fx[k] == 15 {
+                max_speed = max_speed.max(entry.fx_param[k] as u32);
+            }
+        }
+    }
+    let plist_ticks = entries.len() as u32 * (max_speed + 1);
+
+    // A PList pitch slide (`1`, `2`) runs for as long as the note is held and
+    // meets a new mip level as it goes: nothing short of the full hold covers it.
+    if entries.iter().any(|e| e.fx.contains(&1) || e.fx.contains(&2)) {
+        return LIVE_WARM_HOLD_TICKS;
+    }
+
+    // PList `4` (`plist::process_command`): parameter 0 or a low nibble starts
+    // the square sweep, a high nibble the filter sweep.
+    let (mut starts_square, mut starts_filter) = (false, false);
+    for entry in entries {
+        for k in 0..2 {
+            if entry.fx[k] == 4 {
+                let param = entry.fx_param[k];
+                starts_square |= param == 0 || param & 0x0f != 0;
+                starts_filter |= param & 0xf0 != 0;
+            }
+        }
+    }
+    // A sweep first slides in from wherever its position is (the filter's
+    // starts at 32, outside the limits when they are set low or high) to its
+    // limit, then bounces: `SWEEP_SLIDE_IN` positions covers the slide.
+    const SWEEP_SLIDE_IN: u32 = 64;
+    let filter_cycle = if starts_filter {
+        let range = (ins.filter_upper_limit as i32 - ins.filter_lower_limit as i32).unsigned_abs();
+        let speed = ins.filter_speed as i32;
+        let f_max = if speed < 4 { 5 - speed } else { 1 } as u32;
+        let wait = (speed - 3).max(1) as u32;
+        (2 * range + SWEEP_SLIDE_IN).div_ceil(f_max) * wait
+    } else {
+        0
+    };
+    let square_cycle = if starts_square {
+        // The limits are subsampled by the wave length (`SquareSweep::trigger`).
+        let shift = (5 - ins.wave_length.min(5) as i32) as u32;
+        let range = ((ins.square_upper_limit as i32 >> shift) - (ins.square_lower_limit as i32 >> shift)).unsigned_abs();
+        (2 * range + SWEEP_SLIDE_IN) * (ins.square_speed as u32 + 1)
+    } else {
+        0
+    };
+
+    // The vibrato is silent for its delay, then swings the pitch through one
+    // 64-step cycle at most every tick.
+    let vibrato_ticks = if ins.vibrato_depth != 0 { ins.vibrato_delay as u32 + 64 } else { 0 };
+
+    // One periodic process is walked by one cycle. Two of them (two sweeps, or a
+    // sweep and a vibrato, whose periods drift against each other) meet in
+    // every pairing of their states, and the pairings' orbit is the product of
+    // the periods, which no short hold covers (`depressed.ahx` instrument 34
+    // still finds a new table 877 ticks in; `doobrey_gubbins.hvl` instrument 3
+    // runs both sweeps): those keep the whole hold.
+    let processes = [filter_cycle, square_cycle, vibrato_ticks].iter().filter(|&&t| t != 0).count();
+    if processes >= 2 {
+        return LIVE_WARM_HOLD_TICKS;
+    }
+    let sweep_ticks = filter_cycle.max(square_cycle);
+
+    let attack_decay = ins.envelope.a_frames as u32 + ins.envelope.d_frames as u32;
+    (plist_ticks + sweep_ticks + vibrato_ticks + attack_decay + LIVE_WARM_MIN_HOLD_TICKS).clamp(LIVE_WARM_MIN_HOLD_TICKS, LIVE_WARM_HOLD_TICKS)
+}
+
+/// Most ticks the prewarm gives the release after the hold (an instrument's
+/// release is at most 255 frames); the run also stops as soon as it has ended.
 const LIVE_WARM_RELEASE_TICKS: u32 = 300;
 
 /// How a [`seek`](AhxEngine::seek) got to its target.
@@ -210,6 +312,27 @@ pub enum SeekKind {
 /// no song end) would otherwise never finish. 400 000 ticks is over two hours
 /// at 50 Hz; a replay tick costs a few microseconds.
 const MAX_SEEK_TICKS: u32 = 400_000;
+
+/// Whether two versions of an instrument reach the same wave tables in any song.
+/// The tables a voice plays depend on the wave length, the PList (waveform,
+/// filter and square positions, pitch, and the time each row lasts), the filter
+/// and square sweeps and the vibrato -- and on nothing else: the volume, the
+/// envelope and the hard cut only scale or end the sound, and so cannot make a
+/// voice ask for a table it did not. An edit that leaves this true needs no new
+/// hi-fi tables.
+pub fn same_tables(a: &Instrument, b: &Instrument) -> bool {
+    a.wave_length == b.wave_length
+        && a.filter_lower_limit == b.filter_lower_limit
+        && a.filter_upper_limit == b.filter_upper_limit
+        && a.filter_speed == b.filter_speed
+        && a.square_lower_limit == b.square_lower_limit
+        && a.square_upper_limit == b.square_upper_limit
+        && a.square_speed == b.square_speed
+        && a.vibrato_delay == b.vibrato_delay
+        && a.vibrato_speed == b.vibrato_speed
+        && a.vibrato_depth == b.vibrato_depth
+        && a.plist == b.plist
+}
 
 impl AhxEngine {
     /// `defstereo` (0..=4) is only used for AHX songs (stereo separation and
@@ -754,6 +877,66 @@ impl AhxEngine {
         self.live.is_some()
     }
 
+    /// Ticks the preview prewarm holds a key down for `instrument` (1-based):
+    /// what [`live_warm_hold_ticks`] says for the instrument as it is now.
+    /// `None` for an instrument the song does not have.
+    pub fn live_warm_hold_ticks_for(&self, instrument: usize) -> Option<u32> {
+        (instrument >= 1 && instrument <= self.song.instrument_nr as usize)
+            .then(|| live_warm_hold_ticks(&self.song.instruments[instrument]))
+    }
+
+    /// Replaces instrument `idx` (1-based) of the loaded song with `ins`,
+    /// keeping its name. This is an edit of the song, not of a copy: the song
+    /// player's own tick, and the preview's, read `song.instruments[idx]`, so
+    /// both play the new instrument from here on. `None`, changing nothing, for
+    /// an `idx` the song does not have; otherwise whether the wave tables the
+    /// song reaches may have changed ([`same_tables`] false), which is what
+    /// decides if a hi-fi song player must build tables afterwards.
+    ///
+    /// What a voice already holding the instrument does: what a trigger copies
+    /// onto the voice (volume, wave length, vibrato, hard cut, PList speed and
+    /// the filter and square sweep set-up) stays as it was until the next
+    /// trigger; what a voice reads from the instrument tick by tick -- the
+    /// PList rows and the envelope's stage lengths and levels -- changes under
+    /// it at once. Nothing a voice holds can index past a shorter PList (the
+    /// row is bounds-checked each tick).
+    ///
+    /// Hi-fi: nothing to invalidate. The bank keys its spectra by table
+    /// *contents* (see `hifi.rs`), so an instrument that now plays a different
+    /// wave simply asks for other keys, and never gets a stale table for the
+    /// old one. What goes stale is the preview's record of what it prewarmed
+    /// for this instrument (`live_warm`), so that is cleared: the next
+    /// note-on prewarms the new instrument again. A *song* player whose bank is
+    /// already locked wants [`prewarm_hifi_after_edit`](Self::prewarm_hifi_after_edit)
+    /// next when tables may differ, to build what the new instrument reaches.
+    pub fn replace_instrument(&mut self, idx: usize, mut ins: Instrument) -> Option<bool> {
+        if idx == 0 || idx > self.song.instrument_nr as usize || idx >= self.song.instruments.len() {
+            return None;
+        }
+        let tables_may_differ = !same_tables(&self.song.instruments[idx], &ins);
+        ins.name = std::mem::take(&mut self.song.instruments[idx].name);
+        self.song.instruments[idx] = ins;
+        self.live_warm.retain(|&(instrument, _)| instrument as usize != idx);
+        Some(tables_may_differ)
+    }
+
+    /// [`prewarm_hifi`](Self::prewarm_hifi) for after an instrument edit: the
+    /// walk finds the tables the edited song asks for that the bank lacks and
+    /// builds them (tables the old instrument alone used stay until the bank
+    /// is full). If the bank fills up, it is emptied and built again from the
+    /// song as it now is, so a long editing session cannot leave it stuck at
+    /// its cap with the new instrument's tables missing.
+    pub fn prewarm_hifi_after_edit(&mut self) -> HifiPrewarm {
+        let first = self.prewarm_hifi();
+        if !first.cache_full {
+            return first;
+        }
+        if let Some(bank) = self.hifi.as_mut() {
+            bank.clear();
+        }
+        self.prewarm_hifi()
+    }
+
     /// Starts `instrument` (1-based, as a pattern step numbers it) at `note`
     /// (1..=60, the reference's `period_tab` index; clamped) on the next tick,
     /// with `velocity` (0..=127) scaling the voice's master volume. It
@@ -849,13 +1032,20 @@ impl AhxEngine {
     /// Builds, ahead of the note, the hi-fi tables that `instrument` at `note`
     /// will ask for, so that the render path only looks them up (see
     /// `hifi.rs`). Runs the instrument's ticks -- held for
-    /// [`LIVE_WARM_HOLD_TICKS`], then released -- on a scratch voice, with the
+    /// [`live_warm_hold_ticks`], then released -- on a scratch voice, with the
     /// bank in `Prewarm`; the real voice and the miss count are untouched.
     /// Done once per (instrument, note) until the bank is rebuilt. If the bank
     /// hits its cap it is dropped and rebuilt for this note alone: a sound
     /// already playing keeps its own tables, and it is the right moment to
     /// pay for it, in the message handler and not in `render`.
     fn warm_live(&mut self, instrument: u8, note: i32) {
+        let hold = live_warm_hold_ticks(&self.song.instruments[instrument as usize]);
+        self.warm_live_for(instrument, note, hold);
+    }
+
+    /// [`warm_live`](Self::warm_live) with the hold length given, so a test can
+    /// set the bounded hold against the full one.
+    fn warm_live_for(&mut self, instrument: u8, note: i32, hold: u32) {
         let Some(bank) = self.hifi.as_mut() else { return };
         if self.live_warm.contains(&(instrument, note)) {
             return;
@@ -864,8 +1054,8 @@ impl AhxEngine {
             bank.set_mode(BankMode::Prewarm);
             let mut voice = Voice::new();
             let mut live = Live { pending_on: Some((instrument, note, 0x40)), ..Live::default() };
-            for tick in 0..LIVE_WARM_HOLD_TICKS + LIVE_WARM_RELEASE_TICKS {
-                if tick == LIVE_WARM_HOLD_TICKS {
+            for tick in 0..hold + LIVE_WARM_RELEASE_TICKS {
+                if tick == hold {
                     live.pending_off = true;
                 }
                 Self::live_tick(&mut voice, &mut live, &self.song, self.waves, self.t.tempo, self.continue_phase_on_trigger);
@@ -1456,5 +1646,133 @@ mod tests {
         let mut v = Voice::new();
         stepfx_1(&mut t, &mut v, 64, 0xf, 0);
         assert!(t.song_end_reached);
+    }
+
+    /// The claim behind `live_warm_hold_ticks`: holding the scratch key for the
+    /// instrument's bound builds every table the full 1000-tick hold builds.
+    /// Checked on the real demo corpus, every instrument at two pitches, with
+    /// the two banks growing side by side (equal counts after every instrument
+    /// means neither ever saw a table the other did not).
+    #[test]
+    fn the_bounded_hold_builds_every_table_the_full_hold_does() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx");
+        let (mut capped_holds, mut full_holds, mut instruments) = (0u64, 0u64, 0u64);
+        let mut names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().path()).collect();
+        names.sort();
+        for path in names {
+            let song = crate::ahx::format::parse(&std::fs::read(&path).unwrap()).unwrap();
+            let count = song.instrument_nr as usize;
+            let engine = |song: Song| {
+                let mut e = AhxEngine::new(song, 44100, 2).unwrap();
+                e.set_hifi(true);
+                e.enable_live();
+                e
+            };
+            let (mut capped, mut full) = (engine(song.clone()), engine(song));
+            for instrument in 1..=count {
+                let hold = live_warm_hold_ticks(&capped.song.instruments[instrument]);
+                assert!((LIVE_WARM_MIN_HOLD_TICKS..=LIVE_WARM_HOLD_TICKS).contains(&hold));
+                for note in [24, 48] {
+                    capped.warm_live_for(instrument as u8, note, hold);
+                    full.warm_live_for(instrument as u8, note, LIVE_WARM_HOLD_TICKS);
+                    assert_eq!(
+                        (capped.hifi_table_count(), capped.hifi.as_ref().unwrap().source_count()),
+                        (full.hifi_table_count(), full.hifi.as_ref().unwrap().source_count()),
+                        "{}: instrument {instrument} at note {note}: the bounded hold ({hold} ticks) missed tables the full hold built",
+                        path.display()
+                    );
+                }
+                capped_holds += hold as u64;
+                full_holds += LIVE_WARM_HOLD_TICKS as u64;
+                instruments += 1;
+            }
+        }
+        eprintln!(
+            "prewarm hold over {instruments} demo instruments: mean {:.0} ticks against {LIVE_WARM_HOLD_TICKS} ({:.0}% of the old cost)",
+            capped_holds as f64 / instruments as f64,
+            100.0 * capped_holds as f64 / full_holds as f64
+        );
+    }
+
+    #[test]
+    fn replace_instrument_keeps_the_name_and_refuses_what_the_song_lacks() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx/karma.ahx");
+        let song = crate::ahx::format::parse(&std::fs::read(&path).unwrap()).unwrap();
+        let count = song.instrument_nr as usize;
+        let idx = (1..=count).find(|&i| !song.instruments[i].name.is_empty()).expect("the fixture names an instrument");
+        let name = song.instruments[idx].name.clone();
+        let mut e = AhxEngine::new(song, 44100, 2).unwrap();
+
+        let replacement = Instrument { name: "other".into(), volume: 7, ..Instrument::default() };
+        assert_eq!(e.replace_instrument(idx, replacement), Some(true), "a bare instrument has none of the original's PList: other tables");
+        assert_eq!(e.song().instruments[idx].name, name, "a wire form has no name; the song's is kept");
+        assert_eq!(e.song().instruments[idx].volume, 7);
+
+        assert_eq!(e.replace_instrument(0, Instrument::default()), None, "0 is the placeholder, not an instrument");
+        assert_eq!(e.replace_instrument(count + 1, Instrument::default()), None);
+        assert_eq!(e.song().instruments[0], Instrument::default());
+    }
+
+    /// A voice that is holding an instrument when its PList shrinks (or empties)
+    /// must not index past the end: the row is bounds-checked every tick.
+    #[test]
+    fn a_held_voice_survives_its_plist_being_cut_short() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx/karma.ahx");
+        let song = crate::ahx::format::parse(&std::fs::read(&path).unwrap()).unwrap();
+        let count = song.instrument_nr as usize;
+        let mut e = AhxEngine::new(song, 44100, 2).unwrap();
+        let mut out = vec![0i16; 2 * 441];
+        for _ in 0..200 {
+            e.render_block(&mut out);
+        }
+        for idx in 1..=count {
+            let mut short = e.song().instruments[idx].clone();
+            short.plist.entries.truncate(1);
+            assert!(e.replace_instrument(idx, short).is_some());
+        }
+        for _ in 0..200 {
+            e.render_block(&mut out);
+        }
+        for idx in 1..=count {
+            let mut none = e.song().instruments[idx].clone();
+            none.plist.entries.clear();
+            assert!(e.replace_instrument(idx, none).is_some());
+        }
+        for _ in 0..400 {
+            e.render_block(&mut out);
+        }
+    }
+
+    #[test]
+    fn only_what_reaches_a_wave_table_counts_as_a_table_change() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx/karma.ahx");
+        let song = crate::ahx::format::parse(&std::fs::read(&path).unwrap()).unwrap();
+        let base = song.instruments[16].clone();
+        let mut e = AhxEngine::new(song, 44100, 2).unwrap();
+
+        let mut same = base.clone();
+        same.volume = 3;
+        same.envelope.a_frames = base.envelope.a_frames.wrapping_add(9);
+        same.envelope.r_volume = 5;
+        same.hard_cut_release = !base.hard_cut_release;
+        same.hard_cut_release_frames = 3;
+        assert_eq!(e.replace_instrument(16, same), Some(false), "volume, envelope and hard cut reach no table");
+
+        let edits: [(&str, fn(&mut Instrument)); 9] = [
+            ("wave length", |i| i.wave_length = (i.wave_length + 1) % 6),
+            ("filter speed", |i| i.filter_speed = i.filter_speed.wrapping_add(1) & 0x3f),
+            ("square speed", |i| i.square_speed = i.square_speed.wrapping_add(1)),
+            ("square limit", |i| i.square_upper_limit = i.square_upper_limit.wrapping_add(1)),
+            ("vibrato", |i| i.vibrato_depth = (i.vibrato_depth + 1) & 0xf),
+            ("plist speed", |i| i.plist.speed = i.plist.speed.wrapping_add(1)),
+            ("plist waveform", |i| i.plist.entries[0].waveform = (i.plist.entries[0].waveform + 1) % 5),
+            ("plist row added", |i| i.plist.entries.push(Default::default())),
+            ("plist row removed", |i| { i.plist.entries.pop(); }),
+        ];
+        for (what, edit) in edits {
+            let mut changed = e.song().instruments[16].clone();
+            edit(&mut changed);
+            assert_eq!(e.replace_instrument(16, changed), Some(true), "{what} can reach another table");
+        }
     }
 }

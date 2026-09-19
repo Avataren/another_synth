@@ -43,6 +43,9 @@ pub enum AhxParseError {
     /// file. `field` names the byte region being decoded when the read
     /// failed.
     Truncated { field: &'static str, offset: usize },
+    /// A single-instrument wire form ([`parse_instrument`]) whose length is not
+    /// the 22-byte core plus exactly the PList entries its length byte counts.
+    BadInstrumentLength { expected: usize, got: usize },
 }
 
 impl fmt::Display for AhxParseError {
@@ -60,6 +63,9 @@ impl fmt::Display for AhxParseError {
             ),
             AhxParseError::Truncated { field, offset } => {
                 write!(f, "truncated while reading {field} at byte offset {offset}")
+            }
+            AhxParseError::BadInstrumentLength { expected, got } => {
+                write!(f, "instrument is {got} bytes, its header says {expected}")
             }
         }
     }
@@ -620,6 +626,50 @@ fn parse_hvl(buf: &[u8]) -> Result<Song, AhxParseError> {
         mixgain_raw: Some(mixgain_raw),
         defstereo: Some(defstereo),
     })
+}
+
+/// Bytes of one PList entry in `format`'s layout: 4 in AHX, 5 in HVL.
+pub fn plist_entry_bytes(format: SongFormat) -> usize {
+    match format {
+        SongFormat::Ahx => 4,
+        SongFormat::Hvl => 5,
+    }
+}
+
+/// Bytes of the instrument core in both formats.
+pub const INSTRUMENT_CORE_BYTES: usize = 22;
+
+/// Decodes ONE instrument from its wire form: the 22-byte core followed by its
+/// PList entries in `format`'s own layout, with no name (names live in the
+/// song's string table, so the caller supplies it, or keeps the one it has).
+/// It is the file loader's own decode -- `parse_instrument_core` and the
+/// `parse_plist_entry_*` functions `parse_ahx`/`parse_hvl` call -- applied to a
+/// buffer that holds a single instrument, so an instrument written back
+/// through `serializeAhxInstrument` (TypeScript) or a future `.ahx` writer
+/// reads exactly as the file it came from would.
+///
+/// `version` is the song's raw version byte: version-0 AHX files strip the
+/// high nibble of a "toggle filter" parameter (`parse_plist_entry_ahx`), and an
+/// instrument decoded for such a song must be read the same way. The buffer
+/// must be exactly as long as its own length byte says.
+pub fn parse_instrument(bytes: &[u8], format: SongFormat, version: u8, name: String) -> Result<Instrument, AhxParseError> {
+    let r = Reader { buf: bytes };
+    let core = parse_instrument_core(&r, 0)?;
+    let entry_bytes = plist_entry_bytes(format);
+    let expected = INSTRUMENT_CORE_BYTES + core.plist_length as usize * entry_bytes;
+    if bytes.len() != expected {
+        return Err(AhxParseError::BadInstrumentLength { expected, got: bytes.len() });
+    }
+    let mut entries = Vec::with_capacity(core.plist_length as usize);
+    for row in 0..core.plist_length as usize {
+        let at = INSTRUMENT_CORE_BYTES + row * entry_bytes;
+        let byte = |i: usize| r.u8(at + i, "plist entry");
+        entries.push(match format {
+            SongFormat::Ahx => parse_plist_entry_ahx(byte(0)?, byte(1)?, byte(2)?, byte(3)?, version),
+            SongFormat::Hvl => parse_plist_entry_hvl(byte(0)?, byte(1)?, byte(2)?, byte(3)?, byte(4)?),
+        });
+    }
+    Ok(core.finish(name, entries))
 }
 
 /// Parses an AHX or HVL file from raw bytes. Auto-detects the format from

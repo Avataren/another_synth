@@ -371,6 +371,7 @@ import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
 import type { GlideState } from 'src/audio/types/synth-layout';
 import { VOICES_PER_ENGINE } from 'src/audio/worklet-config';
+import { ahxSlotRedirect } from 'src/router/ahx-slot-guard';
 import ChorusComponent from 'src/components/ChorusComponent.vue';
 
 type AddMenuItem = {
@@ -630,6 +631,14 @@ watch(
   songPatchRouteSlot,
   async (slotNumber, previousSlot) => {
     if (slotNumber !== null) {
+      // The route guard cannot see a song that loads after the URL was opened
+      // (a fresh tab on `#/patch/instrument/N`): an AHX slot is never the synth
+      // editor's, so it is sent to its own editor from here as well.
+      const ahx = ahxSlotRedirect(slotNumber);
+      if (ahx) {
+        void router.replace(ahx);
+        return;
+      }
       trackerStore.startEditingSlot(slotNumber);
       await loadSongPatchForEditing(slotNumber);
       return;

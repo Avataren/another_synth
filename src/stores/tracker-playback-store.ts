@@ -12,7 +12,13 @@ import { defaultLookaheadSeconds } from 'src/audio/device-profile';
 import { AhxTransport } from 'src/audio/tracker/ahx-transport';
 import { AhxPreview } from 'src/audio/tracker/ahx-preview';
 import type { AhxPosition, AhxWaveforms } from 'src/audio/tracker/ahx-player';
-import { currentAhxSource, onCurrentAhxSourceChange } from 'src/audio/tracker/ahx-source';
+import {
+  currentAhxSource,
+  onAhxInstrumentEdit,
+  onCurrentAhxSourceChange,
+  type AhxInstrumentEdit,
+} from 'src/audio/tracker/ahx-source';
+import { AhxInstrumentSync } from 'src/audio/tracker/ahx-instrument-sync';
 
 export type PlaybackMode = 'pattern' | 'song';
 
@@ -49,6 +55,9 @@ let ahxUnsubscribes: Array<() => void> = [];
 /** The keyboard-preview voice: its own worklet, apart from the song's (`AhxTransport`). */
 let ahxPreviewInstance: AhxPreview | null = null;
 let ahxSourceUnsubscribe: (() => void) | null = null;
+/** Carries instrument edits to the live worklets (song player and preview) once a burst of them is over. */
+let ahxEditSync: AhxInstrumentSync | null = null;
+let ahxEditUnsubscribe: (() => void) | null = null;
 // Per-voice scope data from the AHX worklet: whether the tracker page wants it
 // (the worklet records nothing otherwise), and the newest snapshot as one view
 // per voice. Module-local and non-reactive on purpose: the scopes read it from
@@ -464,9 +473,51 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   // with any held note; an AHX song gets its replacement made straight away.
   ahxSourceUnsubscribe?.();
   ahxSourceUnsubscribe = onCurrentAhxSourceChange(() => {
+    // Edits waiting to be sent belong to the song that is gone.
+    ahxEditSync?.discard();
     disposeAhxPreview();
     if (currentAhxSource()) void prepareAhxPreview().catch(() => undefined);
   });
+
+  /**
+   * Instrument edits. The store commits an edit to the song at once (the slot's
+   * `ahxData` and `ahx-source`'s recorded edit); this hands it to the worklets
+   * that already hold the song: the song player, so the song plays the new
+   * instrument from its next trigger, and the preview voice, so the next key
+   * sounds it. Both are the same instrument replaced in the same song data,
+   * not a preview-only copy; a worklet made later starts from all the recorded
+   * edits.
+   *
+   * The two are not sent alike. The preview swap is a data write (the note-on
+   * prewarms what the new instrument needs, when a key is pressed), so it goes
+   * at once and a key pressed right after an edit sounds it. The song player
+   * may have to walk the whole song to build the hi-fi tables the new
+   * instrument reaches, on the audio thread, so its edits are coalesced
+   * (`AhxInstrumentSync`): a burst of edits (typing a number) costs one walk,
+   * and none for volume or envelope edits, which reach no table.
+   */
+  function replaceInPreview(edit: AhxInstrumentEdit): void {
+    ahxPreviewInstance?.replaceInstrument(edit.instrument, edit.bytes).catch((error) => {
+      console.warn(`[PlaybackStore] AHX instrument ${edit.instrument} edit was not applied to the preview`, error);
+    });
+  }
+  function sendAhxInstrumentEdit(edit: AhxInstrumentEdit): void {
+    ahxTransportInstance?.replaceInstrument(edit.instrument, edit.bytes).catch((error) => {
+      console.warn(`[PlaybackStore] AHX instrument ${edit.instrument} edit was not applied to the song`, error);
+    });
+  }
+  ahxEditSync?.discard();
+  ahxEditSync = new AhxInstrumentSync(sendAhxInstrumentEdit);
+  ahxEditUnsubscribe?.();
+  ahxEditUnsubscribe = onAhxInstrumentEdit((edit) => {
+    replaceInPreview(edit);
+    ahxEditSync?.push(edit);
+  });
+
+  /** Send the song player the edits still waiting, now (a play must hear the edits made a moment ago). */
+  function flushAhxInstrumentEdits(): void {
+    ahxEditSync?.flush();
+  }
 
   /** The worklet's position index is the sequence index: one pattern per position. */
   function handleAhxPosition(p: AhxPosition): void {
@@ -651,6 +702,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       ahxPlace?.position === position &&
       ahxPlace.row === row;
     const epoch = ahxEpoch;
+    // A song that is already in the worklet plays the edits made a moment ago.
+    flushAhxInstrumentEdits();
 
     stopSampleEngine();
     songBank.cancelAllScheduled();
@@ -1086,6 +1139,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     disposeAhxPreview();
     ahxSourceUnsubscribe?.();
     ahxSourceUnsubscribe = null;
+    ahxEditUnsubscribe?.();
+    ahxEditUnsubscribe = null;
+    ahxEditSync?.discard();
+    ahxEditSync = null;
     ahxSongActive = false;
     ahxScopeViews = null;
     ahxEpoch++;
@@ -1149,6 +1206,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // AHX keyboard preview
     previewAhxNoteOn,
     previewAhxNoteOff,
+    flushAhxInstrumentEdits,
     prepareAhxPreview,
 
     // AHX/HVL per-voice scopes

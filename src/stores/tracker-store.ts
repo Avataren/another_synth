@@ -5,6 +5,7 @@ import type { Patch } from 'src/audio/types/preset-types';
 import { clearLoadedSongHash } from 'src/composables/song-identity';
 import {
   inferSlotTags,
+  isAhxSlot,
   normalizeInstrumentType,
   type InstrumentFormat,
   type InstrumentType,
@@ -24,7 +25,11 @@ import {
   type TrackerPattern,
   type OplInstrumentData,
   type AhxInstrument,
+  ahxInstrumentProblem,
+  sanitizeAhxInstrument,
+  serializeAhxInstrument,
 } from '@another-synth/tracker-playback';
+import { recordAhxInstrumentEdit } from 'src/audio/tracker/ahx-source';
 
 export type {
   ModuleFormat,
@@ -90,7 +95,13 @@ export interface InstrumentSlot {
    * instrument editor (Task 5) the way `oplData` is kept for OPL. The whole
    * parsed struct is held rather than a trimmed view: it is a few hundred
    * plain numbers per instrument, and the editor phases need every field.
-   * Never read on the audio path -- the worklet plays the file's own bytes.
+   *
+   * It is the song's instrument, not a copy of it: `updateAhxInstrument`
+   * writes an edit here and, in the same call, replaces that instrument in the
+   * song the worklets play (`ahx-source`'s recorded edits), so what this holds
+   * is what plays. It is also what a saved song keeps of an edit. A song file
+   * from anywhere can put anything here, so `loadSongFile` only keeps a value
+   * that `ahxInstrumentProblem` accepts.
    */
   ahxData?: AhxInstrument;
 }
@@ -731,6 +742,11 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     /** Start editing a slot's patch */
     startEditingSlot(slotNumber: number) {
+      // The synth patch editor writes a patch into the slot it edits; an AHX
+      // slot has none by design (its instrument is `ahxData`, edited by the AHX
+      // editor), and an AHX song's slots are not the synth editor's to change.
+      const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
+      if (slot && isAhxSlot(slot)) return;
       this.editingSlot = slotNumber;
     },
     /** Stop editing and return to tracker */
@@ -739,10 +755,14 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     /** Update the patch for the currently editing slot */
     updateEditingPatch(patch: Patch) {
+      // Like `assignPatchToSlot`: an AHX song's slots are read-only to the
+      // patch editor, and no patch is ever written into an AHX slot (it would
+      // give the slot a `patchId` next to its `ahxData`).
+      if (this.isReadOnly) return;
       if (this.editingSlot === null || !patch.metadata?.id) return;
 
       const slot = this.instrumentSlots.find(s => s.slot === this.editingSlot);
-      if (!slot) return;
+      if (!slot || isAhxSlot(slot)) return;
 
       // Update song patches
       this.songPatches[patch.metadata.id] = JSON.parse(JSON.stringify(patch));
@@ -813,6 +833,32 @@ export const useTrackerStore = defineStore('trackerStore', {
       if (slot) {
         slot.volume = Math.max(0, Math.min(2, volume));
       }
+    },
+    /**
+     * Commit an edit of the AHX instrument in `slotNumber`. `next` replaces the
+     * slot's `ahxData` (so it is what a save keeps) and, in the same call,
+     * replaces that instrument in the song the worklets play: it is recorded in
+     * `ahx-source`, which hands it to the song player and the keyboard preview
+     * that already hold the song and to every worklet that loads it later. There
+     * is no preview-only copy: the song plays the edited instrument from its next
+     * trigger of it (a voice already holding it keeps what its trigger copied
+     * and takes PList and envelope changes at once).
+     *
+     * `false`, changing nothing, for a slot that is not an AHX slot with an
+     * instrument, or a `next` that is not a valid AHX instrument
+     * (`ahxInstrumentProblem`). The name is kept: it lives in the song's string
+     * table, not in the instrument. The edit reaches the audio only while the
+     * song's own bytes are current (`recordAhxInstrumentEdit`); a song loaded
+     * from a saved file has none, and still keeps the edit in `ahxData`.
+     */
+    updateAhxInstrument(slotNumber: number, next: AhxInstrument): boolean {
+      const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
+      if (!slot || !isAhxSlot(slot) || !slot.ahxData) return false;
+      const clean = sanitizeAhxInstrument({ ...next, name: slot.ahxData.name }, 'ahx');
+      if (!clean) return false;
+      slot.ahxData = clean;
+      recordAhxInstrumentEdit(slotNumber, serializeAhxInstrument(clean, 'ahx'));
+      return true;
     },
     serializeSong(): TrackerSongFile {
       // Only persist patches that are actually referenced by at least one
@@ -942,8 +988,16 @@ export const useTrackerStore = defineStore('trackerStore', {
         if (slot?.oplData) {
           mapped.oplData = slot.oplData;
         }
-        if (slot?.ahxData) {
-          mapped.ahxData = slot.ahxData;
+        if (slot?.ahxData !== undefined) {
+          // A song file can put anything here; the display, the editor and the
+          // serializer all trust the shape, so only a valid instrument is kept.
+          // A slot left without one has no editor to open (`canEditSlot`).
+          const problem = ahxInstrumentProblem(slot.ahxData, 'ahx');
+          if (problem === null) {
+            mapped.ahxData = JSON.parse(JSON.stringify(slot.ahxData)) as AhxInstrument;
+          } else {
+            console.warn(`[TrackerStore] slot ${mapped.slot}: ignoring invalid AHX instrument data (${problem})`);
+          }
         }
         if (slot?.volume !== undefined) {
           mapped.volume = slot.volume;
