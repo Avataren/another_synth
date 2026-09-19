@@ -97,9 +97,13 @@ export interface AhxEnvelopePoint {
 }
 
 /**
- * The volume envelope as a polyline: silence, attack to `aVolume`, decay to
- * `dVolume`, hold for the sustain frames, release to `rVolume`. A zero-frame
- * stage collapses (the replayer jumps straight to the stage's volume).
+ * The volume envelope taken at face value, as a polyline: silence, attack to
+ * `aVolume`, decay to `dVolume`, hold for the sustain frames, release to
+ * `rVolume`. This is the *ideal* envelope the four (frames, volume) pairs
+ * describe, and it is where the editor's nodes sit. It is NOT what the engine
+ * plays when a stage has 0 frames: the replayer skips such a stage rather than
+ * jumping to its volume (see `simulateAhxEnvelope` in `ahx-envelope-sim.ts`,
+ * which draws the engine's curve).
  */
 export function ahxEnvelopePoints(envelope: AhxEnvelope): AhxEnvelopePoint[] {
   const points: AhxEnvelopePoint[] = [{ frame: 0, volume: 0 }];

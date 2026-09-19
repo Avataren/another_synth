@@ -1,0 +1,54 @@
+mod ahx {
+    pub fn wrap_i16(x: i32) -> i32 { x as i16 as i32 }
+    pub mod format {
+        #[derive(Debug, Clone, Copy, Default)]
+        pub struct Envelope { pub a_frames: u8, pub a_volume: u8, pub d_frames: u8, pub d_volume: u8, pub s_frames: u8, pub r_frames: u8, pub r_volume: u8 }
+    }
+    #[path = "/home/openclaw/.openclaw/workspace/another_synth/rust-wasm/src/ahx/envelope.rs"]
+    pub mod envelope;
+}
+use ahx::envelope::AdsrState;
+use ahx::format::Envelope;
+
+fn main() {
+    // (aF,aV,dF,dV,sF,rF,rV)
+    let cases: Vec<[u8; 7]> = vec![
+        [4, 64, 0, 0, 0, 0, 0],
+        [2, 64, 4, 40, 10, 6, 0],
+        [0, 64, 0, 64, 1, 8, 0],      // never rises, swings negative
+        [0, 32, 5, 48, 3, 4, 8],      // zero attack, decay ramps from 0 and snaps
+        [3, 60, 0, 20, 6, 5, 0],      // zero decay: sustain holds the attack level
+        [2, 50, 3, 30, 4, 0, 0],      // zero release: never releases
+        [1, 64, 1, 64, 200, 8, 0],
+        [255, 64, 255, 1, 255, 255, 64],
+        [7, 13, 9, 63, 0, 11, 5],
+        [0, 0, 0, 0, 3, 0, 0],
+        [5, 10, 7, 60, 2, 3, 40],     // decay rises above the attack level
+    ];
+    // hard-cut: (case index, steps before the cut, release frames)
+    let cuts: Vec<(usize, usize, i32)> = vec![(1, 5, 3), (1, 30, 7), (6, 20, 3), (8, 4, 5), (3, 2, 4)];
+    println!("{{\"cases\":[");
+    for (ci, c) in cases.iter().enumerate() {
+        let e = Envelope { a_frames: c[0], a_volume: c[1], d_frames: c[2], d_volume: c[3], s_frames: c[4], r_frames: c[5], r_volume: c[6] };
+        let mut st = AdsrState::trigger(&e);
+        let total: usize = c[0] as usize + c[2] as usize + c[4] as usize + c[5] as usize + 6;
+        let mut levels = vec![st.volume];
+        for _ in 0..total { st.step(&e); levels.push(st.volume); }
+        println!("{}{{\"env\":{:?},\"levels\":{:?}}}", if ci > 0 { "," } else { "" }, c, levels);
+    }
+    println!("],\"cuts\":[");
+    for (i, (ci, before, frames)) in cuts.iter().enumerate() {
+        let c = cases[*ci];
+        let e = Envelope { a_frames: c[0], a_volume: c[1], d_frames: c[2], d_volume: c[3], s_frames: c[4], r_frames: c[5], r_volume: c[6] };
+        let mut st = AdsrState::trigger(&e);
+        let total: usize = 300;
+        let mut levels = vec![st.volume];
+        for n in 0..total {
+            if n == *before { st.hard_cut_release(&e, *frames); }
+            st.step(&e);
+            levels.push(st.volume);
+        }
+        println!("{}{{\"env\":{:?},\"before\":{},\"frames\":{},\"levels\":{:?}}}", if i > 0 { "," } else { "" }, c, before, frames, levels);
+    }
+    println!("]}}");
+}
