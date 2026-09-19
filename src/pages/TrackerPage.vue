@@ -627,7 +627,7 @@
                   <button
                     type="button"
                     class="icon-action-button"
-                    :title="isAhxSlot(slot) ? 'View instrument' : 'Edit patch'"
+                    :title="isAhxSlot(slot) ? 'Edit instrument' : 'Edit patch'"
                     :disabled="!canEditSlot(slot)"
                     @click.stop="editSlotPatch(slot.slot)"
                   >

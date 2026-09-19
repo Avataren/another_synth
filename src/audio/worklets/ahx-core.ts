@@ -69,6 +69,17 @@ export interface AhxWasmPlayer {
   /** `false` (nothing changed) outside preview mode or for an instrument the song lacks. */
   preview_note_on(instrument: number, note: number, velocity: number): boolean;
   preview_note_off(): void;
+  /**
+   * Replace instrument `instrument` (1-based) of the loaded song with the one
+   * in `bytes` (its wire form: the 22-byte core and its PList entries in the
+   * song's layout, see `serializeAhxInstrument`). Throws the reason, with the
+   * song untouched, for bytes that are not one instrument or an instrument the
+   * song lacks.
+   */
+  replace_instrument(instrument: number, bytes: Uint8Array): void;
+  instrument_count(): number;
+  /** Ticks a preview note-on's prewarm holds the key down for `instrument` (0 for none). */
+  preview_warm_hold_ticks(instrument: number): number;
   free(): void;
 }
 
@@ -98,6 +109,14 @@ export interface AhxSongInfo {
   /** Song channels not played: 0 unless the song exceeds the engine's 16 voices. */
   droppedChannels: number;
   sampleRate: number;
+  /** Instrument numbers of a load's `instruments` the engine refused (absent when none was). */
+  rejectedInstruments?: number[];
+}
+
+/** One instrument to replace: its 1-based number and its wire form. */
+export interface AhxInstrumentBytes {
+  instrument: number;
+  bytes: ArrayBuffer | Uint8Array;
 }
 
 /** Main thread -> worklet. */
@@ -108,6 +127,13 @@ export type AhxCommand =
       id: number;
       bytes: ArrayBuffer | Uint8Array;
       stereoMode?: number;
+      /**
+       * Instruments to replace right after the song is parsed, before hi-fi
+       * prewarms it (so the tables built are the edited song's): the edits made
+       * to the song since it was imported. One the engine refuses is skipped
+       * and named in `song-loaded`'s `rejectedInstruments`.
+       */
+      instruments?: AhxInstrumentBytes[];
     }
   | { type: 'play' }
   | { type: 'pause' }
@@ -178,8 +204,21 @@ export type AhxCommand =
    * the song: every load starts with the last state set.
    */
   | { type: 'set-continue-phase'; enabled: boolean }
+  /**
+   * Replace ONE instrument of the loaded song without reloading it: the song
+   * player's next trigger of it, and the preview's next note-on, play the new
+   * one (a voice already holding it also takes PList and envelope changes at
+   * once; see `AhxPlayer::replace_instrument`). The song does not restart and
+   * the transport does not move. With hi-fi on, a song player rebuilds the
+   * tables the edited song needs before it answers, so this can take a while
+   * on a long song; a preview only forgets what it prewarmed for the
+   * instrument. Answered with `instrument-replaced` carrying the same `id`.
+   */
+  | { type: 'replace-instrument'; id: number; instrument: number; bytes: ArrayBuffer | Uint8Array }
   /** Ask for a `hifi-stats` event: diagnostics, and what the E2E asserts on. */
   | { type: 'get-hifi-stats' }
+  /** Ask for a `warm-hold` event: the preview prewarm's hold for one instrument. */
+  | { type: 'get-warm-hold'; instrument: number }
   | { type: 'dispose' };
 
 /** Worklet -> main thread. */
@@ -206,6 +245,10 @@ export type AhxEvent =
       tables: number;
       misses: number;
     }
+  /** Answer to `replace-instrument`: `ok`, or why the song was left as it was. */
+  | { type: 'instrument-replaced'; id: number; instrument: number; ok: boolean; message?: string }
+  /** Answer to `get-warm-hold`: ticks the preview prewarm holds the key for (0: no such instrument). */
+  | { type: 'warm-hold'; instrument: number; ticks: number }
   /**
    * The latest waveform of every voice, sent with the position reports while
    * capture is on and the song plays. `data` is `channels` runs of `points`
@@ -240,6 +283,9 @@ function fadeOutTail(buffer: Float32Array): void {
     buffer[start + i] = (buffer[start + i] ?? 0) * (1 - (i + 1) / n);
   }
 }
+
+const toBytes = (bytes: ArrayBuffer | Uint8Array): Uint8Array =>
+  bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
 
 export class AhxProcessorCore {
   private player: AhxWasmPlayer | null = null;
@@ -281,7 +327,7 @@ export class AhxProcessorCore {
         // Ids only grow; a load older than one already handled is stale.
         if (command.id <= this.lastLoadId) break;
         this.lastLoadId = command.id;
-        this.loadSong(command.id, command.bytes, command.stereoMode ?? 2);
+        this.loadSong(command.id, command.bytes, command.stereoMode ?? 2, command.instruments ?? []);
         break;
       case 'play':
         this.player?.play();
@@ -336,6 +382,16 @@ export class AhxProcessorCore {
       case 'set-continue-phase':
         this.continuePhase = command.enabled;
         this.player?.set_continue_phase_on_trigger(command.enabled);
+        break;
+      case 'replace-instrument':
+        this.replaceInstrument(command.id, command.instrument, command.bytes);
+        break;
+      case 'get-warm-hold':
+        this.post({
+          type: 'warm-hold',
+          instrument: command.instrument,
+          ticks: this.player?.preview_warm_hold_ticks(command.instrument) ?? 0,
+        });
         break;
       case 'get-hifi-stats': {
         const p = this.player;
@@ -399,11 +455,22 @@ export class AhxProcessorCore {
     id: number,
     bytes: ArrayBuffer | Uint8Array,
     stereoMode: number,
+    instruments: AhxInstrumentBytes[],
   ): void {
     this.dropPlayer();
     try {
       const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
       const player = new this.PlayerCtor(data, this.sampleRate, stereoMode);
+      // The edits first: hi-fi below then prewarms the song as it is edited,
+      // and the preview mode never sees the unedited instruments.
+      const rejected: number[] = [];
+      for (const edit of instruments) {
+        try {
+          player.replace_instrument(edit.instrument, toBytes(edit.bytes));
+        } catch {
+          rejected.push(edit.instrument);
+        }
+      }
       player.set_gain(this.gain);
       player.enable_capture(this.capture);
       player.set_mute_solo(this.mute, this.solo);
@@ -424,6 +491,7 @@ export class AhxProcessorCore {
           channels: player.channels(),
           droppedChannels: player.dropped_channels(),
           sampleRate: this.sampleRate,
+          ...(rejected.length > 0 ? { rejectedInstruments: rejected } : {}),
         },
       });
     } catch (error) {
@@ -433,6 +501,26 @@ export class AhxProcessorCore {
         id,
         message: `AHX load failed: ${String(error)}`,
       });
+    }
+  }
+
+  /** `replace-instrument`: an edit of the loaded song, answered either way. */
+  private replaceInstrument(
+    id: number,
+    instrument: number,
+    bytes: ArrayBuffer | Uint8Array,
+  ): void {
+    if (!this.player) {
+      this.post({ type: 'instrument-replaced', id, instrument, ok: false, message: 'no song is loaded' });
+      return;
+    }
+    try {
+      this.player.replace_instrument(instrument, toBytes(bytes));
+      this.post({ type: 'instrument-replaced', id, instrument, ok: true });
+    } catch (error) {
+      // The engine's `Result<_, String>` arrives as the thrown string; the
+      // song is as it was.
+      this.post({ type: 'instrument-replaced', id, instrument, ok: false, message: String(error) });
     }
   }
 

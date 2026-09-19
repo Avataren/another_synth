@@ -183,4 +183,22 @@ mod tests {
         }
         assert_eq!(adsr.volume, (0x10i32) << 8);
     }
+
+    /// An envelope with neither attack nor decay frames never rises; in a song
+    /// the release phase then ramps from that 0 by a step worked out from the
+    /// *decay level*, which swings the running volume negative when the decay
+    /// level is above the release level. The editor warns about it
+    /// (`ahxEnvelopeNeverRises`); this pins what it is warning about.
+    #[test]
+    fn a_release_after_no_attack_or_decay_swings_negative() {
+        let e = env(0, 64, 0, 64, 1, 8, 0);
+        let mut st = AdsrState::trigger(&e);
+        let mut lowest = 0;
+        for _ in 0..40 {
+            st.step(&e);
+            lowest = lowest.min(st.volume);
+        }
+        assert!(lowest <= -50 * 256, "the release should swing towards -64: {}", lowest >> 8);
+        assert_eq!(st.volume, 0, "and land on the release level");
+    }
 }

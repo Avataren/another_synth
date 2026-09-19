@@ -5,6 +5,7 @@ import {
   type AhxSongInfo,
   type AhxWaveforms,
 } from 'src/audio/tracker/ahx-player';
+import { currentAhxInstrumentEdits, type AhxInstrumentEdit } from 'src/audio/tracker/ahx-source';
 
 /** What the transport needs from the song bank: a context and the mix bus. */
 export interface AhxTransportHost {
@@ -47,6 +48,8 @@ export class AhxTransport {
     private readonly createPlayer: (
       ctx: AudioContext,
     ) => Promise<AhxPlayerClient> = createAhxPlayer,
+    /** The instrument edits a load applies on top of the file's own bytes. */
+    private readonly editsToApply: () => readonly AhxInstrumentEdit[] = currentAhxInstrumentEdits,
   ) {}
 
   get info(): AhxSongInfo | null {
@@ -161,10 +164,23 @@ export class AhxTransport {
     if (this.isLoaded(bytes) && this.loadedInfo) return this.loadedInfo;
     this.loadedSource = null;
     this.loadedInfo = null;
-    const info = await client.loadSong(bytes);
+    // The song as edited, not as imported: a load after a reload of the worklet
+    // must not lose the edits made since.
+    const info = await client.loadSong(bytes, 2, this.editsToApply());
     this.loadedSource = bytes;
     this.loadedInfo = info;
     return info;
+  }
+
+  /**
+   * Replace ONE instrument of the song the worklet holds (`AhxPlayerClient.replaceInstrument`):
+   * the song is not reloaded, does not restart and does not move, and plays the
+   * new instrument from its next trigger. Resolves at once when there is no
+   * worklet yet: its load applies every edit (`editsToApply`). Rejects with the
+   * engine's reason when it refuses the bytes.
+   */
+  replaceInstrument(instrument: number, bytes: Uint8Array): Promise<void> {
+    return this.client ? this.client.replaceInstrument(instrument, bytes) : Promise.resolve();
   }
 
   play(): void {

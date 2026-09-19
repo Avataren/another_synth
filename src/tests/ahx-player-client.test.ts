@@ -13,6 +13,7 @@ import {
   loadAhxSongFromUrl,
 } from 'src/audio/tracker/ahx-player';
 import { AhxTrackerSink } from 'src/audio/tracker/ahx-sink';
+import { parseAhx, serializeAhxInstrument } from '@another-synth/tracker-playback';
 
 const ROOT = resolve(__dirname, '../..');
 const wasmBytes = readFileSync(resolve(ROOT, 'public/wasm/audio_processor_bg.wasm'));
@@ -464,5 +465,94 @@ describe('AhxTrackerSink', () => {
     });
     await expect(sink.ensureAudioContextRunning()).resolves.toBe(true);
     expect(sink.needsResume).toBe(false);
+  });
+});
+
+describe('AhxPlayerClient.replaceInstrument', () => {
+  const song = parseAhx(new Uint8Array(karma));
+  const wire = (idx: number, volume?: number) => {
+    const ins = JSON.parse(JSON.stringify(song.instruments[idx]));
+    if (volume !== undefined) ins.volume = volume;
+    return serializeAhxInstrument(ins, 'ahx');
+  };
+
+  const same = (a: number[], b: number[]): boolean =>
+    a.length === b.length && a.every((v, i) => v === b[i]);
+
+  /**
+   * Renders the worklet of the most recently created player for about
+   * `seconds` after a `play()` and returns what it produced.
+   */
+  async function play(player: Awaited<ReturnType<typeof createAhxPlayer>>, seconds: number) {
+    const node = FakeWorkletNode.last as FakeWorkletNode;
+    player.play();
+    await Promise.resolve();
+    await Promise.resolve();
+    const out: number[] = [];
+    for (let i = 0; i < (seconds * 44100) / 128; i++) out.push(...node.pull().l);
+    return out;
+  }
+
+  it('resolves once the worklet has swapped the instrument, and the song then plays it', async () => {
+    stubGlobals();
+    const untouched = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    await untouched.loadSong(karma);
+    const before = await play(untouched, 4);
+
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    await player.loadSong(karma);
+    await expect(player.replaceInstrument(16, wire(16, 4))).resolves.toBeUndefined();
+    const after = await play(player, 4);
+    expect(same(after, before)).toBe(false);
+    // Nothing reloaded: the client still reports the same song.
+    expect(player.song).toMatchObject({ channels: 4 });
+  });
+
+  it('rejects with the engine’s reason and leaves the song as it was', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    await player.loadSong(karma);
+    await expect(player.replaceInstrument(1, wire(1).slice(0, 30))).rejects.toThrow(/instrument is 30 bytes/);
+    await expect(player.replaceInstrument(0, wire(1))).rejects.toThrow(/no instrument 0/);
+    await expect(player.replaceInstrument(999, wire(1))).rejects.toThrow(/no instrument 999/);
+    const refused = await play(player, 2);
+    const twin = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    await twin.loadSong(karma);
+    expect(same(refused, await play(twin, 2))).toBe(true);
+  });
+
+  it('is ordered after an unawaited load, so it can be sent straight away', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    const loading = player.loadSong(karma);
+    const replaced = player.replaceInstrument(16, wire(16, 4));
+    await loading;
+    await expect(replaced).resolves.toBeUndefined();
+  });
+
+  it('applies the edits a load is given, and names the ones the engine refused', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    const info = await player.loadSong(karma, 2, [
+      { instrument: 16, bytes: wire(16, 4) },
+      { instrument: 999, bytes: wire(1) },
+    ]);
+    expect(info.rejectedInstruments).toEqual([999]);
+    const viaLoad = await play(player, 3);
+
+    const live = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    await live.loadSong(karma);
+    await live.replaceInstrument(16, wire(16, 4));
+    expect(same(await play(live, 3), viaLoad)).toBe(true);
+  });
+
+  it('rejects on a disposed client, and settles what was waiting when it is disposed', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    await player.loadSong(karma);
+    const waiting = player.replaceInstrument(16, wire(16, 4));
+    player.dispose();
+    await expect(waiting).rejects.toThrow(/disposed/);
+    await expect(player.replaceInstrument(16, wire(16))).rejects.toThrow(/disposed/);
   });
 });

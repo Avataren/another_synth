@@ -73,3 +73,4 @@ export * from './mod-vblank';
 export * from './formats/xm';
 export * from './formats/s3m';
 export * from './formats/ahx';
+export * from './formats/ahx-instrument-codec';

@@ -1,6 +1,7 @@
 import type {
   AhxCommand,
   AhxEvent,
+  AhxInstrumentBytes,
   AhxSongInfo,
 } from 'src/audio/worklets/ahx-core';
 import { DEMO_BASE_URL } from 'src/composables/useDemoManifest';
@@ -56,6 +57,12 @@ export class AhxPlayerClient {
   private waveformListeners = new Set<(w: AhxWaveforms) => void>();
   private errorListeners = new Set<(error: Error) => void>();
   private hifiStatsWaiters: Array<(stats: AhxHifiStats) => void> = [];
+  private warmHoldWaiters: Array<(ticks: number) => void> = [];
+  private pendingReplaces = new Map<
+    number,
+    { resolve: () => void; reject: (error: Error) => void }
+  >();
+  private nextReplaceId = 0;
   private pendingLoad: {
     id: number;
     resolve: (info: AhxSongInfo) => void;
@@ -96,7 +103,11 @@ export class AhxPlayerClient {
    * still runs both, but only the newest one's answer settles anything. Rejects
    * at once on a disposed client or one whose processor has died.
    */
-  loadSong(bytes: ArrayBuffer | Uint8Array, stereoMode = 2): Promise<AhxSongInfo> {
+  loadSong(
+    bytes: ArrayBuffer | Uint8Array,
+    stereoMode = 2,
+    instruments: ReadonlyArray<{ instrument: number; bytes: Uint8Array }> = [],
+  ): Promise<AhxSongInfo> {
     if (this.unusable) return Promise.reject(this.unusable);
     this.pendingLoad?.reject(new Error('superseded by a newer loadSong'));
     const id = this.nextLoadId++;
@@ -104,7 +115,14 @@ export class AhxPlayerClient {
       this.pendingLoad = { id, resolve, reject };
       // Copied: the caller keeps its buffer, and the worklet gets its own.
       const copy = new Uint8Array(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)).slice();
-      this.send({ type: 'load-song', id, bytes: copy.buffer, stereoMode }, [copy.buffer]);
+      const edits: AhxInstrumentBytes[] = instruments.map((edit) => ({
+        instrument: edit.instrument,
+        bytes: edit.bytes.slice().buffer,
+      }));
+      this.send(
+        { type: 'load-song', id, bytes: copy.buffer, stereoMode, ...(edits.length > 0 ? { instruments: edits } : {}) },
+        [copy.buffer, ...edits.map((edit) => edit.bytes as ArrayBuffer)],
+      );
     });
   }
 
@@ -204,6 +222,37 @@ export class AhxPlayerClient {
   }
 
   /**
+   * Replace ONE instrument of the loaded song with `bytes` (its wire form, see
+   * `serializeAhxInstrument`), without reloading the song. Resolves once the
+   * worklet has swapped it (and, for a hi-fi song player, rebuilt the tables the
+   * edited song needs); rejects with the engine's reason, the song untouched,
+   * for bytes that are not an instrument or an instrument the song lacks, and
+   * when the client is gone. Ordered after the load on the port, so it may be
+   * sent right after an unawaited `loadSong`.
+   */
+  replaceInstrument(instrument: number, bytes: Uint8Array): Promise<void> {
+    if (this.unusable) return Promise.reject(this.unusable);
+    const id = this.nextReplaceId++;
+    return new Promise<void>((resolve, reject) => {
+      this.pendingReplaces.set(id, { resolve, reject });
+      const copy = bytes.slice();
+      this.send({ type: 'replace-instrument', id, instrument, bytes: copy.buffer }, [copy.buffer]);
+    });
+  }
+
+  /**
+   * Ticks a preview note-on's prewarm holds the key down for `instrument`
+   * (bounded by what the instrument can produce, at most 1000); 0 with no such
+   * instrument. Diagnostics and tests.
+   */
+  requestWarmHold(instrument: number): Promise<number> {
+    return new Promise((resolve) => {
+      this.warmHoldWaiters.push(resolve);
+      this.send({ type: 'get-warm-hold', instrument });
+    });
+  }
+
+  /**
    * The worklet's hi-fi bank state, for diagnostics and tests. The worklet
    * answers in order, so a stats request sent after `setHifi` sees its effect.
    */
@@ -256,6 +305,7 @@ export class AhxPlayerClient {
     this.unusable ??= new Error('player disposed');
     this.pendingLoad?.reject(new Error('player disposed'));
     this.pendingLoad = null;
+    this.rejectPendingReplaces(new Error('player disposed'));
     this.positionListeners.clear();
     this.songEndListeners.clear();
     this.waveformListeners.clear();
@@ -279,7 +329,13 @@ export class AhxPlayerClient {
     this.unusable ??= error;
     this.pendingLoad?.reject(error);
     this.pendingLoad = null;
+    this.rejectPendingReplaces(error);
     this.notifyError(error);
+  }
+
+  private rejectPendingReplaces(error: Error): void {
+    for (const pending of this.pendingReplaces.values()) pending.reject(error);
+    this.pendingReplaces.clear();
   }
 
   private notifyError(error: Error): void {
@@ -333,6 +389,17 @@ export class AhxPlayerClient {
       }
       case 'song-end':
         for (const listener of this.songEndListeners) listener();
+        break;
+      case 'instrument-replaced': {
+        const pending = this.pendingReplaces.get(event.id);
+        if (!pending) break;
+        this.pendingReplaces.delete(event.id);
+        if (event.ok) pending.resolve();
+        else pending.reject(new Error(event.message ?? `instrument ${event.instrument} was not replaced`));
+        break;
+      }
+      case 'warm-hold':
+        this.warmHoldWaiters.shift()?.(event.ticks);
         break;
       case 'hifi-stats': {
         this.hifiStatsWaiters.shift()?.({

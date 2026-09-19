@@ -124,6 +124,55 @@ impl AhxPlayer {
         self.engine.live_enabled()
     }
 
+    /// Replaces instrument `instrument` (1-based, as a pattern step numbers it)
+    /// of the loaded song with the one in `bytes`: the 22-byte instrument core
+    /// followed by its PList entries in the song's own layout (4 bytes each in
+    /// AHX, 5 in HVL), no name, exactly as long as its length byte says. The
+    /// bytes are decoded by the file loader's own functions
+    /// ([`format::parse_instrument`]), the name is kept, and the song's
+    /// instrument list is what changes: a song player plays the new instrument
+    /// from its next trigger (a voice already holding it also picks up PList and
+    /// envelope changes at once, see [`AhxEngine::replace_instrument`]) and a
+    /// preview player from its next note-on. Nothing is reloaded and the
+    /// transport does not move.
+    ///
+    /// With hi-fi on, a song player rebuilds the tables the edited song asks
+    /// for before this returns (see [`AhxEngine::prewarm_hifi_after_edit`]) --
+    /// unless the edit reaches no table (volume, envelope, hard cut), which
+    /// costs nothing; a preview player only forgets what it prewarmed for that
+    /// instrument. Both happen here, in the caller's message handler, never in
+    /// `render`.
+    ///
+    /// An error, with the song untouched, for bytes the format does not decode
+    /// to one instrument or an `instrument` the song does not have.
+    pub fn replace_instrument(&mut self, instrument: usize, bytes: &[u8]) -> Result<(), String> {
+        let song = self.engine.song();
+        let ins = format::parse_instrument(bytes, song.format, song.version, String::new()).map_err(|e| e.to_string())?;
+        let Some(tables_may_differ) = self.engine.replace_instrument(instrument, ins) else {
+            return Err(format!("the song has no instrument {instrument}"));
+        };
+        // Only an edit that can reach another wave table costs a walk of the
+        // song: volume, envelope and hard-cut edits (the ones made by dragging
+        // a slider) change no table (see `engine::same_tables`).
+        if tables_may_differ && self.engine.hifi_enabled() && !self.engine.live_enabled() {
+            self.engine.prewarm_hifi_after_edit();
+        }
+        Ok(())
+    }
+
+    /// Instruments the song has (1-based numbering runs `1..=instrument_count`).
+    pub fn instrument_count(&self) -> usize {
+        self.engine.song().instrument_nr as usize
+    }
+
+    /// Ticks a note-on's prewarm holds a key down for `instrument` (1-based)
+    /// before releasing it, bounded by what the instrument can produce (see
+    /// [`live_warm_hold_ticks`](super::engine::live_warm_hold_ticks)); 0 for an
+    /// instrument the song does not have. Diagnostics.
+    pub fn preview_warm_hold_ticks(&self, instrument: usize) -> u32 {
+        self.engine.live_warm_hold_ticks_for(instrument).unwrap_or(0)
+    }
+
     /// Plays `instrument` (1-based) at `note` (1..=60, the AHX pitch table's
     /// index) with `velocity` (0..=127), retriggering the voice on the next
     /// tick. With hi-fi on, builds the tables this note will want first, so
