@@ -39,7 +39,9 @@ const copy = (ins: AhxInstrument): AhxInstrument => JSON.parse(JSON.stringify(in
 export const AHX_NUMBER_FIELDS = {
   volume: AHX_EDIT_MAX_VOLUME,
   waveLength: AHX_MAX_WAVE_LENGTH,
-  filterLowerLimit: AHX_MAX_FILTER_POSITION,
+  // The codec holds 7 bits here, and an imported value can be up to 0x7f; the
+  // engine clamps the positions it walks to 1..=63 (E14), so 64..=127 sit past the useful range.
+  filterLowerLimit: AHX_FIELD_MAX.filterLowerLimit,
   filterUpperLimit: AHX_FIELD_MAX.filterUpperLimit,
   filterSpeed: AHX_FIELD_MAX.filterSpeed,
   squareLowerLimit: 255,
@@ -78,6 +80,16 @@ export function setAhxEnvelope(ins: AhxInstrument, field: AhxEnvelopeField, valu
   return next;
 }
 
+/** Several envelope fields at once (one node drag moves a stage's frames and its level), each clamped as `setAhxEnvelope` does. */
+export function setAhxEnvelopeFields(ins: AhxInstrument, fields: Partial<AhxInstrument['envelope']>): AhxInstrument {
+  const next = copy(ins);
+  for (const [key, value] of Object.entries(fields) as Array<[AhxEnvelopeField, number]>) {
+    const isVolume = key === 'aVolume' || key === 'dVolume' || key === 'rVolume';
+    next.envelope[key] = clamp(value, 0, isVolume ? AHX_EDIT_MAX_VOLUME : 255);
+  }
+  return next;
+}
+
 /**
  * True when the attack and decay are both 0 frames. The replayer only moves the
  * envelope during a stage that has frames (`AdsrState::step`), so such an
@@ -90,6 +102,62 @@ export function setAhxEnvelope(ins: AhxInstrument, field: AhxEnvelopeField, valu
  */
 export function ahxEnvelopeNeverRises(ins: AhxInstrument): boolean {
   return ins.envelope.aFrames === 0 && ins.envelope.dFrames === 0;
+}
+
+export interface AhxEnvelopeWarning {
+  /** Stable id; the editor uses it in a test id. */
+  id: 'never-rises' | 'no-attack' | 'no-decay' | 'no-release';
+  text: string;
+}
+
+/**
+ * What the engine does with an envelope that has a 0-frame stage, which the
+ * four numbers do not suggest (editor plan E1; `envelope.rs:74-97`). The
+ * never-rises case (attack and decay both 0) keeps its own, longer warning.
+ */
+export function ahxEnvelopeWarnings(ins: AhxInstrument): AhxEnvelopeWarning[] {
+  const { aFrames, dFrames, aVolume, dVolume, rFrames } = ins.envelope;
+  const out: AhxEnvelopeWarning[] = [];
+  if (aFrames === 0 && dFrames === 0) {
+    out.push({
+      id: 'never-rises',
+      text:
+        'Attack and decay are both 0 frames: the envelope never rises, so the note is silent until its ' +
+        'release, which then swings the volume unpredictably. Give the attack at least 1 frame.',
+    });
+  } else if (aFrames === 0) {
+    out.push({
+      id: 'no-attack',
+      text:
+        'Attack is 0 frames, so the engine skips it: the note starts at silence and the decay ramps up from 0 ' +
+        'by its own step, then snaps to the decay level on its last frame (the dotted line is what the numbers ' +
+        'suggest, the solid one what plays).',
+    });
+  }
+  if (dFrames === 0 && aFrames > 0 && dVolume !== aVolume) {
+    out.push({
+      id: 'no-decay',
+      text:
+        'Decay is 0 frames, so the engine skips it: the sustain holds the attack level, and the decay level ' +
+        `(${dVolume}) is never reached.`,
+    });
+  }
+  if (rFrames === 0) {
+    out.push({
+      id: 'no-release',
+      text: 'Release is 0 frames, so the engine skips it: the note never releases and holds its level until it is cut.',
+    });
+  }
+  return out;
+}
+
+/**
+ * The largest value a PList command parameter takes. A version-0 AHX file drops
+ * the high nibble of a filter-toggle (command 4) parameter when it loads, so
+ * only 0..=15 can be heard there (`normalizeAhxInstrumentForVersion`).
+ */
+export function ahxFxParamMax(fx: number, format: AhxSongFormat, version: number): number {
+  return fx === 4 && format === 'ahx' && version === 0 ? 0x0f : 255;
 }
 
 // ---------------------------------------------------------------------------

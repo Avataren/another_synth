@@ -58,41 +58,54 @@
     </div>
 
     <div v-else class="ahx-body">
-      <section class="ahx-card ahx-card--wide" data-testid="ahx-audition">
-        <h3>
-          Audition
-          <span v-if="audible" class="ahx-dim"
-            >Hold a note to hear this instrument as it is now. The song plays the
-            same edit from its next trigger of this instrument; a note already
-            sounding keeps its volume, vibrato and wave length until it is
-            struck again.</span
-          >
-          <span v-else class="ahx-dim" data-testid="ahx-audition-off"
-            >Unavailable: there is no source file to play this instrument from.</span
-          >
-        </h3>
+      <section class="ahx-card ahx-card--wide ahx-audition-bar" data-testid="ahx-audition">
         <div class="ahx-audition">
+          <span class="ahx-audition__title">Audition</span>
           <button
             v-for="key in AUDITION_KEYS"
             :key="key.midi"
             type="button"
             class="ahx-audition__key"
+            :class="{ 'ahx-audition__key--held': latch && heldKeys.has(key.midi) }"
             :disabled="!audible"
             :data-testid="`ahx-audition-${key.midi}`"
-            @pointerdown.prevent="auditionOn(key.midi)"
-            @pointerup="auditionOff(key.midi)"
-            @pointerleave="auditionOff(key.midi)"
-            @pointercancel="auditionOff(key.midi)"
+            @pointerdown.prevent="auditionDown(key.midi)"
+            @pointerup="auditionUp(key.midi)"
+            @pointerleave="auditionUp(key.midi)"
+            @pointercancel="auditionUp(key.midi)"
           >
             {{ key.label }}
           </button>
+          <label
+            class="ahx-check ahx-check--bar"
+            title="A tap holds the note until you tap the key again, so both hands are free to edit."
+          >
+            <input v-model="latch" type="checkbox" :disabled="!audible" data-testid="ahx-audition-latch" />
+            Latch
+          </label>
+          <label
+            class="ahx-check ahx-check--bar"
+            title="Strike the held note again shortly after each edit. Volume, wave length, vibrato and the sweep setup are only read when a note is struck, so this is what makes them audible while you drag."
+          >
+            <input v-model="restrike" type="checkbox" :disabled="!audible" data-testid="ahx-audition-restrike" />
+            Re-strike on edit
+          </label>
+          <span
+            v-if="audible"
+            class="ahx-dim ahx-audition__hint"
+            title="Hold a note to hear this instrument as it is now. The song plays the same edit from its next trigger of this instrument; a note already sounding keeps its volume, vibrato and wave length until it is struck again."
+            >Hold a key to hear it; edits play at once.</span
+          >
+          <span v-else class="ahx-dim" data-testid="ahx-audition-off"
+            >Unavailable: there is no source file to play this instrument from.</span
+          >
         </div>
       </section>
 
       <section class="ahx-card">
         <h3>Instrument</h3>
         <div class="ahx-fields" data-testid="ahx-params">
-          <AhxNumberField
+          <AhxSliderField
             label="Volume"
             :model-value="instrument.volume"
             :max="AHX_NUMBER_FIELDS.volume"
@@ -100,74 +113,98 @@
             testid="ahx-field-volume"
             @update:model-value="setNumber('volume', $event)"
           />
-          <AhxNumberField
-            label="Wave length"
-            :model-value="instrument.waveLength"
-            :max="AHX_NUMBER_FIELDS.waveLength"
-            :suffix="`(${cycleLength} samples)`"
-            testid="ahx-field-waveLength"
-            @update:model-value="setNumber('waveLength', $event)"
-          />
-          <AhxNumberField
+          <div class="ahx-field-row ahx-field-row--wrap">
+            <AhxSegmented
+              label="Wave length"
+              :model-value="instrument.waveLength"
+              :options="WAVE_LENGTH_OPTIONS"
+              testid="ahx-seg-waveLength"
+              @update:model-value="setNumber('waveLength', $event)"
+            />
+            <AhxNumberField
+              compact
+              :model-value="instrument.waveLength"
+              :max="AHX_NUMBER_FIELDS.waveLength"
+              :suffix="`(${cycleLength} samples)`"
+              testid="ahx-field-waveLength"
+              @update:model-value="setNumber('waveLength', $event)"
+            />
+          </div>
+          <AhxSliderField
             label="Vibrato delay"
             :model-value="instrument.vibratoDelay"
             :max="AHX_NUMBER_FIELDS.vibratoDelay"
+            :throttle-ms="AHX_TABLE_THROTTLE_MS"
             testid="ahx-field-vibratoDelay"
+            suffix="frames"
             @update:model-value="setNumber('vibratoDelay', $event)"
           />
-          <AhxNumberField
+          <AhxSliderField
             label="Vibrato speed"
             :model-value="instrument.vibratoSpeed"
             :max="AHX_NUMBER_FIELDS.vibratoSpeed"
+            :throttle-ms="AHX_TABLE_THROTTLE_MS"
             testid="ahx-field-vibratoSpeed"
             @update:model-value="setNumber('vibratoSpeed', $event)"
           />
-          <AhxNumberField
+          <AhxSliderField
+            stepper
             label="Vibrato depth"
             :model-value="instrument.vibratoDepth"
             :max="AHX_NUMBER_FIELDS.vibratoDepth"
             testid="ahx-field-vibratoDepth"
             @update:model-value="setNumber('vibratoDepth', $event)"
           />
-          <AhxNumberField
+          <AhxSliderField
             label="Square lower"
             :model-value="instrument.squareLowerLimit"
             :max="AHX_NUMBER_FIELDS.squareLowerLimit"
+            :throttle-ms="AHX_TABLE_THROTTLE_MS"
             testid="ahx-field-squareLowerLimit"
             @update:model-value="setNumber('squareLowerLimit', $event)"
           />
-          <AhxNumberField
+          <AhxSliderField
             label="Square upper"
             :model-value="instrument.squareUpperLimit"
             :max="AHX_NUMBER_FIELDS.squareUpperLimit"
+            :throttle-ms="AHX_TABLE_THROTTLE_MS"
             testid="ahx-field-squareUpperLimit"
             @update:model-value="setNumber('squareUpperLimit', $event)"
           />
-          <AhxNumberField
+          <AhxSliderField
             label="Square speed"
             :model-value="instrument.squareSpeed"
             :max="AHX_NUMBER_FIELDS.squareSpeed"
+            :throttle-ms="AHX_TABLE_THROTTLE_MS"
             testid="ahx-field-squareSpeed"
             @update:model-value="setNumber('squareSpeed', $event)"
           />
-          <AhxNumberField
+          <AhxSliderField
             label="Filter lower"
             :model-value="instrument.filterLowerLimit"
             :max="AHX_NUMBER_FIELDS.filterLowerLimit"
+            :throttle-ms="AHX_TABLE_THROTTLE_MS"
+            :marker="AHX_FILTER_NEUTRAL"
+            marker-title="32 is the neutral position: no filtering"
+            :hint="filterLowerHint"
             testid="ahx-field-filterLowerLimit"
             @update:model-value="setNumber('filterLowerLimit', $event)"
           />
-          <AhxNumberField
+          <AhxSliderField
             label="Filter upper"
             :model-value="instrument.filterUpperLimit"
             :max="AHX_NUMBER_FIELDS.filterUpperLimit"
+            :throttle-ms="AHX_TABLE_THROTTLE_MS"
+            :marker="AHX_FILTER_NEUTRAL"
+            marker-title="32 is the neutral position: no filtering"
             testid="ahx-field-filterUpperLimit"
             @update:model-value="setNumber('filterUpperLimit', $event)"
           />
-          <AhxNumberField
+          <AhxSliderField
             label="Filter speed"
             :model-value="instrument.filterSpeed"
             :max="AHX_NUMBER_FIELDS.filterSpeed"
+            :throttle-ms="AHX_TABLE_THROTTLE_MS"
             testid="ahx-field-filterSpeed"
             @update:model-value="setNumber('filterSpeed', $event)"
           />
@@ -181,8 +218,8 @@
               />
               Hard cut release
             </label>
-            <AhxNumberField
-              compact
+            <AhxSliderField
+              stepper
               :model-value="instrument.hardCutReleaseFrames"
               :max="AHX_NUMBER_FIELDS.hardCutReleaseFrames"
               :disabled="!instrument.hardCutRelease"
@@ -196,17 +233,15 @@
 
       <section class="ahx-card">
         <h3>Volume envelope</h3>
-        <svg
-          class="ahx-envelope"
-          data-testid="ahx-envelope"
-          :viewBox="`0 0 ${ENV_W} ${ENV_H}`"
-          preserveAspectRatio="none"
-          role="img"
-          aria-label="Volume envelope"
-        >
-          <line class="ahx-envelope__axis" :x1="0" :y1="ENV_H" :x2="ENV_W" :y2="ENV_H" />
-          <polyline class="ahx-envelope__line" :points="envelopePolyline" />
-        </svg>
+        <AhxEnvelopeEditor
+          :envelope="instrument.envelope"
+          :volume="instrument.volume"
+          :hard-cut-release="instrument.hardCutRelease"
+          :hard-cut-frames="instrument.hardCutReleaseFrames"
+          @change="setEnvelopeFields"
+          @hard-cut-frames="setNumber('hardCutReleaseFrames', $event)"
+          @focus-field="focusField"
+        />
         <table class="ahx-table ahx-table--compact" data-testid="ahx-envelope-table">
           <thead>
             <tr><th>Stage</th><th>Frames</th><th>Volume</th></tr>
@@ -237,10 +272,13 @@
             </tr>
           </tbody>
         </table>
-        <p v-if="envelopeNeverRises" class="ahx-warn" data-testid="ahx-envelope-never-rises">
-          Attack and decay are both 0 frames: the envelope never rises, so the
-          note is silent until its release, which then swings the volume
-          unpredictably. Give the attack at least 1 frame.
+        <p
+          v-for="warning in envelopeWarnings"
+          :key="warning.id"
+          class="ahx-warn"
+          :data-testid="warning.id === 'never-rises' ? 'ahx-envelope-never-rises' : `ahx-envelope-warning-${warning.id}`"
+        >
+          {{ warning.text }}
         </p>
       </section>
 
@@ -264,11 +302,14 @@
               </option>
             </select>
           </label>
-          <AhxNumberField
+          <AhxSliderField
             label="Filter position"
             :model-value="startFilterPosition"
             :min="0"
             :max="AHX_MAX_FILTER_POSITION"
+            :throttle-ms="AHX_TABLE_THROTTLE_MS"
+            :marker="AHX_FILTER_NEUTRAL"
+            marker-title="32 is the neutral position: no filtering"
             :disabled="!canSetFilter"
             :title="
               canSetFilter
@@ -302,7 +343,8 @@
           >
         </h3>
         <div class="ahx-fields ahx-fields--inline">
-          <AhxNumberField
+          <AhxSliderField
+            stepper
             label="Speed"
             :model-value="instrument.plist.speed"
             :max="255"
@@ -336,7 +378,7 @@
                     compact
                     :model-value="entry.note"
                     :max="AHX_PLIST_MAX_NOTE"
-                    :title="`${ahxNoteName(entry.note)} (0 = keep the pitch)`"
+                    :title="noteTitle(entry)"
                     :testid="`ahx-plist-${index}-note`"
                     @update:model-value="editEntry(index, { field: 'note', value: $event })"
                   />
@@ -376,7 +418,8 @@
                   <AhxNumberField
                     compact
                     :model-value="entry.fxParam[slotIndex] ?? 0"
-                    :max="255"
+                    :max="ahxFxParamMax(entry.fx[slotIndex] ?? 0, songFormat, sourceVersion)"
+                    :title="paramTitle(entry.fx[slotIndex] ?? 0)"
                     :testid="`ahx-plist-${index}-param${slotIndex}`"
                     @update:model-value="editEntry(index, { field: 'fxParam', slot: slotIndex, value: $event })"
                   />
@@ -413,7 +456,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   AHX_MAX_PLIST_ENTRIES,
@@ -422,15 +465,18 @@ import {
   formatInstrumentId,
   type AhxEnvelope,
   type AhxInstrument,
+  type AhxPListEntry,
 } from '@another-synth/tracker-playback';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { ahxSourceInfo } from 'src/audio/tracker/ahx-source';
 import { ahxNotices, reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
+import AhxSliderField from 'src/components/ahx/AhxSliderField.vue';
+import AhxSegmented from 'src/components/ahx/AhxSegmented.vue';
+import AhxEnvelopeEditor from 'src/components/ahx/AhxEnvelopeEditor.vue';
+import { AHX_TABLE_THROTTLE_MS } from 'src/composables/useAhxDrag';
 import {
-  AHX_MAX_VOLUME,
-  ahxEnvelopePoints,
   ahxNoteName,
   ahxPListFxName,
   ahxWaveCycleLength,
@@ -443,13 +489,15 @@ import {
   AHX_MAX_FILTER_POSITION,
   AHX_NUMBER_FIELDS,
   addAhxPListEntry,
-  ahxEnvelopeNeverRises,
+  ahxEnvelopeWarnings,
+  ahxFxParamMax,
   ahxStartFilterPosition,
   ahxStartWaveform,
   canSetAhxStartFilterPosition,
   editAhxPListEntry,
   removeAhxPListEntry,
   setAhxEnvelope,
+  setAhxEnvelopeFields,
   setAhxHardCutRelease,
   setAhxNumber,
   setAhxPListSpeed,
@@ -463,9 +511,6 @@ const route = useRoute();
 const router = useRouter();
 const trackerStore = useTrackerStore();
 const playbackStore = useTrackerPlaybackStore();
-
-const ENV_W = 240;
-const ENV_H = 80;
 
 const slotNumber = computed<number | null>(() => {
   const raw = Array.isArray(route.params.slot) ? route.params.slot[0] : route.params.slot;
@@ -487,8 +532,8 @@ const cycleLength = computed(() =>
 const waveforms = computed(() =>
   instrument.value ? ahxWaveformList(instrument.value) : [],
 );
-const envelopeNeverRises = computed(() =>
-  instrument.value ? ahxEnvelopeNeverRises(instrument.value) : false,
+const envelopeWarnings = computed(() =>
+  instrument.value ? ahxEnvelopeWarnings(instrument.value) : [],
 );
 const startWaveform = computed(() =>
   instrument.value ? ahxStartWaveform(instrument.value) : 0,
@@ -500,19 +545,23 @@ const canSetFilter = computed(() =>
   instrument.value ? canSetAhxStartFilterPosition(instrument.value) : false,
 );
 
-/** Envelope scaled into the SVG box: time along x, volume 0..64 up y. */
-const envelopePolyline = computed(() => {
-  if (!instrument.value) return '';
-  const points = ahxEnvelopePoints(instrument.value.envelope);
-  const totalFrames = Math.max(1, points[points.length - 1]?.frame ?? 1);
-  return points
-    .map((p) => {
-      const x = (p.frame / totalFrames) * ENV_W;
-      const y = ENV_H - (p.volume / AHX_MAX_VOLUME) * ENV_H;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
-});
+/** The filter's neutral position: no filtering (`filter_sweep.rs:88`). */
+const AHX_FILTER_NEUTRAL = 32;
+
+/** The engine walks filter positions 1..=63; an imported lower limit can be up to 127. */
+const filterLowerHint = computed(() =>
+  (instrument.value?.filterLowerLimit ?? 0) > 63
+    ? 'The engine clamps filter positions to 1-63, so this value is past its range.'
+    : '',
+);
+
+/** Wave lengths 0..=5 as the samples a cycle has (4 << n). */
+const WAVE_LENGTH_OPTIONS = [0, 1, 2, 3, 4, 5].map((value) => ({
+  value,
+  label: String(value),
+  sub: String(ahxWaveCycleLength(value)),
+  title: `${ahxWaveCycleLength(value)} samples per cycle`,
+}));
 
 const WAVE_GLYPH: Record<AhxWaveformKind | 'unknown', string> = {
   triangle: 'M0 8 L8 1 L24 15 L32 8',
@@ -553,6 +602,27 @@ const FX_CHOICES = computed(() =>
 const audible = computed(() => ahxSourceInfo.value !== null);
 const notices = ahxNotices;
 
+/** The header's version: a version-0 AHX file drops a filter toggle's high nibble at load. */
+const sourceVersion = computed(() => ahxSourceInfo.value?.version ?? 1);
+
+const paramTitle = (fx: number): string =>
+  ahxFxParamMax(fx, songFormat.value, sourceVersion.value) < 255
+    ? 'This is an AHX version 0 file: it ignores the high nibble of a filter toggle, so only the square toggle (0-15) plays.'
+    : '';
+
+/**
+ * A PList note is relative to the key played unless the row is `fixed`
+ * (`voice.rs:659-664`: `note + transpose + trackPeriod - 1`), so the absolute
+ * name only applies to a fixed row.
+ */
+function noteTitle(entry: AhxPListEntry): string {
+  if (entry.note === 0) return '--- (0 = keep the pitch)';
+  const name = ahxNoteName(entry.note);
+  return entry.fixed
+    ? `${name}: a fixed pitch, whatever key is played`
+    : `+${entry.note - 1} st above the played key (relative; tick Fixed to play ${name} itself)`;
+}
+
 const waveLabel = ahxWaveformLabel;
 const hex2 = (n: number): string => n.toString(16).toUpperCase().padStart(2, '0');
 
@@ -574,6 +644,15 @@ const setNumber = (field: AhxNumberFieldKey, value: number) =>
 const setHardCut = (on: boolean) => commit((ins) => setAhxHardCutRelease(ins, on));
 const setEnvelope = (field: keyof AhxEnvelope, value: number) =>
   commit((ins) => setAhxEnvelope(ins, field, value));
+/** A node drag or key press sets a stage's frames and level together: one commit. */
+const setEnvelopeFields = (patch: Partial<AhxEnvelope>) =>
+  commit((ins) => setAhxEnvelopeFields(ins, patch));
+/** Double-click on an envelope node: the typed field for the same value. */
+function focusField(testid: string): void {
+  const el = document.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`);
+  el?.focus();
+  el?.select();
+}
 const setStartWaveform = (value: number) => commit((ins) => setAhxStartWaveform(ins, value));
 const setStartFilter = (value: number) => commit((ins) => setAhxStartFilterPosition(ins, value));
 const setPListSpeed = (value: number) => commit((ins) => setAhxPListSpeed(ins, value));
@@ -589,17 +668,70 @@ const AUDITION_KEYS = [
   { midi: 72, label: 'C-5' },
 ];
 const held = new Set<number>();
+/** `held`, visible to the template (a latched key shows as down). */
+const heldKeys = reactive(new Set<number>());
+const latch = ref(false);
+const restrike = ref(false);
 
 function auditionOn(midi: number): void {
   if (slotNumber.value === null || held.has(midi) || !audible.value) return;
   held.add(midi);
+  heldKeys.add(midi);
   void playbackStore.previewAhxNoteOn(slotNumber.value, midi, 100);
 }
 
 function auditionOff(midi: number): void {
   if (!held.delete(midi)) return;
+  heldKeys.delete(midi);
   playbackStore.previewAhxNoteOff(midi);
 }
+
+/** Pointer down on a key. With Latch on it toggles the note instead of holding it. */
+function auditionDown(midi: number): void {
+  if (latch.value) {
+    if (held.has(midi)) {
+      auditionOff(midi);
+      return;
+    }
+    // One voice sounds at a time: latching a key lets go of the last one.
+    for (const other of [...held]) auditionOff(other);
+  }
+  auditionOn(midi);
+}
+
+/** Pointer up / leave / cancel: a latched note keeps sounding. */
+function auditionUp(midi: number): void {
+  if (!latch.value) auditionOff(midi);
+}
+
+function releaseAll(): void {
+  for (const midi of [...held]) auditionOff(midi);
+}
+
+watch(latch, (on) => {
+  if (!on) releaseAll();
+});
+// Held notes belong to the slot they were struck on.
+watch(slotNumber, releaseAll);
+
+/**
+ * Re-strike on edit: a committed edit strikes the held note again after a short
+ * pause, so a field a sounding note does not re-read (volume, wave length,
+ * vibrato, the sweep setup) is heard while it is being changed (editor plan E4).
+ */
+const RESTRIKE_DELAY_MS = 150;
+let restrikeTimer: ReturnType<typeof setTimeout> | null = null;
+watch(instrument, () => {
+  if (!restrike.value || held.size === 0) return;
+  if (restrikeTimer !== null) clearTimeout(restrikeTimer);
+  restrikeTimer = setTimeout(() => {
+    restrikeTimer = null;
+    for (const midi of [...held]) {
+      auditionOff(midi);
+      auditionOn(midi);
+    }
+  }, RESTRIKE_DELAY_MS);
+});
 
 function backToTracker() {
   void router.push('/tracker');
@@ -615,6 +747,7 @@ function handleKeyDown(event: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', handleKeyDown));
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
+  if (restrikeTimer !== null) clearTimeout(restrikeTimer);
   for (const midi of [...held]) auditionOff(midi);
 });
 </script>
@@ -691,47 +824,6 @@ onUnmounted(() => {
   margin-left: 8px;
   font-size: 0.8rem;
   font-weight: 400;
-}
-
-.ahx-params {
-  margin: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.ahx-params > div {
-  display: flex;
-  gap: 12px;
-}
-
-.ahx-params dt {
-  flex: 0 0 140px;
-  opacity: 0.65;
-}
-
-.ahx-params dd {
-  margin: 0;
-}
-
-.ahx-envelope {
-  width: 100%;
-  height: 90px;
-  margin-bottom: 8px;
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 4px;
-}
-
-.ahx-envelope__axis {
-  stroke: rgba(255, 255, 255, 0.2);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.ahx-envelope__line {
-  fill: none;
-  stroke: var(--tracker-accent-secondary, #5ec2e8);
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
 }
 
 .ahx-waves {
@@ -832,6 +924,10 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.ahx-field-row--wrap {
+  flex-wrap: wrap;
+}
+
 .ahx-field {
   display: inline-flex;
   align-items: center;
@@ -889,14 +985,45 @@ onUnmounted(() => {
   font-size: 0.8rem;
 }
 
+.ahx-audition-bar {
+  /* The page (q-page) is its own scroll container, below the app header, so 0 is just under it. */
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  padding: 6px 12px;
+  background: var(--app-background, #0b111a);
+  border-color: var(--tracker-accent-secondary, #3b82a0);
+}
+
 .ahx-audition {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.ahx-audition__title {
+  font-weight: 600;
+}
+
+.ahx-audition__hint {
+  font-size: 0.8rem;
+}
+
+.ahx-check--bar {
+  min-width: 0;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.ahx-audition__key--held {
+  background: var(--tracker-active-bg, #14283d);
+  outline: 2px solid var(--tracker-accent-primary, #f0b25e);
 }
 
 .ahx-audition__key {
   min-width: 64px;
-  padding: 10px 16px;
+  padding: 6px 16px;
   color: inherit;
   font: inherit;
   cursor: pointer;
