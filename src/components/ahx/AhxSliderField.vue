@@ -1,6 +1,7 @@
 <template>
   <div
     class="ahx-slider-field"
+    v-bind="title ? { title } : {}"
     :class="{ 'ahx-slider-field--disabled': disabled === true, 'ahx-slider-field--nolabel': !label }"
   >
     <span v-if="label" class="ahx-slider-field__label">{{ label }}</span>

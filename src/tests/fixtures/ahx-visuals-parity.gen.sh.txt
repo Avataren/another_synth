@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Dumps ahx-visuals-parity.json from the REAL engine source (no rust-wasm change):
+#   bash src/tests/fixtures/ahx-visuals-parity.gen.sh.txt > src/tests/fixtures/ahx-visuals-parity.json
+# waveform.rs gen_sawtooth/gen_triangle/gen_square and voice.rs VIB_TAB + SquareSweep are cut out of the
+# real files by line range; filter_sweep.rs is #[path]-included whole. Needs only rustc.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+SRC="$ROOT/rust-wasm/src/ahx"
+TMP="$(mktemp -d)"
+fn() { awk -v name="$1" '$0 ~ "^fn "name"\\(" {on=1} on {print} on && /^}/ {exit}' "$SRC/waveform.rs"; }
+{
+  echo 'mod ahx {'
+  echo '  pub mod format {'
+  echo '    #[derive(Debug, Clone, Copy, Default)]'
+  echo '    pub struct Instrument { pub filter_speed: u8, pub filter_lower_limit: u8, pub filter_upper_limit: u8, pub square_speed: u8, pub square_lower_limit: u8, pub square_upper_limit: u8 }'
+  echo '  }'
+  echo "  #[path = \"$SRC/filter_sweep.rs\"]"
+  echo '  pub mod filter_sweep;'
+  echo '  pub mod voice {'
+  echo '    use super::format::Instrument;'
+  echo '    use super::filter_sweep::bound_bounce_step;'
+  start=$(grep -n '^pub struct SquareSweep' "$SRC/voice.rs" | cut -d: -f1)
+  # the doc comment + derive above the struct sit at start-3 .. start-1; take from the derive
+  from=$((start - 1)); to=$(($(grep -n '^/// Waveform indices' "$SRC/voice.rs" | cut -d: -f1) - 1))
+  sed -n "${from},${to}p" "$SRC/voice.rs"
+  echo '  }'
+  echo '  pub mod wave {'
+  fn gen_sawtooth; fn gen_triangle; fn gen_square
+  echo '    pub fn saw(len: usize) -> Vec<i8> { let mut b = vec![0i8; len]; gen_sawtooth(&mut b, len); b }'
+  echo '    pub fn tri(len: usize) -> Vec<i8> { let mut b = vec![0i8; len]; gen_triangle(&mut b, len); b }'
+  echo '    pub fn sq() -> Vec<i8> { let mut b = vec![0i8; 0x80 * 0x20]; gen_square(&mut b); b }'
+  awk '/^pub const VIB_TAB/ {on=1} on {print} on && /^\];/ {exit}' "$SRC/voice.rs"
+  echo '  }'
+  echo '}'
+  cat <<'RS'
+use ahx::filter_sweep::FilterSweep;
+use ahx::format::Instrument;
+use ahx::voice::SquareSweep;
+
+fn list<T: std::fmt::Display>(v: &[T]) -> String {
+    format!("[{}]", v.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))
+}
+
+fn main() {
+    let lens = [4usize, 8, 16, 32, 64, 128];
+    println!("{{\"triangle\":{{");
+    println!("{}", lens.iter().map(|l| format!("\"{}\":{}", l, list(&ahx::wave::tri(*l)))).collect::<Vec<_>>().join(","));
+    println!("}},\"sawtooth\":{{");
+    println!("{}", lens.iter().map(|l| format!("\"{}\":{}", l, list(&ahx::wave::saw(*l)))).collect::<Vec<_>>().join(","));
+    println!("}},\"squareTable\":{},", list(&ahx::wave::sq()));
+    println!("\"vibTab\":{},", list(&ahx::wave::VIB_TAB));
+    // (speed, lower, upper, sign): the filter sweep, on at frame 0
+    let filters: Vec<(u8, u8, u8, i32)> = vec![(0, 20, 50, 1), (2, 10, 40, 1), (4, 1, 63, 1), (10, 30, 34, -1), (6, 40, 10, 1), (3, 32, 32, 1), (5, 100, 60, 1), (1, 5, 63, -1), (12, 0, 63, 1)];
+    println!("\"filter\":[");
+    for (i, (speed, lo, up, sign)) in filters.iter().enumerate() {
+        let ins = Instrument { filter_speed: *speed, filter_lower_limit: *lo, filter_upper_limit: *up, ..Default::default() };
+        let mut f = FilterSweep::trigger(&ins);
+        f.toggle(*sign);
+        let mut trace = vec![f.pos];
+        for _ in 0..160 { f.step(); trace.push(f.pos); }
+        println!("{}{{\"speed\":{},\"lower\":{},\"upper\":{},\"sign\":{},\"trace\":{}}}", if i > 0 { "," } else { "" }, speed, lo, up, sign, list(&trace));
+    }
+    // (speed, lower, upper, wave_length, start_pos, sign): the square sweep, on at frame 0
+    let squares: Vec<(u8, u8, u8, i32, i32, i32)> = vec![(0, 32, 224, 5, 0, 1), (1, 32, 224, 5, 8, 1), (3, 16, 240, 5, 0, 1), (5, 8, 120, 3, 4, -1), (2, 0, 255, 0, 0, 1), (4, 200, 40, 4, 10, 1), (2, 60, 60, 5, 60, 1), (7, 20, 90, 2, 0, 1)];
+    println!("],\"square\":[");
+    for (i, (speed, lo, up, wl, start, sign)) in squares.iter().enumerate() {
+        let ins = Instrument { square_speed: *speed, square_lower_limit: *lo, square_upper_limit: *up, ..Default::default() };
+        let mut s = SquareSweep::default();
+        s.trigger(&ins, *wl);
+        s.pos = *start;
+        s.toggle(*sign);
+        let mut trace = vec![s.pos];
+        for _ in 0..160 { s.step(); trace.push(s.pos); }
+        println!("{}{{\"speed\":{},\"lower\":{},\"upper\":{},\"waveLength\":{},\"start\":{},\"sign\":{},\"trace\":{}}}", if i > 0 { "," } else { "" }, speed, lo, up, wl, start, sign, list(&trace));
+    }
+    println!("]}}");
+}
+RS
+} > "$TMP/harness.rs"
+rustc --edition 2021 -A warnings -O -o "$TMP/harness" "$TMP/harness.rs" >&2
+"$TMP/harness"
+rm -rf "$TMP"

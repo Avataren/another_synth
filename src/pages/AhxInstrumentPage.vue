@@ -154,6 +154,7 @@
             :max="AHX_NUMBER_FIELDS.volume"
             suffix="/ 64"
             testid="ahx-field-volume"
+            :title="AHX_HELP.volume"
             @update:model-value="setNumber('volume', $event)"
           />
           <div class="ahx-field-row ahx-field-row--wrap">
@@ -162,6 +163,7 @@
               :model-value="instrument.waveLength"
               :options="WAVE_LENGTH_OPTIONS"
               testid="ahx-seg-waveLength"
+              :title="AHX_HELP.waveLength"
               @update:model-value="setNumber('waveLength', $event)"
             />
             <AhxNumberField
@@ -170,6 +172,7 @@
               :max="AHX_NUMBER_FIELDS.waveLength"
               :suffix="`(${cycleLength} samples)`"
               testid="ahx-field-waveLength"
+              :title="AHX_HELP.waveLength"
               @update:model-value="setNumber('waveLength', $event)"
             />
           </div>
@@ -179,6 +182,7 @@
             :max="AHX_NUMBER_FIELDS.vibratoDelay"
             :throttle-ms="AHX_TABLE_THROTTLE_MS"
             testid="ahx-field-vibratoDelay"
+            :title="AHX_HELP.vibratoDelay"
             suffix="frames"
             @update:model-value="setNumber('vibratoDelay', $event)"
           />
@@ -188,6 +192,7 @@
             :max="AHX_NUMBER_FIELDS.vibratoSpeed"
             :throttle-ms="AHX_TABLE_THROTTLE_MS"
             testid="ahx-field-vibratoSpeed"
+            :title="AHX_HELP.vibratoSpeed"
             @update:model-value="setNumber('vibratoSpeed', $event)"
           />
           <AhxSliderField
@@ -196,6 +201,7 @@
             :model-value="instrument.vibratoDepth"
             :max="AHX_NUMBER_FIELDS.vibratoDepth"
             testid="ahx-field-vibratoDepth"
+            :title="AHX_HELP.vibratoDepth"
             @update:model-value="setNumber('vibratoDepth', $event)"
           />
           <AhxSliderField
@@ -204,6 +210,7 @@
             :max="AHX_NUMBER_FIELDS.squareLowerLimit"
             :throttle-ms="AHX_TABLE_THROTTLE_MS"
             testid="ahx-field-squareLowerLimit"
+            :title="AHX_HELP.squareLowerLimit"
             @update:model-value="setNumber('squareLowerLimit', $event)"
           />
           <AhxSliderField
@@ -212,6 +219,7 @@
             :max="AHX_NUMBER_FIELDS.squareUpperLimit"
             :throttle-ms="AHX_TABLE_THROTTLE_MS"
             testid="ahx-field-squareUpperLimit"
+            :title="AHX_HELP.squareUpperLimit"
             @update:model-value="setNumber('squareUpperLimit', $event)"
           />
           <AhxSliderField
@@ -220,6 +228,7 @@
             :max="AHX_NUMBER_FIELDS.squareSpeed"
             :throttle-ms="AHX_TABLE_THROTTLE_MS"
             testid="ahx-field-squareSpeed"
+            :title="AHX_HELP.squareSpeed"
             @update:model-value="setNumber('squareSpeed', $event)"
           />
           <AhxSliderField
@@ -231,6 +240,7 @@
             marker-title="32 is the neutral position: no filtering"
             :hint="filterLowerHint"
             testid="ahx-field-filterLowerLimit"
+            :title="AHX_HELP.filterLowerLimit"
             @update:model-value="setNumber('filterLowerLimit', $event)"
           />
           <AhxSliderField
@@ -241,6 +251,7 @@
             :marker="AHX_FILTER_NEUTRAL"
             marker-title="32 is the neutral position: no filtering"
             testid="ahx-field-filterUpperLimit"
+            :title="AHX_HELP.filterUpperLimit"
             @update:model-value="setNumber('filterUpperLimit', $event)"
           />
           <AhxSliderField
@@ -249,10 +260,11 @@
             :max="AHX_NUMBER_FIELDS.filterSpeed"
             :throttle-ms="AHX_TABLE_THROTTLE_MS"
             testid="ahx-field-filterSpeed"
+            :title="AHX_HELP.filterSpeed"
             @update:model-value="setNumber('filterSpeed', $event)"
           />
           <div class="ahx-field-row">
-            <label class="ahx-check">
+            <label class="ahx-check" :title="AHX_HELP.hardCutRelease">
               <input
                 type="checkbox"
                 data-testid="ahx-field-hardCutRelease"
@@ -268,6 +280,7 @@
               :disabled="!instrument.hardCutRelease"
               suffix="frames"
               testid="ahx-field-hardCutReleaseFrames"
+            :title="AHX_HELP.hardCutReleaseFrames"
               @update:model-value="setNumber('hardCutReleaseFrames', $event)"
             />
           </div>
@@ -297,6 +310,7 @@
                   compact
                   :model-value="instrument.envelope[stage.frames]"
                   :max="255"
+                  :title="AHX_HELP[stage.framesHelp]"
                   :testid="`ahx-env-${stage.frames}`"
                   @update:model-value="setEnvelope(stage.frames, $event)"
                 />
@@ -307,6 +321,7 @@
                   compact
                   :model-value="instrument.envelope[stage.volume]"
                   :max="AHX_EDIT_MAX_VOLUME"
+                  :title="stage.volumeHelp ? AHX_HELP[stage.volumeHelp] : ''"
                   :testid="`ahx-env-${stage.volume}`"
                   @update:model-value="setEnvelope(stage.volume, $event)"
                 />
@@ -332,11 +347,20 @@
           These edit what the first row (the note's starting timbre) picks.
         </p>
         <div class="ahx-fields">
-          <label class="ahx-field">
-            <span class="ahx-field__label">Starts with</span>
+          <AhxSegmented
+            label="Starts with"
+            :model-value="startWaveform"
+            :options="START_WAVE_OPTIONS"
+            :title="AHX_HELP.startWaveform"
+            testid="ahx-seg-startWaveform"
+            @update:model-value="setStartWaveform"
+          />
+          <label class="ahx-field" :title="AHX_HELP.startWaveform">
+            <span class="ahx-field__label">Exact value</span>
             <select
               class="ahx-select"
               data-testid="ahx-start-waveform"
+              :title="AHX_HELP.startWaveform"
               :value="startWaveform"
               @change="setStartWaveform(Number(($event.target as HTMLSelectElement).value))"
             >
@@ -356,13 +380,20 @@
             :disabled="!canSetFilter"
             :title="
               canSetFilter
-                ? 'Sets the filter position on the first PList row (0 = leave it alone)'
-                : 'The first PList row has no free command slot for a filter position'
+                ? AHX_HELP.filterPosition
+                : 'The first PList row has no free command slot for a brightness (filter position) command.'
             "
             testid="ahx-start-filter"
             @update:model-value="setStartFilter"
           />
         </div>
+        <AhxWaveShape
+          :kind="previewKind"
+          :wave-length="instrument.waveLength"
+          :square-pos="previewSquarePos"
+          :filtered="usesFilter"
+        />
+        <p class="ahx-dim ahx-note" data-testid="ahx-wave-character">{{ AHX_WAVE_CHARACTER[previewKind] }}</p>
         <ul v-if="waveforms.length" class="ahx-waves" data-testid="ahx-waveforms">
           <li v-for="wave in waveforms" :key="wave.field" class="ahx-wave">
             <svg class="ahx-wave__glyph" viewBox="0 0 32 16" aria-hidden="true">
@@ -375,6 +406,44 @@
           </li>
         </ul>
         <p v-else class="ahx-dim">The PList selects no waveform.</p>
+      </section>
+
+      <section class="ahx-card ahx-card--wide" data-testid="ahx-motion">
+        <h3>Sound in motion</h3>
+        <p class="ahx-dim ahx-note">
+          What the vibrato, the square wave and the brightness do over the ticks of a note (one tick is one
+          step of the engine&rsquo;s clock). The sliders above change these pictures.
+        </p>
+        <div class="ahx-lanes">
+          <div class="ahx-lane-block">
+            <h4>Vibrato (pitch wobble)</h4>
+            <AhxVibratoLane
+              :delay="instrument.vibratoDelay"
+              :speed="instrument.vibratoSpeed"
+              :depth="instrument.vibratoDepth"
+            />
+          </div>
+          <div class="ahx-lane-block">
+            <h4>Square wave (pulse width)</h4>
+            <AhxSweepLane
+              kind="square"
+              :instrument="instrument"
+              :format="songFormat"
+              :version="sourceVersion"
+              @enable="enableSweep('square')"
+            />
+          </div>
+          <div class="ahx-lane-block">
+            <h4>Filter (brightness)</h4>
+            <AhxSweepLane
+              kind="filter"
+              :instrument="instrument"
+              :format="songFormat"
+              :version="sourceVersion"
+              @enable="enableSweep('filter')"
+            />
+          </div>
+        </div>
       </section>
 
       <section class="ahx-card ahx-card--wide">
@@ -393,18 +462,27 @@
             :max="255"
             suffix="ticks per row"
             testid="ahx-plist-speed"
+            :title="AHX_HELP.plistSpeed"
             @update:model-value="setPListSpeed"
           />
           <button
             type="button"
             class="ahx-btn"
             data-testid="ahx-plist-add"
+            :title="AHX_HELP.plistAdd"
             :disabled="instrument.plist.entries.length >= AHX_MAX_PLIST_ENTRIES"
             @click="addRow()"
           >
             Add row
           </button>
         </div>
+        <AhxPListStrip
+          v-if="instrument.plist.entries.length"
+          :entries="instrument.plist.entries"
+          :selected="selectedRow"
+          :glyphs="WAVE_GLYPH"
+          @select="selectRow"
+        />
         <div v-if="instrument.plist.entries.length" class="ahx-plist-scroll">
           <table class="ahx-table" data-testid="ahx-plist">
             <thead>
@@ -414,8 +492,14 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(entry, index) in instrument.plist.entries" :key="index">
-                <td class="ahx-dim">{{ hex2(index) }}</td>
+              <tr
+                v-for="(entry, index) in instrument.plist.entries"
+                :key="index"
+                :class="{ 'ahx-row--selected': index === selectedRow }"
+                :data-selected="index === selectedRow ? 'true' : 'false'"
+                :data-testid="`ahx-plist-row-${index}`"
+              >
+                <td class="ahx-dim" :title="AHX_HELP.plistRow">{{ hex2(index) }}</td>
                 <td>
                   <AhxNumberField
                     compact
@@ -429,6 +513,7 @@
                 <td>
                   <select
                     class="ahx-select"
+                    :title="AHX_HELP.plistWaveform"
                     :data-testid="`ahx-plist-${index}-waveform`"
                     :value="entry.waveform"
                     @change="editEntry(index, { field: 'waveform', value: Number(($event.target as HTMLSelectElement).value) })"
@@ -441,6 +526,7 @@
                 <td>
                   <input
                     type="checkbox"
+                    :title="AHX_HELP.plistFixed"
                     :data-testid="`ahx-plist-${index}-fixed`"
                     :checked="entry.fixed"
                     @change="editEntry(index, { field: 'fixed', value: ($event.target as HTMLInputElement).checked })"
@@ -450,7 +536,7 @@
                   <select
                     class="ahx-select"
                     :data-testid="`ahx-plist-${index}-fx${slotIndex}`"
-                    :title="ahxPListFxName(entry.fx[slotIndex] ?? 0, entry.fxParam[slotIndex] ?? 0)"
+                    :title="ahxFxTooltip(entry.fx[slotIndex] ?? 0, entry.fxParam[slotIndex] ?? 0)"
                     :value="entry.fx[slotIndex]"
                     @change="editEntry(index, { field: 'fx', slot: slotIndex, value: Number(($event.target as HTMLSelectElement).value) })"
                   >
@@ -473,7 +559,7 @@
                     class="ahx-btn ahx-btn--small"
                     :data-testid="`ahx-plist-insert-${index}`"
                     :disabled="instrument.plist.entries.length >= AHX_MAX_PLIST_ENTRIES"
-                    title="Insert an empty row after this one"
+                    :title="AHX_HELP.plistInsert"
                     @click="addRow(index)"
                   >
                     +
@@ -482,7 +568,7 @@
                     type="button"
                     class="ahx-btn ahx-btn--small"
                     :data-testid="`ahx-plist-remove-${index}`"
-                    title="Remove this row"
+                    :title="AHX_HELP.plistRemove"
                     @click="removeRow(index)"
                   >
                     ×
@@ -499,7 +585,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   AHX_MAX_PLIST_ENTRIES,
@@ -526,11 +612,29 @@ import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
 import AhxSliderField from 'src/components/ahx/AhxSliderField.vue';
 import AhxSegmented from 'src/components/ahx/AhxSegmented.vue';
 import AhxEnvelopeEditor from 'src/components/ahx/AhxEnvelopeEditor.vue';
+import AhxWaveShape from 'src/components/ahx/AhxWaveShape.vue';
+import AhxVibratoLane from 'src/components/ahx/AhxVibratoLane.vue';
+import AhxSweepLane from 'src/components/ahx/AhxSweepLane.vue';
+import AhxPListStrip from 'src/components/ahx/AhxPListStrip.vue';
+import {
+  AHX_HELP,
+  AHX_WAVE_CHARACTER,
+  ahxFxParamTooltip,
+  ahxFxTooltip,
+  type AhxHelpKey,
+} from 'src/audio/tracker/ahx-plain-language';
+import {
+  ahxSquareBounds,
+  ahxSweepSetup,
+  ahxUsesFilter,
+  type AhxSweepKind,
+} from 'src/audio/tracker/ahx-instrument-visuals';
 import { AHX_TABLE_THROTTLE_MS } from 'src/composables/useAhxDrag';
 import {
   ahxNoteName,
   ahxPListFxName,
   ahxWaveCycleLength,
+  ahxWaveformKind,
   ahxWaveformLabel,
   ahxWaveformList,
   type AhxWaveformKind,
@@ -541,6 +645,7 @@ import {
   AHX_NUMBER_FIELDS,
   addAhxPListEntry,
   ahxEnvelopeWarnings,
+  enableAhxSweep,
   ahxFxParamMax,
   ahxStartFilterPosition,
   ahxStartWaveform,
@@ -597,6 +702,45 @@ const canSetFilter = computed(() =>
   instrument.value ? canSetAhxStartFilterPosition(instrument.value) : false,
 );
 
+const sweepContext = computed(() => ({ format: songFormat.value, version: sourceVersion.value }));
+
+/** The tone the shape preview draws: the first row's, else the first the PList picks, else the default (triangle). */
+const previewKind = computed<AhxWaveformKind>(() => {
+  const field = startWaveform.value !== 0 ? startWaveform.value : (waveforms.value[0]?.field ?? 1);
+  const kind = ahxWaveformKind(field);
+  return kind === 'keep' || kind === 'unknown' ? 'triangle' : kind;
+});
+/** The pulse width the square preview shows: where the PList sets it, else the sweep's thin end. */
+const previewSquarePos = computed(() => {
+  const ins = instrument.value;
+  if (!ins) return 0;
+  return ahxSweepSetup(ins, 'square', sweepContext.value).startPos ?? ahxSquareBounds(ins).lower;
+});
+const usesFilter = computed(() =>
+  instrument.value ? ahxUsesFilter(instrument.value, sweepContext.value) : false,
+);
+
+/** The PList row the strip and the table highlight (a later task edits it). */
+const selectedRow = ref<number | null>(null);
+function selectRow(row: number): void {
+  selectedRow.value = row;
+  void nextTick(() => {
+    document
+      .querySelector<HTMLElement>(`[data-testid="ahx-plist-row-${row}"]`)
+      ?.scrollIntoView?.({ block: 'nearest' });
+  });
+}
+// A row that no longer exists (removed) is not selected any more.
+watch(
+  () => instrument.value?.plist.entries.length ?? 0,
+  (count) => {
+    if (selectedRow.value !== null && selectedRow.value >= count) selectedRow.value = null;
+  },
+);
+
+const enableSweep = (kind: AhxSweepKind) =>
+  commit((ins) => enableAhxSweep(ins, kind, sweepContext.value));
+
 /** The filter's neutral position: no filtering (`filter_sweep.rs:88`). */
 const AHX_FILTER_NEUTRAL = 32;
 
@@ -623,6 +767,17 @@ const WAVE_GLYPH: Record<AhxWaveformKind | 'unknown', string> = {
   unknown: 'M0 8 L32 8',
 };
 
+/** The wave picker: Keep, then the four tones with their glyph and what they sound like. */
+const START_WAVE_OPTIONS = [
+  { value: 0, label: 'Keep', title: 'Leaves the tone as it was.' },
+  ...(['triangle', 'sawtooth', 'square', 'noise'] as const).map((kind, i) => ({
+    value: i + 1,
+    label: kind === 'sawtooth' ? 'Saw' : kind[0]!.toUpperCase() + kind.slice(1),
+    glyph: WAVE_GLYPH[kind],
+    title: AHX_WAVE_CHARACTER[kind],
+  })),
+];
+
 /** What a PList row's waveform field can be: 0 keeps the voice's, 1..=4 the four waves. */
 const WAVEFORM_CHOICES = [0, 1, 2, 3, 4].map((value) => ({
   value,
@@ -633,11 +788,13 @@ const ENVELOPE_STAGES: ReadonlyArray<{
   label: string;
   frames: keyof AhxEnvelope;
   volume?: keyof AhxEnvelope;
+  framesHelp: AhxHelpKey;
+  volumeHelp?: AhxHelpKey;
 }> = [
-  { label: 'Attack', frames: 'aFrames', volume: 'aVolume' },
-  { label: 'Decay', frames: 'dFrames', volume: 'dVolume' },
-  { label: 'Sustain', frames: 'sFrames' },
-  { label: 'Release', frames: 'rFrames', volume: 'rVolume' },
+  { label: 'Attack', frames: 'aFrames', volume: 'aVolume', framesHelp: 'envAttackFrames', volumeHelp: 'envAttackVolume' },
+  { label: 'Decay', frames: 'dFrames', volume: 'dVolume', framesHelp: 'envDecayFrames', volumeHelp: 'envDecayVolume' },
+  { label: 'Sustain', frames: 'sFrames', framesHelp: 'envSustainFrames' },
+  { label: 'Release', frames: 'rFrames', volume: 'rVolume', framesHelp: 'envReleaseFrames', volumeHelp: 'envReleaseVolume' },
 ];
 
 const FX_SLOTS = [0, 1] as const;
@@ -659,8 +816,8 @@ const sourceVersion = computed(() => ahxSourceInfo.value?.version ?? 1);
 
 const paramTitle = (fx: number): string =>
   ahxFxParamMax(fx, songFormat.value, sourceVersion.value) < 255
-    ? 'This is an AHX version 0 file: it ignores the high nibble of a filter toggle, so only the square toggle (0-15) plays.'
-    : '';
+    ? `${ahxFxParamTooltip(fx)} This is an AHX version 0 file: it ignores the brightness digit, so only the pulse-width toggle (0-15) plays.`
+    : ahxFxParamTooltip(fx);
 
 /**
  * A PList note is relative to the key played unless the row is `fixed`
@@ -1132,6 +1289,22 @@ onUnmounted(() => {
 }
 
 .ahx-audition__key:active {
+  background: var(--tracker-active-bg, #14283d);
+}
+
+.ahx-lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px 20px;
+}
+
+.ahx-lane-block h4 {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.ahx-row--selected td {
   background: var(--tracker-active-bg, #14283d);
 }
 
