@@ -69,12 +69,55 @@
             :class="{ 'ahx-audition__key--held': latch && heldKeys.has(key.midi) }"
             :disabled="!audible"
             :data-testid="`ahx-audition-${key.midi}`"
-            @pointerdown.prevent="auditionDown(key.midi)"
-            @pointerup="auditionUp(key.midi)"
-            @pointerleave="auditionUp(key.midi)"
-            @pointercancel="auditionUp(key.midi)"
+            @pointerdown.prevent="play.pointerDown(key.midi)"
+            @pointerup="play.pointerUp(key.midi)"
+            @pointerleave="play.pointerUp(key.midi)"
+            @pointercancel="play.pointerUp(key.midi)"
           >
             {{ key.label }}
+          </button>
+          <AhxPianoStrip
+            :start="stripStart"
+            :held="heldKeys"
+            :disabled="!audible"
+            @down="play.pointerDown"
+            @up="play.pointerUp"
+          />
+          <span
+            class="ahx-octave"
+            title="Shifts the computer keyboard and the on-screen piano by an octave (Shift+PageUp / Shift+PageDown, as in the tracker)."
+          >
+            <button
+              type="button"
+              class="ahx-octave__btn"
+              :disabled="octave <= AHX_MIN_OCTAVE"
+              aria-label="Octave down"
+              data-testid="ahx-octave-down"
+              @click="play.setOctave(octave - 1)"
+            >
+              −
+            </button>
+            <span class="ahx-octave__value" data-testid="ahx-octave">Oct {{ octave }}</span>
+            <button
+              type="button"
+              class="ahx-octave__btn"
+              :disabled="octave >= AHX_MAX_OCTAVE"
+              aria-label="Octave up"
+              data-testid="ahx-octave-up"
+              @click="play.setOctave(octave + 1)"
+            >
+              +
+            </button>
+          </span>
+          <button
+            type="button"
+            class="ahx-midi-chip"
+            :class="`ahx-midi-chip--${play.midiStatus.value.state}`"
+            :title="midiChip.title"
+            data-testid="ahx-midi-chip"
+            @click="play.toggleMidi()"
+          >
+            {{ midiChip.text }}
           </button>
           <label
             class="ahx-check ahx-check--bar"
@@ -94,10 +137,10 @@
             v-if="audible"
             class="ahx-dim ahx-audition__hint"
             title="Hold a note to hear this instrument as it is now. The song plays the same edit from its next trigger of this instrument; a note already sounding keeps its volume, vibrato and wave length until it is struck again."
-            >Hold a key to hear it; edits play at once.</span
+            >Play with the keyboard (Z-M, Q-P), MIDI or the keys; edits sound at once.</span
           >
           <span v-else class="ahx-dim" data-testid="ahx-audition-off"
-            >Unavailable: there is no source file to play this instrument from.</span
+            >Unavailable: there is no source file to play this instrument from (keyboard, MIDI and keys are off).</span
           >
         </div>
       </section>
@@ -456,7 +499,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   AHX_MAX_PLIST_ENTRIES,
@@ -469,6 +512,14 @@ import {
 } from '@another-synth/tracker-playback';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
+import {
+  AHX_DEFAULT_OCTAVE,
+  AHX_MAX_OCTAVE,
+  AHX_MIN_OCTAVE,
+  useAhxPlayInput,
+} from 'src/composables/useAhxPlayInput';
+import AhxPianoStrip from 'src/components/ahx/AhxPianoStrip.vue';
 import { ahxSourceInfo } from 'src/audio/tracker/ahx-source';
 import { ahxNotices, reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
@@ -511,6 +562,7 @@ const route = useRoute();
 const router = useRouter();
 const trackerStore = useTrackerStore();
 const playbackStore = useTrackerPlaybackStore();
+const userSettings = useUserSettingsStore();
 
 const slotNumber = computed<number | null>(() => {
   const raw = Array.isArray(route.params.slot) ? route.params.slot[0] : route.params.slot;
@@ -667,52 +719,49 @@ const AUDITION_KEYS = [
   { midi: 60, label: 'C-4' },
   { midi: 72, label: 'C-5' },
 ];
-const held = new Set<number>();
-/** `held`, visible to the template (a latched key shows as down). */
-const heldKeys = reactive(new Set<number>());
-const latch = ref(false);
 const restrike = ref(false);
 
-function auditionOn(midi: number): void {
-  if (slotNumber.value === null || held.has(midi) || !audible.value) return;
-  held.add(midi);
-  heldKeys.add(midi);
-  void playbackStore.previewAhxNoteOn(slotNumber.value, midi, 100);
-}
-
-function auditionOff(midi: number): void {
-  if (!held.delete(midi)) return;
-  heldKeys.delete(midi);
-  playbackStore.previewAhxNoteOff(midi);
-}
-
-/** Pointer down on a key. With Latch on it toggles the note instead of holding it. */
-function auditionDown(midi: number): void {
-  if (latch.value) {
-    if (held.has(midi)) {
-      auditionOff(midi);
-      return;
-    }
-    // One voice sounds at a time: latching a key lets go of the last one.
-    for (const other of [...held]) auditionOff(other);
-  }
-  auditionOn(midi);
-}
-
-/** Pointer up / leave / cancel: a latched note keeps sounding. */
-function auditionUp(midi: number): void {
-  if (!latch.value) auditionOff(midi);
-}
-
-function releaseAll(): void {
-  for (const midi of [...held]) auditionOff(midi);
-}
-
-watch(latch, (on) => {
-  if (!on) releaseAll();
+/**
+ * The bar's keys, the computer keyboard and MIDI all play through one input
+ * model (`useAhxPlayInput`), into the same preview voice.
+ */
+const play = useAhxPlayInput({
+  slot: slotNumber,
+  audible,
+  sink: {
+    noteOn: (slotNo, midi, velocity) => void playbackStore.previewAhxNoteOn(slotNo, midi, velocity),
+    noteOff: (midi) => playbackStore.previewAhxNoteOff(midi),
+  },
+  autoMidi: computed(() => userSettings.settings.enableMidi),
 });
-// Held notes belong to the slot they were struck on.
-watch(slotNumber, releaseAll);
+const { heldKeys, latch, octave } = play;
+
+/** The strip's lowest key follows the octave shift, so touch reaches the same range the keyboard does. */
+const stripStart = computed(() => 48 + (octave.value - AHX_DEFAULT_OCTAVE) * 12);
+
+const midiChip = computed(() => {
+  const { state, devices } = play.midiStatus.value;
+  switch (state) {
+    case 'unsupported':
+      return { text: 'MIDI: not supported', title: 'This browser has no Web MIDI.' };
+    case 'requesting':
+      return { text: 'MIDI: asking…', title: 'Waiting for the browser\u2019s permission prompt.' };
+    case 'denied':
+      return {
+        text: 'MIDI: denied',
+        title: 'The browser refused MIDI access. Allow it for this site, then click to try again.',
+      };
+    case 'ready':
+      return devices.length === 0
+        ? { text: 'MIDI: no device', title: 'MIDI is on; plug a controller in and it is picked up. Click to turn it off.' }
+        : {
+            text: devices.length === 1 ? `MIDI: ${devices[0]}` : `MIDI: ${devices[0]} +${devices.length - 1}`,
+            title: `${devices.join(', ')}. Click to turn MIDI off.`,
+          };
+    default:
+      return { text: 'MIDI: off', title: 'Click to play this instrument from a MIDI keyboard.' };
+  }
+});
 
 /**
  * Re-strike on edit: a committed edit strikes the held note again after a short
@@ -722,14 +771,11 @@ watch(slotNumber, releaseAll);
 const RESTRIKE_DELAY_MS = 150;
 let restrikeTimer: ReturnType<typeof setTimeout> | null = null;
 watch(instrument, () => {
-  if (!restrike.value || held.size === 0) return;
+  if (!restrike.value || heldKeys.size === 0) return;
   if (restrikeTimer !== null) clearTimeout(restrikeTimer);
   restrikeTimer = setTimeout(() => {
     restrikeTimer = null;
-    for (const midi of [...held]) {
-      auditionOff(midi);
-      auditionOn(midi);
-    }
+    play.restrikeHeld();
   }, RESTRIKE_DELAY_MS);
 });
 
@@ -748,7 +794,6 @@ onMounted(() => window.addEventListener('keydown', handleKeyDown));
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
   if (restrikeTimer !== null) clearTimeout(restrikeTimer);
-  for (const midi of [...held]) auditionOff(midi);
 });
 </script>
 
@@ -1014,6 +1059,53 @@ onUnmounted(() => {
   min-width: 0;
   font-size: 0.85rem;
   cursor: pointer;
+}
+
+.ahx-octave {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ahx-octave__btn,
+.ahx-midi-chip {
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  background: var(--button-background, #1a2534);
+  border: 1px solid var(--tracker-accent-secondary, #3b82a0);
+  border-radius: 4px;
+}
+
+.ahx-octave__btn {
+  width: 26px;
+  padding: 2px 0;
+}
+
+.ahx-octave__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ahx-octave__value {
+  min-width: 44px;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.ahx-midi-chip {
+  padding: 2px 10px;
+  font-size: 0.8rem;
+  border-radius: 999px;
+}
+
+.ahx-midi-chip--ready {
+  border-color: var(--tracker-accent-primary, #f0b25e);
+}
+
+.ahx-midi-chip--denied,
+.ahx-midi-chip--unsupported {
+  opacity: 0.65;
 }
 
 .ahx-audition__key--held {
