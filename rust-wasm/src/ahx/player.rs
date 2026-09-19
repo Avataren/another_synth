@@ -48,6 +48,10 @@ pub struct AhxPlayer {
     scratch: Vec<i16>,
     gain: f32,
     playing: bool,
+    /// Edits made through [`replace_instrument_deferred`](AhxPlayer::replace_instrument_deferred)
+    /// that may reach a table the bank lacks: the walk they owe, paid by
+    /// [`finish_instrument_edits`](AhxPlayer::finish_instrument_edits).
+    prewarm_owed: bool,
 }
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
@@ -60,7 +64,7 @@ impl AhxPlayer {
     pub fn new(bytes: &[u8], sample_rate: u32, stereo_mode: u8) -> Result<AhxPlayer, String> {
         let song = format::parse(bytes).map_err(|e| e.to_string())?;
         let engine = AhxEngine::new(song, sample_rate, stereo_mode).map_err(|e| e.to_string())?;
-        Ok(AhxPlayer { engine, scratch: Vec::new(), gain: 1.0, playing: false })
+        Ok(AhxPlayer { engine, scratch: Vec::new(), gain: 1.0, playing: false, prewarm_owed: false })
     }
 
     pub fn play(&mut self) {
@@ -138,26 +142,51 @@ impl AhxPlayer {
     ///
     /// With hi-fi on, a song player rebuilds the tables the edited song asks
     /// for before this returns (see [`AhxEngine::prewarm_hifi_after_edit`]) --
-    /// unless the edit reaches no table (volume, envelope, hard cut), which
-    /// costs nothing; a preview player only forgets what it prewarmed for that
+    /// unless the edit reaches no table (volume, envelope, hard cut) or the
+    /// instrument is one no step ever triggers, which costs nothing; a preview player only forgets what it prewarmed for that
     /// instrument. Both happen here, in the caller's message handler, never in
     /// `render`.
     ///
     /// An error, with the song untouched, for bytes the format does not decode
     /// to one instrument or an `instrument` the song does not have.
     pub fn replace_instrument(&mut self, instrument: usize, bytes: &[u8]) -> Result<(), String> {
+        self.replace_instrument_deferred(instrument, bytes)?;
+        self.finish_instrument_edits();
+        Ok(())
+    }
+
+    /// [`replace_instrument`](Self::replace_instrument) without the hi-fi walk:
+    /// the instrument is swapped now, and any walk it owes waits for
+    /// [`finish_instrument_edits`](Self::finish_instrument_edits). A burst of
+    /// edits (the editor sends what has piled up in one message) is then one
+    /// walk of the song instead of one per instrument.
+    pub fn replace_instrument_deferred(&mut self, instrument: usize, bytes: &[u8]) -> Result<(), String> {
         let song = self.engine.song();
         let ins = format::parse_instrument(bytes, song.format, song.version, String::new()).map_err(|e| e.to_string())?;
         let Some(tables_may_differ) = self.engine.replace_instrument(instrument, ins) else {
             return Err(format!("the song has no instrument {instrument}"));
         };
         // Only an edit that can reach another wave table costs a walk of the
-        // song: volume, envelope and hard-cut edits (the ones made by dragging
-        // a slider) change no table (see `engine::same_tables`).
-        if tables_may_differ && self.engine.hifi_enabled() && !self.engine.live_enabled() {
-            self.engine.prewarm_hifi_after_edit();
+        // song: volume, envelope and hard-cut edits change no table (see
+        // `engine::same_tables`), and an instrument no step ever triggers can
+        // never ask for one (`AhxEngine::instrument_is_triggered`).
+        if tables_may_differ
+            && self.engine.hifi_enabled()
+            && !self.engine.live_enabled()
+            && self.engine.instrument_is_triggered(instrument)
+        {
+            self.prewarm_owed = true;
         }
         Ok(())
+    }
+
+    /// Pays the walk that deferred edits owe (nothing when none does): one
+    /// [`AhxEngine::prewarm_hifi_after_edit`] however many instruments changed.
+    /// Call it from the message handler, never from `render`.
+    pub fn finish_instrument_edits(&mut self) {
+        if std::mem::take(&mut self.prewarm_owed) && self.engine.hifi_enabled() && !self.engine.live_enabled() {
+            self.engine.prewarm_hifi_after_edit();
+        }
     }
 
     /// Instruments the song has (1-based numbering runs `1..=instrument_count`).

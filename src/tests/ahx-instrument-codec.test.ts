@@ -6,6 +6,7 @@ import {
   AHX_MAX_PLIST_ENTRIES,
   AhxInstrumentEncodeError,
   ahxInstrumentProblem,
+  normalizeAhxInstrumentForVersion,
   parseAhx,
   sanitizeAhxInstrument,
   serializeAhxInstrument,
@@ -125,5 +126,39 @@ describe('AHX instrument wire form', () => {
     expect(copy).toEqual(ins);
     expect(copy).not.toBe(ins);
     expect(copy!.plist).not.toBe(ins.plist);
+  });
+});
+
+describe('normalizeAhxInstrumentForVersion', () => {
+  const withRow = (fx: [number, number], fxParam: [number, number]): AhxInstrument => {
+    const base = structuredClone(parseAhx(demos[0]!.bytes).instruments[1]!);
+    base.plist.entries = [{ note: 5, waveform: 2, fixed: false, fx, fxParam }];
+    return base;
+  };
+
+  it('a version-0 AHX file loses the high nibble of a filter-toggle parameter, on either command', () => {
+    const out = normalizeAhxInstrumentForVersion(withRow([4, 4], [0xa7, 0xb3]), 'ahx', 0);
+    expect(out.plist.entries[0]!.fxParam).toEqual([0x07, 0x03]);
+  });
+
+  it('touches no other command, no other version and no other format', () => {
+    const ins = withRow([5, 4], [0xa7, 0xb3]);
+    expect(normalizeAhxInstrumentForVersion(ins, 'ahx', 0).plist.entries[0]!.fxParam).toEqual([0xa7, 0x03]);
+    for (const [format, version] of [['ahx', 1], ['ahx', 2], ['hvl', 0], ['hvl', 1]] as const) {
+      expect(normalizeAhxInstrumentForVersion(ins, format, version)).toBe(ins);
+    }
+  });
+
+  it('is what gets written: the wire form carries the stripped parameter', () => {
+    const ins = withRow([4, 0], [0xa7, 0]);
+    const wire = serializeAhxInstrument(ins, 'ahx');
+    const stripped = normalizeAhxInstrumentForVersion(ins, 'ahx', 0);
+    expect(serializeAhxInstrument(stripped, 'ahx')[22 + 2]).toBe(0x07);
+    expect(wire[22 + 2]).toBe(0xa7);
+  });
+
+  it('returns the very instrument when nothing needs stripping', () => {
+    const ins = withRow([4, 0], [0x07, 0]);
+    expect(normalizeAhxInstrumentForVersion(ins, 'ahx', 0)).toBe(ins);
   });
 });

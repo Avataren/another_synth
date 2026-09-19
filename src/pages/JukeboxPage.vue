@@ -296,6 +296,7 @@ import {
 import type { BugReportPreset } from 'src/composables/bug-report-context';
 import type { BugReportPosition } from 'src/composables/bug-report';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
+import { snapshotEditorSong } from 'src/audio/tracker/ahx-source';
 
 /**
  * The jukebox: the demo collection played end to end, on its own page.
@@ -421,7 +422,11 @@ function closeBugReport(): void {
  * saved file takes -- which is the one form known to round-trip, since it is
  * what Save and Load already use.
  */
-const editorSong: TrackerSongFile = trackerStore.serializeSong();
+// An AHX/HVL song is played from its file's bytes, which a song file does not
+// carry (nor the edits made to its instruments on top of them): the snapshot
+// takes them along, or the song comes back as a display model that cannot play
+// and whose instruments cannot be auditioned.
+const editorSong: TrackerSongFile = snapshotEditorSong(trackerStore);
 /** Undo history is not part of a song file, so it is carried across by hand. */
 const editorUndo = trackerStore.undoStack.slice();
 const editorRedo = trackerStore.redoStack.slice();

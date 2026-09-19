@@ -11,10 +11,18 @@
           displayName
         }}</span>
         <span
+          v-if="audible"
           class="ahx-banner__mode"
           data-testid="ahx-editable-badge"
-          title="Every change is made to the song's own instrument: the song plays it from its next trigger, the keyboard sounds it at once, and saving keeps it."
-          >Edits the song</span
+          title="Every change is made to the song's own instrument for this session: the song plays it from its next trigger and the keyboard sounds it at once. AHX/HVL songs cannot be saved as .cmod yet, so the edits last until the song is replaced."
+          >Edits this session</span
+        >
+        <span
+          v-else
+          class="ahx-banner__mode ahx-banner__mode--warn"
+          data-testid="ahx-editable-badge"
+          title="This song has no source file to play from, so edits are kept in the editor but cannot be heard."
+          >Edits not audible</span
         >
       </div>
       <q-btn
@@ -28,6 +36,22 @@
       />
     </div>
 
+    <div v-if="!audible" class="ahx-notice" role="alert" data-testid="ahx-source-missing">
+      This song's source file is not available (it was loaded from a saved
+      song, which cannot carry it), so the instruments can be edited here but
+      nothing can be heard. Open the .ahx/.hvl file again to audition and
+      play.
+    </div>
+    <div
+      v-for="notice in notices"
+      :key="notice"
+      class="ahx-notice"
+      role="alert"
+      data-testid="ahx-notice"
+    >
+      {{ notice }}
+    </div>
+
     <div v-if="!instrument" class="ahx-empty" data-testid="ahx-instrument-missing">
       This slot has no AHX instrument. Load an AHX song in the tracker and open
       one of its instruments from the list.
@@ -37,11 +61,14 @@
       <section class="ahx-card ahx-card--wide" data-testid="ahx-audition">
         <h3>
           Audition
-          <span class="ahx-dim"
+          <span v-if="audible" class="ahx-dim"
             >Hold a note to hear this instrument as it is now. The song plays the
             same edit from its next trigger of this instrument; a note already
             sounding keeps its volume, vibrato and wave length until it is
             struck again.</span
+          >
+          <span v-else class="ahx-dim" data-testid="ahx-audition-off"
+            >Unavailable: there is no source file to play this instrument from.</span
           >
         </h3>
         <div class="ahx-audition">
@@ -50,6 +77,7 @@
             :key="key.midi"
             type="button"
             class="ahx-audition__key"
+            :disabled="!audible"
             :data-testid="`ahx-audition-${key.midi}`"
             @pointerdown.prevent="auditionOn(key.midi)"
             @pointerup="auditionOff(key.midi)"
@@ -397,6 +425,8 @@ import {
 } from '@another-synth/tracker-playback';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
+import { ahxSourceInfo } from 'src/audio/tracker/ahx-source';
+import { ahxNotices, reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
 import {
   AHX_MAX_VOLUME,
@@ -510,10 +540,18 @@ const ENVELOPE_STAGES: ReadonlyArray<{
 ];
 
 const FX_SLOTS = [0, 1] as const;
-const FX_CHOICES = ahxPListCommandsFor('ahx').map((value) => ({
-  value,
-  label: `${value.toString(16).toUpperCase()} ${ahxPListFxName(value, 1) || 'none'}`,
-}));
+/** The song's format decides which PList commands a row can hold (HVL has more than AHX). */
+const songFormat = computed(() => ahxSourceInfo.value?.format ?? 'ahx');
+const FX_CHOICES = computed(() =>
+  ahxPListCommandsFor(songFormat.value).map((value) => ({
+    value,
+    label: `${value.toString(16).toUpperCase()} ${ahxPListFxName(value, 1) || 'none'}`,
+  })),
+);
+
+/** Whether the song's source is there to play from: without it an edit is kept but never heard. */
+const audible = computed(() => ahxSourceInfo.value !== null);
+const notices = ahxNotices;
 
 const waveLabel = ahxWaveformLabel;
 const hex2 = (n: number): string => n.toString(16).toUpperCase().padStart(2, '0');
@@ -525,7 +563,10 @@ const hex2 = (n: number): string => n.toString(16).toUpperCase().padStart(2, '0'
 function commit(edit: (current: AhxInstrument) => AhxInstrument): void {
   const current = instrument.value;
   if (!current || slotNumber.value === null) return;
-  trackerStore.updateAhxInstrument(slotNumber.value, edit(current));
+  const outcome = trackerStore.updateAhxInstrument(slotNumber.value, edit(current));
+  // The value was not a valid instrument for this song: nothing changed, and
+  // the field would otherwise just snap back with no word.
+  if (outcome === 'rejected') reportAhxNotice('That change is not a valid instrument for this song and was not applied.');
 }
 
 const setNumber = (field: AhxNumberFieldKey, value: number) =>
@@ -537,7 +578,7 @@ const setStartWaveform = (value: number) => commit((ins) => setAhxStartWaveform(
 const setStartFilter = (value: number) => commit((ins) => setAhxStartFilterPosition(ins, value));
 const setPListSpeed = (value: number) => commit((ins) => setAhxPListSpeed(ins, value));
 const editEntry = (row: number, edit: AhxPListEdit) =>
-  commit((ins) => editAhxPListEntry(ins, row, edit));
+  commit((ins) => editAhxPListEntry(ins, row, edit, songFormat.value));
 const addRow = (after?: number) => commit((ins) => addAhxPListEntry(ins, after));
 const removeRow = (row: number) => commit((ins) => removeAhxPListEntry(ins, row));
 
@@ -550,7 +591,7 @@ const AUDITION_KEYS = [
 const held = new Set<number>();
 
 function auditionOn(midi: number): void {
-  if (slotNumber.value === null || held.has(midi)) return;
+  if (slotNumber.value === null || held.has(midi) || !audible.value) return;
   held.add(midi);
   void playbackStore.previewAhxNoteOn(slotNumber.value, midi, 100);
 }
@@ -749,6 +790,16 @@ onUnmounted(() => {
   position: static;
 }
 
+.ahx-notice {
+  margin: 8px 12px 0;
+  padding: 8px 12px;
+  border: 1px solid #d9a441;
+  border-radius: 6px;
+  background: rgba(217, 164, 65, 0.12);
+  color: #f2d08a;
+  font-size: 0.85rem;
+}
+
 .ahx-banner__mode {
   padding: 1px 8px;
   border: 1px solid currentColor;
@@ -757,6 +808,10 @@ onUnmounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--tracker-accent-secondary, #5ec2e8);
+}
+
+.ahx-banner__mode--warn {
+  color: #f2d08a;
 }
 
 .ahx-fields {
@@ -850,6 +905,11 @@ onUnmounted(() => {
   background: var(--button-background, #1a2534);
   border: 1px solid var(--tracker-accent-secondary, #3b82a0);
   border-radius: 4px;
+}
+
+.ahx-audition__key:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .ahx-audition__key:active {

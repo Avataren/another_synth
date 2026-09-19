@@ -20,6 +20,9 @@ interface FakeClient {
 }
 
 const h = vi.hoisted(() => ({
+  /** Made the fake worklets refuse: replaces (with this message), and these instruments at a load. */
+  refuseReplace: null as string | null,
+  refuseAtLoad: [] as number[],
   clients: [] as Array<{
     isPreview: boolean;
     calls: string[];
@@ -52,10 +55,27 @@ vi.mock('src/audio/tracker/ahx-player', () => ({
       ) {
         client.calls.push('load');
         client.loads.push(instruments.map((e) => ({ instrument: e.instrument, bytes: Array.from(e.bytes) })));
-        return { name: 'x', positionCount: 1, trackLength: 64, channels: 4, droppedChannels: 0, sampleRate: 44100 };
+        return {
+          name: 'x',
+          positionCount: 1,
+          trackLength: 64,
+          channels: 4,
+          droppedChannels: 0,
+          sampleRate: 44100,
+          ...(h.refuseAtLoad.length > 0 ? { rejectedInstruments: [...h.refuseAtLoad] } : {}),
+        };
       },
       async replaceInstrument(instrument: number, bytes: Uint8Array) {
+        if (h.refuseReplace) throw new Error(h.refuseReplace);
         client.calls.push(`replace:${instrument}:${bytes.length}`);
+      },
+      replaceInstruments(edits: ReadonlyArray<{ instrument: number; bytes: Uint8Array }>) {
+        client.calls.push(`batch:${edits.length}`);
+        return edits.map((e) => {
+          if (h.refuseReplace) return Promise.reject(new Error(h.refuseReplace));
+          client.calls.push(`replace:${e.instrument}:${e.bytes.length}`);
+          return Promise.resolve();
+        });
       },
       previewNoteOn: (i: number) => client.calls.push(`on:${i}`),
       previewNoteOff: () => client.calls.push('off'),
@@ -103,7 +123,13 @@ import { useTrackerFileIO } from 'src/composables/useTrackerFileIO';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import { useTrackerSongBuilder } from 'src/composables/useTrackerSongBuilder';
 import { formatInstrumentId, normalizeInstrumentId } from 'src/audio/tracker/instrument-ids';
-import { currentAhxInstrumentEdits, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
+import {
+  currentAhxInstrumentEdits,
+  currentAhxSource,
+  setCurrentAhxSource,
+  snapshotEditorSong,
+} from 'src/audio/tracker/ahx-source';
+import { ahxNotices, clearAhxNotices } from 'src/audio/tracker/ahx-notices';
 import { setAhxNumber } from 'src/audio/tracker/ahx-instrument-edit';
 import type { Song } from '@another-synth/tracker-playback';
 
@@ -170,6 +196,9 @@ const replaces = (c: FakeClient | undefined) => (c?.calls ?? []).filter((x) => x
 beforeEach(() => {
   setActivePinia(createPinia());
   h.clients.length = 0;
+  h.refuseReplace = null;
+  h.refuseAtLoad = [];
+  clearAhxNotices();
   setCurrentAhxSource(null);
   // No `dispose()` here: a fresh store keeps the subscriptions the wiring under
   // test lives in (`dispose` is for the end of a test).
@@ -241,10 +270,124 @@ describe('an AHX instrument edit reaches the song and the preview', () => {
     await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
     await settle();
     const slot = host.trackerStore.instrumentSlots.find((s) => s.slot === 16)!;
-    expect(host.trackerStore.updateAhxInstrument(60, slot.ahxData!)).toBe(false);
-    expect(host.trackerStore.updateAhxInstrument(16, { ...slot.ahxData!, volume: 999 })).toBe(false);
+    expect(host.trackerStore.updateAhxInstrument(60, slot.ahxData!)).toBe('rejected');
+    expect(host.trackerStore.updateAhxInstrument(16, { ...slot.ahxData!, volume: 999 })).toBe('rejected');
     await pastDebounce();
     expect(replaces(song())).toHaveLength(0);
     expect(replaces(preview())).toHaveLength(0);
+  });
+});
+
+describe('edits are sent to the song player as one batch', () => {
+  it('a burst over several instruments is one command to the worklet, one replace each', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
+    await settle();
+    for (const slotNumber of [16, 3, 5]) {
+      const slot = host.trackerStore.instrumentSlots.find((s) => s.slot === slotNumber)!;
+      host.trackerStore.updateAhxInstrument(slotNumber, setAhxNumber(slot.ahxData!, 'volume', 7));
+    }
+    await pastDebounce();
+    const calls = song()!.calls.filter((c) => c.startsWith('batch:') || c.startsWith('replace:'));
+    expect(calls[0]).toBe('batch:3');
+    expect(calls.slice(1).map((c) => c.split(':')[1])).toEqual(['3', '5', '16']);
+  });
+});
+
+describe('a song that comes back from the Jukebox', () => {
+  it('is still playable and auditionable, with its instrument edits', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    await settle();
+    const bytes = currentAhxSource()!;
+    const slot = host.trackerStore.instrumentSlots.find((s) => s.slot === 16)!;
+    expect(host.trackerStore.updateAhxInstrument(16, setAhxNumber(slot.ahxData!, 'volume', 9))).toBe('applied');
+    const edited = host.trackerStore.instrumentSlots.find((s) => s.slot === 16)!.ahxData!.volume;
+    expect(edited).toBe(9);
+
+    // What the Jukebox does: snapshot on the way in ...
+    const snapshot = snapshotEditorSong(host.trackerStore);
+    // ... play other songs (a MOD replaces the AHX song entirely) ...
+    const mod = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/amiga/12TH.MOD'));
+    const other = await host.fileIO.parseSongBuffer(
+      mod.buffer.slice(mod.byteOffset, mod.byteOffset + mod.byteLength) as ArrayBuffer,
+    );
+    await host.fileIO.applySongFile(other);
+    expect(currentAhxSource()).toBeNull();
+    expect(host.trackerStore.moduleFormat).not.toBe('ahx');
+
+    // ... and put the editor's song back on the way out.
+    await host.fileIO.applySongFile(snapshot);
+    expect(host.trackerStore.moduleFormat).toBe('ahx');
+    expect(currentAhxSource()).toBe(bytes);
+    expect(currentAhxInstrumentEdits().map((e) => e.instrument)).toEqual([16]);
+    expect(host.trackerStore.instrumentSlots.find((s) => s.slot === 16)!.ahxData!.volume).toBe(edited);
+
+    // Auditioning works, and the worklets load the song with the edit in it.
+    await settle();
+    expect(await host.playbackStore.previewAhxNoteOn(16, 60, 100)).toBe(true);
+    await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
+    await settle();
+    expect(song()).toBeDefined();
+    expect(song()!.loads.at(-1)!.map((e) => e.instrument)).toEqual([16]);
+    expect(preview()!.loads.at(-1)!.map((e) => e.instrument)).toEqual([16]);
+    // And an edit made now still reaches the song player.
+    const again = host.trackerStore.instrumentSlots.find((s) => s.slot === 16)!;
+    expect(host.trackerStore.updateAhxInstrument(16, setAhxNumber(again.ahxData!, 'volume', 3))).toBe('applied');
+  });
+
+  it('is the bug this fixes when the snapshot is a bare song file: no source, nothing to audition', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    await settle();
+    const bare = host.trackerStore.serializeSong();
+    await host.fileIO.applySongFile(bare);
+    expect(currentAhxSource()).toBeNull();
+    expect(await host.playbackStore.previewAhxNoteOn(16, 60, 100)).toBe(false);
+    const slot = host.trackerStore.instrumentSlots.find((s) => s.slot === 16)!;
+    // The edit is kept in the slot but cannot be heard: the caller is told.
+    expect(host.trackerStore.updateAhxInstrument(16, setAhxNumber(slot.ahxData!, 'volume', 9))).toBe('kept');
+  });
+});
+
+describe('what the engine refuses is shown to the user', () => {
+  it('a preview replace that is refused is a notice, not only a log line', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    await settle();
+    await host.playbackStore.previewAhxNoteOn(16, 60, 100);
+    h.refuseReplace = 'instrument length mismatch';
+    const slot = host.trackerStore.instrumentSlots.find((s) => s.slot === 16)!;
+    host.trackerStore.updateAhxInstrument(16, setAhxNumber(slot.ahxData!, 'volume', 2));
+    await settle();
+    expect(ahxNotices.value.some((n) => /#16.*keyboard preview.*instrument length mismatch/.test(n))).toBe(true);
+  });
+
+  it('a song-player replace that is refused is a notice too', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
+    await settle();
+    h.refuseReplace = 'no such instrument';
+    const slot = host.trackerStore.instrumentSlots.find((s) => s.slot === 16)!;
+    host.trackerStore.updateAhxInstrument(16, setAhxNumber(slot.ahxData!, 'volume', 2));
+    await pastDebounce();
+    expect(ahxNotices.value.some((n) => /#16.*song did not accept/.test(n))).toBe(true);
+  });
+
+  it('a load-time edit the engine refused is a notice, once, and a new song clears it', async () => {
+    h.refuseAtLoad = [16];
+    const host = setupHost();
+    await openAhx(host);
+    await settle();
+    await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
+    await settle();
+    // Both worklets loaded the same edits and refused the same one: one line each source, deduped by text.
+    const mine = ahxNotices.value.filter((n) => n.includes('#16'));
+    expect(mine.length).toBeGreaterThanOrEqual(1);
+    expect(mine.length).toBeLessThanOrEqual(2);
+    setCurrentAhxSource(null);
+    expect(ahxNotices.value).toEqual([]);
   });
 });

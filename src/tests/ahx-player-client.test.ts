@@ -546,6 +546,29 @@ describe('AhxPlayerClient.replaceInstrument', () => {
     expect(same(await play(live, 3), viaLoad)).toBe(true);
   });
 
+  it('replaceInstruments sends one command, settles each edit on its own, and plays what one-by-one replaces play', async () => {
+    stubGlobals();
+    const batched = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    await batched.loadSong(karma);
+    const results = await Promise.allSettled(
+      batched.replaceInstruments([
+        { instrument: 16, bytes: wire(16, 4) },
+        { instrument: 999, bytes: wire(1) },
+        { instrument: 3, bytes: wire(3, 9) },
+      ]),
+    );
+    expect(results.map((r) => r.status)).toEqual(['fulfilled', 'rejected', 'fulfilled']);
+    expect(String((results[1] as PromiseRejectedResult).reason)).toMatch(/no instrument 999/);
+    const viaBatch = await play(batched, 3);
+
+    const single = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    await single.loadSong(karma);
+    await single.replaceInstrument(16, wire(16, 4));
+    await single.replaceInstrument(3, wire(3, 9));
+    expect(same(await play(single, 3), viaBatch)).toBe(true);
+    expect(batched.replaceInstruments([])).toEqual([]);
+  });
+
   it('rejects on a disposed client, and settles what was waiting when it is disposed', async () => {
     stubGlobals();
     const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);

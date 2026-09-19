@@ -105,7 +105,7 @@
 
 use rustc_hash::FxHashMap;
 use rustfft::{num_complex::Complex, Fft, FftPlanner};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// Samples per band-limited cycle (a power of two). At the top level
 /// (`MAX_HARMONICS` = 512) that is 8 points per period of the highest
@@ -149,8 +149,23 @@ const MAX_CACHED_TABLES: usize = 4096;
 /// Partials kept by level `j`: `MAX_HARMONICS * 2^(-j / LEVELS_PER_OCTAVE)`,
 /// rounded, never below 1.
 pub fn level_harmonics(level: usize) -> usize {
-    let h = MAX_HARMONICS as f64 * (-(level as f64) / LEVELS_PER_OCTAVE as f64).exp2();
-    (h.round() as usize).max(1)
+    // `exp2` per level was the cost of every `level_for` call (up to 18 of
+    // them, per voice per tick of a prewarm walk): computed once, with the
+    // same expression, so every level is the number it always was.
+    static TABLE: OnceLock<[usize; LEVEL_COUNT]> = OnceLock::new();
+    let table = TABLE.get_or_init(|| {
+        let mut t = [1usize; LEVEL_COUNT];
+        for (level, slot) in t.iter_mut().enumerate() {
+            let h = MAX_HARMONICS as f64 * (-(level as f64) / LEVELS_PER_OCTAVE as f64).exp2();
+            *slot = (h.round() as usize).max(1);
+        }
+        t
+    });
+    match table.get(level) {
+        Some(&h) => h,
+        // Past the table (nothing asks for it): the formula, as before.
+        None => ((MAX_HARMONICS as f64 * (-(level as f64) / LEVELS_PER_OCTAVE as f64).exp2()).round() as usize).max(1),
+    }
 }
 
 /// The level for a voice stepping `f0` cycles per output sample: the first
@@ -319,8 +334,13 @@ impl HifiBank {
     }
 
     fn get_or_build(&mut self, cycle: &[i8], level: usize) -> Option<Arc<[i16]>> {
-        let have = self.sources.get(cycle).is_some_and(|s| s.levels[level].is_some());
-        if !have && self.cached_tables >= MAX_CACHED_TABLES {
+        // The common case, by far (a prewarm walk asks for the same table tick
+        // after tick): one hash of the key, and out.
+        if let Some(t) = self.sources.get(cycle).and_then(|s| s.levels[level].as_ref()) {
+            return Some(t.clone());
+        }
+        // The table is not there: building it needs room.
+        if self.cached_tables >= MAX_CACHED_TABLES {
             if self.mode == BankMode::Prewarm {
                 self.full = true;
                 return None;
@@ -332,15 +352,10 @@ impl HifiBank {
             self.sources.insert(cycle.into(), Source { coeffs: staircase_spectrum(cycle), levels: Default::default() });
         }
         let source = self.sources.get_mut(cycle).expect("inserted above");
-        Some(match &source.levels[level] {
-            Some(t) => t.clone(),
-            None => {
-                let t = build_level(&*self.inverse, &mut self.scratch, &source.coeffs, level_harmonics(level));
-                source.levels[level] = Some(t.clone());
-                self.cached_tables += 1;
-                t
-            }
-        })
+        let t = build_level(&*self.inverse, &mut self.scratch, &source.coeffs, level_harmonics(level));
+        source.levels[level] = Some(t.clone());
+        self.cached_tables += 1;
+        Some(t)
     }
 }
 

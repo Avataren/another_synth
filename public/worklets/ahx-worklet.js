@@ -632,8 +632,8 @@ var AhxPlayer = class {
    *
    * With hi-fi on, a song player rebuilds the tables the edited song asks
    * for before this returns (see [`AhxEngine::prewarm_hifi_after_edit`]) --
-   * unless the edit reaches no table (volume, envelope, hard cut), which
-   * costs nothing; a preview player only forgets what it prewarmed for that
+   * unless the edit reaches no table (volume, envelope, hard cut) or the
+   * instrument is one no step ever triggers, which costs nothing; a preview player only forgets what it prewarmed for that
    * instrument. Both happen here, in the caller's message handler, never in
    * `render`.
    *
@@ -666,6 +666,14 @@ var AhxPlayer = class {
     return ret >>> 0;
   }
   /**
+   * Pays the walk that deferred edits owe (nothing when none does): one
+   * [`AhxEngine::prewarm_hifi_after_edit`] however many instruments changed.
+   * Call it from the message handler, never from `render`.
+   */
+  finish_instrument_edits() {
+    wasm.ahxplayer_finish_instrument_edits(this.__wbg_ptr);
+  }
+  /**
    * Ticks a note-on's prewarm holds a key down for `instrument` (1-based)
    * before releasing it, bounded by what the instrument can produce (see
    * [`live_warm_hold_ticks`](super::engine::live_warm_hold_ticks)); 0 for an
@@ -683,6 +691,23 @@ var AhxPlayer = class {
   continue_phase_on_trigger() {
     const ret = wasm.ahxplayer_continue_phase_on_trigger(this.__wbg_ptr);
     return ret !== 0;
+  }
+  /**
+   * [`replace_instrument`](Self::replace_instrument) without the hi-fi walk:
+   * the instrument is swapped now, and any walk it owes waits for
+   * [`finish_instrument_edits`](Self::finish_instrument_edits). A burst of
+   * edits (the editor sends what has piled up in one message) is then one
+   * walk of the song instead of one per instrument.
+   * @param {number} instrument
+   * @param {Uint8Array} bytes
+   */
+  replace_instrument_deferred(instrument, bytes) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.ahxplayer_replace_instrument_deferred(this.__wbg_ptr, instrument, ptr0, len0);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
   }
   /**
    * Keep the wave phase across instrument triggers (the 68k behaviour)
@@ -3208,6 +3233,9 @@ var AhxProcessorCore = class {
       case "replace-instrument":
         this.replaceInstrument(command.id, command.instrument, command.bytes);
         break;
+      case "replace-instruments":
+        this.replaceInstruments(command.edits);
+        break;
       case "get-warm-hold":
         this.post({
           type: "warm-hold",
@@ -3323,6 +3351,36 @@ var AhxProcessorCore = class {
     } catch (error) {
       this.post({ type: "instrument-replaced", id, instrument, ok: false, message: String(error) });
     }
+  }
+  /** `replace-instruments`: each edit swapped, one hi-fi walk for all, each answered. */
+  replaceInstruments(edits) {
+    const player = this.player;
+    if (!player) {
+      for (const { id, instrument } of edits) {
+        this.post({ type: "instrument-replaced", id, instrument, ok: false, message: "no song is loaded" });
+      }
+      return;
+    }
+    const answers = [];
+    for (const { id, instrument, bytes } of edits) {
+      try {
+        player.replace_instrument_deferred(instrument, toBytes(bytes));
+        answers.push({ type: "instrument-replaced", id, instrument, ok: true });
+      } catch (error) {
+        answers.push({ type: "instrument-replaced", id, instrument, ok: false, message: String(error) });
+      }
+    }
+    try {
+      player.finish_instrument_edits();
+    } catch (error) {
+      for (const answer of answers) {
+        if (answer.type === "instrument-replaced" && answer.ok) {
+          answer.ok = false;
+          answer.message = String(error);
+        }
+      }
+    }
+    for (const answer of answers) this.post(answer);
   }
   /**
    * The player moves; the reports are re-armed (a seek back to a row already

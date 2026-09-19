@@ -381,3 +381,110 @@ fn a_preview_note_with_no_attack_and_no_decay_holds_at_silence() {
     let held = render(&mut p, 0.6).0;
     assert!(rms(&held) < 1e-6, "the held note should be silent: {}", rms(&held));
 }
+
+// ---------------------------------------------------------------------------
+// B2.1: the walk an edit owes is skipped, batched, and never loops on "play pattern".
+// ---------------------------------------------------------------------------
+
+use audio_processor::ahx::engine::AhxEngine;
+
+fn sweeper() -> Instrument {
+    let mut sweeper = tone(2, 64);
+    sweeper.square_lower_limit = 8;
+    sweeper.square_upper_limit = 60;
+    sweeper.square_speed = 1;
+    sweeper.plist.entries = vec![
+        PListEntry { note: 0, waveform: 3, fixed: false, fx: [4, 0], fx_param: [0, 0] },
+        PListEntry { note: 0, waveform: 0, fixed: false, fx: [0, 0], fx_param: [0, 0] },
+    ];
+    sweeper
+}
+
+#[test]
+fn prewarming_while_a_position_loops_ends_like_it_does_without_and_keeps_the_setting() {
+    let song = format::parse(&bytes("karma.ahx")).unwrap();
+    let mut plain = AhxEngine::new(song.clone(), RATE as u32, 2).unwrap();
+    plain.set_hifi(true);
+    let baseline = plain.prewarm_hifi();
+    assert!(baseline.converged);
+
+    let mut looping = AhxEngine::new(song, RATE as u32, 2).unwrap();
+    looping.set_hifi(true);
+    looping.set_loop_position(true);
+    let pre = looping.prewarm_hifi();
+    assert!(looping.loop_position(), "the setting must survive the walk");
+    assert!(pre.converged, "a looped position must not send the walk to its tick cap");
+    assert_eq!(pre.ticks, baseline.ticks, "the walk is of the song's own flow either way");
+    assert_eq!(pre.tables, baseline.tables);
+}
+
+#[test]
+fn an_edit_of_an_instrument_no_step_triggers_is_recognised() {
+    let mut song = format::parse(&bytes("karma.ahx")).unwrap();
+    let e = AhxEngine::new(song.clone(), RATE as u32, 2).unwrap();
+    let used: Vec<usize> = (1..=song.instrument_nr as usize).filter(|&i| e.instrument_is_triggered(i)).collect();
+    assert!(!used.is_empty());
+    let target = used[0];
+    assert!(!e.instrument_is_triggered(0));
+    assert!(!e.instrument_is_triggered(song.instrument_nr as usize + 1));
+    for track in song.tracks.iter_mut() {
+        for step in track.iter_mut() {
+            if step.instrument as usize == target {
+                step.instrument = 0;
+            }
+        }
+    }
+    let e = AhxEngine::new(song, RATE as u32, 2).unwrap();
+    assert!(!e.instrument_is_triggered(target));
+    assert!(used.iter().skip(1).all(|&i| e.instrument_is_triggered(i)));
+}
+
+#[test]
+fn a_batch_of_edits_is_one_walk_and_lands_where_one_by_one_edits_do() {
+    let name = "karma.ahx";
+    let song = format::parse(&bytes(name)).unwrap();
+    let wire = encode(&sweeper(), song.format);
+    let mut one_by_one = AhxPlayer::new(&bytes(name), RATE as u32, 2).unwrap();
+    let mut batched = AhxPlayer::new(&bytes(name), RATE as u32, 2).unwrap();
+    for p in [&mut one_by_one, &mut batched] {
+        p.set_hifi(true);
+    }
+    let before = batched.hifi_table_count();
+    for idx in 1..=song.instrument_nr as usize {
+        one_by_one.replace_instrument(idx, &wire).unwrap();
+        batched.replace_instrument_deferred(idx, &wire).unwrap();
+    }
+    assert_eq!(batched.hifi_table_count(), before, "a deferred edit must not walk the song");
+    batched.finish_instrument_edits();
+    // One by one, every intermediate song (some instruments edited, some not)
+    // is walked too, and the tables only *it* reaches stay in the bank: the
+    // batch has the final song's tables and no more than that.
+    assert!(batched.hifi_table_count() <= one_by_one.hifi_table_count());
+    assert!(batched.hifi_table_count() > before);
+    // Nothing is owed a second time.
+    let settled = batched.hifi_table_count();
+    batched.finish_instrument_edits();
+    assert_eq!(batched.hifi_table_count(), settled);
+    one_by_one.play();
+    batched.play();
+    let a = render(&mut one_by_one, 4.0);
+    let b = render(&mut batched, 4.0);
+    assert!(a == b, "the batch played differently from the same edits one by one");
+    assert_eq!(batched.hifi_miss_count(), 0.0);
+}
+
+#[test]
+fn a_deferred_edit_the_song_refuses_owes_nothing_and_a_good_one_after_it_still_lands() {
+    let name = "karma.ahx";
+    let song = format::parse(&bytes(name)).unwrap();
+    let mut p = AhxPlayer::new(&bytes(name), RATE as u32, 2).unwrap();
+    p.set_hifi(true);
+    assert!(p.replace_instrument_deferred(1, &[1, 2, 3]).is_err());
+    assert!(p.replace_instrument_deferred(song.instrument_nr as usize + 1, &encode(&sweeper(), song.format)).is_err());
+    let before = p.hifi_table_count();
+    p.finish_instrument_edits();
+    assert_eq!(p.hifi_table_count(), before);
+    p.replace_instrument_deferred(1, &encode(&sweeper(), song.format)).unwrap();
+    p.finish_instrument_edits();
+    assert!(p.hifi_locked());
+}

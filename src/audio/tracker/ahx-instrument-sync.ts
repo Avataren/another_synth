@@ -9,8 +9,10 @@ import type { AhxInstrumentEdit } from 'src/audio/tracker/ahx-source';
  * hi-fi re-prewarm (it walks the song to build the tables the new instrument
  * reaches, on the audio thread), and typing a number into a field is a burst of
  * edits, so the last edit of each instrument in a burst is sent, once the burst
- * has been quiet for `delayMs`. `flush` sends what is waiting at once: a play
- * must hear the edits made a moment before it.
+ * has been quiet for `delayMs`, and all of them together in one call: the
+ * worklet swaps them all and walks the song once, not once per instrument.
+ * `flush` sends what is waiting at once: a play must hear the edits made a
+ * moment before it.
  *
  * Nothing is lost by waiting or by a worklet that is not there: every load
  * applies all the recorded edits (`currentAhxInstrumentEdits`), so a worklet
@@ -21,8 +23,8 @@ export class AhxInstrumentSync {
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
-    /** Sends one edit to every live worklet; a failure is the callee's to report. */
-    private readonly send: (edit: AhxInstrumentEdit) => void,
+    /** Sends a batch of edits (one per instrument, in instrument order) to the song player; a failure is the callee's to report. */
+    private readonly send: (edits: AhxInstrumentEdit[]) => void,
     private readonly delayMs = 120,
   ) {}
 
@@ -41,7 +43,7 @@ export class AhxInstrumentSync {
     }
     const edits = [...this.waiting.entries()].sort(([a], [b]) => a - b);
     this.waiting.clear();
-    for (const [instrument, bytes] of edits) this.send({ instrument, bytes });
+    if (edits.length > 0) this.send(edits.map(([instrument, bytes]) => ({ instrument, bytes })));
   }
 
   /** Drop what is waiting without sending it (the song it belonged to is gone). */

@@ -117,6 +117,32 @@ export function sanitizeAhxInstrument(value: unknown, format: AhxSongFormat = 'a
   return JSON.parse(JSON.stringify(value)) as AhxInstrument;
 }
 
+/**
+ * `ins` as the engine will play it in a song of `format` and `version`: a
+ * version-0 AHX file (pre-filter) drops the high nibble of a filter-toggle
+ * (PList command 4) parameter when it loads (`hvl_load_ahx:315-320`, and
+ * `parsePListEntryAhx`), so the engine never sees one, and an edit that types
+ * one would be shown a value the sound does not have. Returns `ins` itself when
+ * nothing changes, else a copy; every other format and version is untouched.
+ */
+export function normalizeAhxInstrumentForVersion(
+  ins: AhxInstrument,
+  format: AhxSongFormat,
+  version: number,
+): AhxInstrument {
+  if (format !== 'ahx' || version !== 0) return ins;
+  const strip = (fx: number, param: number): number => (fx === 4 ? param & 0x0f : param);
+  const changes = ins.plist.entries.some(
+    (entry) => strip(entry.fx[0], entry.fxParam[0]) !== entry.fxParam[0] || strip(entry.fx[1], entry.fxParam[1]) !== entry.fxParam[1],
+  );
+  if (!changes) return ins;
+  const next = JSON.parse(JSON.stringify(ins)) as AhxInstrument;
+  for (const entry of next.plist.entries) {
+    entry.fxParam = [strip(entry.fx[0], entry.fxParam[0]), strip(entry.fx[1], entry.fxParam[1])];
+  }
+  return next;
+}
+
 export class AhxInstrumentEncodeError extends Error {
   constructor(problem: string) {
     super(`cannot write this AHX instrument: ${problem}`);

@@ -26,10 +26,11 @@ import {
   type OplInstrumentData,
   type AhxInstrument,
   ahxInstrumentProblem,
+  normalizeAhxInstrumentForVersion,
   sanitizeAhxInstrument,
   serializeAhxInstrument,
 } from '@another-synth/tracker-playback';
-import { recordAhxInstrumentEdit } from 'src/audio/tracker/ahx-source';
+import { ahxSourceInfo, ahxSourceRecordOf, recordAhxInstrumentEdit } from 'src/audio/tracker/ahx-source';
 
 export type {
   ModuleFormat,
@@ -55,6 +56,9 @@ export {
  */
 export const SLOTS_PER_PAGE = 5;
 export const TOTAL_PAGES = Math.ceil(TOTAL_SLOTS / SLOTS_PER_PAGE); // 26 pages
+
+/** What became of an AHX instrument edit (`updateAhxInstrument`). */
+export type AhxEditOutcome = 'applied' | 'kept' | 'rejected';
 
 export interface InstrumentSlot {
   slot: number;
@@ -99,9 +103,11 @@ export interface InstrumentSlot {
    * It is the song's instrument, not a copy of it: `updateAhxInstrument`
    * writes an edit here and, in the same call, replaces that instrument in the
    * song the worklets play (`ahx-source`'s recorded edits), so what this holds
-   * is what plays. It is also what a saved song keeps of an edit. A song file
-   * from anywhere can put anything here, so `loadSongFile` only keeps a value
-   * that `ahxInstrumentProblem` accepts.
+   * is what plays. It is what a song *file* would keep of an edit (`serializeSong`
+   * writes it, and the Jukebox's snapshot carries it), but an AHX song cannot be
+   * saved as a `.cmod` today (`handleSaveSongFile` refuses), so an edit is a
+   * session's. A song file from anywhere can put anything here, so `loadSongFile`
+   * only keeps a value that `ahxInstrumentProblem` accepts (in the song's format).
    */
   ahxData?: AhxInstrument;
 }
@@ -836,29 +842,41 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     /**
      * Commit an edit of the AHX instrument in `slotNumber`. `next` replaces the
-     * slot's `ahxData` (so it is what a save keeps) and, in the same call,
-     * replaces that instrument in the song the worklets play: it is recorded in
-     * `ahx-source`, which hands it to the song player and the keyboard preview
-     * that already hold the song and to every worklet that loads it later. There
-     * is no preview-only copy: the song plays the edited instrument from its next
-     * trigger of it (a voice already holding it keeps what its trigger copied
-     * and takes PList and envelope changes at once).
+     * slot's `ahxData` and, in the same call, replaces that instrument in the
+     * song the worklets play: it is recorded in `ahx-source`, which hands it to
+     * the song player and the keyboard preview that already hold the song and to
+     * every worklet that loads it later. There is no preview-only copy: the song
+     * plays the edited instrument from its next trigger of it (a voice already
+     * holding it keeps what its trigger copied and takes PList and envelope
+     * changes at once).
      *
-     * `false`, changing nothing, for a slot that is not an AHX slot with an
-     * instrument, or a `next` that is not a valid AHX instrument
-     * (`ahxInstrumentProblem`). The name is kept: it lives in the song's string
-     * table, not in the instrument. The edit reaches the audio only while the
-     * song's own bytes are current (`recordAhxInstrumentEdit`); a song loaded
-     * from a saved file has none, and still keeps the edit in `ahxData`.
+     * The edit lasts for the session. An AHX song cannot be saved as a `.cmod`
+     * (`handleSaveSongFile` refuses), so what the slot holds is not written
+     * anywhere; it is what the editor shows and, through `ahx-source`, what plays.
+     *
+     * The instrument is written in the song's own format (HVL's wider PList
+     * entries and command set for an HVL song) and as its version's engine will
+     * read it (`normalizeAhxInstrumentForVersion`), so the slot shows what plays.
+     *
+     * Returns what became of it:
+     * - `'applied'`: kept in the slot and recorded, so it is heard;
+     * - `'kept'`: kept in the slot only, because no AHX song's bytes are current
+     *   (a song loaded from a saved file has none): it cannot be heard;
+     * - `'rejected'`: changed nothing, for a slot that is not an AHX slot with an
+     *   instrument, or a `next` that is not a valid instrument for the song's
+     *   format (`ahxInstrumentProblem`). The name is kept: it lives in the
+     *   song's string table, not in the instrument.
      */
-    updateAhxInstrument(slotNumber: number, next: AhxInstrument): boolean {
+    updateAhxInstrument(slotNumber: number, next: AhxInstrument): AhxEditOutcome {
       const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
-      if (!slot || !isAhxSlot(slot) || !slot.ahxData) return false;
-      const clean = sanitizeAhxInstrument({ ...next, name: slot.ahxData.name }, 'ahx');
-      if (!clean) return false;
-      slot.ahxData = clean;
-      recordAhxInstrumentEdit(slotNumber, serializeAhxInstrument(clean, 'ahx'));
-      return true;
+      if (!slot || !isAhxSlot(slot) || !slot.ahxData) return 'rejected';
+      const info = ahxSourceInfo.value;
+      const format = info?.format ?? 'ahx';
+      const clean = sanitizeAhxInstrument({ ...next, name: slot.ahxData.name }, format);
+      if (!clean) return 'rejected';
+      const played = normalizeAhxInstrumentForVersion(clean, format, info?.version ?? 1);
+      slot.ahxData = played;
+      return recordAhxInstrumentEdit(slotNumber, serializeAhxInstrument(played, format)) ? 'applied' : 'kept';
     },
     serializeSong(): TrackerSongFile {
       // Only persist patches that are actually referenced by at least one
@@ -992,7 +1010,7 @@ export const useTrackerStore = defineStore('trackerStore', {
           // A song file can put anything here; the display, the editor and the
           // serializer all trust the shape, so only a valid instrument is kept.
           // A slot left without one has no editor to open (`canEditSlot`).
-          const problem = ahxInstrumentProblem(slot.ahxData, 'ahx');
+          const problem = ahxInstrumentProblem(slot.ahxData, ahxSourceRecordOf(file)?.format ?? 'ahx');
           if (problem === null) {
             mapped.ahxData = JSON.parse(JSON.stringify(slot.ahxData)) as AhxInstrument;
           } else {

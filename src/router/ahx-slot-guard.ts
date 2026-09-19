@@ -1,4 +1,5 @@
-import type { RouteLocationRaw } from 'vue-router';
+import { watch, type Ref, type WatchStopHandle } from 'vue';
+import type { RouteLocationRaw, Router } from 'vue-router';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { canEditSlot, isAhxSlot } from 'src/audio/tracker/instrument-types';
 
@@ -22,3 +23,23 @@ export const slotOf = (value: unknown): number | null => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
+
+/**
+ * Keeps the synth editor's route off AHX slots for as long as `slot` is the
+ * route's slot -- including when the song only arrives afterwards. A fresh tab
+ * on `#/patch/instrument/N` opens the route before its song has loaded: the
+ * slot is not an AHX slot yet, the route guard lets it through, and the route
+ * (so `slot`) never changes when the song lands. This watches where the slot
+ * would be sent, which does change then (and when another song replaces it).
+ */
+export function watchAhxSlotRedirect(slot: Ref<number | null>, router: Router): WatchStopHandle {
+  return watch(
+    () => {
+      const redirect = slot.value === null ? null : ahxSlotRedirect(slot.value);
+      return redirect === null ? null : JSON.stringify(redirect);
+    },
+    (redirect) => {
+      if (redirect !== null) void router.replace(JSON.parse(redirect) as RouteLocationRaw);
+    },
+  );
+}

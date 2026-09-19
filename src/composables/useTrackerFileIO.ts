@@ -7,7 +7,7 @@ import { looksLikeMod, importModToTrackerSong } from 'src/audio/tracker/mod-impo
 import { looksLikeXm, importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { looksLikeS3m, importS3mToTrackerSong } from 'src/audio/tracker/s3m-import';
 import { looksLikeAhxModule, importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
-import { ahxSourceOf, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
+import { ahxSourceRecordOf, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
 import { recordLoadedSongHash } from 'src/composables/song-identity';
 import { usePostFxStore } from 'src/stores/post-fx-store';
 
@@ -372,7 +372,8 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     // An AHX/HVL song is played from its file, not from the store: keep the
     // bytes the import attached for the playback store to hand to the worklet.
     // Any other song clears them.
-    setCurrentAhxSource(ahxSourceOf(songFile));
+    const ahxSource = ahxSourceRecordOf(songFile);
+    setCurrentAhxSource(ahxSource?.bytes ?? null, ahxSource ?? {});
 
     // AUTO resets its LED-filter state on every song replacement -- this path
     // covers file open, the demo browser, URL loads and the jukebox (all

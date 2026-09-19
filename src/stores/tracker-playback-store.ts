@@ -19,6 +19,11 @@ import {
   type AhxInstrumentEdit,
 } from 'src/audio/tracker/ahx-source';
 import { AhxInstrumentSync } from 'src/audio/tracker/ahx-instrument-sync';
+import {
+  clearAhxNotices,
+  reportAhxNotice,
+  reportRejectedAhxInstruments,
+} from 'src/audio/tracker/ahx-notices';
 
 export type PlaybackMode = 'pattern' | 'song';
 
@@ -441,7 +446,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       disposeAhxPreview();
       return false;
     }
-    ahxPreviewInstance ??= new AhxPreview(getSongBank());
+    ahxPreviewInstance ??= newAhxPreview();
     await ahxPreviewInstance.noteOn(bytes, instrument, midi, velocity);
     return true;
   }
@@ -455,13 +460,19 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   async function prepareAhxPreview(): Promise<boolean> {
     const bytes = currentAhxSource();
     if (!bytes) return false;
-    ahxPreviewInstance ??= new AhxPreview(getSongBank());
+    ahxPreviewInstance ??= newAhxPreview();
     await ahxPreviewInstance.preload(bytes);
     return true;
   }
 
   function previewAhxNoteOff(midi: number): void {
     ahxPreviewInstance?.noteOff(midi);
+  }
+
+  function newAhxPreview(): AhxPreview {
+    return new AhxPreview(getSongBank(), undefined, undefined, (instruments) =>
+      reportRejectedAhxInstruments(instruments, 'keyboard preview'),
+    );
   }
 
   function disposeAhxPreview(): void {
@@ -475,6 +486,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   ahxSourceUnsubscribe = onCurrentAhxSourceChange(() => {
     // Edits waiting to be sent belong to the song that is gone.
     ahxEditSync?.discard();
+    // What was said of the old song's edits is not the new one's to carry.
+    clearAhxNotices();
     disposeAhxPreview();
     if (currentAhxSource()) void prepareAhxPreview().catch(() => undefined);
   });
@@ -498,16 +511,27 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    */
   function replaceInPreview(edit: AhxInstrumentEdit): void {
     ahxPreviewInstance?.replaceInstrument(edit.instrument, edit.bytes).catch((error) => {
-      console.warn(`[PlaybackStore] AHX instrument ${edit.instrument} edit was not applied to the preview`, error);
+      // The engine kept the old instrument: the keyboard sounds one thing and
+      // the editor shows another until the next load. Say so, not just the log.
+      reportAhxNotice(
+        `Instrument #${edit.instrument}: the keyboard preview did not accept the edit (${errorText(error)}), so it sounds as before.`,
+      );
     });
   }
-  function sendAhxInstrumentEdit(edit: AhxInstrumentEdit): void {
-    ahxTransportInstance?.replaceInstrument(edit.instrument, edit.bytes).catch((error) => {
-      console.warn(`[PlaybackStore] AHX instrument ${edit.instrument} edit was not applied to the song`, error);
+  function sendAhxInstrumentEdits(edits: AhxInstrumentEdit[]): void {
+    const transport = ahxTransportInstance;
+    if (!transport) return;
+    transport.replaceInstruments(edits).forEach((applied, index) => {
+      applied.catch((error) => {
+        reportAhxNotice(
+          `Instrument #${edits[index]?.instrument}: the song did not accept the edit (${errorText(error)}), so it plays as before.`,
+        );
+      });
     });
   }
+  const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
   ahxEditSync?.discard();
-  ahxEditSync = new AhxInstrumentSync(sendAhxInstrumentEdit);
+  ahxEditSync = new AhxInstrumentSync(sendAhxInstrumentEdits);
   ahxEditUnsubscribe?.();
   ahxEditUnsubscribe = onAhxInstrumentEdit((edit) => {
     replaceInPreview(edit);
@@ -639,7 +663,12 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     const wasActive = ahxSongActive;
     ahxSongActive = true;
     const epoch = ahxEpoch;
-    const loading = transport.load(bytes);
+    const loading = transport.load(bytes).then((info) => {
+      // An edit the engine refused at the load: the song plays the file's
+      // instrument while the editor shows the edited one.
+      reportRejectedAhxInstruments(info?.rejectedInstruments, 'song player');
+      return info;
+    });
     if (getSongBank().audioContext.state === 'running') {
       try {
         await loading;

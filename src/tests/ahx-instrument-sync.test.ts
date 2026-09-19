@@ -6,8 +6,11 @@ import {
   currentAhxSource,
   onAhxInstrumentEdit,
   onCurrentAhxSourceChange,
+  ahxSourceInfo,
+  ahxSourceInfoOf,
   recordAhxInstrumentEdit,
   setCurrentAhxSource,
+  snapshotAhxSource,
 } from 'src/audio/tracker/ahx-source';
 import { AhxTransport } from 'src/audio/tracker/ahx-transport';
 import { AhxPreview } from 'src/audio/tracker/ahx-preview';
@@ -31,7 +34,9 @@ describe('AhxInstrumentSync', () => {
     vi.advanceTimersByTime(99);
     expect(send).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(send.mock.calls.map(([e]) => [e.instrument, Array.from(e.bytes)])).toEqual([
+    // One call, every instrument of the burst in it (the worklet walks the song once).
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0]![0].map((e: { instrument: number; bytes: Uint8Array }) => [e.instrument, Array.from(e.bytes)])).toEqual([
       [1, [9]],
       [3, [3]],
     ]);
@@ -116,6 +121,57 @@ describe('ahx-source instrument edits', () => {
     const now = currentAhxSource()!;
     expect(now).not.toBe(song); // a loader keyed on identity treats it as another song
     expect(Array.from(now)).toEqual(Array.from(song));
+  });
+});
+
+describe('ahx-source header info and snapshots', () => {
+  afterEach(() => setCurrentAhxSource(null));
+
+  it('reads the format and version from the header', () => {
+    expect(ahxSourceInfoOf(bytesOf(0x54, 0x48, 0x58, 2))).toEqual({ format: 'ahx', version: 2 });
+    expect(ahxSourceInfoOf(bytesOf(0x54, 0x48, 0x58, 0))).toEqual({ format: 'ahx', version: 0 });
+    expect(ahxSourceInfoOf(bytesOf(0x48, 0x56, 0x4c, 1))).toEqual({ format: 'hvl', version: 1 });
+  });
+
+  it('tracks the current song\'s info, and clears it with the song', () => {
+    setCurrentAhxSource(bytesOf(0x48, 0x56, 0x4c, 1));
+    expect(ahxSourceInfo.value).toEqual({ format: 'hvl', version: 1 });
+    setCurrentAhxSource(bytesOf(0x54, 0x48, 0x58, 1), { format: 'ahx', version: 1 });
+    expect(ahxSourceInfo.value).toEqual({ format: 'ahx', version: 1 });
+    setCurrentAhxSource(null);
+    expect(ahxSourceInfo.value).toBeNull();
+    expect(snapshotAhxSource()).toBeNull();
+  });
+
+  it('a snapshot puts the song back with its edits, however the current song changed meanwhile', () => {
+    const song = bytesOf(0x54, 0x48, 0x58, 1, 9);
+    setCurrentAhxSource(song);
+    recordAhxInstrumentEdit(4, bytesOf(1, 2));
+    const snapshot = snapshotAhxSource()!;
+    expect(snapshot).toMatchObject({ format: 'ahx', version: 1 });
+    expect(snapshot.edits!.map((e) => [e.instrument, Array.from(e.bytes)])).toEqual([[4, [1, 2]]]);
+
+    // Another song plays (the Jukebox), then the editor's comes back.
+    setCurrentAhxSource(null);
+    setCurrentAhxSource(snapshot.bytes, snapshot);
+    expect(currentAhxSource()).toBe(song);
+    expect(currentAhxInstrumentEdits().map((e) => [e.instrument, Array.from(e.bytes)])).toEqual([[4, [1, 2]]]);
+    expect(ahxSourceInfo.value).toEqual({ format: 'ahx', version: 1 });
+  });
+
+  it('a snapshot applied over the very same bytes with the edits gone gives the song a new identity', () => {
+    const song = bytesOf(0x54, 0x48, 0x58, 1, 9);
+    setCurrentAhxSource(song);
+    recordAhxInstrumentEdit(4, bytesOf(1));
+    const snapshot = snapshotAhxSource()!;
+    // Another song, then this very file again as parsed (a Jukebox replay): no edits on it now,
+    // and a worklet may hold it as it was.
+    setCurrentAhxSource(null);
+    setCurrentAhxSource(song);
+    expect(currentAhxInstrumentEdits()).toEqual([]);
+    setCurrentAhxSource(snapshot.bytes, snapshot);
+    expect(currentAhxSource()).not.toBe(song);
+    expect(currentAhxInstrumentEdits()).toHaveLength(1);
   });
 });
 

@@ -53,6 +53,6 @@ export function importAhxToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
     },
   };
 
-  attachAhxSource(songFile, bytes);
+  attachAhxSource(songFile, bytes, { format: song.format, version: song.version });
   return songFile;
 }
