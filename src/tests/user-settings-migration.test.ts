@@ -156,20 +156,19 @@ describe('sample quality defaults', () => {
     expect(migrated.settingsVersion).toBe(SETTINGS_VERSION);
   });
 
-  it('turns hi-fi AHX on at v6, over the v0.3.49 opt-in `false` every saved blob carries', () => {
-    const migrated = migrateSettingsVersion({
-      settingsVersion: 5,
-      ahxHifi: false,
-      theme: 'custom',
-    });
-    expect(migrated.ahxHifi).toBe(true);
-    expect(migrated.settingsVersion).toBe(SETTINGS_VERSION);
-  });
-
-  it('leaves a hi-fi choice made at v6 or later alone', () => {
-    expect(
-      migrateSettingsVersion({ settingsVersion: 6, ahxHifi: false }).ahxHifi,
-    ).toBe(false);
+  it('drops the withdrawn ahxHifi key at v7, whatever it held', () => {
+    for (const settingsVersion of [5, 6]) {
+      for (const ahxHifi of [true, false]) {
+        const migrated = migrateSettingsVersion({
+          settingsVersion,
+          ahxHifi,
+          theme: 'custom',
+        } as Partial<UserSettings>);
+        expect('ahxHifi' in migrated).toBe(false);
+        expect(migrated.theme).toBe('custom');
+        expect(migrated.settingsVersion).toBe(SETTINGS_VERSION);
+      }
+    }
   });
 
   it('asks for 96 kHz by default', () => {

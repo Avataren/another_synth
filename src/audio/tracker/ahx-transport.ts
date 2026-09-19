@@ -36,7 +36,6 @@ export class AhxTransport {
   private capture = false;
   private mute = 0;
   private solo = 0;
-  private hifi = false;
   private disposed = false;
   private readonly positionListeners = new Set<(p: AhxPosition) => void>();
   private readonly songEndListeners = new Set<() => void>();
@@ -74,7 +73,9 @@ export class AhxTransport {
         client.setStopAtEnd(this.stopAtEnd);
         if (this.capture) client.setCapture(true);
         if (this.mute || this.solo) client.setMuteSolo(this.mute, this.solo);
-        if (this.hifi) client.setHifi(true);
+        // Always band-limited: told before any load, so the worklet prewarms
+        // the song's tables as it loads. (The reference path is engine-only.)
+        client.setHifi(true);
         this.clientUnsubs = [
           client.onPosition((p) => {
             for (const listener of this.positionListeners) listener(p);
@@ -112,15 +113,6 @@ export class AhxTransport {
   setCapture(enabled: boolean): void {
     this.capture = enabled;
     this.client?.setCapture(enabled);
-  }
-
-  /**
-   * Band-limited ("hi-fi") oscillators on or off. Remembered here so a client
-   * made later (or replaced) gets it; the worklet keeps it across song loads.
-   */
-  setHifi(enabled: boolean): void {
-    this.hifi = enabled;
-    this.client?.setHifi(enabled);
   }
 
   /**

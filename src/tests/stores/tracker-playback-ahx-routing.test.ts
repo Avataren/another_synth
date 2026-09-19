@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia, storeToRefs } from 'pinia';
-import { useUserSettingsStore } from 'src/stores/user-settings-store';
 
 /**
  * The playback store's routing between `PlaybackEngine` (MOD/XM/S3M/native)
@@ -531,43 +530,25 @@ describe('AHX per-voice scopes', () => {
   });
 });
 
-describe('AHX hi-fi rendering setting', () => {
-  it('is on by default: the first client is told before the song plays', async () => {
+describe('AHX hi-fi rendering', () => {
+  it('is always on: the first client is told before the song plays', async () => {
     const host = setupHost();
     await openAhx(host);
     await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
     expect(lastClient().hifi).toEqual([true]);
   });
 
-  it('switched off in Settings (the escape hatch): the worklet is never told anything', async () => {
+  it('a client made later (handed back to the sampler and re-opened) is told too', async () => {
     const host = setupHost();
-    useUserSettingsStore().updateSetting('ahxHifi', false);
-    await openAhx(host);
-    await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
-    expect(lastClient().hifi).toEqual([]);
-  });
-
-  it('follows the setting live, and a client made later starts with it', async () => {
-    const host = setupHost();
-    const settings = useUserSettingsStore();
     await openAhx(host);
     const store = host.playbackStore;
     await store.play(host.buildSong(), 'song', 0, 0);
-    expect(lastClient().hifi.at(-1)).toBe(true);
 
-    settings.updateSetting('ahxHifi', false);
-    await Promise.resolve();
-    expect(lastClient().hifi.at(-1)).toBe(false);
-    settings.updateSetting('ahxHifi', true);
-    await Promise.resolve();
-    expect(lastClient().hifi.at(-1)).toBe(true);
-
-    // Handed back to the sampler and re-opened: the new client gets it again.
     store.stop();
     await store.loadSong(modSong(), 'song');
     await openAhx(host);
     await store.play(host.buildSong(), 'song', 0, 0);
-    expect(lastClient().hifi.at(-1)).toBe(true);
+    expect(lastClient().hifi).toEqual([true]);
   });
 });
 

@@ -164,17 +164,14 @@ describe('AhxTransport', () => {
     expect(fake.raw.setMuteSolo).toHaveBeenLastCalledWith(0, 0b0010);
   });
 
-  it('applies hi-fi to a client made after it was set, and to a live one; untouched by default', async () => {
-    const off = setup();
-    await off.transport.load(new Uint8Array([1]));
-    expect(off.fake.raw.setHifi).not.toHaveBeenCalled();
-
+  it('always turns hi-fi on for the client it makes, before the song loads', async () => {
     const { fake, transport } = setup();
-    transport.setHifi(true);
     await transport.load(new Uint8Array([1]));
+    expect(fake.raw.setHifi).toHaveBeenCalledTimes(1);
     expect(fake.raw.setHifi).toHaveBeenLastCalledWith(true);
-    transport.setHifi(false);
-    expect(fake.raw.setHifi).toHaveBeenLastCalledWith(false);
+    const [hifiOrder] = fake.raw.setHifi.mock.invocationCallOrder;
+    const [loadOrder] = fake.raw.loadSong.mock.invocationCallOrder;
+    expect(hifiOrder).toBeLessThan(loadOrder as number);
   });
 
   it('relays waveform snapshots to its listeners, and unsubscribes', async () => {

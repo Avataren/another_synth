@@ -31,17 +31,6 @@ export interface UserSettings {
    */
   ahxScopeGain: number;
   /**
-   * Band-limited AHX/HVL oscillators. The reference player aliases: on a high
-   * note the partials past Nyquist fold back as inharmonic tones (robocop iii
-   * is the classic case). Hi-fi keeps the reference sound and drops exactly
-   * those partials. On by default (v6). Turning it off is an escape hatch, not
-   * a preference to expect: off is the reference replayer's render byte for
-   * byte, which is what to A/B against when debugging the engine. The render
-   * goldens are unaffected either way -- they drive the engine's own switch,
-   * not this setting.
-   */
-  ahxHifi: boolean;
-  /**
    * 0.0 to 1.0. Defaults to half scale for headroom, not to taste: nothing in
    * the tracker path limits, so a multi-channel module sums straight past full
    * scale -- see the level meters beside the instrument list.
@@ -189,17 +178,17 @@ export interface UserSettings {
  * chosen for a desktop and shipped to everything. Handhelds are moved to
  * the device defaults once; desktops keep exactly what they had.
  *
- * v6: `ahxHifi` (band-limited AHX/HVL oscillators) became the default. It
- * shipped in v0.3.49 as an opt-in, so every blob saved since holds an explicit
- * `false` next to whatever setting was actually changed; the rewrite turns it
- * on once, and the Settings toggle stays for anyone who wants the reference
- * replayer's aliasing back.
+ * v6: `ahxHifi` (band-limited AHX/HVL oscillators) became the default.
+ *
+ * v7: `ahxHifi` is gone. The app always renders AHX/HVL oscillators band-limited
+ * (the engine's own HIFI switch is untouched and still defaults off), so the
+ * stored key is dropped rather than left to be persisted forever.
  *
  * Note that the master-volume default moving from 0.75 to 0.5 deliberately did
  * *not* get a version bump: it is a starting point rather than a correction, so
  * anyone who has already set their own level keeps it.
  */
-export const SETTINGS_VERSION = 6;
+export const SETTINGS_VERSION = 7;
 
 /**
  * Default user settings. Exported so tests can pin the ones that are
@@ -213,7 +202,6 @@ export const defaultSettings: UserSettings = {
   showSpectrumAnalyzer: true,
   showWaveformVisualizers: true,
   ahxScopeGain: 1,
-  ahxHifi: true,
   masterVolume: 0.5,
   enableMidi: false,
   showTrackerExtraEffectColumn: false,
@@ -331,12 +319,11 @@ export function migrateSettingsVersion(
     migrated.sampleLoopCrossfadeFrames = 0;
   }
 
-  // v5 -> v6: hi-fi AHX rendering on by default. The stored `false` is the
-  // v0.3.49 opt-in default, not a decision, for everyone but whoever switched
-  // it off in the day it was an experiment; that one choice is overwritten,
-  // and (this branch never runs again) their next one sticks.
-  if (version < 6) {
-    migrated.ahxHifi = true;
+  // v6 -> v7: the hi-fi AHX toggle is withdrawn; hi-fi is always on. Drop the
+  // stored key (v0.3.49 blobs carry an explicit `false`) so it is not merged
+  // back in and re-persisted.
+  if (version < 7) {
+    delete (migrated as Record<string, unknown>).ahxHifi;
   }
 
   migrated.settingsVersion = SETTINGS_VERSION;
