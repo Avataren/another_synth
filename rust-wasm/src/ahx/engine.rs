@@ -22,7 +22,7 @@
 //! verification hook, not a product mode.
 
 use super::format::{Song, SongFormat, Step, MAX_CHANNELS};
-use super::hifi::{HifiBank, FRAC_BITS};
+use super::hifi::{BankMode, HifiBank, FRAC_BITS};
 use super::voice::{panning_left, panning_right, Voice};
 use super::waveform::WAVES;
 use super::wrap_i16;
@@ -68,6 +68,35 @@ struct Transport {
     song_end_reached: bool,
     playing_time: u32,
 }
+
+/// What [`AhxEngine::prewarm_hifi`] did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HifiPrewarm {
+    /// Engine ticks simulated, over all subsongs.
+    pub ticks: u64,
+    /// Song laps walked (a lap ends where the engine raises its end flag).
+    pub laps: u32,
+    /// Mip tables cached afterwards.
+    pub tables: usize,
+    /// Distinct table contents cached afterwards.
+    pub sources: usize,
+    /// Every subsong went `PREWARM_QUIET_LAPS` laps in a row without wanting a
+    /// table it had not built. False: a tick cap or the cache cap stopped it.
+    pub converged: bool,
+    /// The cache filled up: some tables were left out.
+    pub cache_full: bool,
+}
+
+/// Laps in a row that must add no table before a subsong's simulation stops.
+/// Voices carry their state across a wrap (a sweep is not back where it
+/// started when the song is), so lap 2 is not lap 1 again; the cache stops
+/// growing when the state's orbit has been walked.
+const PREWARM_QUIET_LAPS: u32 = 2;
+
+/// Cap on simulated ticks per subsong, for songs that never raise the end
+/// flag (a `Bxx` loop back) or never stop finding new tables: 15 minutes at
+/// 50 Hz, scaled by the speed multiplier (which multiplies the tick rate).
+const PREWARM_MAX_TICKS: u64 = 50 * 60 * 15;
 
 /// Frames each voice's capture ring holds (a power of two, so the write index
 /// wraps with a mask). 2048 frames is ~46 ms at 44.1 kHz.
@@ -261,6 +290,100 @@ impl AhxEngine {
 
     pub fn hifi_enabled(&self) -> bool {
         self.hifi.is_some()
+    }
+
+    /// Builds, ahead of playback, the band-limited tables the song will ask
+    /// for, then locks the bank so the render path can never build one (see
+    /// `hifi.rs`). A no-op returning the default while hi-fi is off.
+    ///
+    /// The engine is deterministic and hi-fi never feeds back into song
+    /// state, so what a song will ask for is found by *running* it: every
+    /// subsong from its start, ticks only (no mixing), lap after lap until
+    /// [`PREWARM_QUIET_LAPS`] laps in a row add nothing (or the tick cap).
+    /// That is exact for the tables (the filter row, square width and wave
+    /// length a voice actually holds on each tick, at its actual pitch) where
+    /// a static walk of the instrument list could only over-approximate: a
+    /// filter sweep and a square sweep across 63 rows and 32 widths would be
+    /// ~20k tables per wave length. It does not touch the real playback state:
+    /// voices, transport, tick phase and capture are set aside and put back,
+    /// so it can run mid-song.
+    ///
+    /// What it cannot promise is that playback never reaches a state the
+    /// simulation did not: the lock is what makes that harmless. A miss
+    /// degrades to a duller level for a tick and is counted in
+    /// [`hifi_misses`](Self::hifi_misses) -- never a build on the audio thread.
+    pub fn prewarm_hifi(&mut self) -> HifiPrewarm {
+        let Some(bank) = self.hifi.as_mut() else {
+            return HifiPrewarm::default();
+        };
+        bank.set_mode(BankMode::Prewarm);
+
+        let saved_voices = std::mem::take(&mut self.voices);
+        let saved_t = std::mem::take(&mut self.t);
+        let saved_remaining = self.tick_remaining;
+        let saved_capture = self.capture.take();
+
+        let cap = PREWARM_MAX_TICKS * self.song.speed_multiplier.max(1) as u64;
+        let (mut ticks, mut laps, mut converged) = (0u64, 0u32, true);
+        for subsong in 0..=self.song.subsong_nr as usize {
+            self.init_subsong(subsong);
+            let (mut subsong_ticks, mut quiet) = (0u64, 0u32);
+            let mut tables_at_lap_start = self.hifi_table_count();
+            loop {
+                self.play_irq();
+                subsong_ticks += 1;
+                if self.t.song_end_reached {
+                    self.t.song_end_reached = false;
+                    laps += 1;
+                    let tables = self.hifi_table_count();
+                    quiet = if tables == tables_at_lap_start { quiet + 1 } else { 0 };
+                    tables_at_lap_start = tables;
+                    if quiet >= PREWARM_QUIET_LAPS {
+                        break;
+                    }
+                }
+                let full = self.hifi.as_ref().is_some_and(HifiBank::is_full);
+                if subsong_ticks >= cap || full {
+                    converged = false;
+                    break;
+                }
+            }
+            ticks += subsong_ticks;
+        }
+
+        self.voices = saved_voices;
+        self.t = saved_t;
+        self.tick_remaining = saved_remaining;
+        self.capture = saved_capture;
+
+        let bank = self.hifi.as_mut().expect("still on");
+        bank.set_mode(BankMode::Locked);
+        HifiPrewarm {
+            ticks,
+            laps,
+            tables: bank.table_count(),
+            sources: bank.source_count(),
+            converged,
+            cache_full: bank.is_full(),
+        }
+    }
+
+    /// Band-limited lookups since the last prewarm that the exact table could
+    /// not serve; zero while hi-fi is off or the bank is not locked yet.
+    /// Zero after a prewarm means the audio thread built nothing and degraded
+    /// nowhere.
+    pub fn hifi_misses(&self) -> u64 {
+        self.hifi.as_ref().map_or(0, HifiBank::misses)
+    }
+
+    /// Mip tables the bank holds (0 while hi-fi is off).
+    pub fn hifi_table_count(&self) -> usize {
+        self.hifi.as_ref().map_or(0, HifiBank::table_count)
+    }
+
+    /// Whether the bank is locked (prewarmed) rather than building lazily.
+    pub fn hifi_locked(&self) -> bool {
+        self.hifi.as_ref().is_some_and(|b| b.mode() == BankMode::Locked)
     }
 
     /// Live mute/solo. Bit `i` of `mute` mutes voice `i`; when `solo` has any

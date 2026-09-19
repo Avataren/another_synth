@@ -121,15 +121,40 @@ impl AhxPlayer {
     }
 
     /// Band-limited ("hi-fi") oscillators instead of the reference's aliasing
-    /// ones; see [`AhxEngine::set_hifi`]. Off by default, and off is the
+    /// ones; see [`AhxEngine::set_hifi`]. Off by default here, and off is the
     /// reference render byte for byte. The setting belongs to this player and
     /// is kept across `rewind`.
+    ///
+    /// Turning it on *prewarms* (see [`AhxEngine::prewarm_hifi`]): every table
+    /// the song needs is built before this returns, so `render` never builds
+    /// one. That blocks the caller for the duration (measured in
+    /// `tests/ahx_hifi.rs`); call it before `play`, or accept one hiccup.
     pub fn set_hifi(&mut self, on: bool) {
+        let was = self.engine.hifi_enabled();
         self.engine.set_hifi(on);
+        if on && !was {
+            self.engine.prewarm_hifi();
+        }
     }
 
     pub fn hifi_enabled(&self) -> bool {
         self.engine.hifi_enabled()
+    }
+
+    /// Mip tables cached (0 with hi-fi off); diagnostics.
+    pub fn hifi_table_count(&self) -> usize {
+        self.engine.hifi_table_count()
+    }
+
+    /// Lookups since the prewarm that the exact table could not serve. Zero:
+    /// the render thread built nothing and degraded nowhere; diagnostics.
+    pub fn hifi_miss_count(&self) -> f64 {
+        self.engine.hifi_misses() as f64
+    }
+
+    /// Whether the render path is locked out of building tables.
+    pub fn hifi_locked(&self) -> bool {
+        self.engine.hifi_locked()
     }
 
     /// Live per-voice mute and solo as bit masks (bit `i` = voice `i`); see

@@ -128,3 +128,30 @@ fn garbage_input_is_an_error_not_a_panic() {
     assert!(AhxPlayer::new(&[], 44100, 2).is_err());
     assert!(AhxPlayer::new(&fixture("karma.ahx"), 10, 2).is_err(), "sample rate too low");
 }
+
+/// The product path: `set_hifi(true)` on the wasm-facing player prewarms, so
+/// `render` (the audio thread) never builds a table, and turning it off again
+/// is the reference.
+#[test]
+fn set_hifi_on_prewarms_so_render_builds_nothing() {
+    let mut p = AhxPlayer::new(&fixture("robocop_iii_j_tel.ahx"), 44100, 2).unwrap();
+    assert_eq!((p.hifi_enabled(), p.hifi_locked(), p.hifi_table_count()), (false, false, 0));
+
+    p.set_hifi(true);
+    assert!(p.hifi_enabled() && p.hifi_locked());
+    let tables = p.hifi_table_count();
+    assert!(tables > 0, "nothing prewarmed");
+
+    p.play();
+    let (l, _) = render_quanta(&mut p, 44100 * 20);
+    assert!(l.iter().any(|&x| x != 0.0));
+    assert_eq!(p.hifi_table_count(), tables, "render built tables");
+    assert_eq!(p.hifi_miss_count(), 0.0);
+
+    // Already on: not prewarmed (or rebuilt) a second time.
+    p.set_hifi(true);
+    assert_eq!(p.hifi_table_count(), tables);
+
+    p.set_hifi(false);
+    assert_eq!((p.hifi_enabled(), p.hifi_locked(), p.hifi_table_count()), (false, false, 0));
+}

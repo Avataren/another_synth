@@ -458,6 +458,14 @@ var AhxPlayer = class {
     return ret !== 0;
   }
   /**
+   * Whether the render path is locked out of building tables.
+   * @returns {boolean}
+   */
+  hifi_locked() {
+    const ret = wasm.ahxplayer_hifi_locked(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
    * @returns {number}
    */
   sample_rate() {
@@ -511,12 +519,29 @@ var AhxPlayer = class {
     return ret !== 0;
   }
   /**
+   * Lookups since the prewarm that the exact table could not serve. Zero:
+   * the render thread built nothing and degraded nowhere; diagnostics.
+   * @returns {number}
+   */
+  hifi_miss_count() {
+    const ret = wasm.ahxplayer_hifi_miss_count(this.__wbg_ptr);
+    return ret;
+  }
+  /**
    * Song channels the engine does not play: 0 for every real file (only a
    * malformed HVL wider than the reference's 16-voice array is cut).
    * @returns {number}
    */
   dropped_channels() {
     const ret = wasm.ahxplayer_dropped_channels(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * Mip tables cached (0 with hi-fi off); diagnostics.
+   * @returns {number}
+   */
+  hifi_table_count() {
+    const ret = wasm.ahxplayer_hifi_table_count(this.__wbg_ptr);
     return ret >>> 0;
   }
   /**
@@ -644,9 +669,14 @@ var AhxPlayer = class {
   }
   /**
    * Band-limited ("hi-fi") oscillators instead of the reference's aliasing
-   * ones; see [`AhxEngine::set_hifi`]. Off by default, and off is the
+   * ones; see [`AhxEngine::set_hifi`]. Off by default here, and off is the
    * reference render byte for byte. The setting belongs to this player and
    * is kept across `rewind`.
+   *
+   * Turning it on *prewarms* (see [`AhxEngine::prewarm_hifi`]): every table
+   * the song needs is built before this returns, so `render` never builds
+   * one. That blocks the caller for the duration (measured in
+   * `tests/ahx_hifi.rs`); call it before `play`, or accept one hiccup.
    * @param {boolean} on
    */
   set_hifi(on) {
@@ -3001,6 +3031,17 @@ var AhxProcessorCore = class {
         this.hifi = command.enabled;
         this.player?.set_hifi(command.enabled);
         break;
+      case "get-hifi-stats": {
+        const p = this.player;
+        this.post({
+          type: "hifi-stats",
+          enabled: p?.hifi_enabled() ?? false,
+          locked: p?.hifi_locked() ?? false,
+          tables: p?.hifi_table_count() ?? 0,
+          misses: p?.hifi_miss_count() ?? 0
+        });
+        break;
+      }
       case "dispose":
         this.disposedFlag = true;
         this.dropPlayer();

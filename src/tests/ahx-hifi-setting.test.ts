@@ -8,21 +8,29 @@ describe('ahxHifi', () => {
     setActivePinia(createPinia());
   });
 
-  it('defaults to off: the reference render, for anyone who never touches it', () => {
-    expect(defaultSettings.ahxHifi).toBe(false);
-    expect(useUserSettingsStore().settings.ahxHifi).toBe(false);
+  it('defaults to on: band-limited, for anyone who never touches it', () => {
+    expect(defaultSettings.ahxHifi).toBe(true);
+    expect(useUserSettingsStore().settings.ahxHifi).toBe(true);
   });
 
   it('a settings blob saved before the option existed loads with the default', () => {
     localStorage.setItem('synth-user-settings', JSON.stringify({ settingsVersion: 99, theme: 'custom' }));
-    expect(useUserSettingsStore().settings.ahxHifi).toBe(false);
+    expect(useUserSettingsStore().settings.ahxHifi).toBe(true);
   });
 
-  it('survives a reload: the choice is persisted and read back', () => {
-    useUserSettingsStore().updateSetting('ahxHifi', true);
+  it('a v0.3.49 blob (opt-in era, explicit false) loads with hi-fi on', () => {
+    localStorage.setItem(
+      'synth-user-settings',
+      JSON.stringify({ settingsVersion: 5, theme: 'custom', ahxHifi: false }),
+    );
+    expect(useUserSettingsStore().settings.ahxHifi).toBe(true);
+  });
+
+  it('the escape hatch survives a reload: turning it off is persisted and sticks', () => {
+    useUserSettingsStore().updateSetting('ahxHifi', false);
     return Promise.resolve().then(() => {
       setActivePinia(createPinia());
-      expect(useUserSettingsStore().settings.ahxHifi).toBe(true);
+      expect(useUserSettingsStore().settings.ahxHifi).toBe(false);
     });
   });
 });

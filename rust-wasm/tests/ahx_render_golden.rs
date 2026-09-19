@@ -17,6 +17,18 @@
 //! manifest drives `gen_goldens.sh`, so a row cannot exist on one side only;
 //! `manifest_and_goldens_agree` and `manifest_covers_every_fixture` enforce it.
 //!
+//! What is being held to the reference: the engine with hi-fi **off**, which is
+//! the engine's own default and the only path the C reference has. The harness
+//! drives the engine directly (`enable_capture`, `set_mute_solo`, `set_hifi`,
+//! `prewarm_hifi`); it never goes through `AhxPlayer::set_hifi` or the app's
+//! `ahxHifi` setting, so making hi-fi the app's default (it is on for a user
+//! who never touched Settings) cannot move a golden, and there is no golden
+//! for hi-fi *on* (a band-limited render is not what the reference plays; it is
+//! measured in `tests/ahx_hifi.rs`). Every `Mode` below prepares the engine
+//! differently and must land on the same golden: capture on, mute/solo set then
+//! cleared, and hi-fi turned on (with and without a full prewarm, which
+//! simulates the whole song) then off again before the first sample.
+//!
 //! Feature coverage (the harness's `coverage` line, voice-frames) is asserted
 //! corpus-wide by `corpus_exercises_every_voice_feature`: hard-cut release,
 //! square sweep, noise, filter sweep, vibrato, tone portamento, PList and PList
@@ -169,6 +181,10 @@ enum Mode {
     /// Hi-fi oscillators switched on and back off before the first sample:
     /// off must be the reference, whatever happened to the switch before.
     HifiCleared,
+    /// As `HifiCleared`, but with the whole-song prewarm run in between: it
+    /// simulates every subsong on the engine's own voices and transport, and
+    /// must leave no trace once hi-fi is off again.
+    HifiPrewarmedCleared,
 }
 
 fn check(c: &Case, mode: Mode) {
@@ -192,6 +208,7 @@ fn check(c: &Case, mode: Mode) {
         Mode::Capture => "capture on",
         Mode::MuteSoloCleared => "mute/solo set then cleared",
         Mode::HifiCleared => "hi-fi set then cleared",
+        Mode::HifiPrewarmedCleared => "hi-fi prewarmed then cleared",
     };
     match mode {
         Mode::Plain => {}
@@ -202,6 +219,11 @@ fn check(c: &Case, mode: Mode) {
         }
         Mode::HifiCleared => {
             engine.set_hifi(true);
+            engine.set_hifi(false);
+        }
+        Mode::HifiPrewarmedCleared => {
+            engine.set_hifi(true);
+            assert!(engine.prewarm_hifi().tables > 0);
             engine.set_hifi(false);
         }
     }
@@ -244,6 +266,7 @@ fn check_fixture(fixture: &str) {
         check(&c, Mode::Capture);
         check(&c, Mode::MuteSoloCleared);
         check(&c, Mode::HifiCleared);
+        check(&c, Mode::HifiPrewarmedCleared);
     }
 }
 

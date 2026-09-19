@@ -63,9 +63,25 @@
 //!   factor's band limit bounds, so band-limiting the factors would not
 //!   deliver what it promises.
 //!
-//! Hi-fi is off by default and, off, is not merely equivalent but *the same
-//! code path*: the mixer's `HIFI` const-generic is `false`, and nothing here
-//! runs. The render goldens hold byte for byte.
+//! Hi-fi is off in the engine by default and, off, is not merely equivalent
+//! but *the same code path*: the mixer's `HIFI` const-generic is `false`, and
+//! nothing here runs. The render goldens hold byte for byte. (The *app* turns
+//! it on by default -- the `ahxHifi` setting -- through `AhxPlayer::set_hifi`;
+//! the engine's own default, and the golden harness that drives it directly,
+//! are unaffected.)
+//!
+//! ## Prewarm: no table is ever built on the audio thread
+//!
+//! Building a level is an inverse FFT plus a quantise (~0.1 ms), and a tick
+//! on many voices can want a dozen cold ones at once -- against a 2.7 ms
+//! render quantum. So the product path never builds while rendering: the
+//! bank has three [`BankMode`]s. `Lazy` (the engine default, what the tests
+//! use) builds on demand. `Prewarm` builds on demand too, but never evicts and
+//! stops at the cap. `Locked` only *looks up*: a miss is counted, and the voice
+//! takes the nearest built level with fewer partials of the same table (duller,
+//! never aliased), or failing that the reference path for that tick.
+//! `AhxEngine::prewarm_hifi` runs the song's ticks (no mixing) in `Prewarm`
+//! mode, then locks; see there for what that covers.
 //!
 //! Zero new dependencies: `rustfft` is what `wavetable.rs` already uses.
 
@@ -100,9 +116,16 @@ pub const FRAC_BITS: u32 = 4;
 /// Mask for a 16.16 table phase.
 const PHASE_MASK: u64 = ((TABLE_SIZE as u64) << 16) - 1;
 
-/// Tables kept before the cache is dropped and rebuilt on demand (8 KiB
-/// each, so ~32 MiB). Tables are pure functions of their key, so eviction can
-/// only cost time, never change a sample.
+/// Tables kept before the cache is dropped and rebuilt on demand. Tables are
+/// pure functions of their key, so eviction can only cost time, never change
+/// a sample.
+///
+/// The ceiling is bigger than the tables alone: each table is 8 KiB, so 4096
+/// of them are 32 MiB, and every cached table hangs off a [`Source`] that is
+/// not counted here -- 513 `Complex<f32>` (4104 B), its `<= 128 B` key and an
+/// 18-slot level array (288 B), ~4.5 KiB each. A source holds at least one
+/// table, so there are at most 4096 of them: up to ~18 MiB more, ~50 MiB in
+/// all. A real song sits far below (tens of sources, a few hundred tables).
 const MAX_CACHED_TABLES: usize = 4096;
 
 /// Partials kept by level `j`: `MAX_HARMONICS * 2^(-j / LEVELS_PER_OCTAVE)`,
@@ -112,13 +135,13 @@ pub fn level_harmonics(level: usize) -> usize {
     (h.round() as usize).max(1)
 }
 
-/// The coarsest-needed level for a voice stepping `f0` cycles per output
-/// sample: the first (richest) level whose top partial is still at or under
-/// Nyquist (`H * f0 <= 0.5`). A fundamental above Nyquist gets the 1-partial
-/// level.
+/// The level for a voice stepping `f0` cycles per output sample: the first
+/// (richest) level whose top partial is strictly under Nyquist
+/// (`H * f0 < 0.5`; a partial exactly at Nyquist has no defined phase to
+/// keep, so it is dropped too). A fundamental at or above Nyquist gets the
+/// 1-partial level.
 pub fn level_for(f0_cycles_per_sample: f64) -> usize {
-    let allowed = if f0_cycles_per_sample > 0.0 { (0.5 / f0_cycles_per_sample).floor() } else { f64::MAX };
-    (0..LEVEL_COUNT).find(|&l| (level_harmonics(l) as f64) <= allowed).unwrap_or(LEVEL_COUNT - 1)
+    (0..LEVEL_COUNT).find(|&l| (level_harmonics(l) as f64) * f0_cycles_per_sample < 0.5).unwrap_or(LEVEL_COUNT - 1)
 }
 
 /// What a voice keeps between mixer calls: one band-limited cycle and how it
@@ -152,12 +175,29 @@ struct Source {
     levels: [Option<Arc<[i16]>>; LEVEL_COUNT],
 }
 
+/// How a [`HifiBank`] treats a table it does not have yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BankMode {
+    /// Build it. At the cap, drop everything and start over.
+    Lazy,
+    /// Build it, but never evict: at the cap, stop building (`is_full`).
+    Prewarm,
+    /// Never build: count a miss and degrade (see the module docs). This is
+    /// the mode the audio thread runs in once a song is prewarmed.
+    Locked,
+}
+
 /// Lazy cache of band-limited cycles, keyed by table contents.
 pub struct HifiBank {
     inverse: Arc<dyn Fft<f32>>,
     sources: FxHashMap<Box<[i8]>, Source>,
     cached_tables: usize,
     scratch: Vec<Complex<f32>>,
+    mode: BankMode,
+    /// Lookups a `Locked` bank could not serve from the exact level.
+    misses: u64,
+    /// A `Prewarm` bank wanted a table past the cap.
+    full: bool,
 }
 
 impl Default for HifiBank {
@@ -174,7 +214,36 @@ impl HifiBank {
             sources: FxHashMap::default(),
             cached_tables: 0,
             scratch: vec![Complex::new(0.0, 0.0); TABLE_SIZE],
+            mode: BankMode::Lazy,
+            misses: 0,
+            full: false,
         }
+    }
+
+    pub fn mode(&self) -> BankMode {
+        self.mode
+    }
+
+    /// Switches mode. Entering `Prewarm` forgets an earlier `is_full`;
+    /// entering `Locked` zeroes the miss count, so it counts from the lock.
+    pub fn set_mode(&mut self, mode: BankMode) {
+        match mode {
+            BankMode::Prewarm => self.full = false,
+            BankMode::Locked => self.misses = 0,
+            BankMode::Lazy => {}
+        }
+        self.mode = mode;
+    }
+
+    /// Lookups since the bank was locked that the exact table could not
+    /// serve. Zero means the audio thread built nothing and degraded nowhere.
+    pub fn misses(&self) -> u64 {
+        self.misses
+    }
+
+    /// A prewarm wanted more tables than the cache holds.
+    pub fn is_full(&self) -> bool {
+        self.full
     }
 
     /// Distinct table contents seen so far (diagnostics and tests).
@@ -189,7 +258,8 @@ impl HifiBank {
 
     /// The oscillator for one cycle (`cycle.len()` is `4 << wave_length`) read
     /// at `f0_cycles_per_sample`; `None` for a silent table (the reference
-    /// path already plays exactly that).
+    /// path already plays exactly that) and, in `Locked` mode, when the source
+    /// has no level at or below the wanted one.
     pub fn oscillator(&mut self, cycle: &[i8], f0_cycles_per_sample: f64) -> Option<HifiOsc> {
         let n = cycle.len();
         debug_assert!(n.is_power_of_two() && (4..=128).contains(&n));
@@ -197,7 +267,31 @@ impl HifiBank {
             return None;
         }
         let level = level_for(f0_cycles_per_sample);
-        if self.cached_tables >= MAX_CACHED_TABLES {
+        let table = match self.mode {
+            BankMode::Locked => self.lookup(cycle, level),
+            BankMode::Lazy | BankMode::Prewarm => self.get_or_build(cycle, level),
+        }?;
+        Some(HifiOsc { table, ratio: (TABLE_SIZE / n) as u64 })
+    }
+
+    /// `Locked`: the exact level, else the nearest built level with fewer
+    /// partials (duller, still band-limited), else nothing.
+    fn lookup(&mut self, cycle: &[i8], level: usize) -> Option<Arc<[i16]>> {
+        let source = self.sources.get(cycle);
+        if let Some(t) = source.and_then(|s| s.levels[level].as_ref()) {
+            return Some(t.clone());
+        }
+        self.misses += 1;
+        source?.levels[level..].iter().flatten().next().cloned()
+    }
+
+    fn get_or_build(&mut self, cycle: &[i8], level: usize) -> Option<Arc<[i16]>> {
+        let have = self.sources.get(cycle).is_some_and(|s| s.levels[level].is_some());
+        if !have && self.cached_tables >= MAX_CACHED_TABLES {
+            if self.mode == BankMode::Prewarm {
+                self.full = true;
+                return None;
+            }
             self.sources.clear();
             self.cached_tables = 0;
         }
@@ -205,7 +299,7 @@ impl HifiBank {
             self.sources.insert(cycle.into(), Source { coeffs: staircase_spectrum(cycle), levels: Default::default() });
         }
         let source = self.sources.get_mut(cycle).expect("inserted above");
-        let table = match &source.levels[level] {
+        Some(match &source.levels[level] {
             Some(t) => t.clone(),
             None => {
                 let t = build_level(&*self.inverse, &mut self.scratch, &source.coeffs, level_harmonics(level));
@@ -213,8 +307,7 @@ impl HifiBank {
                 self.cached_tables += 1;
                 t
             }
-        };
-        Some(HifiOsc { table, ratio: (TABLE_SIZE / n) as u64 })
+        })
     }
 }
 
@@ -290,14 +383,23 @@ mod tests {
         for i in 1..2000 {
             let f0 = i as f64 * 0.00025; // 0.00025 .. 0.5 cycles/sample
             let l = level_for(f0);
-            assert!(level_harmonics(l) as f64 * f0 <= 0.5 + 1e-12 || l == LEVEL_COUNT - 1, "f0 {f0} level {l}");
+            assert!(level_harmonics(l) as f64 * f0 < 0.5 || l == LEVEL_COUNT - 1, "f0 {f0} level {l}");
             // ... and it is the richest such level.
             if l > 0 {
-                assert!(level_harmonics(l - 1) as f64 * f0 > 0.5, "f0 {f0}: level {} would also fit", l - 1);
+                assert!(level_harmonics(l - 1) as f64 * f0 >= 0.5, "f0 {f0}: level {} would also fit", l - 1);
             }
         }
         assert_eq!(level_for(0.0), 0);
         assert_eq!(level_for(0.9), LEVEL_COUNT - 1);
+    }
+
+    #[test]
+    fn a_partial_exactly_at_nyquist_is_dropped() {
+        // 4 partials at f0 = 0.125 sit exactly on Nyquist (0.5): not kept.
+        let f0 = 0.125;
+        assert_eq!(4.0 * f0, 0.5);
+        let h = level_harmonics(level_for(f0));
+        assert!((h as f64) * f0 < 0.5, "level keeps {h} partials");
     }
 
     fn osc(cycle: &[i8], f0: f64) -> HifiOsc {
@@ -354,7 +456,7 @@ mod tests {
         let f0 = 0.05; // 10 partials fit under Nyquist
         let o = bank.oscillator(&cycle, f0).unwrap();
         let h = level_harmonics(level_for(f0));
-        assert!(h as f64 * f0 <= 0.5);
+        assert!(h as f64 * f0 < 0.5);
         let mut spec: Vec<Complex<f32>> = o.table.iter().map(|&s| Complex::new(s as f32, 0.0)).collect();
         FftPlanner::new().plan_fft_forward(TABLE_SIZE).process(&mut spec);
         let peak = spec[1..=h].iter().map(|c| c.norm()).fold(0.0, f32::max);
@@ -372,5 +474,68 @@ mod tests {
         assert_eq!((bank.source_count(), bank.table_count()), (1, 1));
         bank.oscillator(&a, 0.2).unwrap();
         assert_eq!((bank.source_count(), bank.table_count()), (1, 2));
+    }
+
+    fn table_ptr(o: &HifiOsc) -> *const i16 {
+        o.table.as_ptr()
+    }
+
+    #[test]
+    fn a_locked_bank_never_builds_and_degrades_to_a_duller_level() {
+        let cycle: Vec<i8> = (0..32).map(|i| if i < 9 { 90 } else { -30 }).collect();
+        let mut bank = HifiBank::new();
+        // Prewarm two levels: the one for a slow note and a coarser one.
+        let slow = bank.oscillator(&cycle, 0.01).unwrap();
+        let coarse = bank.oscillator(&cycle, 0.2).unwrap();
+        let built = bank.table_count();
+        bank.set_mode(BankMode::Locked);
+        assert_eq!(bank.misses(), 0);
+
+        // Exact hits are free and count nothing.
+        assert_eq!(table_ptr(&bank.oscillator(&cycle, 0.01).unwrap()), table_ptr(&slow));
+        assert_eq!(bank.misses(), 0);
+
+        // A pitch that wants a level in between: served by the next coarser
+        // one built (fewer partials -- never aliased), counted, nothing built.
+        let mid_f0 = 0.05;
+        assert!(level_for(mid_f0) > level_for(0.01) && level_for(mid_f0) < level_for(0.2));
+        assert_eq!(table_ptr(&bank.oscillator(&cycle, mid_f0).unwrap()), table_ptr(&coarse));
+        assert_eq!((bank.misses(), bank.table_count()), (1, built));
+
+        // A table never seen has nothing to stand in for it: reference path.
+        let other: Vec<i8> = (0..32).map(|i| if i < 20 { 90 } else { -30 }).collect();
+        assert!(bank.oscillator(&other, 0.01).is_none());
+        assert_eq!(bank.table_count(), built, "a locked bank built a table");
+        assert_eq!(bank.source_count(), 1);
+    }
+
+    #[test]
+    fn a_locked_miss_with_nothing_coarser_falls_back_to_the_reference() {
+        let cycle: Vec<i8> = (0..16).map(|i| if i < 5 { 60 } else { -20 }).collect();
+        let mut bank = HifiBank::new();
+        bank.oscillator(&cycle, 0.2).unwrap(); // only a coarse level exists
+        bank.set_mode(BankMode::Locked);
+        // A slow note wants a far richer level than the one built: the built
+        // one has *fewer* partials, so it is the stand-in that exists.
+        assert!(bank.oscillator(&cycle, 0.001).is_some());
+        // But a fast note asking for a coarser level than anything built has none.
+        let fast = level_for(0.45);
+        assert!(fast > level_for(0.2));
+        assert!(bank.oscillator(&cycle, 0.45).is_none());
+        assert_eq!(bank.misses(), 2);
+    }
+
+    #[test]
+    fn locking_zeroes_the_miss_count_and_prewarm_never_evicts() {
+        let cycle: Vec<i8> = (0..8).map(|i| if i < 3 { 50 } else { -50 }).collect();
+        let mut bank = HifiBank::new();
+        bank.set_mode(BankMode::Locked);
+        assert!(bank.oscillator(&cycle, 0.01).is_none());
+        assert_eq!(bank.misses(), 1);
+        bank.set_mode(BankMode::Prewarm);
+        bank.oscillator(&cycle, 0.01).unwrap();
+        assert!(!bank.is_full());
+        bank.set_mode(BankMode::Locked);
+        assert_eq!(bank.misses(), 0);
     }
 }

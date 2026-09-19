@@ -29,6 +29,16 @@ export interface AhxWaveforms {
   data: Int16Array;
 }
 
+/** Hi-fi bank state in the worklet; see the `hifi-stats` event. */
+export interface AhxHifiStats {
+  enabled: boolean;
+  /** Prewarmed: the render thread cannot build a table. */
+  locked: boolean;
+  tables: number;
+  /** Render-thread lookups the exact table could not serve; 0 is the goal. */
+  misses: number;
+}
+
 /**
  * The main-thread handle on the AHX worklet: one `AudioWorkletNode` running
  * the Rust `AhxEngine`, plus the small command/event protocol around it.
@@ -45,6 +55,7 @@ export class AhxPlayerClient {
   private songEndListeners = new Set<() => void>();
   private waveformListeners = new Set<(w: AhxWaveforms) => void>();
   private errorListeners = new Set<(error: Error) => void>();
+  private hifiStatsWaiters: Array<(stats: AhxHifiStats) => void> = [];
   private pendingLoad: {
     id: number;
     resolve: (info: AhxSongInfo) => void;
@@ -148,6 +159,17 @@ export class AhxPlayerClient {
    */
   setHifi(enabled: boolean): void {
     this.send({ type: 'set-hifi', enabled });
+  }
+
+  /**
+   * The worklet's hi-fi bank state, for diagnostics and tests. The worklet
+   * answers in order, so a stats request sent after `setHifi` sees its effect.
+   */
+  requestHifiStats(): Promise<AhxHifiStats> {
+    return new Promise((resolve) => {
+      this.hifiStatsWaiters.push(resolve);
+      this.send({ type: 'get-hifi-stats' });
+    });
   }
 
   /**
@@ -267,6 +289,15 @@ export class AhxPlayerClient {
       case 'song-end':
         for (const listener of this.songEndListeners) listener();
         break;
+      case 'hifi-stats': {
+        this.hifiStatsWaiters.shift()?.({
+          enabled: event.enabled,
+          locked: event.locked,
+          tables: event.tables,
+          misses: event.misses,
+        });
+        break;
+      }
     }
   }
 }

@@ -333,3 +333,203 @@ fn robocop_iii_high_passages_fold_back_less_in_hifi() {
     assert!(windows >= 8, "only {windows} steady high windows found; the measurement is too thin to mean anything");
     assert!(h < r * 0.5, "hifi low-band energy {h:e} is not at least 3 dB under the reference's {r:e}");
 }
+
+// ---------------------------------------------------------------------------
+// 4. Prewarm: the render path never builds a table.
+// ---------------------------------------------------------------------------
+
+use std::time::Instant;
+
+/// Every fixture name in the demo directory, sorted.
+fn all_fixtures() -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".ahx") || n.ends_with(".hvl"))
+        .collect();
+    names.sort();
+    names
+}
+
+/// A 16-voice HVL: the 11-channel doobrey_gubbins with five more columns cut
+/// from its first five (the engine's maximum, and every voice busy).
+fn sixteen_voice_song() -> Song {
+    let mut s = format::parse(&fixture("doobrey_gubbins.hvl")).unwrap();
+    let native = s.channels;
+    assert_eq!(native, 11);
+    for p in s.positions.iter_mut() {
+        for c in native..16 {
+            p.track.push(p.track[c - native]);
+            p.transpose.push(p.transpose[c - native]);
+        }
+    }
+    s.channels = 16;
+    s
+}
+
+#[test]
+fn prewarming_mid_song_changes_nothing_but_the_cache() {
+    // Hi-fi output is a function of song state alone, so an engine prewarmed
+    // half way through renders the same bytes as one that built its tables
+    // as it went -- unless the prewarm disturbed the voices, the transport,
+    // the tick phase or the capture rings it borrows.
+    for name in ["robocop_iii_j_tel.ahx", "sunspots.hvl", "get_to_the_chopper.ahx"] {
+        let frames = RATE as usize * 6;
+        let mut lazy = engine(name);
+        lazy.set_hifi(true);
+        lazy.enable_capture(true);
+        let want = render(&mut lazy, frames, &BLOCKS);
+        let mut want_scope = vec![0i16; 2048];
+        assert_eq!(lazy.read_channel_snapshot(0, &mut want_scope), 2048);
+
+        let mut warm = engine(name);
+        warm.set_hifi(true);
+        warm.enable_capture(true);
+        let head = 3 * RATE as usize + 77; // mid-tick on purpose
+        let mut got = render(&mut warm, head, &BLOCKS);
+        let stats = warm.prewarm_hifi();
+        assert!(warm.hifi_locked() && stats.tables > 0 && !stats.cache_full, "{name}: {stats:?}");
+        got.extend(render(&mut warm, frames - head, &BLOCKS));
+        assert_eq!(got, want, "{name}: prewarm mid-song disturbed the render");
+        let mut got_scope = vec![0i16; 2048];
+        warm.read_channel_snapshot(0, &mut got_scope);
+        assert_eq!(got_scope, want_scope, "{name}: capture rings");
+        assert_eq!(warm.hifi_misses(), 0, "{name}: misses after a prewarm");
+    }
+}
+
+#[test]
+fn prewarm_with_hifi_off_is_a_no_op() {
+    let mut e = engine("karma.ahx");
+    let stats = e.prewarm_hifi();
+    assert_eq!((stats.ticks, stats.tables), (0, 0));
+    assert!(!e.hifi_enabled() && !e.hifi_locked());
+}
+
+/// The claim the lock rests on, over the whole corpus: after a prewarm, every
+/// fixture plays through -- the first lap, the wraps, and every subsong
+/// restarted from its top -- without one lookup the exact table could not
+/// serve, and without the cache growing by a table.
+///
+/// "Converged" is the prewarm's own word for having stopped finding new
+/// tables; the test holds it to that over many more laps than the prewarm
+/// walked. A song that did not converge (its sweeps outlast the tick cap) is
+/// not asserted to have zero misses -- it is asserted to *say* so, and its
+/// miss rate is printed.
+#[test]
+fn a_prewarmed_song_never_misses_across_laps_and_subsongs() {
+    const BLOCK: usize = 512;
+    // The full horizon (12 laps or 12 minutes per subsong) is what
+    // `cargo test --release` runs; an unoptimised build gets a short one
+    // (3 laps or 90 s), which still walks every fixture past its first wrap.
+    let (max_laps, max_frames) = if cfg!(debug_assertions) { (3, RATE as usize * 90) } else { (12, RATE as usize * 60 * 12) };
+    let mut out = vec![0i16; BLOCK * 2];
+    let mut report = String::new();
+    for name in all_fixtures() {
+        let mut e = engine(&name);
+        e.set_hifi(true);
+        let stats = e.prewarm_hifi();
+        assert!(!stats.cache_full, "{name}: cache filled");
+        let tables = e.hifi_table_count();
+        let (mut laps_total, mut frames_total) = (0u32, 0usize);
+        for sub in 0..=e.song().subsong_nr as usize {
+            assert!(e.init_subsong(sub));
+            let (mut frames, mut laps, mut last_pos) = (0usize, 0u32, 0i32);
+            while frames < max_frames && laps < max_laps {
+                e.render_block(&mut out);
+                frames += BLOCK;
+                if e.pos_nr() < last_pos {
+                    laps += 1;
+                }
+                last_pos = e.pos_nr();
+            }
+            frames_total += frames;
+            laps_total += laps;
+        }
+        let misses = e.hifi_misses();
+        assert_eq!(e.hifi_table_count(), tables, "{name}: tables built while rendering");
+        if stats.converged {
+            assert_eq!(misses, 0, "{name}: prewarm converged, yet the audio thread missed");
+        }
+        report.push_str(&format!(
+            "{name:28} prewarm: {:2} laps {:6} ticks {:5} tables {:5} sources converged={:5} | rendered {:5.0}s over {:2} laps: misses {misses}\n",
+            stats.laps,
+            stats.ticks,
+            stats.tables,
+            stats.sources,
+            stats.converged,
+            frames_total as f64 / RATE as f64,
+            laps_total,
+        ));
+    }
+    eprintln!("{report}");
+}
+
+/// The timing the reviewer asked for: a 16-voice HVL rendered from a cold
+/// start in the audio thread's own 128-frame quanta, hi-fi building lazily
+/// against hi-fi prewarmed. Numbers go to stderr (`--nocapture`); only the
+/// deterministic facts are asserted, because wall-clock does not belong in a
+/// pass/fail. Run with `--release` for numbers that mean anything (the wasm
+/// build is optimised, this test binary by default is not).
+#[test]
+fn cold_start_render_of_a_sixteen_voice_hvl_with_and_without_prewarm() {
+    const QUANTUM: usize = 128;
+    const SECONDS: usize = 10;
+    let budget_us = QUANTUM as f64 / RATE as f64 * 1e6;
+
+    let run = |prewarm: bool| {
+        let mut e = engine_of(sixteen_voice_song());
+        assert_eq!(e.channels(), 16);
+        e.set_hifi(true);
+        let t0 = Instant::now();
+        let stats = if prewarm { Some(e.prewarm_hifi()) } else { None };
+        let prewarm_ms = t0.elapsed().as_secs_f64() * 1e3;
+        let tables_before = e.hifi_table_count();
+        let mut out = vec![0i16; QUANTUM * 2];
+        let mut all = Vec::with_capacity(RATE as usize * SECONDS * 2);
+        let mut times: Vec<f64> = Vec::new();
+        for _ in 0..RATE as usize * SECONDS / QUANTUM {
+            let t = Instant::now();
+            e.render_block(&mut out);
+            times.push(t.elapsed().as_secs_f64() * 1e6);
+            all.extend_from_slice(&out);
+        }
+        (e, stats, prewarm_ms, tables_before, times, all)
+    };
+    let (cold, _, _, cold_before, mut cold_t, cold_out) = run(false);
+    let (warm, stats, prewarm_ms, warm_before, mut warm_t, warm_out) = run(true);
+    let stats = stats.unwrap();
+
+    let summarise = |t: &mut Vec<f64>| {
+        let over = t.iter().filter(|&&x| x > budget_us).count();
+        let sum: f64 = t.iter().sum();
+        t.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let pct = |p: f64| t[((t.len() - 1) as f64 * p) as usize];
+        (sum / t.len() as f64, pct(0.5), pct(0.99), pct(0.999), *t.last().unwrap(), over)
+    };
+    let c = summarise(&mut cold_t);
+    let w = summarise(&mut warm_t);
+    eprintln!("16-voice HVL, {SECONDS} s in {QUANTUM}-frame quanta at {RATE} Hz (budget {budget_us:.0} us)");
+    eprintln!("                  mean us   p50     p99     p99.9   worst   quanta over budget");
+    eprintln!("  cold (lazy)     {:7.1} {:7.1} {:7.1} {:7.1} {:7.1}   {}", c.0, c.1, c.2, c.3, c.4, c.5);
+    eprintln!("  prewarmed       {:7.1} {:7.1} {:7.1} {:7.1} {:7.1}   {}", w.0, w.1, w.2, w.3, w.4, w.5);
+    eprintln!("  tables built while rendering: cold {}, prewarmed {}", cold.hifi_table_count() - cold_before, warm.hifi_table_count() - warm_before);
+    eprintln!(
+        "  prewarm: {prewarm_ms:.1} ms, {} ticks simulated, {} sources, {} tables ({:.1} MiB of tables), misses after: {}",
+        stats.ticks,
+        stats.sources,
+        stats.tables,
+        stats.tables as f64 * (TABLE_BYTES as f64) / 1048576.0,
+        warm.hifi_misses()
+    );
+
+    assert!(cold.hifi_table_count() > cold_before, "the cold run built nothing, so it measured nothing");
+    assert_eq!(warm.hifi_table_count(), warm_before, "the prewarmed run built tables while rendering");
+    assert_eq!(warm.hifi_misses(), 0);
+    assert!(warm.hifi_locked());
+    // Nothing was degraded, so it is the same audio, sample for sample.
+    assert_eq!(warm_out, cold_out, "prewarmed hi-fi differs from lazily built hi-fi");
+}
+
+/// `TABLE_SIZE * size_of::<i16>()`.
+const TABLE_BYTES: usize = audio_processor::ahx::hifi::TABLE_SIZE * 2;

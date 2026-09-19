@@ -211,6 +211,26 @@ describe('createAhxPlayer / AhxPlayerClient', () => {
     expect(hifi).not.toEqual(reference);
   });
 
+  it('requestHifiStats sees a prewarmed, locked bank once setHifi(true) has been handled', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    await player.loadSong(karma);
+    const node = FakeWorkletNode.last as FakeWorkletNode;
+    expect(await player.requestHifiStats()).toEqual({ enabled: false, locked: false, tables: 0, misses: 0 });
+
+    player.setHifi(true);
+    const on = await player.requestHifiStats();
+    expect(on).toMatchObject({ enabled: true, locked: true, misses: 0 });
+    expect(on.tables).toBeGreaterThan(0);
+
+    player.play();
+    await Promise.resolve();
+    await Promise.resolve();
+    for (let i = 0; i < 400; i++) node.pull();
+    expect(await player.requestHifiStats()).toEqual(on);
+    player.dispose();
+  });
+
   it('setMuteSolo reaches the worklet: mute-all is silent, clearing it brings the song back', async () => {
     stubGlobals();
     const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);

@@ -34,8 +34,11 @@ export interface UserSettings {
    * Band-limited AHX/HVL oscillators. The reference player aliases: on a high
    * note the partials past Nyquist fold back as inharmonic tones (robocop iii
    * is the classic case). Hi-fi keeps the reference sound and drops exactly
-   * those partials. Off by default: off is the reference render, byte for
-   * byte, so what the composer heard is what plays.
+   * those partials. On by default (v6). Turning it off is an escape hatch, not
+   * a preference to expect: off is the reference replayer's render byte for
+   * byte, which is what to A/B against when debugging the engine. The render
+   * goldens are unaffected either way -- they drive the engine's own switch,
+   * not this setting.
    */
   ahxHifi: boolean;
   /**
@@ -186,11 +189,17 @@ export interface UserSettings {
  * chosen for a desktop and shipped to everything. Handhelds are moved to
  * the device defaults once; desktops keep exactly what they had.
  *
+ * v6: `ahxHifi` (band-limited AHX/HVL oscillators) became the default. It
+ * shipped in v0.3.49 as an opt-in, so every blob saved since holds an explicit
+ * `false` next to whatever setting was actually changed; the rewrite turns it
+ * on once, and the Settings toggle stays for anyone who wants the reference
+ * replayer's aliasing back.
+ *
  * Note that the master-volume default moving from 0.75 to 0.5 deliberately did
  * *not* get a version bump: it is a starting point rather than a correction, so
  * anyone who has already set their own level keeps it.
  */
-export const SETTINGS_VERSION = 5;
+export const SETTINGS_VERSION = 6;
 
 /**
  * Default user settings. Exported so tests can pin the ones that are
@@ -204,7 +213,7 @@ export const defaultSettings: UserSettings = {
   showSpectrumAnalyzer: true,
   showWaveformVisualizers: true,
   ahxScopeGain: 1,
-  ahxHifi: false,
+  ahxHifi: true,
   masterVolume: 0.5,
   enableMidi: false,
   showTrackerExtraEffectColumn: false,
@@ -320,6 +329,14 @@ export function migrateSettingsVersion(
   // so a stored value could otherwise never be turned off again.
   if (version < 5) {
     migrated.sampleLoopCrossfadeFrames = 0;
+  }
+
+  // v5 -> v6: hi-fi AHX rendering on by default. The stored `false` is the
+  // v0.3.49 opt-in default, not a decision, for everyone but whoever switched
+  // it off in the day it was an experiment; that one choice is overwritten,
+  // and (this branch never runs again) their next one sticks.
+  if (version < 6) {
+    migrated.ahxHifi = true;
   }
 
   migrated.settingsVersion = SETTINGS_VERSION;

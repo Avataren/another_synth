@@ -532,8 +532,16 @@ describe('AHX per-voice scopes', () => {
 });
 
 describe('AHX hi-fi rendering setting', () => {
-  it('is off by default: the worklet is never told anything', async () => {
+  it('is on by default: the first client is told before the song plays', async () => {
     const host = setupHost();
+    await openAhx(host);
+    await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
+    expect(lastClient().hifi).toEqual([true]);
+  });
+
+  it('switched off in Settings (the escape hatch): the worklet is never told anything', async () => {
+    const host = setupHost();
+    useUserSettingsStore().updateSetting('ahxHifi', false);
     await openAhx(host);
     await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
     expect(lastClient().hifi).toEqual([]);
@@ -542,7 +550,6 @@ describe('AHX hi-fi rendering setting', () => {
   it('follows the setting live, and a client made later starts with it', async () => {
     const host = setupHost();
     const settings = useUserSettingsStore();
-    settings.updateSetting('ahxHifi', true);
     await openAhx(host);
     const store = host.playbackStore;
     await store.play(host.buildSong(), 'song', 0, 0);

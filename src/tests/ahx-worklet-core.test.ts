@@ -590,4 +590,57 @@ describe('hi-fi AHX rendering over the real wasm', () => {
     core.handle({ type: 'play' });
     expect(render(core, second).l).toEqual(plain.l);
   });
+
+  describe('prewarm', () => {
+    /** A core plus a way to ask it for its hi-fi stats. */
+    function coreWithStats() {
+      const events: AhxEvent[] = [];
+      const core = new AhxProcessorCore(
+        AhxPlayer as unknown as AhxWasmPlayerCtor,
+        SAMPLE_RATE,
+        (e) => events.push(e),
+      );
+      const ask = () => {
+        core.handle({ type: 'get-hifi-stats' });
+        const e = events.filter((x) => x.type === 'hifi-stats').at(-1);
+        if (e?.type !== 'hifi-stats') throw new Error('no hifi-stats event');
+        return e;
+      };
+      return { core, ask };
+    }
+
+    it('has the tables built and the render path locked by the time the song is loaded', () => {
+      const { core, ask } = coreWithStats();
+      core.handle({ type: 'set-hifi', enabled: true });
+      // No song yet: nothing to prewarm.
+      expect(ask()).toMatchObject({ enabled: false, locked: false, tables: 0 });
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('robocop_iii_j_tel.ahx') });
+      const loaded = ask();
+      expect(loaded).toMatchObject({ enabled: true, locked: true, misses: 0 });
+      expect(loaded.tables).toBeGreaterThan(0);
+
+      core.handle({ type: 'play' });
+      render(core, SAMPLE_RATE * 20);
+      // Twenty seconds of playing built nothing and degraded nothing.
+      expect(ask()).toEqual(loaded);
+    });
+
+    it('prewarms when hi-fi is switched on mid-song, and drops the bank when it is switched off', () => {
+      const { core, ask } = coreWithStats();
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('sunspots.hvl') });
+      core.handle({ type: 'play' });
+      render(core, SAMPLE_RATE);
+      expect(ask()).toMatchObject({ enabled: false, tables: 0 });
+
+      core.handle({ type: 'set-hifi', enabled: true });
+      const on = ask();
+      expect(on).toMatchObject({ enabled: true, locked: true, misses: 0 });
+      expect(on.tables).toBeGreaterThan(0);
+      render(core, SAMPLE_RATE * 10);
+      expect(ask()).toEqual(on);
+
+      core.handle({ type: 'set-hifi', enabled: false });
+      expect(ask()).toMatchObject({ enabled: false, locked: false, tables: 0 });
+    });
+  });
 });

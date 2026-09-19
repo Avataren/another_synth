@@ -282,9 +282,11 @@
                       <span class="toggle-label">Hi-fi AHX rendering</span>
                       <span class="toggle-description"
                         >Band-limit AHX/HVL oscillators so high notes stop
-                        folding back as inharmonic tones. Off plays exactly
-                        what the original replayer does; noise channels
-                        always do. Applies as the song plays.</span
+                        folding back as inharmonic tones. On by default; turn
+                        it off to hear exactly what the original replayer
+                        plays, aliasing included, e.g. to compare. Noise
+                        channels always play the original way. Applies as
+                        the song plays.</span
                       >
                     </div>
                   </label>

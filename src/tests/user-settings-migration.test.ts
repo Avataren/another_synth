@@ -153,7 +153,23 @@ describe('sample quality defaults', () => {
       sampleLoopCrossfadeFrames: 64,
     });
     expect(migrated.sampleLoopCrossfadeFrames).toBe(0);
-    expect(migrated.settingsVersion).toBe(5);
+    expect(migrated.settingsVersion).toBe(SETTINGS_VERSION);
+  });
+
+  it('turns hi-fi AHX on at v6, over the v0.3.49 opt-in `false` every saved blob carries', () => {
+    const migrated = migrateSettingsVersion({
+      settingsVersion: 5,
+      ahxHifi: false,
+      theme: 'custom',
+    });
+    expect(migrated.ahxHifi).toBe(true);
+    expect(migrated.settingsVersion).toBe(SETTINGS_VERSION);
+  });
+
+  it('leaves a hi-fi choice made at v6 or later alone', () => {
+    expect(
+      migrateSettingsVersion({ settingsVersion: 6, ahxHifi: false }).ahxHifi,
+    ).toBe(false);
   });
 
   it('asks for 96 kHz by default', () => {

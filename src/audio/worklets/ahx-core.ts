@@ -31,8 +31,19 @@ export interface AhxWasmPlayer {
   enable_capture(on: boolean): void;
   /** Bit masks, bit `i` = voice `i`: muted voices, and (when non-zero) the only voices heard. */
   set_mute_solo(mute: number, solo: number): void;
-  /** Band-limited oscillators instead of the reference's aliasing ones; off is the reference render byte for byte. */
+  /**
+   * Band-limited oscillators instead of the reference's aliasing ones; off is
+   * the reference render byte for byte. Turning it on prewarms every table the
+   * song needs before it returns (see `AhxPlayer::set_hifi`), so the render
+   * path never builds one.
+   */
   set_hifi(on: boolean): void;
+  hifi_enabled(): boolean;
+  /** True once the song's tables are built and the render path is barred from building. */
+  hifi_locked(): boolean;
+  hifi_table_count(): number;
+  /** Render-path lookups the exact table could not serve since the prewarm. */
+  hifi_miss_count(): number;
   /** Fills `out` with the voice's latest waveform; returns the points written (0: capture off). */
   read_channel_snapshot(voice: number, out: Int16Array): number;
   free(): void;
@@ -93,9 +104,13 @@ export type AhxCommand =
    * Band-limited ("hi-fi") oscillators: the reference's sound minus the
    * partials that fold back past Nyquist. Off (the default) is the reference
    * render byte for byte. Like capture it outlives the song: every load
-   * starts with the last state set.
+   * starts with the last state set. Turning it on (or loading a song with it
+   * on) builds every table the song will need first, on this thread but
+   * before playback: a load answers `song-loaded` only once that is done.
    */
   | { type: 'set-hifi'; enabled: boolean }
+  /** Ask for a `hifi-stats` event: diagnostics, and what the E2E asserts on. */
+  | { type: 'get-hifi-stats' }
   | { type: 'dispose' };
 
 /** Worklet -> main thread. */
@@ -109,6 +124,19 @@ export type AhxEvent =
       ticks: number;
     }
   | { type: 'song-end' }
+  /**
+   * Answer to `get-hifi-stats`. `misses` counts render-path lookups since the
+   * prewarm that were not served by the exact table (a duller stand-in, or the
+   * reference for that tick): zero means the render thread neither built a
+   * table nor degraded one. All zero with no song loaded.
+   */
+  | {
+      type: 'hifi-stats';
+      enabled: boolean;
+      locked: boolean;
+      tables: number;
+      misses: number;
+    }
   /**
    * The latest waveform of every voice, sent with the position reports while
    * capture is on and the song plays. `data` is `channels` runs of `points`
@@ -217,6 +245,17 @@ export class AhxProcessorCore {
         this.hifi = command.enabled;
         this.player?.set_hifi(command.enabled);
         break;
+      case 'get-hifi-stats': {
+        const p = this.player;
+        this.post({
+          type: 'hifi-stats',
+          enabled: p?.hifi_enabled() ?? false,
+          locked: p?.hifi_locked() ?? false,
+          tables: p?.hifi_table_count() ?? 0,
+          misses: p?.hifi_miss_count() ?? 0,
+        });
+        break;
+      }
       case 'dispose':
         this.disposedFlag = true;
         this.dropPlayer();
