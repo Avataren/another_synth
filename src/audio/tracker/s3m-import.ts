@@ -98,6 +98,7 @@ export function importS3mToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
   const { slots, songPatches } = buildSlotsAndPatches(samples, {
     bankName: 'S3M Import',
     category: 'Imported/S3M',
+    format: 's3m',
     oplBankName: 'S3M Import (FM inactive)',
   });
 

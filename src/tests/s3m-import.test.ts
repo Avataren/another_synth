@@ -101,6 +101,11 @@ describe('S3M import: slots and instruments', () => {
     expect(adlibSlot!.oplData!.registers[0]).toBe(0x20);
     expect(adlibSlot!.oplData!.registers).toHaveLength(12);
     expect(adlibSlot!.oplData!.kind).toBe('melody');
+    // Type says how it renders (OPL, inactive), format says whose data it is.
+    expect(adlibSlot!.instrumentType).toBe('opl');
+    expect(adlibSlot!.instrumentFormat).toBe('s3m');
+    expect(used[0]!.instrumentType).toBe('sampler');
+    expect(used[0]!.instrumentFormat).toBe('s3m');
   });
 });
 

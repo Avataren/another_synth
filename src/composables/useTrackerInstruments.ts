@@ -4,6 +4,7 @@ import type { Patch } from 'src/audio/types/preset-types';
 import { createDefaultPatchMetadata, createEmptySynthState } from 'src/audio/types/preset-types';
 import type { InstrumentSlot, useTrackerStore } from 'src/stores/tracker-store';
 import type { usePatchStore } from 'src/stores/patch-store';
+import { resolveInstrumentEditorRoute } from 'src/audio/tracker/instrument-types';
 
 /**
  * Patch option from a bank
@@ -243,9 +244,11 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
     const slot = context.instrumentSlots.value.find((s) => s.slot === slotNumber);
     if (!slot?.patchId) return;
 
-    // Navigate to dedicated song patch editor route
+    // The slot's format picks the editor (see INSTRUMENT_EDITOR_BY_FORMAT).
+    const route = resolveInstrumentEditorRoute(slot);
+    if (!route) return;
     void context.router.push({
-      name: 'patch-instrument-editor',
+      name: route,
       params: { slot: slotNumber.toString() }
     });
   }

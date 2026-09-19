@@ -63,6 +63,7 @@ import {
   type PendingScheduledEvent,
 } from './scheduled-events';
 import { SongBankRecorder } from './recorder';
+import { isSamplerInstrumentType } from './instrument-types';
 import { TrackVoiceRegistry } from './track-voice-registry';
 
 export interface SongBankSlot {
@@ -1909,7 +1910,9 @@ export class TrackerSongBank implements TrackerSink {
 
     // Check if this is a MOD instrument and user has simplified MOD instruments enabled
     const userSettings = useUserSettingsStore();
-    const isModInstrument = normalizedPatch.metadata.instrumentType === 'mod';
+    const isModInstrument = isSamplerInstrumentType(
+      normalizedPatch.metadata.instrumentType,
+    );
     // ModInstrument's per-voice pitch automation (e.g. 3xx tone portamento)
     // is scheduled directly on the native AudioParam (see
     // ModInstrument.setVoiceFrequencyAtTime), and MOD import/playback is

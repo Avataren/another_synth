@@ -494,7 +494,6 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     if (!ahxSongActive) return;
     ahxSongActive = false;
     ahxPlace = null;
-    ahxPlace = null;
     ahxScopeViews = null;
     // Not just stopped: with no AHX song left to play, the worklet node would
     // sit idle (and connected to the mix bus) for the life of the app.

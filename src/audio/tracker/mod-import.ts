@@ -70,6 +70,7 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
   const { slots, songPatches } = buildSlotsAndPatches(samples, {
     bankName: 'MOD Import',
     category: 'Imported/MOD',
+    format: 'protracker',
   });
 
   const songFile: TrackerSongFile = {

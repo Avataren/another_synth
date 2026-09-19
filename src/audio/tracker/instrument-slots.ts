@@ -13,6 +13,7 @@
 import type { InstrumentSlot } from 'src/stores/tracker-store';
 import { TOTAL_SLOTS } from 'src/stores/tracker-store';
 import type { Patch } from 'src/audio/types/preset-types';
+import type { InstrumentFormat } from 'src/audio/tracker/instrument-types';
 import { createSamplerPatch } from 'src/audio/tracker/sampler-patch-builder';
 import {
   formatInstrumentId,
@@ -20,6 +21,11 @@ import {
 } from '@another-synth/tracker-playback';
 
 export interface SlotBuildOptions {
+  /**
+   * The format the instruments came from, stamped as `instrumentFormat` on
+   * every slot: the lineage that picks the editor and, later, the exporter.
+   */
+  format: InstrumentFormat;
   /** Bank name for a slot with a playable patch, e.g. 'MOD Import'. */
   bankName: string;
   /** Patch metadata category, e.g. 'Imported/MOD'. */
@@ -66,7 +72,8 @@ export function buildSlotsAndPatches(
       slot.patchName = sample.name || fallbackName;
       slot.instrumentName = slot.patchName;
       slot.source = 'song';
-      slot.instrumentType = 'mod';
+      slot.instrumentType = 'opl';
+      slot.instrumentFormat = options.format;
       slot.oplData = sample.opl;
       continue;
     }
@@ -81,7 +88,8 @@ export function buildSlotsAndPatches(
     slot.patchName = patch.metadata.name;
     slot.instrumentName = patch.metadata.name;
     slot.source = 'song';
-    slot.instrumentType = 'mod';
+    slot.instrumentType = 'sampler';
+    slot.instrumentFormat = options.format;
     // Unity: a tracker sample's own volume reaches playback through the
     // volume column, so scaling the slot as well would double-apply it.
     slot.volume = 1.0;

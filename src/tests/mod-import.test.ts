@@ -121,6 +121,15 @@ describe('MOD import bridge', () => {
     expect(songFile.version).toBe(CURRENT_SONG_FILE_VERSION);
     const data = songFile.data;
 
+    // Every filled slot is a sampler instrument of ProTracker lineage.
+    const filled = data.instrumentSlots.filter((s) => s.patchId);
+    expect(filled.length).toBeGreaterThan(0);
+    for (const s of filled) {
+      expect(s.instrumentType).toBe('sampler');
+      expect(s.instrumentFormat).toBe('protracker');
+      expect(data.songPatches[s.patchId!]?.metadata.instrumentType).toBe('sampler');
+    }
+
     // MOD imports must be tagged so playback picks the ProTracker profile.
     expect(data.moduleFormat).toBe('protracker');
     expect(data.currentSong.title).toBe('TEST MOD');

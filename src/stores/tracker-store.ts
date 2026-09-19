@@ -4,6 +4,13 @@ import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 import type { Patch } from 'src/audio/types/preset-types';
 import { clearLoadedSongHash } from 'src/composables/song-identity';
 import {
+  inferSlotTags,
+  normalizeInstrumentType,
+  type InstrumentFormat,
+  type InstrumentType,
+  type LegacyInstrumentType,
+} from 'src/audio/tracker/instrument-types';
+import {
   DEFAULT_MODULE_FORMAT,
   TOTAL_SLOTS,
   CURRENT_SONG_FILE_VERSION,
@@ -53,8 +60,18 @@ export interface InstrumentSlot {
   source?: 'system' | 'user' | 'song' | undefined;
   /** Mixer volume for this instrument (0-2, default 1.0) */
   volume?: number;
-  /** Type of instrument: synth uses full WASM engine, mod uses lightweight Web Audio playback */
-  instrumentType?: 'synth' | 'mod' | undefined;
+  /**
+   * Rendering path: synth = full WASM engine, sampler = lightweight Web Audio
+   * sample playback, ahx = the AHX/HVL engine, opl = OPL FM (inactive: no
+   * playback path yet). Playback keys on this. Absent on an empty slot.
+   */
+  instrumentType?: InstrumentType | undefined;
+  /**
+   * Data lineage: which format's data model the payload follows, and so which
+   * editor opens it and which exporter can write it back. Never read on the
+   * audio path. Absent on an empty slot.
+   */
+  instrumentFormat?: InstrumentFormat | undefined;
   /**
    * Raw OPL2/FM instrument data parsed from an S3M AdLib instrument header,
    * preserved for the future OPL playback task (Morten, 2026-09-03):
@@ -69,6 +86,14 @@ export interface InstrumentSlot {
 }
 
 // `OplInstrumentData` is re-exported from the library; see the import above.
+
+/**
+ * A slot as it may sit in a saved song: pre-v4 files carry the legacy
+ * `'mod'` type and no `instrumentFormat`. `loadSongFile` rewrites it.
+ */
+export type SerializedInstrumentSlot = Omit<InstrumentSlot, 'instrumentType'> & {
+  instrumentType?: LegacyInstrumentType | undefined;
+};
 
 interface SongMeta {
   title: string;
@@ -231,8 +256,11 @@ function normalizeInstrumentSlots(slots: InstrumentSlot[] | undefined | null): I
  * songs hand-authored in this tracker. A MOD import is identifiable, though --
  * it is the only thing that stamps `instrumentType: 'mod'` onto slots (see
  * mod-import.ts) -- so key off that and treat everything else as native.
+ * (v1 predates the XM and S3M importers, so 'mod' can only mean MOD here.)
  */
-function inferLegacyModuleFormat(slots: InstrumentSlot[] | undefined | null): ModuleFormat {
+function inferLegacyModuleFormat(
+  slots: SerializedInstrumentSlot[] | undefined | null,
+): ModuleFormat {
   if (!Array.isArray(slots)) return DEFAULT_MODULE_FORMAT;
   const hasModInstrument = slots.some((slot) => slot?.instrumentType === 'mod');
   return hasModInstrument ? 'protracker' : DEFAULT_MODULE_FORMAT;
@@ -306,6 +334,10 @@ export interface TrackerSongFile {
     patterns: TrackerPattern[];
     sequence: string[];
     currentPatternId: string | null;
+    /**
+     * What the writer emits. A pre-v4 file's slots may still hold the legacy
+     * `'mod'` type at runtime; the loader reads them through `inferSlotTags`.
+     */
     instrumentSlots: InstrumentSlot[];
     activeInstrumentId: string | null;
     currentInstrumentPage: number;
@@ -672,6 +704,9 @@ export const useTrackerStore = defineStore('trackerStore', {
         slot.bankName = '';
         slot.instrumentName = '';
         slot.source = undefined;
+        slot.instrumentType = undefined;
+        slot.instrumentFormat = undefined;
+        delete slot.oplData;
       }
     },
     /** Add or update a patch in the song's patch library */
@@ -741,6 +776,11 @@ export const useTrackerStore = defineStore('trackerStore', {
           slot.instrumentName = patchCopy.metadata.name ?? 'Untitled';
         }
         slot.source = 'song';
+        // A patch dropped into a slot is the user's own, whatever the slot
+        // held before: lineage is native, the type follows the patch.
+        slot.instrumentType = normalizeInstrumentType(patchCopy.metadata.instrumentType) ?? 'synth';
+        slot.instrumentFormat = 'native';
+        delete slot.oplData;
       }
 
       // If the slot previously pointed at a different patch that no other
@@ -813,7 +853,14 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     loadSongFile(file: TrackerSongFile) {
       if (!file || !file.data) return;
-      if (file.version !== 1 && file.version !== 2 && file.version !== 3) return;
+      if (
+        file.version !== 1 &&
+        file.version !== 2 &&
+        file.version !== 3 &&
+        file.version !== CURRENT_SONG_FILE_VERSION
+      ) {
+        return;
+      }
       const data = file.data;
 
       this.currentSong = {
@@ -870,9 +917,19 @@ export const useTrackerStore = defineStore('trackerStore', {
           patchId: slot?.patchId,
           patchName: slot?.patchName ?? '',
           instrumentName: slot?.instrumentName ?? '',
-          source: slot?.source,
-          instrumentType: slot?.instrumentType
+          source: slot?.source
         };
+        // Pre-v4 slots carry no format and may hold the legacy 'mod' type;
+        // v4 slots pass through unchanged. See `inferSlotTags`.
+        const patchType = slot?.patchId
+          ? data.songPatches?.[slot.patchId]?.metadata?.instrumentType
+          : undefined;
+        const tags = inferSlotTags(slot ?? {}, this.moduleFormat, patchType);
+        if (tags.instrumentType) mapped.instrumentType = tags.instrumentType;
+        if (tags.instrumentFormat) mapped.instrumentFormat = tags.instrumentFormat;
+        if (slot?.oplData) {
+          mapped.oplData = slot.oplData;
+        }
         if (slot?.volume !== undefined) {
           mapped.volume = slot.volume;
         }
@@ -896,7 +953,13 @@ export const useTrackerStore = defineStore('trackerStore', {
       for (const patchId of usedPatchIds) {
         const patch = incomingSongPatches[patchId];
         if (patch) {
-          filteredSongPatches[patchId] = JSON.parse(JSON.stringify(patch));
+          const copy = JSON.parse(JSON.stringify(patch)) as Patch;
+          // The patch's own type follows the same alias rule as the slot's.
+          const patchType = normalizeInstrumentType(copy.metadata?.instrumentType);
+          if (patchType === 'sampler' && copy.metadata.instrumentType !== 'sampler') {
+            copy.metadata.instrumentType = 'sampler';
+          }
+          filteredSongPatches[patchId] = copy;
         }
       }
       this.songPatches = filteredSongPatches;

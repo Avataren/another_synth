@@ -95,7 +95,7 @@ export function createSamplerPatch(
   const bitcrusherNodeId = '10007';
   const patchName = sample.name || options.fallbackName;
   const metadata = createDefaultPatchMetadata(patchName, options.category);
-  metadata.instrumentType = 'mod';
+  metadata.instrumentType = 'sampler';
 
   const audioAsset = encodeFloat32ArrayToBase64(
     sample.data,

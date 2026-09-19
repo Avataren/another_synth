@@ -17,6 +17,22 @@ describe('XM import', () => {
     expect(linear.data.moduleFormat).toBe('xm');
   });
 
+  it('stamps sampler/xm on every instrument it creates', () => {
+    const song = importXmToTrackerSong(
+      buildXm({
+        numChannels: 1,
+        instruments: [{ samples: [{ frames: [0, 1, 2, 3] }] }],
+        patterns: [{ numRows: 1, cells: [[cell(49, { instrument: 1 })]] }],
+      }).buffer as ArrayBuffer,
+    );
+    const filled = song.data.instrumentSlots.filter((s) => s.patchId);
+    expect(filled.length).toBeGreaterThan(0);
+    for (const s of filled) {
+      expect(s.instrumentType).toBe('sampler');
+      expect(s.instrumentFormat).toBe('xm');
+    }
+  });
+
   it('creates one track per channel and keeps per-pattern row counts', () => {
     const song = importXmToTrackerSong(
       buildXm({

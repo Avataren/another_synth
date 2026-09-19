@@ -53,6 +53,7 @@ export function importXmToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
   const { slots, songPatches } = buildSlotsAndPatches(samples, {
     bankName: 'XM Import',
     category: 'Imported/XM',
+    format: 'xm',
   });
 
   const patterns = buildXmTrackerPatterns(xm, pitch, slotForInstrument);

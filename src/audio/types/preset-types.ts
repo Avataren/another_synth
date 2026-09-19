@@ -74,8 +74,12 @@ export interface PatchMetadata {
   modified: number;
   /** Schema version for compatibility */
   version: number;
-  /** Type of instrument: synth uses full WASM engine, mod uses lightweight Web Audio playback */
-  instrumentType?: 'synth' | 'mod' | undefined;
+  /**
+   * Type of instrument: synth uses the full WASM engine, sampler uses
+   * lightweight Web Audio playback. `'mod'` is the legacy name for
+   * `'sampler'`, still accepted on read (see `isSamplerInstrumentType`).
+   */
+  instrumentType?: 'synth' | 'sampler' | 'mod' | undefined;
   /**
    * Monotonically incremented each time a real content edit is saved
    * (see patchStore.isDirty / IndexPage.vue saveSongPatch). Unlike

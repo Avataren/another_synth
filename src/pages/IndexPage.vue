@@ -326,6 +326,7 @@ import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { useMacroStore } from 'src/stores/macro-store';
 import { resolvePatchVoiceCount } from 'src/audio/utils/voice-count';
 import ModInstrument from 'src/audio/mod-instrument';
+import { isSamplerInstrumentType } from 'src/audio/tracker/instrument-types';
 import PresetManager from 'src/components/PresetManager.vue';
 import type {
   ModulationTransformation,
@@ -440,7 +441,7 @@ const isEditingSimplifiedModInstrument = computed(() => {
     (s) => s.slot === editingSlot.value,
   );
   const patch = slot?.patchId ? songPatches.value[slot.patchId] : undefined;
-  return patch?.metadata.instrumentType === 'mod';
+  return isSamplerInstrumentType(patch?.metadata.instrumentType);
 });
 const isInstrumentEditorRoute = computed(
   () => route.name === 'patch-instrument-editor',

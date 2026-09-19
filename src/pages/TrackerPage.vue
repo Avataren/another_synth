@@ -540,15 +540,19 @@
                 :class="{
                   active: activeInstrumentId === formatInstrumentId(slot.slot),
                   empty: !slot.patchId,
-                  'mod-instrument': slot.instrumentType === 'mod',
+                  'mod-instrument': !!instrumentBadgeLabel(slot),
                 }"
                 :title="slot.patchId ? `Bank: ${slot.bankName}` : ''"
                 @click="setActiveInstrument(slot.slot)"
               >
                 <div class="slot-number">
                   #{{ formatInstrumentId(slot.slot) }}
-                  <span v-if="slot.instrumentType === 'mod'" class="mod-badge"
-                    >MOD</span
+                  <span
+                    v-if="instrumentBadgeLabel(slot)"
+                    class="mod-badge"
+                    :data-instrument-type="slot.instrumentType"
+                    :data-instrument-format="slot.instrumentFormat"
+                    >{{ instrumentBadgeLabel(slot) }}</span
                   >
                 </div>
                 <div
@@ -949,6 +953,7 @@ import { usePostFxStore } from 'src/stores/post-fx-store';
 import PostFxFilterControl from 'src/components/PostFxFilterControl.vue';
 import { useMobileLayout } from 'src/composables/useMobileLayout';
 import { storeToRefs } from 'pinia';
+import { instrumentBadgeLabel } from 'src/audio/tracker/instrument-types';
 
 const router = useRouter();
 const $q = useQuasar();

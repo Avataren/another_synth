@@ -4,17 +4,22 @@ import {
   useTrackerStore,
   CURRENT_SONG_FILE_VERSION,
   type TrackerSongFile,
+  type SerializedInstrumentSlot,
   type InstrumentSlot,
 } from 'src/stores/tracker-store';
 
-function makeSlots(overrides: Partial<InstrumentSlot>[] = []): InstrumentSlot[] {
-  return overrides.map((o, idx) => ({
-    slot: idx + 1,
-    bankName: '',
-    patchName: '',
-    instrumentName: '',
-    ...o,
-  }));
+function makeSlots(overrides: Partial<SerializedInstrumentSlot>[] = []): InstrumentSlot[] {
+  // Old files hold the legacy 'mod' type; the cast is the loader's input contract.
+  return overrides.map(
+    (o, idx) =>
+      ({
+        slot: idx + 1,
+        bankName: '',
+        patchName: '',
+        instrumentName: '',
+        ...o,
+      }) as InstrumentSlot,
+  );
 }
 
 function makeSongFile(

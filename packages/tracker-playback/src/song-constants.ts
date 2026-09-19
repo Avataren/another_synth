@@ -37,12 +37,15 @@ export const TOTAL_SLOTS = 130;
  * v2: adds `data.moduleFormat`.
  * v3: row count moves onto each pattern (`patterns[].rows`); the song-level
  *     `patternRows` is retained only as the seed for newly created patterns.
+ * v4: every filled instrument slot carries `instrumentType` (rendering path)
+ *     and `instrumentFormat` (data lineage); the legacy `'mod'` type is
+ *     rewritten to `'sampler'` on load. See the app's `instrument-types.ts`.
  *
  * The reader accepts every version in this range; the writer always emits
  * `CURRENT_SONG_FILE_VERSION`.
  */
-export type TrackerSongFileVersion = 1 | 2 | 3;
-export const CURRENT_SONG_FILE_VERSION = 3;
+export type TrackerSongFileVersion = 1 | 2 | 3 | 4;
+export const CURRENT_SONG_FILE_VERSION = 4;
 
 /** Tracker default ticks per row. */
 export const DEFAULT_SPEED = 6;
