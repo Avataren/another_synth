@@ -153,9 +153,10 @@ export class AhxPlayerClient {
   }
 
   /**
-   * Band-limited ("hi-fi") oscillators; see the `set-hifi` command. Off by
-   * default, and it outlives the song, so it applies to every load until
-   * changed.
+   * Band-limited ("hi-fi") oscillators; see the `set-hifi` command. The engine
+   * default is off (what the goldens exercise); the app always enables it,
+   * via `AhxTransport`, as soon as it creates a client. It outlives the song,
+   * so it applies to every load until changed.
    */
   setHifi(enabled: boolean): void {
     this.send({ type: 'set-hifi', enabled });

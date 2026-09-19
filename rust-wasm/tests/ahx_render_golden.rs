@@ -20,9 +20,9 @@
 //! What is being held to the reference: the engine with hi-fi **off**, which is
 //! the engine's own default and the only path the C reference has. The harness
 //! drives the engine directly (`enable_capture`, `set_mute_solo`, `set_hifi`,
-//! `prewarm_hifi`); it never goes through `AhxPlayer::set_hifi` or the app's
-//! `ahxHifi` setting, so making hi-fi the app's default (it is on for a user
-//! who never touched Settings) cannot move a golden, and there is no golden
+//! `prewarm_hifi`); it never goes through `AhxPlayer::set_hifi`. The app always
+//! renders hi-fi; the reference path here is for the golden contract only, so
+//! the app's choice cannot move a golden, and there is no golden
 //! for hi-fi *on* (a band-limited render is not what the reference plays; it is
 //! measured in `tests/ahx_hifi.rs`). Every `Mode` below prepares the engine
 //! differently and must land on the same golden: capture on, mute/solo set then

@@ -65,10 +65,10 @@
 //!
 //! Hi-fi is off in the engine by default and, off, is not merely equivalent
 //! but *the same code path*: the mixer's `HIFI` const-generic is `false`, and
-//! nothing here runs. The render goldens hold byte for byte. (The *app* turns
-//! it on by default -- the `ahxHifi` setting -- through `AhxPlayer::set_hifi`;
-//! the engine's own default, and the golden harness that drives it directly,
-//! are unaffected.)
+//! nothing here runs. The render goldens hold byte for byte. (The *app* always
+//! turns it on, unconditionally, through `AhxPlayer::set_hifi` (the worklet's
+//! `set-hifi`, sent as soon as its client exists); the engine's own default,
+//! and the golden harness that drives it directly, are unaffected.)
 //!
 //! ## Prewarm: no table is ever built on the audio thread
 //!
