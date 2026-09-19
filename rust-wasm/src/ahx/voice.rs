@@ -10,6 +10,7 @@
 use super::envelope::AdsrState;
 use super::filter_sweep::{bound_bounce_step, FilterSweep};
 use super::format::Instrument;
+use super::hifi::{HifiBank, HifiOsc};
 use super::plist;
 use super::wrap_i16;
 use super::waveform::{FILTER_ROW_SIZE, WAVELENGTH_OFFSETS, WO_SAWTOOTH_04, WO_SQUARES, WO_TRIANGLE_04, WO_WHITENOISE};
@@ -261,6 +262,9 @@ pub struct Voice {
     pub wn_random: i32,
 
     pub voice_buffer: Vec<i8>,
+    /// The band-limited oscillator hi-fi mode picked for this tick (see
+    /// `hifi.rs`). Always `None` with hi-fi off, and for noise voices.
+    pub hifi: Option<HifiOsc>,
     pub square_temp_buffer: [i8; 0x80],
 
     pub track_on: bool,
@@ -345,6 +349,7 @@ impl Voice {
             note_cut_wait: 0,
             wn_random: 0x280,
             voice_buffer: vec![0i8; 0x281],
+            hifi: None,
             square_temp_buffer: [0i8; 0x80],
             track_on: true,
             track_master_volume: 0x40,
@@ -670,6 +675,23 @@ impl Voice {
             AudioSourceRef::Waves(offset) => &waves[offset..offset + block],
             AudioSourceRef::SquareTemp => &self.square_temp_buffer[0..block],
         }
+    }
+
+    /// Hi-fi mode's per-tick pick, run after [`set_audio`](Self::set_audio):
+    /// the band-limited oscillator for the cycle the voice is about to play
+    /// (`voice_buffer[..4 << wave_length]`, which is whatever table the
+    /// waveform, filter row and square duty resolved to) at its current pitch.
+    /// Noise voices and silent tables get `None` and play the reference path.
+    pub fn select_hifi(&mut self, bank: &mut HifiBank) {
+        self.hifi = None;
+        if !self.track_on || self.waveform == WAVEFORM_NOISE {
+            return;
+        }
+        let n = 4usize << self.wave_length.clamp(0, 5);
+        // `delta` is bytes of the 0x280 buffer per output sample, 16.16; a
+        // cycle is `n` bytes.
+        let f0 = self.delta as f64 / 65536.0 / n as f64;
+        self.hifi = bank.oscillator(&self.voice_buffer[..n], f0);
     }
 
     /// `hvl_set_audio`, `hvl_replay.c:1555-1633`. `freq_hz` is the output

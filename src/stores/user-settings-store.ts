@@ -31,6 +31,14 @@ export interface UserSettings {
    */
   ahxScopeGain: number;
   /**
+   * Band-limited AHX/HVL oscillators. The reference player aliases: on a high
+   * note the partials past Nyquist fold back as inharmonic tones (robocop iii
+   * is the classic case). Hi-fi keeps the reference sound and drops exactly
+   * those partials. Off by default: off is the reference render, byte for
+   * byte, so what the composer heard is what plays.
+   */
+  ahxHifi: boolean;
+  /**
    * 0.0 to 1.0. Defaults to half scale for headroom, not to taste: nothing in
    * the tracker path limits, so a multi-channel module sums straight past full
    * scale -- see the level meters beside the instrument list.
@@ -196,6 +204,7 @@ export const defaultSettings: UserSettings = {
   showSpectrumAnalyzer: true,
   showWaveformVisualizers: true,
   ahxScopeGain: 1,
+  ahxHifi: false,
   masterVolume: 0.5,
   enableMidi: false,
   showTrackerExtraEffectColumn: false,

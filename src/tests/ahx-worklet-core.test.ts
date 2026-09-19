@@ -540,3 +540,54 @@ describe('AhxProcessorCore load ids and dispose', () => {
     expect(render(core, 1024).l.every((s) => s === 0)).toBe(true);
   });
 });
+
+describe('hi-fi AHX rendering over the real wasm', () => {
+  const started = (song: string, setup?: (core: AhxProcessorCore) => void) => {
+    const { core } = newCore();
+    setup?.(core);
+    core.handle({ type: 'load-song', id: nextId++, bytes: fixture(song) });
+    core.handle({ type: 'play' });
+    return core;
+  };
+  const second = SAMPLE_RATE * 2;
+
+  it('off is the reference: never set, set to false, or set and cleared render the same bytes', () => {
+    const plain = render(started('robocop_iii_j_tel.ahx'), second);
+    const off = render(
+      started('robocop_iii_j_tel.ahx', (c) => c.handle({ type: 'set-hifi', enabled: false })),
+      second,
+    );
+    const cleared = render(
+      started('robocop_iii_j_tel.ahx', (c) => {
+        c.handle({ type: 'set-hifi', enabled: true });
+        c.handle({ type: 'set-hifi', enabled: false });
+      }),
+      second,
+    );
+    expect(off.l).toEqual(plain.l);
+    expect(cleared.l).toEqual(plain.l);
+    expect(cleared.r).toEqual(plain.r);
+  });
+
+  it('on changes the sound, stays in range and in time, and is remembered across a load', () => {
+    const plain = render(started('robocop_iii_j_tel.ahx'), second);
+    const core = started('robocop_iii_j_tel.ahx', (c) => c.handle({ type: 'set-hifi', enabled: true }));
+    const hifi = render(core, second);
+    expect(hifi.l).not.toEqual(plain.l);
+    expect(hifi.l.some((x) => x !== 0)).toBe(true);
+    expect(hifi.l.every((x) => Math.abs(x) <= 1)).toBe(true);
+    const rms = (x: Float32Array) => Math.sqrt(x.reduce((a, v) => a + v * v, 0) / x.length);
+    expect(Math.abs(20 * Math.log10(rms(hifi.l) / rms(plain.l)))).toBeLessThan(2);
+
+    // A second load starts with the last state set: same output as before.
+    core.handle({ type: 'load-song', id: nextId++, bytes: fixture('robocop_iii_j_tel.ahx') });
+    core.handle({ type: 'play' });
+    expect(render(core, second).l).toEqual(hifi.l);
+
+    // ... and switching it off puts the reference back.
+    core.handle({ type: 'set-hifi', enabled: false });
+    core.handle({ type: 'load-song', id: nextId++, bytes: fixture('robocop_iii_j_tel.ahx') });
+    core.handle({ type: 'play' });
+    expect(render(core, second).l).toEqual(plain.l);
+  });
+});

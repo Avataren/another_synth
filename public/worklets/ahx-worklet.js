@@ -465,6 +465,13 @@ var AhxPlayer = class {
     return ret >>> 0;
   }
   /**
+   * @returns {boolean}
+   */
+  hifi_enabled() {
+    const ret = wasm.ahxplayer_hifi_enabled(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
    * @returns {number}
    */
   track_length() {
@@ -634,6 +641,16 @@ var AhxPlayer = class {
    */
   set_gain(gain) {
     wasm.ahxplayer_set_gain(this.__wbg_ptr, gain);
+  }
+  /**
+   * Band-limited ("hi-fi") oscillators instead of the reference's aliasing
+   * ones; see [`AhxEngine::set_hifi`]. Off by default, and off is the
+   * reference render byte for byte. The setting belongs to this player and
+   * is kept across `rewind`.
+   * @param {boolean} on
+   */
+  set_hifi(on) {
+    wasm.ahxplayer_set_hifi(this.__wbg_ptr, on);
   }
   /**
    * @returns {string}
@@ -2927,6 +2944,7 @@ var AhxProcessorCore = class {
     __publicField(this, "capture", false);
     __publicField(this, "mute", 0);
     __publicField(this, "solo", 0);
+    __publicField(this, "hifi", false);
     /** One `waveforms` payload, refilled in place each report (posting clones it). */
     __publicField(this, "scopeData", new Int16Array(0));
     __publicField(this, "framesSincePosition", 0);
@@ -2979,6 +2997,10 @@ var AhxProcessorCore = class {
         this.solo = command.solo >>> 0;
         this.player?.set_mute_solo(this.mute, this.solo);
         break;
+      case "set-hifi":
+        this.hifi = command.enabled;
+        this.player?.set_hifi(command.enabled);
+        break;
       case "dispose":
         this.disposedFlag = true;
         this.dropPlayer();
@@ -3029,6 +3051,7 @@ var AhxProcessorCore = class {
       player.set_gain(this.gain);
       player.enable_capture(this.capture);
       player.set_mute_solo(this.mute, this.solo);
+      player.set_hifi(this.hifi);
       this.player = player;
       this.resetReporting();
       this.post({

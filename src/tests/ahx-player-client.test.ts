@@ -189,6 +189,28 @@ describe('createAhxPlayer / AhxPlayerClient', () => {
     player.dispose();
   });
 
+  it('setHifi reaches the worklet: the song still plays, and a different signal comes out', async () => {
+    stubGlobals();
+    const collect = async (hifi: boolean) => {
+      const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+      await player.loadSong(karma);
+      const node = FakeWorkletNode.last as FakeWorkletNode;
+      if (hifi) player.setHifi(true);
+      player.play();
+      await Promise.resolve();
+      await Promise.resolve();
+      const out: number[] = [];
+      for (let i = 0; i < 300; i++) out.push(...node.pull().l);
+      player.dispose();
+      return out;
+    };
+    const reference = await collect(false);
+    const hifi = await collect(true);
+    expect(reference.some((s) => s !== 0)).toBe(true);
+    expect(hifi.some((s) => s !== 0)).toBe(true);
+    expect(hifi).not.toEqual(reference);
+  });
+
   it('setMuteSolo reaches the worklet: mute-all is silent, clearing it brings the song back', async () => {
     stubGlobals();
     const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia, storeToRefs } from 'pinia';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
 
 /**
  * The playback store's routing between `PlaybackEngine` (MOD/XM/S3M/native)
@@ -26,6 +27,7 @@ const h = vi.hoisted(() => ({
     stopAtEnd: boolean[];
     capture: boolean[];
     muteSolo: Array<[number, number]>;
+    hifi: boolean[];
     disposed: boolean;
     emitWaveforms: (w: { channels: number; points: number; data: Int16Array }) => void;
     emitPosition: (p: { position: number; row: number; tempo: number; ticks: number }) => void;
@@ -55,6 +57,7 @@ vi.mock('src/audio/tracker/ahx-player', () => ({
       stopAtEnd: [] as boolean[],
       capture: [] as boolean[],
       muteSolo: [] as Array<[number, number]>,
+      hifi: [] as boolean[],
       disposed: false,
       async loadSong(bytes: Uint8Array) {
         client.calls.push('load');
@@ -75,6 +78,7 @@ vi.mock('src/audio/tracker/ahx-player', () => ({
       setStopAtEnd: (enabled: boolean) => client.stopAtEnd.push(enabled),
       setCapture: (enabled: boolean) => client.capture.push(enabled),
       setMuteSolo: (mute: number, solo: number) => client.muteSolo.push([mute, solo]),
+      setHifi: (enabled: boolean) => client.hifi.push(enabled),
       dispose: () => {
         client.disposed = true;
         client.calls.push('dispose');
@@ -524,6 +528,39 @@ describe('AHX per-voice scopes', () => {
     expect(store.getAhxChannelWaveform(0)).not.toBeNull();
     await store.loadSong(modSong(), 'song');
     expect(store.getAhxChannelWaveform(0)).toBeNull();
+  });
+});
+
+describe('AHX hi-fi rendering setting', () => {
+  it('is off by default: the worklet is never told anything', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
+    expect(lastClient().hifi).toEqual([]);
+  });
+
+  it('follows the setting live, and a client made later starts with it', async () => {
+    const host = setupHost();
+    const settings = useUserSettingsStore();
+    settings.updateSetting('ahxHifi', true);
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 0);
+    expect(lastClient().hifi.at(-1)).toBe(true);
+
+    settings.updateSetting('ahxHifi', false);
+    await Promise.resolve();
+    expect(lastClient().hifi.at(-1)).toBe(false);
+    settings.updateSetting('ahxHifi', true);
+    await Promise.resolve();
+    expect(lastClient().hifi.at(-1)).toBe(true);
+
+    // Handed back to the sampler and re-opened: the new client gets it again.
+    store.stop();
+    await store.loadSong(modSong(), 'song');
+    await openAhx(host);
+    await store.play(host.buildSong(), 'song', 0, 0);
+    expect(lastClient().hifi.at(-1)).toBe(true);
   });
 });
 

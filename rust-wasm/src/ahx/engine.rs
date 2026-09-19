@@ -22,6 +22,7 @@
 //! verification hook, not a product mode.
 
 use super::format::{Song, SongFormat, Step, MAX_CHANNELS};
+use super::hifi::{HifiBank, FRAC_BITS};
 use super::voice::{panning_left, panning_right, Voice};
 use super::waveform::WAVES;
 use super::wrap_i16;
@@ -117,6 +118,9 @@ pub struct AhxEngine {
     mute_mask: u32,
     /// Any bit set: only the voices with their bit set are heard.
     solo_mask: u32,
+    /// `Some` while hi-fi rendering is on (see `hifi.rs`); the bank is the
+    /// lazy mip cache. `None` (the default) is the reference mixer, untouched.
+    hifi: Option<HifiBank>,
 }
 
 impl AhxEngine {
@@ -177,6 +181,7 @@ impl AhxEngine {
             capture: None,
             mute_mask: 0,
             solo_mask: 0,
+            hifi: None,
             song,
         };
         engine.init_subsong(0);
@@ -232,6 +237,30 @@ impl AhxEngine {
 
     pub fn capture_enabled(&self) -> bool {
         self.capture.is_some()
+    }
+
+    /// Turns band-limited ("hi-fi") oscillators on or off. Off by default.
+    /// Off is the reference render, byte for byte -- the mixer instance that
+    /// runs then has no hi-fi code in it -- so this is the one switch between
+    /// "what the reference plays" and "the reference minus its aliasing"; see
+    /// `hifi.rs` for exactly what changes. Song state and timing never depend
+    /// on it, so it can be flipped mid-song (the next tick picks it up), and
+    /// it survives a rewind.
+    pub fn set_hifi(&mut self, on: bool) {
+        match (on, self.hifi.is_some()) {
+            (true, false) => self.hifi = Some(HifiBank::new()),
+            (false, true) => {
+                self.hifi = None;
+                for v in self.voices.iter_mut() {
+                    v.hifi = None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn hifi_enabled(&self) -> bool {
+        self.hifi.is_some()
     }
 
     /// Live mute/solo. Bit `i` of `mute` mutes voice `i`; when `solo` has any
@@ -358,10 +387,11 @@ impl AhxEngine {
             }
             let n = self.tick_remaining.min(frames - done);
             let chunk = &mut out[done * 2..(done + n) * 2];
-            if self.capture.is_some() {
-                self.mix_chunk::<true>(n, chunk);
-            } else {
-                self.mix_chunk::<false>(n, chunk);
+            match (self.capture.is_some(), self.hifi.is_some()) {
+                (false, false) => self.mix_chunk::<false, false>(n, chunk),
+                (true, false) => self.mix_chunk::<true, false>(n, chunk),
+                (false, true) => self.mix_chunk::<false, true>(n, chunk),
+                (true, true) => self.mix_chunk::<true, true>(n, chunk),
             }
             self.tick_remaining -= n;
             done += n;
@@ -438,6 +468,11 @@ impl AhxEngine {
 
         for i in 0..self.channels {
             self.voices[i].set_audio(self.waves, self.freq_f);
+        }
+        if let Some(bank) = self.hifi.as_mut() {
+            for v in self.voices.iter_mut().take(self.channels) {
+                v.select_hifi(bank);
+            }
         }
     }
 
@@ -547,7 +582,14 @@ impl AhxEngine {
     /// with no capture code in it at all. The `true` instance is the same
     /// arithmetic plus one store per voice per frame of a value the mix has
     /// already computed.
-    fn mix_chunk<const CAPTURE: bool>(&mut self, mut samples: usize, out: &mut [i16]) {
+    ///
+    /// `HIFI` is the same kind of switch: the `false` instance is the
+    /// reference arithmetic exactly. The `true` instance reads each voice's
+    /// band-limited table (`i8` scale times `1 << FRAC_BITS`) where it has
+    /// one, and the reference byte (shifted up to the same scale) where it
+    /// does not, carries that scale through the sums, and drops it after the
+    /// mix gain in 64-bit so the wider intermediate cannot wrap.
+    fn mix_chunk<const CAPTURE: bool, const HIFI: bool>(&mut self, mut samples: usize, out: &mut [i16]) {
         const END: u32 = 0x280 << 16;
         let chans = self.channels;
         let mut delta = [0u32; MAX_CHANNELS];
@@ -603,7 +645,14 @@ impl AhxEngine {
                 let mut b: i32 = 0;
                 for i in 0..chans {
                     let v = &self.voices[i];
-                    let s = v.voice_buffer[(pos[i] >> 16) as usize] as i32;
+                    let s = if HIFI {
+                        match &v.hifi {
+                            Some(h) => h.sample(pos[i]),
+                            None => (v.voice_buffer[(pos[i] >> 16) as usize] as i32) << FRAC_BITS,
+                        }
+                    } else {
+                        v.voice_buffer[(pos[i] >> 16) as usize] as i32
+                    };
                     let j = if ring[i] {
                         let r = v.ring_voice_buffer[(rpos[i] >> 16) as usize] as i32;
                         rpos[i] = rpos[i].wrapping_add(rdelta[i]);
@@ -613,7 +662,8 @@ impl AhxEngine {
                     };
                     if CAPTURE {
                         if let Some(c) = self.capture.as_mut() {
-                            c.ring[i * CAPTURE_FRAMES + ((written as usize) & CAPTURE_MASK)] = j as i16;
+                            let scope = if HIFI { j >> FRAC_BITS } else { j };
+                            c.ring[i * CAPTURE_FRAMES + ((written as usize) & CAPTURE_MASK)] = scope as i16;
                         }
                     }
                     a = a.wrapping_add((j * panl[i]) >> 7);
@@ -621,8 +671,13 @@ impl AhxEngine {
                     pos[i] = pos[i].wrapping_add(delta[i]);
                 }
 
-                a = a.wrapping_mul(self.mixgain) >> 8;
-                b = b.wrapping_mul(self.mixgain) >> 8;
+                if HIFI {
+                    a = ((a as i64 * self.mixgain as i64) >> (8 + FRAC_BITS)) as i32;
+                    b = ((b as i64 * self.mixgain as i64) >> (8 + FRAC_BITS)) as i32;
+                } else {
+                    a = a.wrapping_mul(self.mixgain) >> 8;
+                    b = b.wrapping_mul(self.mixgain) >> 8;
+                }
                 out[o] = a.clamp(-0x8000, 0x7fff) as i16;
                 out[o + 1] = b.clamp(-0x8000, 0x7fff) as i16;
                 o += 2;

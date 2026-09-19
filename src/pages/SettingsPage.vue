@@ -270,6 +270,28 @@
                   <label class="toggle-setting">
                     <input
                       type="checkbox"
+                      :checked="settings.ahxHifi"
+                      @change="
+                        updateSetting(
+                          'ahxHifi',
+                          ($event.target as HTMLInputElement).checked,
+                        )
+                      "
+                    />
+                    <div class="toggle-info">
+                      <span class="toggle-label">Hi-fi AHX rendering</span>
+                      <span class="toggle-description"
+                        >Band-limit AHX/HVL oscillators so high notes stop
+                        folding back as inharmonic tones. Off plays exactly
+                        what the original replayer does; noise channels
+                        always do. Applies as the song plays.</span
+                      >
+                    </div>
+                  </label>
+
+                  <label class="toggle-setting">
+                    <input
+                      type="checkbox"
                       :checked="settings.analyzerComplementColors"
                       @change="
                         updateSetting(

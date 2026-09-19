@@ -31,6 +31,8 @@ export interface AhxWasmPlayer {
   enable_capture(on: boolean): void;
   /** Bit masks, bit `i` = voice `i`: muted voices, and (when non-zero) the only voices heard. */
   set_mute_solo(mute: number, solo: number): void;
+  /** Band-limited oscillators instead of the reference's aliasing ones; off is the reference render byte for byte. */
+  set_hifi(on: boolean): void;
   /** Fills `out` with the voice's latest waveform; returns the points written (0: capture off). */
   read_channel_snapshot(voice: number, out: Int16Array): number;
   free(): void;
@@ -87,6 +89,13 @@ export type AhxCommand =
    * waveform is flat).
    */
   | { type: 'set-mute-solo'; mute: number; solo: number }
+  /**
+   * Band-limited ("hi-fi") oscillators: the reference's sound minus the
+   * partials that fold back past Nyquist. Off (the default) is the reference
+   * render byte for byte. Like capture it outlives the song: every load
+   * starts with the last state set.
+   */
+  | { type: 'set-hifi'; enabled: boolean }
   | { type: 'dispose' };
 
 /** Worklet -> main thread. */
@@ -143,6 +152,7 @@ export class AhxProcessorCore {
   private capture = false;
   private mute = 0;
   private solo = 0;
+  private hifi = false;
   /** One `waveforms` payload, refilled in place each report (posting clones it). */
   private scopeData = new Int16Array(0);
   private framesSincePosition = 0;
@@ -203,6 +213,10 @@ export class AhxProcessorCore {
         this.solo = command.solo >>> 0;
         this.player?.set_mute_solo(this.mute, this.solo);
         break;
+      case 'set-hifi':
+        this.hifi = command.enabled;
+        this.player?.set_hifi(command.enabled);
+        break;
       case 'dispose':
         this.disposedFlag = true;
         this.dropPlayer();
@@ -262,6 +276,7 @@ export class AhxProcessorCore {
       player.set_gain(this.gain);
       player.enable_capture(this.capture);
       player.set_mute_solo(this.mute, this.solo);
+      player.set_hifi(this.hifi);
       this.player = player;
       this.resetReporting();
       this.post({

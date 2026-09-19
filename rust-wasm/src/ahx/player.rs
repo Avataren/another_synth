@@ -120,6 +120,18 @@ impl AhxPlayer {
         self.engine.capture_enabled()
     }
 
+    /// Band-limited ("hi-fi") oscillators instead of the reference's aliasing
+    /// ones; see [`AhxEngine::set_hifi`]. Off by default, and off is the
+    /// reference render byte for byte. The setting belongs to this player and
+    /// is kept across `rewind`.
+    pub fn set_hifi(&mut self, on: bool) {
+        self.engine.set_hifi(on);
+    }
+
+    pub fn hifi_enabled(&self) -> bool {
+        self.engine.hifi_enabled()
+    }
+
     /// Live per-voice mute and solo as bit masks (bit `i` = voice `i`); see
     /// [`AhxEngine::set_mute_solo`]. The state belongs to this player and is
     /// kept across `rewind`; all zero (the default) leaves the mix untouched.

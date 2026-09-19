@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { PlaybackEngine } from '@another-synth/tracker-playback';
 import type {
   Song as PlaybackSong,
@@ -12,6 +12,7 @@ import { defaultLookaheadSeconds } from 'src/audio/device-profile';
 import { AhxTransport } from 'src/audio/tracker/ahx-transport';
 import type { AhxPosition, AhxWaveforms } from 'src/audio/tracker/ahx-player';
 import { currentAhxSource } from 'src/audio/tracker/ahx-source';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
 
 export type PlaybackMode = 'pattern' | 'song';
 
@@ -129,6 +130,18 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * not go on to mark the song loaded (or start it).
    */
   let ahxEpoch = 0;
+
+  /**
+   * The Settings page's "Hi-fi AHX rendering" toggle, followed live: the
+   * worklet applies it from the next tick, so flipping it mid-song changes
+   * the sound without restarting anything. A transport made later reads it
+   * in `ensureAhxTransport`.
+   */
+  const userSettings = useUserSettingsStore();
+  watch(
+    () => userSettings.settings.ahxHifi,
+    (enabled) => ahxTransportInstance?.setHifi(enabled),
+  );
 
   // ============================================
   // Selection helpers
@@ -388,6 +401,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       ahxTransportInstance.setStopAtEnd(!loopSong.value);
       if (ahxScopesWanted) ahxTransportInstance.setCapture(true);
       syncAhxMuteSolo();
+      ahxTransportInstance.setHifi(userSettings.settings.ahxHifi);
       ahxUnsubscribes = [
         ahxTransportInstance.onPosition(handleAhxPosition),
         ahxTransportInstance.onSongEnd(handleAhxSongEnd),

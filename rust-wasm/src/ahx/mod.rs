@@ -9,6 +9,7 @@ pub mod engine;
 pub mod envelope;
 pub mod filter_sweep;
 pub mod format;
+pub mod hifi;
 pub mod player;
 pub mod plist;
 pub mod voice;

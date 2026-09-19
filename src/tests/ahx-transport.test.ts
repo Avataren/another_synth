@@ -31,6 +31,7 @@ function fakeClient(audioContext: AudioContext) {
     setStopAtEnd: vi.fn(),
     setCapture: vi.fn(),
     setMuteSolo: vi.fn(),
+    setHifi: vi.fn(),
     dispose: vi.fn(),
     onPosition: (l: (p: AhxPosition) => void) => {
       positionListeners.add(l);
@@ -161,6 +162,19 @@ describe('AhxTransport', () => {
     expect(fake.raw.setMuteSolo).toHaveBeenLastCalledWith(0b0101, 0);
     transport.setMuteSolo(0, 0b0010);
     expect(fake.raw.setMuteSolo).toHaveBeenLastCalledWith(0, 0b0010);
+  });
+
+  it('applies hi-fi to a client made after it was set, and to a live one; untouched by default', async () => {
+    const off = setup();
+    await off.transport.load(new Uint8Array([1]));
+    expect(off.fake.raw.setHifi).not.toHaveBeenCalled();
+
+    const { fake, transport } = setup();
+    transport.setHifi(true);
+    await transport.load(new Uint8Array([1]));
+    expect(fake.raw.setHifi).toHaveBeenLastCalledWith(true);
+    transport.setHifi(false);
+    expect(fake.raw.setHifi).toHaveBeenLastCalledWith(false);
   });
 
   it('relays waveform snapshots to its listeners, and unsubscribes', async () => {

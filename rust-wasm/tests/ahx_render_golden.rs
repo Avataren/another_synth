@@ -166,6 +166,9 @@ enum Mode {
     /// Mute/solo set to something audible-changing and then cleared again:
     /// the cleared state must be indistinguishable from never having been set.
     MuteSoloCleared,
+    /// Hi-fi oscillators switched on and back off before the first sample:
+    /// off must be the reference, whatever happened to the switch before.
+    HifiCleared,
 }
 
 fn check(c: &Case, mode: Mode) {
@@ -188,6 +191,7 @@ fn check(c: &Case, mode: Mode) {
         Mode::Plain => "capture off",
         Mode::Capture => "capture on",
         Mode::MuteSoloCleared => "mute/solo set then cleared",
+        Mode::HifiCleared => "hi-fi set then cleared",
     };
     match mode {
         Mode::Plain => {}
@@ -195,6 +199,10 @@ fn check(c: &Case, mode: Mode) {
         Mode::MuteSoloCleared => {
             engine.set_mute_solo(0xffff, 0b101);
             engine.set_mute_solo(0, 0);
+        }
+        Mode::HifiCleared => {
+            engine.set_hifi(true);
+            engine.set_hifi(false);
         }
     }
     let name = format!("{name} ({label})");
@@ -235,6 +243,7 @@ fn check_fixture(fixture: &str) {
         check(&c, Mode::Plain);
         check(&c, Mode::Capture);
         check(&c, Mode::MuteSoloCleared);
+        check(&c, Mode::HifiCleared);
     }
 }
 

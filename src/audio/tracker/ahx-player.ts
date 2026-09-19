@@ -142,6 +142,15 @@ export class AhxPlayerClient {
   }
 
   /**
+   * Band-limited ("hi-fi") oscillators; see the `set-hifi` command. Off by
+   * default, and it outlives the song, so it applies to every load until
+   * changed.
+   */
+  setHifi(enabled: boolean): void {
+    this.send({ type: 'set-hifi', enabled });
+  }
+
+  /**
    * Per-voice mute and solo as bit masks (bit `i` = voice `i`); see the
    * `set-mute-solo` command. It outlives the song, so it applies to every
    * load until changed.
