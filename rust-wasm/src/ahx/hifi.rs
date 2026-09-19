@@ -70,18 +70,36 @@
 //! `set-hifi`, sent as soon as its client exists); the engine's own default,
 //! and the golden harness that drives it directly, are unaffected.)
 //!
-//! ## Prewarm: no table is ever built on the audio thread
+//! ## Prewarm: the render path never builds a table
 //!
 //! Building a level is an inverse FFT plus a quantise (~0.1 ms), and a tick
 //! on many voices can want a dozen cold ones at once -- against a 2.7 ms
-//! render quantum. So the product path never builds while rendering: the
+//! render quantum. So the product path never builds inside `render`: the
 //! bank has three [`BankMode`]s. `Lazy` (the engine default, what the tests
 //! use) builds on demand. `Prewarm` builds on demand too, but never evicts and
 //! stops at the cap. `Locked` only *looks up*: a miss is counted, and the voice
 //! takes the nearest built level with fewer partials of the same table (duller,
-//! never aliased), or failing that the reference path for that tick.
-//! `AhxEngine::prewarm_hifi` runs the song's ticks (no mixing) in `Prewarm`
-//! mode, then locks; see there for what that covers.
+//! never aliased), or failing that the reference path for that tick. The
+//! decision is a plain lookup: no lock is taken and nothing blocks.
+//!
+//! Who builds, and when, depends on the engine:
+//!
+//! * **A song** is prewarmed as a whole: `AhxEngine::prewarm_hifi` runs the
+//!   song's ticks (no mixing) in `Prewarm` mode, then locks; see there for
+//!   what that covers.
+//! * **The keyboard preview** plays whatever key is pressed, so there is no
+//!   song to walk. Its bank is `Locked` from the start, and each note-on
+//!   (`AhxEngine::live_note_on`, called from the worklet's message handler,
+//!   between render quanta) prewarms the pressed instrument at the pressed
+//!   pitch by running its ticks -- sweeps and all -- on a scratch voice, then
+//!   locks again. A table a held note reaches that the scratch run did not (a
+//!   sweep longer than the simulated hold) is a miss, degraded for that tick
+//!   and counted, not built.
+//!
+//! Neither builds on the render path, but a build is still CPU on the thread
+//! that runs the audio worklet: the preview's prewarm is a burst in the
+//! message handler, between quanta. It is paid once per (instrument, note) and
+//! is mostly cache hits after the first note of a level.
 //!
 //! Zero new dependencies: `rustfft` is what `wavetable.rs` already uses.
 
@@ -233,6 +251,21 @@ impl HifiBank {
             BankMode::Lazy => {}
         }
         self.mode = mode;
+    }
+
+    /// Back to `Locked` after a temporary `Prewarm`, keeping the miss count
+    /// (which `set_mode(Locked)` zeroes: that is for a first lock).
+    pub fn relock(&mut self) {
+        self.mode = BankMode::Locked;
+    }
+
+    /// Drops every cached table (voices holding one keep it alive, so a sound
+    /// already playing is unaffected). For a bank that hit the cap and is about
+    /// to be rebuilt with what is wanted now.
+    pub fn clear(&mut self) {
+        self.sources.clear();
+        self.cached_tables = 0;
+        self.full = false;
     }
 
     /// Lookups since the bank was locked that the exact table could not

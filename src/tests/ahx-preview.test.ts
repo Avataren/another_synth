@@ -95,11 +95,32 @@ describe('AhxProcessorCore in preview mode over the real wasm', () => {
     expect(played).toBeGreaterThan(0);
   });
 
-  it('builds its hi-fi tables lazily: no song walk, so the load stays cheap', () => {
+  it('starts with an empty, locked hi-fi bank: no song walk, and the render path never builds', () => {
     const { core, events } = previewCore();
     core.handle({ type: 'get-hifi-stats' });
     const stats = events.find((e) => e.type === 'hifi-stats');
-    expect(stats).toMatchObject({ enabled: true, locked: false, tables: 0 });
+    expect(stats).toMatchObject({ enabled: true, locked: true, tables: 0 });
+  });
+
+  it('a note-on prewarms the pressed instrument in the message handler: tables appear, rendering builds none and misses none', () => {
+    const { core, events } = previewCore();
+    const stats = () => {
+      events.length = 0;
+      core.handle({ type: 'get-hifi-stats' });
+      return events.find((e) => e.type === 'hifi-stats') as unknown as { tables: number; misses: number; locked: boolean };
+    };
+    for (const instrument of [1, 2, 4]) {
+      core.handle({ type: 'preview-note-on', instrument, note: 30, velocity: 127 });
+      const atOn = stats();
+      expect(atOn.tables).toBeGreaterThan(0);
+      render(core, 3);
+      core.handle({ type: 'preview-note-off' });
+      render(core, 3);
+      const after = stats();
+      expect(after.tables).toBe(atOn.tables);
+      expect(after.misses).toBe(0);
+      expect(after.locked).toBe(true);
+    }
   });
 
   it('ignores note commands with no preview song loaded', () => {
@@ -224,29 +245,62 @@ describe('AhxPreview', () => {
     expect(calls.some((c) => c.startsWith('on:'))).toBe(false);
   });
 
-  it('drops the worklet after it has been idle, and makes a new one for the next key', async () => {
-    const first = fakeClient(ctx);
-    const second = fakeClient(ctx);
-    const clients = [first.client, second.client];
-    const create = vi.fn(async () => clients.shift()!);
-    const preview = new AhxPreview(host, create, 1000);
-    await preview.noteOn(bytes, 1, 48);
-    preview.noteOff(48);
+  it('preload creates the worklet and loads the song before any key, and the first key then only plays', async () => {
+    const { client, calls, raw } = fakeClient(ctx);
+    const create = vi.fn(async () => client);
+    const preview = new AhxPreview(host, create);
+    await preview.preload(bytes);
     expect(preview.active).toBe(true);
-    vi.advanceTimersByTime(1001);
-    expect(preview.active).toBe(false);
-    expect(first.raw.dispose).toHaveBeenCalled();
-    await preview.noteOn(bytes, 1, 48);
-    expect(create).toHaveBeenCalledTimes(2);
-    expect(second.calls).toContain('on:1:25:127');
+    expect(calls).toEqual(['preview:true', 'hifi:true', 'load']);
+    await preview.noteOn(bytes, 2, 48, 100);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(raw.loadSong).toHaveBeenCalledTimes(1);
+    expect(calls.slice(3)).toEqual(['on:2:25:100']);
   });
 
-  it('a key held past the idle time is not cut from under the player', async () => {
+  it('a key pressed while preload is still loading shares that load', async () => {
     const { client, raw } = fakeClient(ctx);
-    const preview = new AhxPreview(host, async () => client, 1000);
+    const create = vi.fn(async () => client);
+    const preview = new AhxPreview(host, create);
+    const preparing = preview.preload(bytes);
     await preview.noteOn(bytes, 1, 48);
-    vi.advanceTimersByTime(5000);
+    await preparing;
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(raw.loadSong).toHaveBeenCalledTimes(1);
+  });
+
+  it('preload does not resume the context and keeps quiet if it fails or is disposed', async () => {
+    const ensure = vi.fn(async () => true);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const failing = new AhxPreview({ ...host, ensureAudioContextRunning: ensure }, async () => {
+      throw new Error('boom');
+    });
+    await failing.preload(bytes);
+    expect(ensure).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    warn.mockClear();
+    const { client } = fakeClient(ctx);
+    const disposedEarly = new AhxPreview(host, async () => client);
+    const pending = disposedEarly.preload(bytes);
+    disposedEarly.dispose();
+    await pending;
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('keeps its worklet however long it has been idle, until disposed', async () => {
+    const { client, raw } = fakeClient(ctx);
+    const preview = new AhxPreview(host, async () => client);
+    await preview.preload(bytes);
+    await preview.noteOn(bytes, 1, 48);
+    preview.noteOff(48);
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(preview.active).toBe(true);
     expect(raw.dispose).not.toHaveBeenCalled();
+    preview.dispose();
+    expect(raw.dispose).toHaveBeenCalledTimes(1);
+    expect(preview.active).toBe(false);
   });
 
   it('resumes a suspended context before starting the worklet', async () => {

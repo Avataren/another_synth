@@ -437,6 +437,20 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     return true;
   }
 
+  /**
+   * Have the keyboard preview voice ready before the first key: called when
+   * an AHX slot is selected and when an AHX song loads. It then stays until the
+   * song changes or is unloaded (no idle drop). `false` when no AHX song is
+   * loaded.
+   */
+  async function prepareAhxPreview(): Promise<boolean> {
+    const bytes = currentAhxSource();
+    if (!bytes) return false;
+    ahxPreviewInstance ??= new AhxPreview(getSongBank());
+    await ahxPreviewInstance.preload(bytes);
+    return true;
+  }
+
   function previewAhxNoteOff(midi: number): void {
     ahxPreviewInstance?.noteOff(midi);
   }
@@ -446,10 +460,13 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     ahxPreviewInstance = null;
   }
 
-  // A new song (AHX or not) makes the preview voice stale: drop it at once
-  // rather than leaving its worklet, and a held note, until the idle timeout.
+  // A new song (AHX or not) makes the preview voice stale: drop it at once,
+  // with any held note; an AHX song gets its replacement made straight away.
   ahxSourceUnsubscribe?.();
-  ahxSourceUnsubscribe = onCurrentAhxSourceChange(disposeAhxPreview);
+  ahxSourceUnsubscribe = onCurrentAhxSourceChange(() => {
+    disposeAhxPreview();
+    if (currentAhxSource()) void prepareAhxPreview().catch(() => undefined);
+  });
 
   /** The worklet's position index is the sequence index: one pattern per position. */
   function handleAhxPosition(p: AhxPosition): void {
@@ -1132,6 +1149,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // AHX keyboard preview
     previewAhxNoteOn,
     previewAhxNoteOff,
+    prepareAhxPreview,
 
     // AHX/HVL per-voice scopes
     setAhxScopesEnabled,

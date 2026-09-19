@@ -1499,6 +1499,18 @@ const {
   currentSequenceIndex,
 } = storeToRefs(playbackStore);
 
+// Selecting an AHX instrument gets its preview voice ready, so that the first
+// key sounds at once (an AHX song loading does the same, in the store).
+watch(
+  [activeInstrumentId, instrumentSlots],
+  ([instrumentId]) => {
+    if (instrumentId && ahxInstrumentNumberFor(instrumentId) !== undefined) {
+      void playbackStore.prepareAhxPreview();
+    }
+  },
+  { immediate: true },
+);
+
 watch(
   () => keyboardStore.latestEvent,
   (event) => {
