@@ -132,4 +132,33 @@ describe('the PList strip chips (E6)', () => {
     expect(chip!.summary).toContain('Noise');
     expect(chip!.summary).toContain('Set step speed');
   });
+
+  describe('the wording is true against the engine (B2 review)', () => {
+    it('the decay level is held for the sustain time, not while a key is down', () => {
+      expect(AHX_HELP.envDecayVolume).not.toMatch(/key/i);
+      expect(AHX_HELP.envDecayVolume).toMatch(/sustain time/);
+    });
+
+    it('vibrato speed says the number wraps and where nothing wobbles', () => {
+      expect(AHX_HELP.vibratoSpeed).toMatch(/wraps around every 64/);
+      expect(AHX_HELP.vibratoSpeed).toMatch(/32, 64, 128 and 192/);
+      expect(AHX_HELP.vibratoSpeed).toMatch(/backwards/);
+    });
+
+    it('the hard cut says what happens with the release box unticked', () => {
+      expect(AHX_HELP.hardCutRelease).toMatch(/unticked.*muted? the note abruptly|mutes the note abruptly/i);
+      expect(AHX_HELP.hardCutReleaseFrames).toMatch(/unticked it is muted abruptly/);
+    });
+
+    it('PList step speeds 0, 1 and 128-255 all step every tick', () => {
+      expect(AHX_HELP.plistSpeed).toMatch(/0, 1 and 128-255 all step every tick/);
+      for (const speed of [0, 1, 128, 200, 255]) {
+        expect(ahxDescribeFx(15, speed)!.detail, `speed ${speed}`).toMatch(/single tick/);
+      }
+      for (const speed of [2, 6, 127]) {
+        expect(ahxDescribeFx(15, speed)!.detail, `speed ${speed}`).toContain(`${speed} ticks`);
+      }
+      expect(ahxFxParamTooltip(15)).toMatch(/128-255/);
+    });
+  });
 });

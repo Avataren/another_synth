@@ -15,6 +15,7 @@ vi.mock('src/stores/tracker-playback-store', () => ({
 import AhxInstrumentPage from 'pages/AhxInstrumentPage.vue';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
+import { ahxSquareDuty } from 'src/audio/tracker/ahx-instrument-visuals';
 import { setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
 
 const karma = (): ArrayBuffer => {
@@ -105,6 +106,51 @@ describe('AhxInstrumentPage, EDITOR-UX batch 2 "see the sound"', () => {
       await el(w, 'ahx-field-vibratoDepth').setValue('0');
       expect(ins().vibratoDepth).toBe(0);
       expect(el(w, 'ahx-vibrato-caption').text()).toMatch(/off/);
+    });
+  });
+
+  describe('the B2 review fixes', () => {
+    it('the vibrato trace stays inside the box and the labels are the real swing (depth 1: +1 / -2)', async () => {
+      const w = await mountEditor(1);
+      await el(w, 'ahx-field-vibratoDepth').setValue('1');
+      const ys = el(w, 'ahx-vibrato-trace').attributes('points')!.split(' ').map((p) => Number(p.split(',')[1]));
+      expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
+      expect(Math.max(...ys)).toBeLessThanOrEqual(110);
+      expect(el(w, 'ahx-vibrato-caption').text()).toMatch(/between \+1 and −2/);
+      await el(w, 'ahx-field-vibratoSpeed').setValue('32');
+      expect(el(w, 'ahx-vibrato-caption').text()).toMatch(/nothing wobbles/);
+      await el(w, 'ahx-field-vibratoSpeed').setValue('40');
+      expect(el(w, 'ahx-vibrato-caption').text()).toMatch(/backwards/);
+    });
+
+    it('a square preview with no pulse-width command starts where the engine does, position 0', async () => {
+      const w = await mountEditor(6);
+      expect(ins(6).plist.entries.some((e) => e.fx.includes(3))).toBe(false);
+      await el(w, 'ahx-seg-startWaveform-3').setValue(true);
+      const wl = ins(6).waveLength;
+      expect(el(w, 'ahx-wave-shape-duty').text()).toContain(`${Math.round(ahxSquareDuty(0, wl) * 100)}%`);
+    });
+
+    it('the hard-cut frames field stays enabled with the box unticked, and says the cut is abrupt', async () => {
+      const w = await mountEditor(1);
+      await el(w, 'ahx-field-hardCutRelease').setValue(true);
+      await el(w, 'ahx-field-hardCutReleaseFrames').setValue('2');
+      expect(has(w, 'ahx-hardcut-abrupt')).toBe(false);
+      await el(w, 'ahx-field-hardCutRelease').setValue(false);
+      expect(ins().hardCutReleaseFrames).toBe(2);
+      expect((el(w, 'ahx-field-hardCutReleaseFrames').element as HTMLInputElement).disabled).toBe(false);
+      expect(el(w, 'ahx-hardcut-abrupt').text()).toMatch(/muted abruptly 2 ticks before the next note/);
+      await el(w, 'ahx-field-hardCutReleaseFrames').setValue('0');
+      expect(has(w, 'ahx-hardcut-abrupt')).toBe(false);
+    });
+
+    it('the command select options use the plain names of the strip chips', async () => {
+      const w = await mountEditor(1);
+      const labels = el(w, 'ahx-plist-0-fx0').findAll('option').map((o) => o.text());
+      expect(labels).toContain('3 Set pulse width');
+      expect(labels).toContain('4 Sweep on/off');
+      expect(labels).toContain('0 Set brightness');
+      expect(labels.join(' ')).not.toMatch(/Square\/filter|Ring modulate|Square position/);
     });
   });
 

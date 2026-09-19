@@ -57,7 +57,8 @@ export const AHX_HELP: Readonly<Record<AhxHelpKey, string>> = {
     'How many steps one cycle of the sound is drawn with: short (0) sounds rough and gritty, long (5) sounds smoother and fuller, and the pitch stays the same.',
   vibratoDelay:
     'How long the note stays steady before the pitch starts to wobble (0 wobbles from the very start).',
-  vibratoSpeed: 'How fast the pitch wobbles: a bigger number is a quicker warble, 0 holds the pitch still.',
+  vibratoSpeed:
+    'How fast the pitch wobbles: from 1 up to about 16 a bigger number is a quicker warble. The number wraps around every 64, so 0, 32, 64, 128 and 192 give no wobble at all and 33-63 wobble slowly backwards.',
   vibratoDepth:
     'How far the pitch wobbles either side of the note: 0 is no vibrato at all, 15 is a wide, wobbly warble.',
   squareLowerLimit:
@@ -75,11 +76,11 @@ export const AHX_HELP: Readonly<Record<AhxHelpKey, string>> = {
   filterPosition:
     'Where the brightness sits right now: below 32 is muffled and soft, above 32 is thin and bright, 32 leaves the sound untouched (0 changes nothing).',
   hardCutRelease:
-    'Makes the note fade out quickly just before the next note starts, so notes end cleanly instead of running into each other.',
+    'Makes the note fade out quickly just before the next note starts, so notes end cleanly instead of running into each other. Unticked, a cut time above 0 mutes the note abruptly instead.',
   hardCutReleaseFrames:
-    'How many ticks before the next note the quick fade-out begins (0 means the note is not cut short).',
+    'How many ticks before the next note the note is cut short (0 means it is never cut). With Hard cut release ticked it fades out over that time; unticked it is muted abruptly.',
   plistSpeed:
-    'How many ticks each PList row (one step of the sound’s own little score) lasts: a smaller number steps through the rows faster, so the sound changes more quickly.',
+    'How many ticks each PList row (one step of the sound’s own little score) lasts: from 2 to 127 a smaller number steps through the rows faster, and 0, 1 and 128-255 all step every tick.',
   plistAdd: 'Adds a new empty step at the end of the PList, the little score that changes the sound during a note.',
   plistRow: 'A step of the PList, the little score that changes the sound during a note.',
   plistNote:
@@ -99,7 +100,7 @@ export const AHX_HELP: Readonly<Record<AhxHelpKey, string>> = {
   envAttackVolume: 'How loud the note gets at the end of the attack.',
   envDecayFrames:
     'How long the note takes to settle from the attack level to the sustain level (0 skips the decay).',
-  envDecayVolume: 'The level the note settles at and holds while the key is down.',
+  envDecayVolume: 'The level the note settles at; it holds there for the sustain time, then starts to die away.',
   envSustainFrames: 'How long the note holds its level before it starts to die away.',
   envReleaseFrames:
     'How long the note takes to die away to the final level: short is abrupt, long is a slow fade (0 means it never fades).',
@@ -139,6 +140,9 @@ export interface AhxFxDescription {
   /** Raw code as tracker text, e.g. `F04` (small, secondary). */
   code: string;
 }
+
+/** Whether a PList step speed moves on every tick: 0, 1 and 128-255 (`voice.rs:541-543` reads the wait as a signed byte). */
+export const ahxPListStepsEveryTick = (speed: number): boolean => speed <= 1 || speed >= 128;
 
 const hex = (n: number, width: number): string => n.toString(16).toUpperCase().padStart(width, '0');
 
@@ -235,7 +239,12 @@ export function ahxDescribeFx(fx: number, param: number): AhxFxDescription | nul
     case 12:
       return make('volume', volumeDetail(param));
     case 15:
-      return make('speed', `From here each step lasts ${param} ticks, so the sound changes ${param < 3 ? 'very quickly' : 'more slowly the bigger the number'}.`);
+      return make(
+        'speed',
+        ahxPListStepsEveryTick(param)
+          ? 'From here every step lasts a single tick, so the sound changes as fast as it can (0, 1 and 128-255 all do this).'
+          : `From here each step lasts ${param} ticks, so the sound changes more slowly the bigger the number.`,
+      );
     default:
       return make('unused', 'This command does nothing in the engine.');
   }
@@ -270,7 +279,7 @@ export function ahxFxParamTooltip(fx: number): string {
     case 12:
       return 'Volume: 0-40 is this note’s volume, 50-90 the step-volume tier, A0-E0 the channel’s master volume.';
     case 15:
-      return 'How many ticks each step lasts from here on.';
+      return 'How many ticks each step lasts from here on (2-127; 0, 1 and 128-255 all step every tick).';
     default:
       return 'The value the command works on; this command does nothing in the engine.';
   }

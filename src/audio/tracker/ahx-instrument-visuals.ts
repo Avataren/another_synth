@@ -142,8 +142,26 @@ export const AHX_VIB_TAB: readonly number[] = [
   -255, -253, -250, -244, -235, -224, -212, -197, -180, -161, -141, -120, -97, -74, -49, -24,
 ];
 
-/** The largest swing a vibrato depth gives, in period units: `255 * depth >> 7`. */
+/** The largest upward swing a vibrato depth gives, in period units: `255 * depth >> 7`. */
 export const ahxVibratoAmplitude = (depth: number): number => (255 * depth) >> 7;
+
+/**
+ * The largest downward swing, as a positive number. The shift floors, so it is
+ * often one more than the upward swing (`-255 * depth >> 7`): depth 1 swings
+ * +1 up but -2 down.
+ */
+export const ahxVibratoTrough = (depth: number): number => -((-255 * depth) >> 7);
+
+/**
+ * How the vibrato's table index really moves: `(cur + speed) & 0x3f` (`voice.rs:532`),
+ * so only `speed & 63` counts. Returns that step, the equivalent forward step (33-63
+ * walk backwards, like 64 minus it) and whether every step lands on a zero of the
+ * table (0 and 32 do, so nothing wobbles).
+ */
+export function ahxVibratoStep(speed: number): { step: number; forward: number; backwards: boolean; still: boolean } {
+  const step = speed & 0x3f;
+  return { step, forward: step > 32 ? 64 - step : step, backwards: step > 32, still: step === 0 || step === 32 };
+}
 
 /**
  * The pitch offset (period units) of each frame from the trigger: 0 while the
@@ -173,7 +191,8 @@ export function simulateAhxVibrato(
 
 /** Frames worth drawing for a vibrato: its delay, then two full wobbles (64 table steps each), capped. */
 export function ahxVibratoWindow(delay: number, speed: number): number {
-  const cycle = speed > 0 ? Math.ceil(64 / speed) : 32;
+  const { forward } = ahxVibratoStep(speed);
+  const cycle = forward > 0 ? Math.ceil(64 / forward) : 32;
   return Math.min(400, Math.max(48, delay + cycle * 2 + 8));
 }
 
@@ -345,6 +364,13 @@ export interface AhxSweepContext {
   version: number;
 }
 
+/**
+ * Known limitation (review L7, follow-up): command 4 TOGGLES, but this reads the
+ * first toggle row only. A second toggle, or a jump loop that runs back over the
+ * toggle row, turns the sweep off again while the lane keeps saying "on"; and
+ * the trace starts at tick 0 even when the toggle sits in a later row or the
+ * square tone is only selected later. Tracking that needs a PList walk.
+ */
 export function ahxSweepSetup(
   ins: AhxInstrument,
   kind: AhxSweepKind,

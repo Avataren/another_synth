@@ -277,13 +277,20 @@
               stepper
               :model-value="instrument.hardCutReleaseFrames"
               :max="AHX_NUMBER_FIELDS.hardCutReleaseFrames"
-              :disabled="!instrument.hardCutRelease"
               suffix="frames"
               testid="ahx-field-hardCutReleaseFrames"
-            :title="AHX_HELP.hardCutReleaseFrames"
+              :title="AHX_HELP.hardCutReleaseFrames"
               @update:model-value="setNumber('hardCutReleaseFrames', $event)"
             />
           </div>
+          <p
+            v-if="!instrument.hardCutRelease && instrument.hardCutReleaseFrames > 0"
+            class="ahx-warn"
+            data-testid="ahx-hardcut-abrupt"
+          >
+            Hard cut release is off, so the note is muted abruptly {{ instrument.hardCutReleaseFrames }}
+            {{ instrument.hardCutReleaseFrames === 1 ? 'tick' : 'ticks' }} before the next note.
+          </p>
         </div>
       </section>
 
@@ -617,6 +624,7 @@ import AhxVibratoLane from 'src/components/ahx/AhxVibratoLane.vue';
 import AhxSweepLane from 'src/components/ahx/AhxSweepLane.vue';
 import AhxPListStrip from 'src/components/ahx/AhxPListStrip.vue';
 import {
+  AHX_FX_NAMES,
   AHX_HELP,
   AHX_WAVE_CHARACTER,
   ahxFxParamTooltip,
@@ -624,7 +632,6 @@ import {
   type AhxHelpKey,
 } from 'src/audio/tracker/ahx-plain-language';
 import {
-  ahxSquareBounds,
   ahxSweepSetup,
   ahxUsesFilter,
   type AhxSweepKind,
@@ -632,7 +639,6 @@ import {
 import { AHX_TABLE_THROTTLE_MS } from 'src/composables/useAhxDrag';
 import {
   ahxNoteName,
-  ahxPListFxName,
   ahxWaveCycleLength,
   ahxWaveformKind,
   ahxWaveformLabel,
@@ -710,11 +716,15 @@ const previewKind = computed<AhxWaveformKind>(() => {
   const kind = ahxWaveformKind(field);
   return kind === 'keep' || kind === 'unknown' ? 'triangle' : kind;
 });
-/** The pulse width the square preview shows: where the PList sets it, else the sweep's thin end. */
+/**
+ * The pulse width the square preview shows: where the PList sets it, else where
+ * the engine starts, position 0 (a very thin pulse; a sweep, if on, slides in
+ * from there). The same start as the sweep lane's trace (`startPos ?? 0`).
+ */
 const previewSquarePos = computed(() => {
   const ins = instrument.value;
   if (!ins) return 0;
-  return ahxSweepSetup(ins, 'square', sweepContext.value).startPos ?? ahxSquareBounds(ins).lower;
+  return ahxSweepSetup(ins, 'square', sweepContext.value).startPos ?? 0;
 });
 const usesFilter = computed(() =>
   instrument.value ? ahxUsesFilter(instrument.value, sweepContext.value) : false,
@@ -803,7 +813,7 @@ const songFormat = computed(() => ahxSourceInfo.value?.format ?? 'ahx');
 const FX_CHOICES = computed(() =>
   ahxPListCommandsFor(songFormat.value).map((value) => ({
     value,
-    label: `${value.toString(16).toUpperCase()} ${ahxPListFxName(value, 1) || 'none'}`,
+    label: `${value.toString(16).toUpperCase()} ${AHX_FX_NAMES[value] ?? 'Unused'}`,
   })),
 );
 

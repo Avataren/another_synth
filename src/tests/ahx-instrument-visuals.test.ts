@@ -17,6 +17,8 @@ import {
   ahxSweepWindow,
   ahxUsesFilter,
   ahxVibratoAmplitude,
+  ahxVibratoStep,
+  ahxVibratoTrough,
   ahxVibratoWindow,
   ahxWaveShape,
   canEnableAhxSweep,
@@ -135,6 +137,25 @@ describe('vibrato (E9)', () => {
     expect(new Set(simulateAhxVibrato(0, 0, 9, 40)).size).toBe(1);
     expect(ahxVibratoAmplitude(15)).toBe(29);
     expect(ahxVibratoAmplitude(1)).toBe(1);
+  });
+
+  it('the downward swing is what the floored table really reaches, one more than the upward one at depth 1', () => {
+    expect(ahxVibratoTrough(1)).toBe(2);
+    for (let depth = 1; depth <= 15; depth++) {
+      const out = simulateAhxVibrato(0, 1, depth, 64);
+      expect(Math.max(...out), `depth ${depth}`).toBe(ahxVibratoAmplitude(depth));
+      expect(-Math.min(...out), `depth ${depth}`).toBe(ahxVibratoTrough(depth));
+    }
+  });
+
+  it('only speed & 63 counts: 0, 32, 64, 128 and 192 never wobble, 33-63 walk backwards', () => {
+    for (const speed of [0, 32, 64, 128, 192]) {
+      expect(new Set(simulateAhxVibrato(0, speed, 15, 80)).size, `speed ${speed}`).toBe(1);
+      expect(ahxVibratoStep(speed).still, `speed ${speed}`).toBe(true);
+    }
+    expect(ahxVibratoStep(63)).toMatchObject({ step: 63, forward: 1, backwards: true, still: false });
+    expect(ahxVibratoStep(65)).toMatchObject({ step: 1, forward: 1, backwards: false });
+    expect(new Set(simulateAhxVibrato(0, 8, 15, 80)).size).toBeGreaterThan(1);
   });
 
   it('the window covers the delay plus two wobbles', () => {

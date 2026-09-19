@@ -9,8 +9,8 @@
       <line class="ahx-lane__zero" :x1="LEFT" :x2="WIDTH" :y1="midY" :y2="midY" />
       <text class="ahx-lane__tick" :x="LEFT - 4" :y="midY + 3" text-anchor="end">0</text>
       <template v-if="!off">
-        <text class="ahx-lane__tick" :x="LEFT - 4" :y="TOP + 8" text-anchor="end">+{{ amplitude }}</text>
-        <text class="ahx-lane__tick" :x="LEFT - 4" :y="HEIGHT - BOTTOM" text-anchor="end">−{{ amplitude }}</text>
+        <text class="ahx-lane__tick" :x="LEFT - 4" :y="yOf(up) + 3" text-anchor="end">+{{ up }}</text>
+        <text class="ahx-lane__tick" :x="LEFT - 4" :y="yOf(-down) + 3" text-anchor="end">−{{ down }}</text>
         <line
           v-if="delay > 0"
           class="ahx-lane__marker"
@@ -38,6 +38,8 @@
 import { computed } from 'vue';
 import {
   ahxVibratoAmplitude,
+  ahxVibratoStep,
+  ahxVibratoTrough,
   ahxVibratoWindow,
   simulateAhxVibrato,
 } from 'src/audio/tracker/ahx-instrument-visuals';
@@ -58,24 +60,32 @@ const BOTTOM = 14;
 
 const off = computed(() => props.depth === 0);
 const frames = computed(() => ahxVibratoWindow(props.delay, props.speed));
-const amplitude = computed(() => Math.max(ahxVibratoAmplitude(props.depth), 1));
+/** The real swing either way: the negative side floors, so it can be one bigger than the positive. */
+const up = computed(() => ahxVibratoAmplitude(props.depth));
+const down = computed(() => ahxVibratoTrough(props.depth));
+/** The axis runs to the bigger of the two so the whole trace fits the box. */
+const extent = computed(() => Math.max(up.value, down.value, 1));
 const midY = computed(() => (TOP + HEIGHT - BOTTOM) / 2);
+const yOf = (offset: number): number => midY.value - (offset / extent.value) * ((HEIGHT - BOTTOM - TOP) / 2);
 
 const xOf = (frame: number): number => LEFT + (frame / frames.value) * (WIDTH - LEFT);
 
 const trace = computed(() => simulateAhxVibrato(props.delay, props.speed, props.depth, frames.value));
 const points = computed(() => {
-  const half = (HEIGHT - BOTTOM - TOP) / 2;
-  return trace.value
-    .map((offset, frame) => `${xOf(frame).toFixed(1)},${(midY.value - (offset / amplitude.value) * half).toFixed(1)}`)
-    .join(' ');
+  return trace.value.map((offset, frame) => `${xOf(frame).toFixed(1)},${yOf(offset).toFixed(1)}`).join(' ');
 });
 
 const caption = computed(() => {
   if (off.value) return 'Vibrato is off (depth 0): the pitch stays steady. Raise the depth to make it wobble.';
-  const still = props.speed === 0 ? ' Speed 0 holds the pitch still, so nothing wobbles.' : '';
+  const { step, forward, backwards, still } = ahxVibratoStep(props.speed);
+  const note = still
+    ? ` Speed ${props.speed} only lands on the still points of the wobble (the number wraps around every 64), so nothing wobbles.`
+    : backwards
+      ? ` Speed ${props.speed} wraps round to ${step}, which walks the wobble slowly backwards, like a speed of ${forward} the other way.`
+      : '';
   const wait = props.delay > 0 ? `steady for ${props.delay} ticks, then ` : '';
-  return `The pitch is ${wait}wobbling up and down by up to ${amplitude.value} period units (the engine’s own pitch steps, not cents).${still}`;
+  const swing = up.value === down.value ? `up and down by up to ${up.value}` : `between +${up.value} and −${down.value}`;
+  return `The pitch is ${wait}wobbling ${swing} period units (the engine’s own pitch steps, not cents).${note}`;
 });
 
 const summary = computed(() => `Vibrato curve. ${caption.value}`);
