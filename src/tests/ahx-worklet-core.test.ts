@@ -644,3 +644,122 @@ describe('hi-fi AHX rendering over the real wasm', () => {
     });
   });
 });
+
+describe('AhxProcessorCore transport over the real wasm', () => {
+  const positions = (events: AhxEvent[]) =>
+    events.filter((e): e is Extract<AhxEvent, { type: 'position' }> => e.type === 'position');
+
+  function loaded(name = 'karma.ahx', hifi = true) {
+    const made = newCore();
+    if (hifi) made.core.handle({ type: 'set-hifi', enabled: true });
+    made.core.handle({ type: 'load-song', id: nextId++, bytes: fixture(name) });
+    return made;
+  }
+
+  it('pause and resume is in place: the render is the uninterrupted one with a silent gap', () => {
+    const straight = loaded();
+    straight.core.handle({ type: 'play' });
+    const want = render(straight.core, SAMPLE_RATE * 5);
+
+    const paused = loaded();
+    paused.core.handle({ type: 'play' });
+    const head = render(paused.core, SAMPLE_RATE * 2 + 37);
+    paused.core.handle({ type: 'pause' });
+    const reportsAtPause = paused.events.length;
+    const gap = render(paused.core, QUANTUM * 500);
+    expect([...gap.l, ...gap.r].every((s) => s === 0)).toBe(true);
+    // Nothing was reported while it was paused: the clock did not move.
+    expect(paused.events.length).toBe(reportsAtPause);
+    paused.core.handle({ type: 'play' });
+    const tail = render(paused.core, SAMPLE_RATE * 3 - 37);
+
+    expect(Buffer.from(head.l.buffer).equals(Buffer.from(want.l.buffer, 0, head.l.byteLength))).toBe(true);
+    expect(Buffer.from(tail.l.buffer).equals(Buffer.from(want.l.buffer, head.l.byteLength))).toBe(true);
+    expect(Buffer.from(tail.r.buffer).equals(Buffer.from(want.r.buffer, head.r.byteLength))).toBe(true);
+  });
+
+  it('seek lands sample-exactly: it renders what a run from the top renders from there', () => {
+    for (const name of ['karma.ahx', 'sunspots.hvl']) {
+      const seeked = loaded(name);
+      seeked.core.handle({ type: 'seek', position: 3, row: 10 });
+      const landed = positions(seeked.events).at(-1)!;
+      expect(landed).toMatchObject({ position: 3, row: 10 });
+      seeked.core.handle({ type: 'play' });
+      const got = render(seeked.core, SAMPLE_RATE * 3);
+
+      // The reference: from the top, exactly as many whole ticks as the seek replayed.
+      const full = loaded(name);
+      full.core.handle({ type: 'play' });
+      const perTick = SAMPLE_RATE / 50;
+      render(full.core, landed.ticks * perTick);
+      const want = render(full.core, SAMPLE_RATE * 3);
+
+      expect(Buffer.from(got.l.buffer).equals(Buffer.from(want.l.buffer)), `${name} left`).toBe(true);
+      expect(Buffer.from(got.r.buffer).equals(Buffer.from(want.r.buffer)), `${name} right`).toBe(true);
+    }
+  });
+
+  it('seek reports where it landed at once, paused or playing, and stays paused if it was', () => {
+    const { core, events } = loaded();
+    core.handle({ type: 'seek', position: 2, row: 5 });
+    expect(positions(events)).toEqual([expect.objectContaining({ position: 2, row: 5 })]);
+    const silent = render(core, QUANTUM * 20);
+    expect([...silent.l].every((s) => s === 0)).toBe(true);
+
+    core.handle({ type: 'play' });
+    render(core, SAMPLE_RATE);
+    core.handle({ type: 'seek', position: 2, row: 5 });
+    // The same place again is still reported: the reports were re-armed.
+    expect(positions(events).filter((p) => p.position === 2 && p.row === 5).length).toBeGreaterThanOrEqual(2);
+    const still = render(core, SAMPLE_RATE);
+    expect([...still.l].some((s) => s !== 0)).toBe(true);
+  });
+
+  it('a seek out of range is ignored', () => {
+    const { core, events } = loaded();
+    core.handle({ type: 'play' });
+    render(core, QUANTUM * 10);
+    const before = events.length;
+    core.handle({ type: 'seek', position: 9999, row: 0 });
+    core.handle({ type: 'seek', position: 0, row: 9999 });
+    expect(events.length).toBe(before);
+  });
+
+  it('seek rearms the song end: a stop-at-end song seeked away from its end plays on', () => {
+    const { core, events } = loaded('sunspots.hvl');
+    core.handle({ type: 'set-stop-at-end', enabled: true });
+    core.handle({ type: 'play' });
+    core.handle({ type: 'seek', position: 1, row: 0 });
+    render(core, SAMPLE_RATE * 2);
+    expect(events.some((e) => e.type === 'song-end')).toBe(false);
+    const out = render(core, SAMPLE_RATE);
+    expect([...out.l].some((s) => s !== 0)).toBe(true);
+  });
+
+  it('loop-position repeats one position on a running clock, and survives a new load', () => {
+    const { core, events } = loaded();
+    core.handle({ type: 'set-loop-position', enabled: true });
+    // A second load: the flag belongs to the core, not the song.
+    core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
+    core.handle({ type: 'seek', position: 1, row: 0 });
+    core.handle({ type: 'play' });
+    render(core, SAMPLE_RATE * 40);
+
+    const seen = positions(events).slice(1);
+    expect(seen.length).toBeGreaterThan(50);
+    expect(new Set(seen.map((p) => p.position))).toEqual(new Set([1]));
+    // Rows wrapped (the loop ran more than once), and the tick counter only
+    // ever grew: the clock was never reset between trips.
+    let wraps = 0;
+    for (let i = 1; i < seen.length; i++) {
+      if (seen[i]!.row < seen[i - 1]!.row) wraps++;
+      expect(seen[i]!.ticks).toBeGreaterThan(seen[i - 1]!.ticks);
+    }
+    expect(wraps).toBeGreaterThanOrEqual(1);
+    expect(events.some((e) => e.type === 'song-end')).toBe(false);
+
+    core.handle({ type: 'set-loop-position', enabled: false });
+    render(core, SAMPLE_RATE * 40);
+    expect(positions(events).at(-1)!.position).not.toBe(1);
+  });
+});

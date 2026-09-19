@@ -28,6 +28,8 @@ function fakeClient(audioContext: AudioContext) {
     play: vi.fn(),
     pause: vi.fn(),
     restart: vi.fn(),
+    seek: vi.fn(),
+    setLoopPosition: vi.fn(),
     setStopAtEnd: vi.fn(),
     setCapture: vi.fn(),
     setMuteSolo: vi.fn(),
@@ -162,6 +164,28 @@ describe('AhxTransport', () => {
     expect(fake.raw.setMuteSolo).toHaveBeenLastCalledWith(0b0101, 0);
     transport.setMuteSolo(0, 0b0010);
     expect(fake.raw.setMuteSolo).toHaveBeenLastCalledWith(0, 0b0010);
+  });
+
+  it('applies loop-position to a client made after it was set, and to a live one; untouched by default', async () => {
+    const off = setup();
+    await off.transport.load(new Uint8Array([1]));
+    expect(off.fake.raw.setLoopPosition).not.toHaveBeenCalled();
+
+    const { fake, transport } = setup();
+    transport.setLoopPosition(true);
+    await transport.load(new Uint8Array([1]));
+    expect(fake.raw.setLoopPosition).toHaveBeenLastCalledWith(true);
+    transport.setLoopPosition(false);
+    expect(fake.raw.setLoopPosition).toHaveBeenLastCalledWith(false);
+  });
+
+  it('seek goes to the client as it is: no pause, no restart', async () => {
+    const { fake, transport } = setup();
+    await transport.load(new Uint8Array([1]));
+    transport.seek(3, 12);
+    expect(fake.raw.seek).toHaveBeenCalledWith(3, 12);
+    expect(fake.raw.pause).not.toHaveBeenCalled();
+    expect(fake.raw.restart).not.toHaveBeenCalled();
   });
 
   it('always turns hi-fi on for the client it makes, before the song loads', async () => {

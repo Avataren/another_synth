@@ -11,7 +11,7 @@
 //! same way `audio_engine/wasm.rs` does it, so the whole class also compiles
 //! and is unit-tested natively.
 
-use super::engine::AhxEngine;
+use super::engine::{AhxEngine, SeekKind};
 use super::format;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
@@ -80,6 +80,31 @@ impl AhxPlayer {
             self.playing = false;
         }
         ok
+    }
+
+    /// Moves to `row` of `position` (an index into the song's position list),
+    /// keeping the play/pause state: a playing song carries on from there, a
+    /// paused one waits there. The next sample rendered is the first of that
+    /// row. Returns 0 for a position or row out of range (nothing changes), 1
+    /// when the song's own flow reaches it (every voice is exactly as if the
+    /// song had played to there, see [`AhxEngine::seek`]), 2 when it never
+    /// does and the row starts cold.
+    pub fn seek(&mut self, position: usize, row: usize) -> u8 {
+        match self.engine.seek(position, row) {
+            None => 0,
+            Some(SeekKind::Exact) => 1,
+            Some(SeekKind::Cold) => 2,
+        }
+    }
+
+    /// Loop the current position instead of moving on from it; see
+    /// [`AhxEngine::set_loop_position`]. Kept across `restart` and `seek`.
+    pub fn set_loop_position(&mut self, on: bool) {
+        self.engine.set_loop_position(on);
+    }
+
+    pub fn loop_position(&self) -> bool {
+        self.engine.loop_position()
     }
 
     pub fn is_playing(&self) -> bool {

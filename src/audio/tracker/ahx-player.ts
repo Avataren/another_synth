@@ -134,6 +134,24 @@ export class AhxPlayerClient {
   }
 
   /**
+   * Jump to `row` of order position `position`, keeping the play/pause state:
+   * a playing song carries on from there on the same clock, a paused one waits
+   * there. The next sample is the first of that row, with every voice as if the
+   * song had played to it. Answered with an `onPosition` report either way.
+   */
+  seek(position: number, row: number): void {
+    this.send({ type: 'seek', position, row });
+  }
+
+  /**
+   * Loop the order position the song is on rather than moving on from it. It
+   * outlives the song, so it applies to every load until changed.
+   */
+  setLoopPosition(enabled: boolean): void {
+    this.send({ type: 'set-loop-position', enabled });
+  }
+
+  /**
    * Have the worklet pause itself when the song reaches its end, rather than
    * looping into the intro until the main thread gets round to pausing it.
    * `song-end` is still reported either way. Off by default; it outlives the

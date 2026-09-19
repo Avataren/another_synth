@@ -150,7 +150,31 @@ pub struct AhxEngine {
     /// `Some` while hi-fi rendering is on (see `hifi.rs`); the bank is the
     /// lazy mip cache. `None` (the default) is the reference mixer, untouched.
     hifi: Option<HifiBank>,
+    /// The subsong `init_subsong` last started; `seek` replays this one.
+    subsong: usize,
+    /// When set, a position that runs off its last row starts over instead of
+    /// moving on (see [`set_loop_position`](AhxEngine::set_loop_position)).
+    loop_position: bool,
 }
+
+/// How a [`seek`](AhxEngine::seek) got to its target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeekKind {
+    /// The song's own flow reaches the target, and the engine was replayed
+    /// (tick by tick, mixing skipped) to it: every voice is exactly as if the
+    /// song had been rendered from the top to that point.
+    Exact,
+    /// The song's flow never lands on the target (a `Bxx` jumps over the
+    /// position, a `Dxx` breaks out before the row), so the engine starts
+    /// there cold: fresh voices, the default speed.
+    Cold,
+}
+
+/// A replay that has not reached its target after this many ticks gives up:
+/// a song that jumps back on itself forever (`Bxx` to an earlier position with
+/// no song end) would otherwise never finish. 400 000 ticks is over two hours
+/// at 50 Hz; a replay tick costs a few microseconds.
+const MAX_SEEK_TICKS: u32 = 400_000;
 
 impl AhxEngine {
     /// `defstereo` (0..=4) is only used for AHX songs (stereo separation and
@@ -211,6 +235,8 @@ impl AhxEngine {
             mute_mask: 0,
             solo_mask: 0,
             hifi: None,
+            subsong: 0,
+            loop_position: false,
             song,
         };
         engine.init_subsong(0);
@@ -224,6 +250,7 @@ impl AhxEngine {
             return false;
         }
         let pos_nr = if nr > 0 { self.song.subsongs[nr - 1] as i32 } else { 0 };
+        self.subsong = nr;
         self.t = Transport {
             tempo: 6,
             pos_nr,
@@ -246,6 +273,97 @@ impl AhxEngine {
             c.clear();
         }
         true
+    }
+
+    /// Puts the engine at `(pos, row)` of the current subsong, at a tick
+    /// boundary, so the next `render_block` starts on that row's first sample.
+    /// `None` (nothing changes) when either is out of range.
+    ///
+    /// The engine has no random access: a voice's state at a row is the whole
+    /// song before it. So this replays the subsong from its start, running the
+    /// transport and the voices tick by tick but *not mixing*. The mixer's
+    /// only effect on the engine is to advance each voice's sample phase
+    /// (`sample_pos`, `ring_sample_pos`), which is modular arithmetic on the
+    /// tick's delta, so [`skip_mix`](Self::skip_mix) applies it in closed form.
+    /// The result is bit-identical to rendering from the top to the same tick
+    /// (`tests/ahx_seek.rs` renders both and compares them), at the cost of
+    /// one `play_irq` per tick instead of one per sample per voice. Measured
+    /// on the corpus (native release, hi-fi on): the deepest row of the longest
+    /// song (128 positions, 29k ticks) takes about 10 ms, the worst of any song
+    /// 15 ms, typically 2-5 ms; a render quantum is 3 ms, so a seek on the
+    /// audio thread costs a few quanta, at the moment the old voices are being
+    /// cut anyway.
+    ///
+    /// Injecting state instead (jumping the transport and giving the voices
+    /// the values they "would" have) was rejected: a voice's wave phase,
+    /// envelope, vibrato, filter and square sweeps, portamento and ring
+    /// modulation are all history, and reproducing them without replaying is
+    /// a second implementation of the whole voice to keep bit-exact.
+    ///
+    /// The replay always runs in the song's own flow, whatever
+    /// [`set_loop_position`](Self::set_loop_position) says: it is put back
+    /// afterwards, and a loop that keeps the replay on the first position
+    /// would never get anywhere. Mute/solo, hi-fi and capture are untouched
+    /// (capture's ring is cleared, as after a restart).
+    pub fn seek(&mut self, pos: usize, row: usize) -> Option<SeekKind> {
+        if pos >= self.song.position_nr as usize || row >= self.song.track_length as usize {
+            return None;
+        }
+        let looping = std::mem::replace(&mut self.loop_position, false);
+        self.init_subsong(self.subsong);
+        let mut kind = SeekKind::Cold;
+        for _ in 0..=MAX_SEEK_TICKS {
+            // The top of a row: its step is what the next tick plays.
+            if self.t.step_wait_frames == 0 && self.t.pos_nr == pos as i32 && self.t.note_nr == row as i32 {
+                kind = SeekKind::Exact;
+                // Reached by the wrap to the restart position: a seek is a
+                // fresh start there, not the end of the song.
+                self.t.song_end_reached = false;
+                break;
+            }
+            // The song has wrapped: everything it will ever play was played.
+            if self.t.song_end_reached {
+                break;
+            }
+            self.play_irq();
+            self.skip_mix(self.tick_samples);
+        }
+        if kind == SeekKind::Cold {
+            self.init_subsong(self.subsong);
+            self.t.pos_nr = pos as i32;
+            self.t.note_nr = row as i32;
+        }
+        self.loop_position = looping;
+        Some(kind)
+    }
+
+    /// What `mix_chunk` leaves behind for `samples` frames, without the mix:
+    /// each voice's phase moved on by `samples * delta`, modulo the wave
+    /// length. `mix_chunk` wraps a phase at `END` only when it reaches it, so
+    /// it may store one still `>= END`; the next chunk reduces it before use,
+    /// which is what this does at once.
+    fn skip_mix(&mut self, samples: usize) {
+        const END: u64 = 0x280 << 16;
+        for v in self.voices.iter_mut().take(self.channels) {
+            v.sample_pos = ((v.sample_pos as u64 % END + samples as u64 * v.delta as u64) % END) as u32;
+            if v.ring_mix_active {
+                v.ring_sample_pos =
+                    ((v.ring_sample_pos as u64 % END + samples as u64 * v.ring_delta as u64) % END) as u32;
+            }
+        }
+    }
+
+    /// Loop the current position: when it runs off its last row it starts over
+    /// at row 0 rather than moving to the next one, and never reaches the
+    /// song's end. `Bxx` and `Dxx` still take effect (they move the loop),
+    /// which is what "play pattern" does for the other formats. Off by
+    /// default; off is the reference transport, byte for byte.
+    pub fn set_loop_position(&mut self, on: bool) {
+        self.loop_position = on;
+    }
+
+    pub fn loop_position(&self) -> bool {
+        self.loop_position
     }
 
     /// Turns per-voice waveform capture on or off. Off by default. While on,
@@ -320,6 +438,8 @@ impl AhxEngine {
 
         let saved_voices = std::mem::take(&mut self.voices);
         let saved_t = std::mem::take(&mut self.t);
+        // `init_subsong` below walks every subsong; playback stays on its own.
+        let saved_subsong = self.subsong;
         let saved_remaining = self.tick_remaining;
         let saved_capture = self.capture.take();
 
@@ -353,6 +473,7 @@ impl AhxEngine {
 
         self.voices = saved_voices;
         self.t = saved_t;
+        self.subsong = saved_subsong;
         self.tick_remaining = saved_remaining;
         self.capture = saved_capture;
 
@@ -567,7 +688,7 @@ impl AhxEngine {
             if !self.t.pattern_break {
                 self.t.note_nr += 1;
                 if self.t.note_nr >= self.song.track_length as i32 {
-                    self.t.pos_jump = self.t.pos_nr + 1;
+                    self.t.pos_jump = if self.loop_position { self.t.pos_nr } else { self.t.pos_nr + 1 };
                     self.t.pos_jump_note = 0;
                     self.t.pattern_break = true;
                 }

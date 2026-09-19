@@ -130,6 +130,15 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    */
   let ahxEpoch = 0;
 
+  /**
+   * Where the AHX engine is, as last reported by the worklet or set by a seek.
+   * Kept apart from `currentSequenceIndex` / `playbackRow` because those are
+   * also the UI's selection: choosing another position while the song is
+   * paused moves them, and a resume must compare against where the *engine*
+   * is, not where the user is pointing.
+   */
+  let ahxPlace: { position: number; row: number } | null = null;
+
   // ============================================
   // Selection helpers
   // ============================================
@@ -407,6 +416,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
   /** The worklet's position index is the sequence index: one pattern per position. */
   function handleAhxPosition(p: AhxPosition): void {
+    if (ahxSongActive) ahxPlace = { position: p.position, row: p.row };
     // A report that was already in flight when the song was stopped.
     if (!ahxSongActive || !isPlaying.value) return;
     applyPosition({
@@ -454,6 +464,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   function handleAhxSongEnd(): void {
     if (!ahxSongActive || loopSong.value) return;
     ahxTransportInstance?.stop();
+    ahxPlace = { position: 0, row: 0 };
     setAhxTransportState('stopped');
     playbackRow.value = 0;
     for (const listener of songEndListeners) {
@@ -482,6 +493,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     ahxEpoch++;
     if (!ahxSongActive) return;
     ahxSongActive = false;
+    ahxPlace = null;
+    ahxPlace = null;
     ahxScopeViews = null;
     // Not just stopped: with no AHX song left to play, the worklet node would
     // sit idle (and connected to the mix bus) for the life of the app.
@@ -544,11 +557,45 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     return true;
   }
 
-  async function playAhx(song: PlaybackSong, mode: PlaybackMode, startRow: number): Promise<void> {
+  /**
+   * Start an AHX/HVL song from `startRow` of order position `startSequenceIndex`
+   * ("play from here"), looping that position when `mode` is `'pattern'`.
+   *
+   * Nothing here restarts the song to get anywhere. The Rust engine owns the
+   * transport, so every case is one of two commands to it:
+   *  - a paused song asked to play from where it is paused **resumes**: the
+   *    engine was only stopped from rendering, so the clock, the wave phases,
+   *    envelopes, filter sweeps and the rest pick up on the next sample;
+   *  - anywhere else is a **seek** (`AhxPlayer.seek`): the engine replays the
+   *    song's flow up to that row without mixing, so the row starts with the
+   *    voices it would have had if the song had played to there.
+   * Whether the song loops that position is a flag on the same engine, so it
+   * can be flipped while running without touching the clock.
+   */
+  async function playAhx(
+    song: PlaybackSong,
+    mode: PlaybackMode,
+    startRow: number,
+    startSequenceIndex: number | null,
+  ): Promise<void> {
     const songBank = getSongBank();
-    // The engine cannot seek into a song, so a play from the top is the only
-    // "start"; but a paused song whose row is asked for again is a resume.
-    const resuming = ahxSongActive && isPaused.value && startRow === playbackRow.value;
+    const position = Math.max(
+      0,
+      Math.min(startSequenceIndex ?? resolveStartSequenceIndex(song), song.sequence.length - 1),
+    );
+    const rows = trackerStore.rowsForPattern(song.sequence[position]);
+    const row = Math.max(0, Math.min(Math.round(startRow), rows - 1));
+    // Decided before anything awaits or loads, from where the song is now: a
+    // load of other bytes (the jukebox moving on) is never a resume.
+    const bytes = currentAhxSource();
+    const resuming =
+      ahxSongActive &&
+      isPaused.value &&
+      ahxTransportInstance !== null &&
+      bytes !== null &&
+      ahxTransportInstance.isLoaded(bytes) &&
+      ahxPlace?.position === position &&
+      ahxPlace.row === row;
     const epoch = ahxEpoch;
 
     stopSampleEngine();
@@ -567,12 +614,14 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
     if (!(await loadAhxSong(song, mode))) return;
     const transport = ensureAhxTransport();
+    transport.setLoopPosition(mode === 'pattern');
     if (!resuming) {
-      transport.stop();
+      transport.seek(position, row);
+      ahxPlace = { position, row };
       ahxScopeViews = null;
-      currentSequenceIndex.value = 0;
-      selectedSequenceIndex.value = 0;
-      playbackRow.value = 0;
+      currentSequenceIndex.value = position;
+      selectedSequenceIndex.value = position;
+      playbackRow.value = row;
     }
     transport.play();
     setAhxTransportState('playing');
@@ -684,7 +733,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     console.log(
       `[PlaybackStore] play() called: mode=${mode}, startRow=${startRow}, startSequenceIndex=${startSequenceIndex ?? 'auto'}`,
     );
-    if (song.moduleFormat === 'ahx') return playAhx(song, mode, startRow);
+    if (song.moduleFormat === 'ahx') return playAhx(song, mode, startRow, startSequenceIndex);
     leaveAhx();
     const songBank = getSongBank();
 
@@ -767,6 +816,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     if (ahxSongActive) {
       ahxEpoch++;
       ahxTransportInstance?.stop();
+      ahxPlace = { position: 0, row: 0 };
       setAhxTransportState('stopped');
       playbackRow.value = 0;
       return;
@@ -789,8 +839,16 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * Seek to a specific row
    */
   function seek(row: number): void {
-    // The AHX engine cannot be seeked into a song.
-    if (ahxSongActive || !playbackEngineInstance) return;
+    if (ahxSongActive) {
+      // The engine replays to the row on its own clock; play/pause is kept.
+      const rows = trackerStore.rowsForPattern(trackerStore.sequence[currentSequenceIndex.value]);
+      const target = Math.max(0, Math.min(Math.round(row), rows - 1));
+      ahxTransportInstance?.seek(currentSequenceIndex.value, target);
+      ahxPlace = { position: currentSequenceIndex.value, row: target };
+      playbackRow.value = target;
+      return;
+    }
+    if (!playbackEngineInstance) return;
     playbackEngineInstance.seek(row);
   }
 

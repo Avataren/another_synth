@@ -27,6 +27,7 @@ const h = vi.hoisted(() => ({
     capture: boolean[];
     muteSolo: Array<[number, number]>;
     hifi: boolean[];
+    loop: boolean[];
     disposed: boolean;
     emitWaveforms: (w: { channels: number; points: number; data: Int16Array }) => void;
     emitPosition: (p: { position: number; row: number; tempo: number; ticks: number }) => void;
@@ -57,6 +58,7 @@ vi.mock('src/audio/tracker/ahx-player', () => ({
       capture: [] as boolean[],
       muteSolo: [] as Array<[number, number]>,
       hifi: [] as boolean[],
+      loop: [] as boolean[],
       disposed: false,
       async loadSong(bytes: Uint8Array) {
         client.calls.push('load');
@@ -74,6 +76,8 @@ vi.mock('src/audio/tracker/ahx-player', () => ({
       play: () => client.calls.push('play'),
       pause: () => client.calls.push('pause'),
       restart: (n: number) => client.calls.push(`restart:${n}`),
+      seek: (position: number, row: number) => client.calls.push(`seek:${position}:${row}`),
+      setLoopPosition: (enabled: boolean) => client.loop.push(enabled),
       setStopAtEnd: (enabled: boolean) => client.stopAtEnd.push(enabled),
       setCapture: (enabled: boolean) => client.capture.push(enabled),
       setMuteSolo: (mute: number, solo: number) => client.muteSolo.push([mute, solo]),
@@ -366,7 +370,7 @@ describe('AHX song opened through the real load path', () => {
     expect(lastClient().calls.slice(-2)).toEqual(['pause', 'restart:0']);
   });
 
-  it('a fresh play() rewinds to the top', async () => {
+  it('a fresh play() from the top seeks to the top; it is never a restart', async () => {
     const host = setupHost();
     await openAhx(host);
     const store = host.playbackStore;
@@ -375,7 +379,154 @@ describe('AHX song opened through the real load path', () => {
     await store.play(host.buildSong(), 'song', 0, 0);
     expect(store.currentSequenceIndex).toBe(0);
     expect(store.playbackRow).toBe(0);
-    expect(lastClient().calls.slice(-3)).toEqual(['pause', 'restart:0', 'play']);
+    expect(lastClient().calls.slice(-2)).toEqual(['seek:0:0', 'play']);
+    expect(lastClient().calls.filter((c) => c.startsWith('restart'))).toEqual([]);
+  });
+
+  it('play-from-here seeks the engine to that position and row', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 12, 3);
+    expect(lastClient().calls.slice(-2)).toEqual(['seek:3:12', 'play']);
+    expect(store.currentSequenceIndex).toBe(3);
+    expect(store.playbackRow).toBe(12);
+    expect(store.isPlaying).toBe(true);
+    expect(lastClient().calls.filter((c) => c.startsWith('restart'))).toEqual([]);
+
+    // With no index given it plays from the selected position.
+    store.setSequenceIndex(5);
+    await store.play(host.buildSong(), 'song', 0);
+    expect(lastClient().calls.slice(-2)).toEqual(['seek:5:0', 'play']);
+  });
+
+  it('clamps a position or row that is out of range instead of asking the engine for it', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    const last = host.trackerStore.sequence.length - 1;
+    const rows = host.trackerStore.rowsForPattern(host.trackerStore.sequence[last]);
+    await store.play(host.buildSong(), 'song', 9999, 9999);
+    expect(lastClient().calls.slice(-2)).toEqual([`seek:${last}:${rows - 1}`, 'play']);
+  });
+
+  it('pause then play at the paused place resumes: no seek, no restart', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 0);
+    lastClient().emitPosition({ position: 2, row: 9, tempo: 6, ticks: 0 });
+    store.pause();
+    const before = lastClient().calls.length;
+    await store.play(host.buildSong(), 'song', 9, 2);
+    expect(lastClient().calls.slice(before)).toEqual(['play']);
+    expect(store.isPlaying).toBe(true);
+    expect(store.currentSequenceIndex).toBe(2);
+    expect(store.playbackRow).toBe(9);
+  });
+
+  it('pause in song mode and "play pattern" at the same place resumes and only flips the loop', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 0);
+    lastClient().emitPosition({ position: 2, row: 9, tempo: 6, ticks: 0 });
+    store.pause();
+    const before = lastClient().calls.length;
+    await store.play(host.buildSong('pattern'), 'pattern', 9, 2);
+    expect(lastClient().calls.slice(before)).toEqual(['play']);
+    expect(lastClient().loop.at(-1)).toBe(true);
+    expect(store.playbackMode).toBe('pattern');
+  });
+
+  it('a paused song played from somewhere else seeks there', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 0);
+    lastClient().emitPosition({ position: 2, row: 9, tempo: 6, ticks: 0 });
+    store.pause();
+    await store.play(host.buildSong(), 'song', 20, 2);
+    expect(lastClient().calls.slice(-2)).toEqual(['seek:2:20', 'play']);
+    store.pause();
+    await store.play(host.buildSong(), 'song', 20, 4);
+    expect(lastClient().calls.slice(-2)).toEqual(['seek:4:20', 'play']);
+  });
+
+  it('another position picked while paused is a seek, even at the paused row number', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 0);
+    lastClient().emitPosition({ position: 1, row: 50, tempo: 6, ticks: 0 });
+    store.pause();
+    // The user picks position 5 in the sequence list: the selection moves, the
+    // engine does not, and row 50 is where the cursor already was.
+    store.setSequenceIndex(5);
+    expect(store.currentSequenceIndex).toBe(5);
+    await store.play(host.buildSong(), 'song', 50, 5);
+    expect(lastClient().calls.slice(-2)).toEqual(['seek:5:50', 'play']);
+    // ...and picking the paused position again is the resume it always was.
+    store.pause();
+    lastClient().emitPosition({ position: 5, row: 50, tempo: 6, ticks: 0 });
+    store.setSequenceIndex(2);
+    store.setSequenceIndex(5);
+    const before = lastClient().calls.length;
+    await store.play(host.buildSong(), 'song', 50, 5);
+    expect(lastClient().calls.slice(before)).toEqual(['play']);
+  });
+
+  it('a different song is never a resume, even at the paused row', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 0);
+    lastClient().emitPosition({ position: 0, row: 0, tempo: 6, ticks: 0 });
+    store.pause();
+    // Same bytes, but not the ones the worklet holds.
+    setCurrentAhxSource(new Uint8Array(karmaBytes));
+    await store.play(host.buildSong(), 'song', 0, 0);
+    expect(lastClient().calls.filter((c) => c === 'load')).toHaveLength(2);
+    expect(lastClient().calls.slice(-2)).toEqual(['seek:0:0', 'play']);
+  });
+
+  it('play pattern loops the position on the engine; play song does not; the flag is set before the seek', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong('pattern'), 'pattern', 4, 1);
+    expect(lastClient().loop).toEqual([true]);
+    expect(store.playbackMode).toBe('pattern');
+    await store.play(host.buildSong(), 'song', 4, 1);
+    expect(lastClient().loop).toEqual([true, false]);
+    expect(store.playbackMode).toBe('song');
+    // A pattern loop is not a song end and never reaches the jukebox handover.
+    expect(lastClient().calls.filter((c) => c.startsWith('restart'))).toEqual([]);
+  });
+
+  it('a client made later is told to loop (handed back to the sampler and re-opened)', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong('pattern'), 'pattern', 0, 0);
+    await store.play(modSong(), 'song', 0, 0);
+    await store.play(host.buildSong('pattern'), 'pattern', 0, 0);
+    expect(lastClient().loop.at(-1)).toBe(true);
+  });
+
+  it('seek(row) moves the engine within the current position and keeps playing', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const store = host.playbackStore;
+    await store.play(host.buildSong(), 'song', 0, 2);
+    const before = lastClient().calls.length;
+    store.seek(30);
+    expect(lastClient().calls.slice(before)).toEqual(['seek:2:30']);
+    expect(store.playbackRow).toBe(30);
+    expect(store.isPlaying).toBe(true);
+    store.seek(9999);
+    const rows = host.trackerStore.rowsForPattern(host.trackerStore.sequence[2]);
+    expect(lastClient().calls.at(-1)).toBe(`seek:2:${rows - 1}`);
   });
 
   it('song end: a non-looping song stops and fires the listeners; a looping one does not', async () => {

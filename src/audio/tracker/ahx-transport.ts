@@ -33,6 +33,7 @@ export class AhxTransport {
   private clientUnsubs: Array<() => void> = [];
   /** Remembered here, not just on the client, so a client made later (or replaced) gets it. */
   private stopAtEnd = false;
+  private loopPosition = false;
   private capture = false;
   private mute = 0;
   private solo = 0;
@@ -71,6 +72,7 @@ export class AhxTransport {
         }
         client.output.connect(this.host.output);
         client.setStopAtEnd(this.stopAtEnd);
+        if (this.loopPosition) client.setLoopPosition(true);
         if (this.capture) client.setCapture(true);
         if (this.mute || this.solo) client.setMuteSolo(this.mute, this.solo);
         // Always band-limited: told before any load, so the worklet prewarms
@@ -103,6 +105,16 @@ export class AhxTransport {
   setStopAtEnd(enabled: boolean): void {
     this.stopAtEnd = enabled;
     this.client?.setStopAtEnd(enabled);
+  }
+
+  /**
+   * Whether the song loops the order position it is on ("play pattern")
+   * instead of moving on. Remembered here so a client made later (or
+   * replaced) gets it; the worklet keeps it across song loads.
+   */
+  setLoopPosition(enabled: boolean): void {
+    this.loopPosition = enabled;
+    this.client?.setLoopPosition(enabled);
   }
 
   /**
@@ -161,6 +173,14 @@ export class AhxTransport {
 
   pause(): void {
     this.client?.pause();
+  }
+
+  /**
+   * Move to `row` of order position `position` without stopping the clock:
+   * playing carries on from there, paused waits there. See `AhxPlayer.seek`.
+   */
+  seek(position: number, row: number): void {
+    this.client?.seek(position, row);
   }
 
   /** Silence and rewind to the start of the main song, paused. */

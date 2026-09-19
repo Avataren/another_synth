@@ -16,6 +16,15 @@ export interface AhxWasmPlayer {
   play(): void;
   pause(): void;
   restart(subsong: number): boolean;
+  /**
+   * Move to `row` of order position `position`, keeping the play/pause state.
+   * 0: out of range (nothing changed); 1: the song's own flow reaches it, so
+   * every voice is exactly as if the song had played there; 2: it never does
+   * and the row starts cold.
+   */
+  seek(position: number, row: number): number;
+  /** Loop the current order position instead of moving on from it. */
+  set_loop_position(on: boolean): void;
   set_gain(gain: number): void;
   render(left: Float32Array, right: Float32Array): number;
   position(): number;
@@ -78,6 +87,19 @@ export type AhxCommand =
   | { type: 'play' }
   | { type: 'pause' }
   | { type: 'restart'; subsong?: number }
+  /**
+   * Jump to `row` of order position `position` without stopping the clock: a
+   * playing song carries on from there, a paused one waits there (see
+   * `AhxPlayer.seek`). Answered with a `position` event, playing or not.
+   */
+  | { type: 'seek'; position: number; row: number }
+  /**
+   * Loop the order position the song is on instead of moving on from it
+   * ("play pattern"): at its last row it starts over at row 0 on the same
+   * running clock. Like capture it outlives the song: every load starts with
+   * the last state set.
+   */
+  | { type: 'set-loop-position'; enabled: boolean }
   | { type: 'set-gain'; gain: number }
   /**
    * Pause at the song's end instead of looping on. The engine sets its
@@ -181,6 +203,7 @@ export class AhxProcessorCore {
   private mute = 0;
   private solo = 0;
   private hifi = false;
+  private loopPosition = false;
   /** One `waveforms` payload, refilled in place each report (posting clones it). */
   private scopeData = new Int16Array(0);
   private framesSincePosition = 0;
@@ -224,6 +247,13 @@ export class AhxProcessorCore {
           this.playing = false;
           this.resetReporting();
         }
+        break;
+      case 'seek':
+        this.seek(command.position, command.row);
+        break;
+      case 'set-loop-position':
+        this.loopPosition = command.enabled;
+        this.player?.set_loop_position(command.enabled);
         break;
       case 'set-gain':
         this.gain = command.gain;
@@ -316,6 +346,7 @@ export class AhxProcessorCore {
       player.enable_capture(this.capture);
       player.set_mute_solo(this.mute, this.solo);
       player.set_hifi(this.hifi);
+      player.set_loop_position(this.loopPosition);
       this.player = player;
       this.resetReporting();
       this.post({
@@ -338,6 +369,27 @@ export class AhxProcessorCore {
         message: `AHX load failed: ${String(error)}`,
       });
     }
+  }
+
+  /**
+   * The player moves; the reports are re-armed (a seek back to a row already
+   * reported must not be swallowed as "no change", and a song-end reported
+   * before it is not the end of where it is now) and where it landed is sent
+   * at once, since a paused song reports nothing on its own.
+   */
+  private seek(position: number, row: number): void {
+    const player = this.player;
+    if (!player || player.seek(position, row) === 0) return;
+    this.resetReporting();
+    this.lastPosition = player.position();
+    this.lastRow = player.row();
+    this.post({
+      type: 'position',
+      position: this.lastPosition,
+      row: this.lastRow,
+      tempo: player.tempo(),
+      ticks: player.ticks(),
+    });
   }
 
   /** Returns true when this quantum ended the song and the player was paused. */

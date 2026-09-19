@@ -2055,6 +2055,16 @@ function handlePause() {
   playbackStore.pause();
 }
 
+// An AHX/HVL song resumes in place when it is played from the row it paused
+// on (`playAhx`), and the cursor is what "the row it is played from" means. The
+// header's pause button, and the jukebox's, pause without `handlePause`, so the
+// cursor is put on the paused row whoever paused. A cursor moved after that is
+// a play-from-here, which seeks. The other formats restart from the cursor as
+// they always have, so they are left as they are.
+watch(isPaused, (paused) => {
+  if (paused && isReadOnly.value) activeRow.value = playbackRow.value;
+});
+
 function handleStop() {
   playbackStore.stop();
   activeRow.value = 0;

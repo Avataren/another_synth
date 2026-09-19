@@ -252,6 +252,20 @@ describe('createAhxPlayer / AhxPlayerClient', () => {
     player.dispose();
   });
 
+  it('seek and setLoopPosition reach the worklet: a seek moves a paused song and reports where it landed', async () => {
+    stubGlobals();
+    const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
+    await player.loadSong(karma);
+    const seen: Array<{ position: number; row: number }> = [];
+    player.onPosition((p) => seen.push(p));
+    player.seek(2, 7);
+    player.setLoopPosition(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(seen).toEqual([expect.objectContaining({ position: 2, row: 7 })]);
+    player.dispose();
+  });
+
   it('rejects loadSong with the parser message for a bad file', async () => {
     stubGlobals();
     const player = await createAhxPlayer(fakeContext() as unknown as AudioContext);
