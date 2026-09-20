@@ -180,6 +180,9 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
     if (!context.currentPattern.value) return;
     if (!context.isEditMode.value) return;
 
+    // Pending edits first: `pushHistory` syncs the grid to the doc, and a sync
+    // after the results below would re-project cells they are about to replace.
+    context.ahx?.flush?.();
     const rect = selectionRect.value;
     const pattern = context.currentPattern.value;
 
@@ -239,6 +242,8 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
     if (!context.currentPattern.value) return;
     if (!context.isEditMode.value) return;
 
+    // Pending edits first (see `transposeSelection`).
+    context.ahx?.flush?.();
     const clip = clipboard.value;
     const pattern = context.currentPattern.value;
     const totalTracks = pattern.tracks.length;
@@ -483,6 +488,8 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
     if (context.isReadOnly?.value) return;
     if (!context.currentPattern.value) return;
 
+    // Pending edits first (see `transposeSelection`).
+    context.ahx?.flush?.();
     const tracks = context.currentPattern.value.tracks;
     const results: TrackerEntryData[][] = [];
     for (const track of tracks) {

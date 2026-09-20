@@ -2,15 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, isReactive, nextTick, ref, toRef } from 'vue';
-import { createPinia, setActivePinia } from 'pinia';
+import { createPinia, getActivePinia, setActivePinia } from 'pinia';
 import { parseAhx, parseTrackerNoteSymbol, type AhxSong } from '@another-synth/tracker-playback';
 import { useTrackerStore, type TrackerSongFile } from 'src/stores/tracker-store';
 import { useTrackerEditing, type TrackerEditingContext } from 'src/composables/useTrackerEditing';
 import { useTrackerSelection, type TrackerSelectionContext } from 'src/composables/useTrackerSelection';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import {
+  ahxSourceInfo,
+  currentAhxInstrumentEdits,
   currentAhxPreviewSource,
   currentAhxSource,
+  onCurrentAhxSourceChange,
+  recordAhxInstrumentEdit,
   setCurrentAhxSource,
 } from 'src/audio/tracker/ahx-source';
 import { ahxEditNotice, clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
@@ -92,6 +96,9 @@ function harness(bytes: Uint8Array = fixtureBytes()) {
       if (reason === null) return false;
       reportAhxEditNotice(reason);
       return true;
+    },
+    flush: () => {
+      store.syncAhxWriteBack();
     },
   };
   const activeInstrumentId = ref<string | null>('01');
@@ -854,5 +861,296 @@ describe('capability split and stale docs', () => {
     expect(store.syncAhxWriteBack()).toBe(false);
     store.pushHistory();
     expect(store.undoStack).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review fix round: undo across a load, dirty tracking, empty slots, bulk-op flush
+// ---------------------------------------------------------------------------
+
+describe('undo across a song load (review 1: an editable doc with no engine bytes)', () => {
+  /** A song file of another format, built on a scratch store so the AHX one under test is untouched. */
+  function otherSongFile(format: 'protracker' | 'xm' | 's3m'): TrackerSongFile {
+    const active = getActivePinia();
+    setActivePinia(createPinia());
+    try {
+      const scratch = useTrackerStore();
+      scratch.resetToNewSong();
+      const file = scratch.serializeSong();
+      return { ...file, data: { ...file.data, moduleFormat: format } } as TrackerSongFile;
+    } finally {
+      if (active) setActivePinia(active);
+    }
+  }
+  /** What `applySongFile` does to the store and the source registry. */
+  function applyLikeFileIO(store: ReturnType<typeof useTrackerStore>, file: TrackerSongFile, bytes: Uint8Array | null = null) {
+    store.loadSongFile(file);
+    setCurrentAhxSource(bytes);
+  }
+  const editedHarness = () => {
+    const h = harness();
+    h.at(2, 0);
+    h.editing.handleNoteEntry(50);
+    expect(h.store.undoStack).toHaveLength(1);
+    return h;
+  };
+
+  for (const format of ['protracker', 'xm', 's3m'] as const) {
+    it(`edit AHX, load ${format}, undo: history is gone, nothing of the AHX song comes back`, () => {
+      const h = editedHarness();
+      const file = otherSongFile(format);
+      applyLikeFileIO(h.store, file);
+      expect(h.store.undoStack).toHaveLength(0);
+      expect(h.store.redoStack).toHaveLength(0);
+      h.store.undo();
+      h.store.redo();
+      expect(h.store.moduleFormat).toBe(format);
+      expect(h.store.ahxDoc).toBeNull();
+      expect(h.store.isAhxEditable).toBe(false);
+      expect(currentAhxSource()).toBeNull();
+      expect(ahxSourceInfo.value).toBeNull();
+    });
+  }
+
+  it('the redo stack is cleared by a load too', () => {
+    const h = editedHarness();
+    h.store.undo();
+    expect(h.store.redoStack).toHaveLength(1);
+    applyLikeFileIO(h.store, otherSongFile('xm'));
+    expect(h.store.redoStack).toHaveLength(0);
+  });
+
+  it('edit AHX, load AHX B, undo: B stays, with its own bytes, source info and no A history', () => {
+    const h = editedHarness();
+    const docB = { ...fixtureDoc(), version: 2 } as AhxDoc;
+    const bytesB = fixtureBytes(docB);
+    const fileB = importAhxToTrackerSong(toBuffer(bytesB));
+    applyLikeFileIO(h.store, fileB, bytesB);
+    expect(h.store.undoStack).toHaveLength(0);
+    h.store.undo();
+    expect(currentAhxSource()).toBe(bytesB);
+    expect(ahxSourceInfo.value).toMatchObject({ format: 'ahx', version: 2 });
+  });
+
+  it('belt: a snapshot of an AHX song applied over no bytes installs them (Play plays the grid, not nothing)', () => {
+    const h = editedHarness();
+    const snapshot = h.store.undoStack[0]!;
+    applyLikeFileIO(h.store, otherSongFile('protracker'));
+    // The stacks are cleared by the load; reach the snapshot the way a stale one would.
+    h.store.applySnapshot(snapshot);
+    expect(h.store.isAhxEditable).toBe(true);
+    const bytes = currentAhxSource();
+    expect(bytes).not.toBeNull();
+    expect(parseAhx(bytes as Uint8Array).tracks.length).toBeGreaterThan(0);
+    expect(ahxSourceInfo.value).toMatchObject({ format: 'ahx', version: 1 });
+    // The grid and the engine agree: the pre-edit song (row 2 is blank).
+    expect(parseAhx(bytes as Uint8Array).tracks[(h.store.ahxDoc as AhxDoc).positions[0]!.track[0] as number]![2]!.note).toBe(0);
+  });
+
+  it('belt: a snapshot of AHX song A applied while song B is current installs A as a song change (info, edits, listeners)', () => {
+    const h = editedHarness();
+    const snapshot = h.store.undoStack[0]!;
+    const bytesB = fixtureBytes({ ...fixtureDoc(), version: 2 } as AhxDoc);
+    applyLikeFileIO(h.store, importAhxToTrackerSong(toBuffer(bytesB)), bytesB);
+    expect(recordAhxInstrumentEdit(1, new Uint8Array([1, 2, 3]))).toBe(true);
+    const changes = vi.fn();
+    const off = onCurrentAhxSourceChange(changes);
+    h.store.applySnapshot(snapshot);
+    off();
+    expect(changes).toHaveBeenCalledTimes(1);
+    expect(currentAhxInstrumentEdits()).toEqual([]);
+    expect(currentAhxSource()).not.toBe(bytesB);
+    expect(ahxSourceInfo.value).toMatchObject({ format: 'ahx', version: 1 });
+  });
+
+  it('belt: a non-AHX snapshot applied over an AHX song drops the AHX bytes', () => {
+    const h = editedHarness();
+    h.store.resetToNewSong();
+    setCurrentAhxSource(null);
+    h.store.pushHistory();
+    const nativeSnapshot = h.store.undoStack[0]!;
+    const { store } = loadBytes(fixtureBytes());
+    expect(currentAhxSource()).not.toBeNull();
+    store.applySnapshot(nativeSnapshot);
+    expect(store.ahxDoc).toBeNull();
+    expect(currentAhxSource()).toBeNull();
+  });
+
+  it('publishing with no bytes current installs them instead of doing nothing', () => {
+    const h = harness();
+    setCurrentAhxSource(null);
+    const changes = vi.fn();
+    const off = onCurrentAhxSourceChange(changes);
+    h.at(2, 0);
+    h.editing.handleNoteEntry(50);
+    h.store.flushAhxBytes();
+    off();
+    expect(changes).toHaveBeenCalledTimes(1);
+    const bytes = currentAhxSource() as Uint8Array;
+    expect(bytes).not.toBeNull();
+    const song = parseAhx(bytes);
+    expect(song.tracks[song.positions[0]!.track[0] as number]![2]!.note).toBe(27);
+  });
+
+  it('a normal undo within one song still swaps the bytes without a song change', () => {
+    const h = editedHarness();
+    const changes = vi.fn();
+    const off = onCurrentAhxSourceChange(changes);
+    h.store.undo();
+    off();
+    expect(changes).not.toHaveBeenCalled();
+    const song = parseAhx(currentAhxSource() as Uint8Array);
+    expect(song.tracks[song.positions[0]!.track[0] as number]![2]!.note).toBe(0);
+  });
+});
+
+describe('flush does not publish what did not change (review 7)', () => {
+  /** Valid to the parser and the loader, but not what `buildAhxFile` writes: trailing bytes. */
+  function paddedBytes(): Uint8Array {
+    const bytes = fixtureBytes();
+    const padded = new Uint8Array(bytes.length + 5);
+    padded.set(bytes);
+    return padded;
+  }
+
+  it('the fixture is a song whose re-serialisation is not byte-identical', () => {
+    const padded = paddedBytes();
+    const { store } = loadBytes(padded);
+    const rebuilt = buildAhxFile({ doc: store.ahxDoc as AhxDoc, slots: store.instrumentSlots, title: store.currentSong.title }).bytes;
+    expect(rebuilt.length).not.toBe(padded.length);
+  });
+
+  it('an unedited song keeps the bytes it was loaded with across flushes (no swap to re-encoded bytes)', () => {
+    const padded = paddedBytes();
+    const { store } = loadBytes(padded);
+    store.flushAhxBytes();
+    store.serializeSong();
+    store.flushAhxBytes();
+    expect(currentAhxSource()).toBe(padded);
+  });
+
+  it('an edit publishes, and the next flush is idle again', () => {
+    const h = harness(paddedBytes());
+    const loaded = currentAhxSource();
+    h.at(2, 0);
+    h.editing.handleNoteEntry(50);
+    h.store.flushAhxBytes();
+    const edited = currentAhxSource();
+    expect(edited).not.toBe(loaded);
+    h.store.flushAhxBytes();
+    expect(currentAhxSource()).toBe(edited);
+  });
+
+  it('a slot change alone (no cell edit, no revision bump) still publishes', () => {
+    const h = harness(paddedBytes());
+    const loaded = currentAhxSource();
+    const slot = h.store.instrumentSlots[0] as { ahxData: { volume: number } };
+    slot.ahxData = { ...slot.ahxData, volume: slot.ahxData.volume === 10 ? 11 : 10 };
+    h.store.flushAhxBytes();
+    expect(currentAhxSource()).not.toBe(loaded);
+  });
+
+  it('a title change alone publishes', () => {
+    const h = harness(paddedBytes());
+    const loaded = currentAhxSource();
+    h.store.currentSong.title = 'Another name';
+    h.store.flushAhxBytes();
+    expect(currentAhxSource()).not.toBe(loaded);
+  });
+
+  it('undo publishes (a full reload), even though it is a return to what was loaded', () => {
+    const h = harness(paddedBytes());
+    h.at(2, 0);
+    h.editing.handleNoteEntry(50);
+    h.store.flushAhxBytes();
+    const edited = currentAhxSource();
+    h.store.undo();
+    expect(currentAhxSource()).not.toBe(edited);
+  });
+});
+
+describe('the empty-slot warning (plan 1.3, review 9)', () => {
+  it('a note written with an empty slot active warns, and the note is still written', () => {
+    const h = harness();
+    h.activeInstrumentId.value = '09';
+    h.at(2, 0);
+    h.editing.handleNoteEntry(50);
+    h.store.syncAhxWriteBack();
+    expect(noticeText()).toBe('Instrument 09 is empty (this song has 3): a step naming it does not start an instrument.');
+    expect(h.docStep(0, 0, 2)).toMatchObject({ note: 27, instrument: 9 });
+  });
+
+  it('a filled slot does not warn', () => {
+    const h = harness();
+    h.activeInstrumentId.value = '03';
+    h.at(2, 0);
+    h.editing.handleNoteEntry(50);
+    h.store.syncAhxWriteBack();
+    expect(noticeText()).toBeNull();
+  });
+
+  it('a step that already names an empty slot (a file\'s own dormant reference) does not warn when only its effect is edited', () => {
+    let doc = fixtureDoc();
+    const put = setStep(doc, 1, 12, step(20, 9));
+    if (!put.ok) throw new Error(put.reason);
+    doc = put.doc;
+    const h = harness(fixtureBytes(doc));
+    expect(h.docStep(0, 0, 12).instrument).toBe(9);
+    h.at(12, 0, 4);
+    h.editing.handleMacroInput('C');
+    h.store.syncAhxWriteBack();
+    expect(noticeText()).toBeNull();
+  });
+});
+
+describe('bulk edits flush pending edits first (review 6)', () => {
+  /** Position 1 shares its first channel's track with position 0: an edit at position 1 re-projects position 0. */
+  const editAtPositionOneThenReturn = (h: Harness) => {
+    h.store.currentPatternId = 'ahx-pos-1';
+    h.at(2, 0);
+    h.editing.handleNoteEntry(50);
+    h.store.currentPatternId = 'ahx-pos-0';
+  };
+
+  it('transposePattern straight after an unflushed edit on a shared track keeps the edit (two synchronous calls)', () => {
+    const h = harness();
+    editAtPositionOneThenReturn(h);
+    h.selection.transposePattern(2);
+    h.store.syncAhxWriteBack();
+    expect(h.docStep(0, 0, 0).note).toBe(27);
+    expect(h.docStep(0, 0, 2)).toMatchObject({ note: 29 });
+    expect(h.docStep(1, 0, 2)).toMatchObject({ note: 29 });
+  });
+
+  it('transposeSelection straight after an unflushed edit on a shared track keeps the edit', () => {
+    const h = harness();
+    editAtPositionOneThenReturn(h);
+    h.selection.onPatternStartSelection({ row: 0, trackIndex: 0 });
+    h.selection.onPatternHoverSelection({ row: 8, trackIndex: 0 });
+    h.selection.transposeSelection(2);
+    h.store.syncAhxWriteBack();
+    expect(h.docStep(0, 0, 2).note).toBe(29);
+    expect(h.docStep(0, 0, 0).note).toBe(27);
+  });
+
+  it('pasteFromClipboard straight after an unflushed edit on a shared track keeps the edit', () => {
+    const h = harness();
+    editAtPositionOneThenReturn(h);
+    h.selection.clipboard.value = { width: 1, height: 1, data: [[{ row: 0, note: 'C-4', instrument: '01' }]] };
+    h.at(6, 0);
+    h.selection.pasteFromClipboard();
+    h.store.syncAhxWriteBack();
+    expect(h.docStep(0, 0, 2).note).toBe(27);
+    expect(h.docStep(0, 0, 6).note).toBeGreaterThan(0);
+  });
+
+  it('the undo step taken by the bulk edit holds the flushed edit', () => {
+    const h = harness();
+    editAtPositionOneThenReturn(h);
+    h.selection.transposePattern(2);
+    h.store.undo();
+    h.store.syncAhxWriteBack();
+    // Undo returns to the state just before the transpose: the edit is in it.
+    expect(h.docStep(0, 0, 2).note).toBe(27);
   });
 });

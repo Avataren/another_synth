@@ -581,8 +581,12 @@ describe('AHX song opened through the real load path', () => {
 
   it('refuses to play (without throwing) when the source bytes are missing', async () => {
     const host = setupHost();
-    await openAhx(host);
-    setCurrentAhxSource(null); // e.g. a .cmod saved from an AHX song
+    const file = await openAhx(host);
+    // e.g. a .cmod saved from an AHX song: the slots without the bytes, so no doc
+    // either (an editable AHX song always has its bytes).
+    await host.fileIO.applySongFile(JSON.parse(JSON.stringify(file)));
+    setCurrentAhxSource(null);
+    expect(host.trackerStore.isAhxEditable).toBe(false);
     await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
     expect(host.playbackStore.isPlaying).toBe(false);
     expect(h.clients.flatMap((c) => c.calls)).not.toContain('play');

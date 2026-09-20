@@ -201,7 +201,11 @@ describe('the AHX exporter with the real store', () => {
   });
 
   it('a song whose bytes are gone (an edit was only kept, or it came from a saved file) is unavailable', () => {
+    // A saved file loaded back: the slots without the bytes, so no doc either (an
+    // editable AHX song always has its bytes; `publishAhxBytes` puts them back).
+    store.loadSongFile(JSON.parse(JSON.stringify(store.serializeSong())));
     setCurrentAhxSource(null);
+    expect(store.isAhxEditable).toBe(false);
     expect(store.updateAhxInstrument(1, setAhxNumber(slotInstrument(1), 'volume', 5))).toBe('kept');
     const song = snapshotEditorSong(store);
     expect(ahxSourceRecordOf(song)).toBeNull();

@@ -68,4 +68,11 @@ export interface AhxEditGate {
   readonly active: () => boolean;
   /** `true` when `check` cannot be written to an AHX step; the reason has been reported. */
   readonly refuse: (check: AhxEditCheck) => boolean;
+  /**
+   * Writes every pending grid edit into the doc now. A bulk edit calls it
+   * before it reads the grid: `pushHistory` syncs too, and a sync that ran
+   * after the results were computed could re-project a cell those results are
+   * about to overwrite.
+   */
+  readonly flush?: () => void;
 }

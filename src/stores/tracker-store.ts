@@ -35,7 +35,9 @@ import {
   ahxSourceInfo,
   ahxSourceRecordOf,
   recordAhxInstrumentEdit,
+  currentAhxSource,
   replaceCurrentAhxBytes,
+  setCurrentAhxSource,
   type ReplaceAhxBytesOptions,
 } from 'src/audio/tracker/ahx-source';
 import {
@@ -420,6 +422,8 @@ export interface TrackerSongFile {
 interface AhxSyncCache {
   cells: unknown[][];
   watching: boolean;
+  /** What the engine's bytes were last built from (`ahxPublishKey`); `null` when unknown. */
+  published: string | null;
 }
 const ahxSyncCaches = new WeakMap<object, AhxSyncCache>();
 
@@ -427,7 +431,7 @@ function ahxSyncCacheOf(store: { $state: object }): AhxSyncCache {
   const key = toRaw(store.$state);
   let cache = ahxSyncCaches.get(key);
   if (!cache) {
-    cache = { cells: [], watching: false };
+    cache = { cells: [], watching: false, published: null };
     ahxSyncCaches.set(key, cache);
   }
   return cache;
@@ -584,6 +588,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       // The snapshot's doc (`null` for any other song): the song being applied
       // decides, never the doc that happens to be in the store.
       const ahxDoc = snapshot.moduleFormat === 'ahx' ? snapshot.ahxDoc ?? null : null;
+      const previousDoc = this.ahxDoc;
       this.ahxDoc = ahxDoc;
       this.ahxRevision += 1;
       clearAhxEditNotice();
@@ -613,7 +618,14 @@ export const useTrackerStore = defineStore('trackerStore', {
         this.primeAhxWriteBack();
         // The slots have just gone back too, so the recorded instrument edits
         // are stale: start the song's bytes over (a full reload at the next Play).
-        this.publishAhxBytes({ resetEdits: true });
+        // A snapshot of another song than the one whose bytes are current (the
+        // stacks are cleared by every load, so this is the belt) is installed as
+        // a song change: its header info, notices and preview follow it.
+        const sameSong = previousDoc !== null && previousDoc.base === ahxDoc.base && currentAhxSource() !== null;
+        this.publishAhxBytes({ resetEdits: true, install: !sameSong });
+      } else if (previousDoc !== null && currentAhxSource() !== null) {
+        // An AHX song's bytes must not outlive the AHX song on screen.
+        setCurrentAhxSource(null);
       }
     },
     /** Push the current state onto the undo stack and clear redo history. */
@@ -662,6 +674,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.ahxDoc = null;
       this.ahxRevision += 1;
       ahxSyncCacheOf(this).cells = [];
+      ahxSyncCacheOf(this).published = null;
       clearAhxEditNotice();
     },
     undo() {
@@ -1066,6 +1079,13 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
       const data = file.data;
 
+      // History belongs to the song it was made on: an undo across a load would
+      // put the old song's grid (and, for AHX, its doc) on top of the new
+      // song's engine bytes. (The Jukebox puts the editor's stacks back by hand
+      // after the load that restores its song.)
+      this.undoStack = [];
+      this.redoStack = [];
+
       // The doc belongs to the song that is being replaced: whichever song this
       // is, it starts without one (an editable AHX song sets its own below).
       this.ahxDoc = null;
@@ -1214,6 +1234,9 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.sequence = this.patterns.map((pattern) => pattern.id);
       this.currentPatternId = stableIdOf(Math.max(0, Math.min(doc.positions.length - 1, oldIndex)));
       this.primeAhxWriteBack();
+      // The bytes the record carries are what the engine holds for this song:
+      // nothing is dirty until an edit (a flush of an unedited song is a no-op).
+      ahxSyncCacheOf(this).published = this.ahxPublishKey();
     },
     /** Marks the grid as reconciled with the doc (it was just built from it) and makes sure the watcher runs. */
     primeAhxWriteBack() {
@@ -1346,9 +1369,39 @@ export const useTrackerStore = defineStore('trackerStore', {
       cache.cells = patterns.map((pattern) => pattern.tracks.map((track) => toRaw(track.entries)));
 
       const changed = next !== doc;
+      // Looked for before the commit: it compares the written steps with the old doc's.
+      const warning = changed ? this.emptySlotWarning(doc, edited) : null;
       if (changed) this.commitAhxDoc(next);
+      // A refusal outranks a warning (one notice at a time).
       if (problem !== null) reportAhxEditNotice(problem);
+      else if (warning !== null) reportAhxEditNotice(warning);
       return changed;
+    },
+    /**
+     * A warning, not a refusal (the file may legally address such a step, and
+     * the user may be about to fill the slot): a step this pass wrote names an
+     * instrument whose slot is empty. The engine only sets an instrument up
+     * when its number is within the song's instrument count, so the step would
+     * not start one. Steps that already named it (a file's own) do not warn.
+     */
+    emptySlotWarning(
+      before: AhxDoc,
+      written: readonly { p: number; c: number; encoded?: AhxDocTrack; revert?: boolean }[],
+    ): string | null {
+      for (const cell of written) {
+        if (cell.revert || !cell.encoded) continue;
+        const old = before.tracks[before.positions[cell.p]?.track[cell.c] as number] ?? [];
+        for (let row = 0; row < cell.encoded.length; row++) {
+          const step = cell.encoded[row] as AhxDocTrack[number];
+          if (step.instrument === 0 || this.instrumentSlots[step.instrument - 1]?.ahxData !== undefined) continue;
+          const was = old[row];
+          if (was && was.instrument === step.instrument && was.note === step.note) continue;
+          const count = this.instrumentSlots.filter((slot) => slot.ahxData !== undefined).length;
+          const named = String(step.instrument).padStart(2, '0');
+          return `Instrument ${named} is empty (this song has ${count}): a step naming it does not start an instrument.`;
+        }
+      }
+      return null;
     },
     /**
      * Installs `next` as the song's doc and hands the engine's bytes the change:
@@ -1366,12 +1419,22 @@ export const useTrackerStore = defineStore('trackerStore', {
      * with the engine path). Never throws: a doc the writer refuses (the ops
      * cannot make one) leaves the previous bytes and says so.
      */
-    publishAhxBytes(options: ReplaceAhxBytesOptions = {}) {
+    publishAhxBytes(options: ReplaceAhxBytesOptions & { install?: boolean } = {}) {
       const doc = this.ahxDoc;
       if (doc === null) return;
+      const { install = false, ...replaceOptions } = options;
       try {
+        const key = this.ahxPublishKey();
         const { bytes } = buildAhxFile({ doc, slots: this.instrumentSlots, title: this.currentSong.title });
-        replaceCurrentAhxBytes(bytes, options);
+        // `install`: a snapshot of another song than the current bytes' one.
+        // No bytes at all is the same case (an editable song must never be
+        // left without what Play loads), and it must not fail silently.
+        if (install || currentAhxSource() === null) {
+          setCurrentAhxSource(bytes, { format: 'ahx', version: doc.version, edits: [] });
+        } else {
+          replaceCurrentAhxBytes(bytes, replaceOptions);
+        }
+        ahxSyncCacheOf(this).published = key;
       } catch (error) {
         console.error('[TrackerStore] the AHX song could not be written; the engine keeps the previous version', error);
       }
@@ -1385,7 +1448,15 @@ export const useTrackerStore = defineStore('trackerStore', {
     flushAhxBytes() {
       if (this.ahxDoc === null) return;
       this.syncAhxWriteBack();
+      // Nothing changed since the bytes were last built (or loaded): leave them
+      // alone. A song whose re-serialisation is not byte-identical would
+      // otherwise be swapped for re-encoded bytes without an edit being made.
+      if (ahxSyncCacheOf(this).published === this.ahxPublishKey() && currentAhxSource() !== null) return;
       this.publishAhxBytes();
+    },
+    /** Everything `buildAhxFile` reads besides the doc's tracks, as one comparable string: the revision counts the doc's changes. */
+    ahxPublishKey(): string {
+      return `${this.ahxRevision}\u0000${this.currentSong.title}\u0000${JSON.stringify(this.instrumentSlots)}`;
     }
   }
 });

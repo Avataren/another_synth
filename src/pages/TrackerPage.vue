@@ -1129,6 +1129,9 @@ const ahxEditGate: AhxEditGate = {
     reportAhxEditNotice(reason);
     return true;
   },
+  flush: () => {
+    trackerStore.syncAhxWriteBack();
+  },
 };
 const editModeRequested = ref(false);
 const isEditMode = computed<boolean>({
