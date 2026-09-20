@@ -120,14 +120,14 @@
 
     <p v-if="hardCutFrames > 0" class="ahx-env__legend" data-testid="ahx-envelope-hardcut-note">
       <template v-if="hardCutRelease">
-        Hard cut: when the next note on this channel arrives, the release is forced to the release level over the
-        last {{ hardCutFrames }} {{ hardCutFrames === 1 ? 'frame' : 'frames' }} before it (hatched).
+        Hard cut: when a following row on this channel sets an instrument, the release is forced to the release level over the
+        last {{ hardCutFrames }} {{ hardCutFrames === 1 ? 'frame' : 'frames' }} before it (hatched; fewer if the tempo is shorter).
       </template>
       <template v-else>
         Hard cut is off for the release: the note is muted {{ hardCutFrames }}
-        {{ hardCutFrames === 1 ? 'frame' : 'frames' }} before the next note instead of ramping.
+        {{ hardCutFrames === 1 ? 'frame' : 'frames' }} before the next row that sets an instrument instead of ramping.
       </template>
-      Only songs have a next note; the audition keys never hard-cut.
+      Only a song has a next row that sets an instrument; the audition keys never hard-cut.
     </p>
   </div>
 </template>

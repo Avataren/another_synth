@@ -143,7 +143,7 @@ describe('AhxEnvelopeEditor (E2)', () => {
     await w.get('[data-testid="ahx-env-marker-next"]').trigger('keydown', { key: 'ArrowRight' });
     expect(w.emitted('change')).toBeUndefined();
     await w.setProps({ hardCutRelease: false });
-    expect(w.get('[data-testid="ahx-envelope-hardcut-note"]').text()).toMatch(/muted 3 frames before the next note/);
+    expect(w.get('[data-testid="ahx-envelope-hardcut-note"]').text()).toMatch(/muted 3 frames before the next row that sets an instrument/);
     w.unmount();
   });
 });

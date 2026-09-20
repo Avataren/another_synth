@@ -20,6 +20,14 @@ import {
   type AhxPListEntry,
   type AhxSongFormat,
 } from '@another-synth/tracker-playback';
+import {
+  AHX_SWEEP_PARAM,
+  AHX_WAVE_SQUARE,
+  ahxSweepSetup,
+  canEnableAhxSweep,
+  type AhxSweepContext,
+  type AhxSweepKind,
+} from 'src/audio/tracker/ahx-instrument-visuals';
 
 /** Wave lengths the engine has tables for: 4 << 0 .. 4 << 5 samples. */
 export const AHX_MAX_WAVE_LENGTH = 5;
@@ -279,5 +287,38 @@ export function setAhxStartFilterPosition(ins: AhxInstrument, position: number):
   const target = slot >= 0 ? slot : entry.fx.findIndex((fx) => fx === 0);
   if (target < 0) return next;
   entry.fxParam[target] = clamp(position, 0, AHX_MAX_FILTER_POSITION);
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// Sweeps: "Turn on at row 0" (editor plan E8)
+// ---------------------------------------------------------------------------
+
+/**
+ * Turns a sweep on the way the engine only can: PList command 4 (a toggle) on
+ * row 0, in a free command slot (`plist.rs:47-65`). A square sweep also needs a
+ * row that selects the square wave, so row 0 is switched to it when none does.
+ * Nothing changes when the sweep is already toggled on, or when it cannot be
+ * turned on (no free slot on row 0; a version-0 AHX file cannot toggle the
+ * filter).
+ */
+export function enableAhxSweep(
+  ins: AhxInstrument,
+  kind: AhxSweepKind,
+  context: AhxSweepContext = { format: 'ahx', version: 1 },
+): AhxInstrument {
+  const setup = ahxSweepSetup(ins, kind, context);
+  let next = ins;
+  if (!setup.toggled) {
+    if (!canEnableAhxSweep(ins, kind, context)) return ins;
+    next = copy(ins.plist.entries.length === 0 ? addAhxPListEntry(ins) : ins);
+    const entry = next.plist.entries[0]!;
+    const slot = entry.fx.findIndex((fx, i) => fx === 0 && (entry.fxParam[i] ?? 0) === 0);
+    entry.fx[slot] = 4;
+    entry.fxParam[slot] = AHX_SWEEP_PARAM[kind];
+  }
+  if (kind === 'square' && !ahxSweepSetup(next, 'square', context).hasSquareWave) {
+    next = setAhxStartWaveform(next, AHX_WAVE_SQUARE);
+  }
   return next;
 }

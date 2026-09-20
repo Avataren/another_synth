@@ -1,5 +1,9 @@
 <template>
-  <div class="ahx-segmented" role="radiogroup" v-bind="label ? { 'aria-label': label } : {}">
+  <div
+    class="ahx-segmented"
+    role="radiogroup"
+    v-bind="{ ...(label ? { 'aria-label': label } : {}), ...(title ? { title } : {}) }"
+  >
     <span v-if="label" class="ahx-segmented__label">{{ label }}</span>
     <div class="ahx-segmented__options">
       <label
@@ -19,6 +23,14 @@
           :data-testid="testid ? `${testid}-${option.value}` : ''"
           @change="emit('update:modelValue', option.value)"
         />
+        <svg
+          v-if="option.glyph"
+          class="ahx-segmented__glyph"
+          viewBox="0 0 32 16"
+          aria-hidden="true"
+        >
+          <path :d="option.glyph" />
+        </svg>
         <span class="ahx-segmented__text">{{ option.label }}</span>
         <span v-if="option.sub" class="ahx-segmented__sub">{{ option.sub }}</span>
       </label>
@@ -32,6 +44,8 @@ export interface AhxSegmentedOption {
   label: string;
   /** A second, smaller line (e.g. the sample count). */
   sub?: string;
+  /** An SVG path (in a 32 x 16 box) drawn before the label, e.g. a waveform glyph. */
+  glyph?: string;
   title?: string;
 }
 
@@ -49,6 +63,8 @@ interface Props {
   modelValue: number;
   options: ReadonlyArray<AhxSegmentedOption>;
   label?: string;
+  /** What the control does to the sound, for the whole group's tooltip. */
+  title?: string;
   testid?: string;
   disabled?: boolean;
 }
@@ -62,6 +78,14 @@ const groupName = `ahx-seg-${nextGroup++}`;
 </script>
 
 <style scoped>
+.ahx-segmented__glyph {
+  width: 28px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
 .ahx-segmented {
   display: flex;
   flex-wrap: wrap;
