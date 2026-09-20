@@ -1,6 +1,7 @@
 import { ref, computed, type Ref, type ComputedRef } from 'vue';
 import type { TrackerEntryData, TrackerTrackData, TrackerSelectionRect } from 'src/components/tracker/tracker-types';
 import type { TrackerPattern } from 'src/stores/tracker-store';
+import type { AhxEditGate } from 'src/audio/tracker/ahx-doc/edit-guard';
 
 /**
  * Clipboard data structure for selection copy/paste
@@ -48,6 +49,13 @@ export interface TrackerSelectionContext {
   pushHistory: () => void;
   parseTrackerNoteSymbol: (note?: string) => { isNoteOff: boolean; midi?: number };
   midiToTrackerNote: (midi: number) => string;
+  /**
+   * Set when the store can hold an editable AHX song. Its bulk edits are then
+   * all-or-nothing: the whole result is checked against what an AHX step can
+   * hold *before* the undo snapshot, and one entry that cannot be written
+   * refuses the whole edit.
+   */
+  ahx?: AhxEditGate;
 }
 
 /**
@@ -67,6 +75,32 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
   const selectionAnchor = ref<{ row: number; trackIndex: number } | null>(null);
   const selectionEnd = ref<{ row: number; trackIndex: number } | null>(null);
   const isMouseSelecting = ref(false);
+
+  const inAhxSong = (): boolean => context.ahx?.active() ?? false;
+
+  /**
+   * The notes of `entries` moved by `semitones` (MIDI 0..127, as a tracker
+   * always did), as new entries. For an AHX song a note that would leave the
+   * format's range refuses the whole edit: `null`, and the gate has said why.
+   */
+  function transposedEntries(entries: TrackerEntryData[], semitones: number, inRange: (row: number) => boolean): TrackerEntryData[] | null {
+    const out: TrackerEntryData[] = [];
+    for (const entry of entries) {
+      if (!inRange(entry.row)) {
+        out.push(entry);
+        continue;
+      }
+      const parsed = context.parseTrackerNoteSymbol(entry.note);
+      if (parsed.isNoteOff || parsed.midi === undefined) {
+        out.push(entry);
+        continue;
+      }
+      const midi = Math.max(0, Math.min(127, parsed.midi + semitones));
+      if (inAhxSong() && context.ahx?.refuse({ kind: 'note', midi })) return null;
+      out.push({ ...entry, note: context.midiToTrackerNote(midi) });
+    }
+    return out;
+  }
 
   // Clipboard state
   const clipboard = ref<ClipboardData | null>(null);
@@ -146,29 +180,26 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
     if (!context.currentPattern.value) return;
     if (!context.isEditMode.value) return;
 
+    // Pending edits first: `pushHistory` syncs the grid to the doc, and a sync
+    // after the results below would re-project cells they are about to replace.
+    context.ahx?.flush?.();
     const rect = selectionRect.value;
     const pattern = context.currentPattern.value;
 
-    context.pushHistory();
-
+    const inSelection = (row: number) => row >= rect.rowStart && row <= rect.rowEnd;
+    const results: { trackIndex: number; entries: TrackerEntryData[] }[] = [];
     for (let trackIndex = rect.trackStart; trackIndex <= rect.trackEnd; trackIndex += 1) {
       const track = pattern.tracks[trackIndex];
       if (!track) continue;
+      const entries = transposedEntries(track.entries, semitones, inSelection);
+      if (entries === null) return;
+      results.push({ trackIndex, entries });
+    }
 
-      track.entries = track.entries.map((entry) => {
-        if (entry.row < rect.rowStart || entry.row > rect.rowEnd) return entry;
-
-        const parsed = context.parseTrackerNoteSymbol(entry.note);
-        if (parsed.isNoteOff || parsed.midi === undefined) return entry;
-
-        let midi = parsed.midi + semitones;
-        midi = Math.max(0, Math.min(127, midi));
-
-        return {
-          ...entry,
-          note: context.midiToTrackerNote(midi)
-        };
-      });
+    context.pushHistory();
+    for (const { trackIndex, entries } of results) {
+      const track = pattern.tracks[trackIndex];
+      if (track) track.entries = entries;
     }
   }
 
@@ -211,17 +242,31 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
     if (!context.currentPattern.value) return;
     if (!context.isEditMode.value) return;
 
+    // Pending edits first (see `transposeSelection`).
+    context.ahx?.flush?.();
     const clip = clipboard.value;
     const pattern = context.currentPattern.value;
     const totalTracks = pattern.tracks.length;
     const maxRow = context.rowsCount.value - 1;
     if (totalTracks === 0 || maxRow < 0) return;
 
-    context.pushHistory();
-
+    // What each target track would hold after the paste, worked out before
+    // anything is written: an AHX paste is all-or-nothing (a row past the end
+    // of the song's tracks, a volume or a second effect a step cannot hold
+    // refuses it whole), while the other formats clip to the pattern as ever.
+    const ahx = inAhxSong();
+    if (ahx && context.ahx?.refuse({ kind: 'channels', count: Math.max(clip.width, totalTracks) })) return;
+    // The rows the paste needs, named once: the last one it would write.
+    const lastRow = context.activeRow.value + clip.height - 1;
+    if (ahx && lastRow > maxRow && context.ahx?.refuse({ kind: 'entries', entries: [{ row: lastRow }] })) return;
+    const results: { trackIndex: number; entries: TrackerEntryData[] }[] = [];
     for (let trackOffset = 0; trackOffset < clip.width; trackOffset += 1) {
       const targetTrackIndex = context.activeTrack.value + trackOffset;
-      if (targetTrackIndex < 0 || targetTrackIndex >= totalTracks) continue;
+      if (targetTrackIndex < 0 || targetTrackIndex >= totalTracks) {
+        // Past the last channel: clipped, except in an AHX song.
+        if (ahx && context.ahx?.refuse({ kind: 'channels', count: context.activeTrack.value + clip.width })) return;
+        continue;
+      }
 
       const track = pattern.tracks[targetTrackIndex];
       if (!track) continue;
@@ -230,7 +275,10 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
 
       for (let rowOffset = 0; rowOffset < clip.height; rowOffset += 1) {
         const targetRow = context.activeRow.value + rowOffset;
-        if (targetRow < 0 || targetRow > maxRow) continue;
+        if (targetRow < 0 || targetRow > maxRow) {
+          if (ahx && context.ahx?.refuse({ kind: 'entries', entries: [{ row: targetRow }] })) return;
+          continue;
+        }
 
         const srcEntry = clip.data[rowOffset]?.[trackOffset] ?? null;
 
@@ -245,7 +293,14 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
       }
 
       entries.sort((a, b) => a.row - b.row);
-      track.entries = entries;
+      if (ahx && context.ahx?.refuse({ kind: 'entries', entries })) return;
+      results.push({ trackIndex: targetTrackIndex, entries });
+    }
+
+    context.pushHistory();
+    for (const { trackIndex, entries } of results) {
+      const track = pattern.tracks[trackIndex];
+      if (track) track.entries = entries;
     }
   }
 
@@ -294,13 +349,17 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
     if (!trackClipboard.value) return;
     if (!context.currentPattern.value) return;
 
+    const pasted = JSON.parse(JSON.stringify(trackClipboard.value.entries)) as TrackerEntryData[];
+    // All-or-nothing in an AHX song: before edit mode is switched on, before the snapshot.
+    if (inAhxSong() && context.ahx?.refuse({ kind: 'entries', entries: pasted })) return;
+
     // Auto-enable edit mode for modifications
     context.isEditMode.value = true;
     context.pushHistory();
 
     const track = context.currentPattern.value.tracks[context.activeTrack.value];
     if (track) {
-      track.entries = JSON.parse(JSON.stringify(trackClipboard.value.entries));
+      track.entries = pasted;
     }
   }
 
@@ -314,22 +373,14 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
     const track = context.currentPattern.value.tracks[context.activeTrack.value];
     if (!track) return;
 
+    const transposed = transposedEntries(track.entries, semitones, () => true);
+    if (transposed === null) return;
+
     // Auto-enable edit mode for modifications
     context.isEditMode.value = true;
     context.pushHistory();
 
-    track.entries = track.entries.map((entry) => {
-      const parsed = context.parseTrackerNoteSymbol(entry.note);
-      if (parsed.isNoteOff || parsed.midi === undefined) return entry;
-
-      let midi = parsed.midi + semitones;
-      midi = Math.max(0, Math.min(127, midi));
-
-      return {
-        ...entry,
-        note: context.midiToTrackerNote(midi)
-      };
-    });
+    track.entries = transposed;
   }
 
   // ============================================
@@ -374,12 +425,21 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
     if (!patternClipboard.value) return;
     if (!context.currentPattern.value) return;
 
+    const currentTracks = context.currentPattern.value.tracks;
+    const clipTracks = patternClipboard.value.tracks;
+
+    if (inAhxSong() && context.ahx) {
+      // An AHX pattern is four channels and never grows: a wider clipboard, or
+      // one row a step cannot hold, refuses the paste whole.
+      if (context.ahx.refuse({ kind: 'channels', count: Math.max(clipTracks.length, currentTracks.length) })) return;
+      for (const clipTrack of clipTracks) {
+        if (context.ahx.refuse({ kind: 'entries', entries: clipTrack.entries })) return;
+      }
+    }
+
     // Auto-enable edit mode for modifications
     context.isEditMode.value = true;
     context.pushHistory();
-
-    const currentTracks = context.currentPattern.value.tracks;
-    const clipTracks = patternClipboard.value.tracks;
 
     // Expand the current pattern to fit the clipboard tracks if needed
     const tracksNeeded = clipTracks.length - currentTracks.length;
@@ -428,23 +488,22 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
     if (context.isReadOnly?.value) return;
     if (!context.currentPattern.value) return;
 
+    // Pending edits first (see `transposeSelection`).
+    context.ahx?.flush?.();
+    const tracks = context.currentPattern.value.tracks;
+    const results: TrackerEntryData[][] = [];
+    for (const track of tracks) {
+      const transposed = transposedEntries(track.entries, semitones, () => true);
+      if (transposed === null) return;
+      results.push(transposed);
+    }
+
     // Auto-enable edit mode for modifications
     context.isEditMode.value = true;
     context.pushHistory();
 
-    context.currentPattern.value.tracks.forEach((track) => {
-      track.entries = track.entries.map((entry) => {
-        const parsed = context.parseTrackerNoteSymbol(entry.note);
-        if (parsed.isNoteOff || parsed.midi === undefined) return entry;
-
-        let midi = parsed.midi + semitones;
-        midi = Math.max(0, Math.min(127, midi));
-
-        return {
-          ...entry,
-          note: context.midiToTrackerNote(midi)
-        };
-      });
+    tracks.forEach((track, index) => {
+      track.entries = results[index] as TrackerEntryData[];
     });
   }
 

@@ -187,8 +187,8 @@
             type="button"
             class="song-button"
             @click="addTrack"
-            :disabled="isReadOnly || trackCount >= 32"
-            :title="isReadOnly ? readOnlyHint : 'Add a track'"
+            :disabled="isReadOnly || isAhxSong || trackCount >= 32"
+            :title="isReadOnly ? readOnlyHint : isAhxSong ? ahxChannelsHint : 'Add a track'"
           >
             + Track
           </button>
@@ -196,8 +196,8 @@
             type="button"
             class="song-button ghost"
             @click="removeTrack"
-            :disabled="isReadOnly || trackCount <= 1"
-            :title="isReadOnly ? readOnlyHint : 'Remove the current track'"
+            :disabled="isReadOnly || isAhxSong || trackCount <= 1"
+            :title="isReadOnly ? readOnlyHint : isAhxSong ? ahxChannelsHint : 'Remove the current track'"
           >
             - Track
           </button>
@@ -315,7 +315,7 @@
           :current-pattern-id="currentPatternId"
           :current-sequence-index="currentSequenceIndex"
           :is-playing="isPlaying"
-          :readonly="isReadOnly"
+          :readonly="isReadOnly || isAhxSong"
           @select-pattern="handleSelectPattern"
           @add-pattern-to-sequence="handleAddPatternToSequence"
           @remove-pattern-from-sequence="handleRemovePatternFromSequence"
@@ -364,8 +364,8 @@
                 class="bpm-input"
                 v-model.number="currentSong.bpm"
                 type="number"
-                :disabled="isReadOnly"
-                :title="isReadOnly ? 'AHX/HVL songs set their own tempo' : ''"
+                :disabled="isReadOnly || isAhxSong"
+                :title="isReadOnly || isAhxSong ? 'AHX/HVL songs set their own tempo' : ''"
                 min="32"
                 max="255"
                 placeholder="120"
@@ -393,8 +393,8 @@
                   :min="1"
                   :max="256"
                   :value="rowsCount"
-                  :disabled="isReadOnly"
-                  :title="isReadOnly ? readOnlyHint : ''"
+                  :disabled="isReadOnly || isAhxSong"
+                  :title="isReadOnly ? readOnlyHint : isAhxSong ? ahxLengthHint : ''"
                   @change="onPatternLengthInput($event)"
                   @blur="refocusTracker"
                   @keydown.enter="($event.target as HTMLInputElement).blur()"
@@ -636,8 +636,8 @@
                   <button
                     type="button"
                     class="icon-action-button"
-                    :title="isReadOnly ? readOnlyHint : 'New patch'"
-                    :disabled="isReadOnly"
+                    :title="isReadOnly ? readOnlyHint : isAhxSong ? ahxInstrumentsHint : 'New patch'"
+                    :disabled="isReadOnly || isAhxSong"
                     @click.stop="
                       createNewSongPatch(slot.slot);
                       refocusTracker();
@@ -658,7 +658,7 @@
                     type="button"
                     class="icon-action-button danger"
                     title="Clear instrument"
-                    :disabled="isReadOnly || !slot.patchId"
+                    :disabled="isReadOnly || isAhxSong || !slot.patchId"
                     @click.stop="
                       clearInstrument(slot.slot);
                       refocusTracker();
@@ -728,7 +728,7 @@
             <TrackWaveform
               :audio-node="trackAudioNodes[index] ?? null"
               :audio-context="audioContext"
-              :scope-source="isReadOnly ? playbackStore.getAhxChannelWaveform : null"
+              :scope-source="isAhxSong ? playbackStore.getAhxChannelWaveform : null"
               :scope-channel="index"
               :scope-gain="userSettings.ahxScopeGain"
             />
@@ -968,6 +968,8 @@ import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
 import BugReportDialog from 'src/components/tracker/BugReportDialog.vue';
 import SongExportDialog from 'src/components/tracker/SongExportDialog.vue';
 import { snapshotEditorSong } from 'src/audio/tracker/ahx-source';
+import type { AhxEditGate } from 'src/audio/tracker/ahx-doc/edit-guard';
+import { reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
   channelsFromSelection,
   selectionToReportRange,
@@ -1107,7 +1109,30 @@ const activeMacroNibble = ref(0);
  * structural controls are disabled rather than left to do nothing.
  */
 const isReadOnly = computed(() => trackerStore.isReadOnly);
+/**
+ * The song is an AHX song, editable or not. Distinct from `isReadOnly` (may I
+ * write): the structure of an AHX song is not a pattern list's (four channels,
+ * one track length, positions instead of patterns, numbered instruments), and
+ * the scopes and the playback cursor follow the file, not the row model.
+ */
+const isAhxSong = computed(() => trackerStore.isAhxSong);
 const readOnlyHint = 'AHX/HVL songs are read-only: the song plays from its file';
+const ahxChannelsHint = 'AHX songs have exactly 4 channels';
+const ahxLengthHint = 'All the tracks of an AHX song have the same length';
+const ahxInstrumentsHint = 'AHX instruments are numbered in order and edited in their own editor';
+/** What the edit composables ask before an edit an AHX step has no home for (see `AhxEditGate`). */
+const ahxEditGate: AhxEditGate = {
+  active: () => trackerStore.isAhxEditable,
+  refuse: (check) => {
+    const reason = trackerStore.ahxRefusal(check);
+    if (reason === null) return false;
+    reportAhxEditNotice(reason);
+    return true;
+  },
+  flush: () => {
+    trackerStore.syncAhxWriteBack();
+  },
+};
 const editModeRequested = ref(false);
 const isEditMode = computed<boolean>({
   get: () => editModeRequested.value && !isReadOnly.value,
@@ -1273,7 +1298,7 @@ const waveformVisualizersVisible = computed(
 // An AHX/HVL song's visualizers are fed by the worklet's per-voice capture,
 // which records nothing unless asked: on while they are showing, off otherwise.
 watch(
-  () => waveformVisualizersVisible.value && isReadOnly.value,
+  () => waveformVisualizersVisible.value && isAhxSong.value,
   (wanted) => playbackStore.setAhxScopesEnabled(wanted),
   { immediate: true },
 );
@@ -1365,6 +1390,7 @@ const selectionContext: TrackerSelectionContext = {
   pushHistory: () => trackerStore.pushHistory(),
   parseTrackerNoteSymbol,
   midiToTrackerNote,
+  ahx: ahxEditGate,
 };
 
 const {
@@ -1979,6 +2005,7 @@ const editingContext: TrackerEditingContext = {
   normalizeVolumeChars,
   normalizeMacroChars,
   midiToTrackerNote,
+  ahx: ahxEditGate,
   onNotePreview: (trackIndex: number, instrumentId: string) => {
     setTrackAudioNodeForInstrument(trackIndex, instrumentId);
     host.markTrackNotePlayed(trackIndex);
@@ -2021,6 +2048,8 @@ function setBaseOctaveInput(value: number) {
 }
 
 function setPatternRows(count: number) {
+  // An AHX song's tracks share one length for the whole song, not per pattern.
+  if (isAhxSong.value) return;
   const clamped = clampPatternRows(count);
   trackerStore.pushHistory();
   // Applies to the pattern being edited; patterns may differ in length.
@@ -2059,7 +2088,7 @@ async function restartPlaybackIfActive() {
   // Only hot-reload playback while actively playing; keep stopped/paused idle.
   // Never for an AHX/HVL song: its row model is display only, so a "reload"
   // would restart it from the top and sound exactly the same.
-  if (!isPlaying.value || isReadOnly.value) return;
+  if (!isPlaying.value || isAhxSong.value) return;
   const mode = playbackMode.value;
   const startRow = playbackRow.value;
   const song = buildPlaybackSong(mode);
@@ -2105,7 +2134,7 @@ function handlePause() {
 // a play-from-here, which seeks. The other formats restart from the cursor as
 // they always have, so they are left as they are.
 watch(isPaused, (paused) => {
-  if (paused && isReadOnly.value) activeRow.value = playbackRow.value;
+  if (paused && isAhxSong.value) activeRow.value = playbackRow.value;
 });
 
 function handleStop() {
@@ -2508,7 +2537,7 @@ const {
 } = useTrackerExport(exportContext);
 
 function handleCreatePattern() {
-  if (isReadOnly.value) return;
+  if (isAhxSong.value) return;
   trackerStore.pushHistory();
   const newPatternId = trackerStore.createPattern();
   trackerStore.addPatternToSequence(newPatternId);
@@ -2522,21 +2551,25 @@ function handleSelectPattern(payload: { patternId: string; index: number }) {
 }
 
 function handleAddPatternToSequence(patternId: string) {
+  if (isAhxSong.value) return;
   trackerStore.pushHistory();
   trackerStore.addPatternToSequence(patternId);
 }
 
 function handleRemovePatternFromSequence(index: number) {
+  if (isAhxSong.value) return;
   trackerStore.pushHistory();
   trackerStore.removePatternFromSequence(index);
 }
 
 function handleMoveSequenceItem(fromIndex: number, toIndex: number) {
+  if (isAhxSong.value) return;
   trackerStore.pushHistory();
   trackerStore.moveSequenceItem(fromIndex, toIndex);
 }
 
 function handleRenamePattern(patternId: string, name: string) {
+  if (isAhxSong.value) return;
   trackerStore.pushHistory();
   trackerStore.setPatternName(patternId, name);
 }

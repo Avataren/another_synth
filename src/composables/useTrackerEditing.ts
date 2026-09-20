@@ -3,6 +3,7 @@ import type { TrackerEntryData } from 'src/components/tracker/tracker-types';
 import type { TrackerPattern, InstrumentSlot } from 'src/stores/tracker-store';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import { pickActiveInstrumentId } from 'src/audio/tracker/instrument-ids';
+import type { AhxEditGate } from 'src/audio/tracker/ahx-doc/edit-guard';
 
 /**
  * Dependencies required by the editing composable
@@ -36,6 +37,13 @@ export interface TrackerEditingContext {
   // Optional callback to mark track as having active notes (for visualizer)
   // Also provides instrumentId so the caller can set the audio node for visualization
   onNotePreview?: (trackIndex: number, instrumentId: string) => void;
+  /**
+   * Set when the store can hold an editable AHX song. The handlers that can
+   * write something an AHX step has no home for ask it first, before their undo
+   * snapshot and before the cursor moves (a refusal must leave no phantom
+   * history step).
+   */
+  ahx?: AhxEditGate;
 }
 
 /**
@@ -52,6 +60,10 @@ export interface TrackerEditingContext {
  * @param context - Editing context with all dependencies
  */
 export function useTrackerEditing(context: TrackerEditingContext) {
+  /** `true` when an AHX song cannot take `check`; the gate has reported why. */
+  const refusedByAhx = (check: Parameters<AhxEditGate['refuse']>[0]): boolean => context.ahx?.refuse(check) ?? false;
+  const inAhxSong = (): boolean => context.ahx?.active() ?? false;
+
   /**
    * Advance the cursor by the current step size
    */
@@ -90,6 +102,18 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     if (!track) return;
 
     const existing = track.entries.find((e) => e.row === row);
+    // An AHX step holds an instrument only where one was written (a non-zero
+    // instrument byte re-triggers the voice's instrument in the engine), so
+    // touching a row for its effect must not add the active one. A note write
+    // sets it itself (`handleNoteEntry`).
+    if (inAhxSong()) {
+      const draft: TrackerEntryData = existing ? { ...existing } : { row };
+      const filtered = track.entries.filter((e) => e.row !== row);
+      filtered.push(mutator(draft));
+      filtered.sort((a, b) => a.row - b.row);
+      track.entries = filtered;
+      return;
+    }
     const baseInstrument =
       context.activeInstrumentId.value ??
       context.normalizeInstrumentId(existing?.instrument) ??
@@ -111,6 +135,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
    */
   function insertNoteOff() {
     if (!context.isEditMode.value) return;
+    if (refusedByAhx({ kind: 'noteOff' })) return;
     context.pushHistory();
     updateEntryAt(context.activeRow.value, context.activeTrack.value, (entry) => ({
       ...entry,
@@ -232,6 +257,11 @@ export function useTrackerEditing(context: TrackerEditingContext) {
       return;
     }
 
+    if (inAhxSong()) {
+      if (refusedByAhx({ kind: 'note', midi: adjustedMidi })) return;
+      const number = Number.parseInt(instrumentId, 10);
+      if (Number.isFinite(number) && refusedByAhx({ kind: 'instrument', value: number })) return;
+    }
     context.pushHistory();
     updateEntryAt(context.activeRow.value, context.activeTrack.value, (entry) => ({
       ...entry,
@@ -247,6 +277,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
    */
   function handleVolumeInput(hexChar: string) {
     if (!context.isEditMode.value) return;
+    if (refusedByAhx({ kind: 'volume' })) return;
     context.pushHistory();
     const row = context.activeRow.value;
     const track = context.activeTrack.value;
@@ -271,9 +302,18 @@ export function useTrackerEditing(context: TrackerEditingContext) {
   function handleMacroInput(hexChar: string) {
     if (!context.isEditMode.value) return;
     if (context.activeColumn.value !== 4 && context.activeColumn.value !== 5) return;
-    context.pushHistory();
     const char = hexChar.toUpperCase();
     const nibbleIndex = context.activeMacroNibble.value;
+    if (inAhxSong()) {
+      // One effect column, and an effect is three hex digits: nothing the
+      // format cannot hold is written, and nothing is recorded for it.
+      if (context.activeColumn.value === 5 && refusedByAhx({ kind: 'macro2' })) return;
+      if (!/^[0-9A-F]$/.test(char)) {
+        if (/^[0-9A-Z]$/.test(char)) refusedByAhx({ kind: 'macroLetter', char });
+        return;
+      }
+    }
+    context.pushHistory();
     // First digit is the effect command (allow letters for macros/effects), remaining are hex params
     if (nibbleIndex === 0 && !/^[0-9A-Z]$/.test(char)) return;
     if (nibbleIndex > 0 && !/^[0-9A-F]$/.test(char)) return;
@@ -338,6 +378,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
   function clearVolumeNibble() {
     if (!context.isEditMode.value) return;
     if (context.activeColumn.value !== 2 && context.activeColumn.value !== 3) return;
+    if (refusedByAhx({ kind: 'volume' })) return;
 
     context.pushHistory();
     const row = context.activeRow.value;
@@ -361,6 +402,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     if (!context.isEditMode.value) return;
     if (!context.currentPattern.value) return;
     if (context.activeColumn.value !== 2 && context.activeColumn.value !== 3) return;
+    if (refusedByAhx({ kind: 'volume' })) return;
 
     context.pushHistory();
     const track = context.currentPattern.value.tracks[context.activeTrack.value];
@@ -383,6 +425,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
   function clearMacroNibble() {
     if (!context.isEditMode.value) return;
     if (context.activeColumn.value !== 4 && context.activeColumn.value !== 5) return;
+    if (context.activeColumn.value === 5 && refusedByAhx({ kind: 'macro2' })) return;
 
     context.pushHistory();
     const row = context.activeRow.value;
@@ -446,6 +489,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
   function toggleInterpolationRange() {
     if (!context.isEditMode.value) return;
     if (context.activeColumn.value !== 4) return;
+    if (refusedByAhx({ kind: 'interpolation' })) return;
     context.toggleInterpolationRange(context.activeRow.value, context.activeTrack.value);
   }
 

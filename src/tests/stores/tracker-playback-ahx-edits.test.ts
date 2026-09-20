@@ -131,7 +131,7 @@ import {
 } from 'src/audio/tracker/ahx-source';
 import { ahxNotices, clearAhxNotices } from 'src/audio/tracker/ahx-notices';
 import { setAhxNumber } from 'src/audio/tracker/ahx-instrument-edit';
-import type { Song } from '@another-synth/tracker-playback';
+import { parseAhx, type Song } from '@another-synth/tracker-playback';
 
 const karmaBytes = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/ahx/karma.ahx'));
 
@@ -320,7 +320,12 @@ describe('a song that comes back from the Jukebox', () => {
     // ... and put the editor's song back on the way out.
     await host.fileIO.applySongFile(snapshot);
     expect(host.trackerStore.moduleFormat).toBe('ahx');
-    expect(currentAhxSource()).toBe(bytes);
+    // The snapshot flushed the editor's song into its bytes, so what comes back
+    // is never older than the slots: another identity than the imported file,
+    // with the edit baked in (the recorded edit is still on top of it).
+    const back = currentAhxSource()!;
+    expect(back).not.toBe(bytes);
+    expect(parseAhx(back).instruments[16]!.volume).toBe(edited);
     expect(currentAhxInstrumentEdits().map((e) => e.instrument)).toEqual([16]);
     expect(host.trackerStore.instrumentSlots.find((s) => s.slot === 16)!.ahxData!.volume).toBe(edited);
 

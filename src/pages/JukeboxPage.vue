@@ -522,7 +522,7 @@ const isMobileLayout = useMobileLayout();
 // An AHX/HVL song has no per-track audio nodes to tap: the scope row is fed
 // by the worklet's per-voice capture, which records nothing unless asked. On
 // while the row is showing an AHX song, off otherwise (and when leaving).
-const isAhxSong = computed(() => trackerStore.isReadOnly);
+const isAhxSong = computed(() => trackerStore.isAhxSong);
 watch(
   () => isAhxSong.value && !isMobileLayout.value,
   (wanted) => playbackStore.setAhxScopesEnabled(wanted),
