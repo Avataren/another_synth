@@ -14,6 +14,7 @@ import { AhxPreview } from 'src/audio/tracker/ahx-preview';
 import type { AhxPosition, AhxWaveforms } from 'src/audio/tracker/ahx-player';
 import {
   currentAhxSource,
+  currentAhxPreviewSource,
   onAhxInstrumentEdit,
   onCurrentAhxSourceChange,
   type AhxInstrumentEdit,
@@ -440,7 +441,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * `false` when no AHX song is loaded.
    */
   async function previewAhxNoteOn(instrument: number, midi: number, velocity = 127): Promise<boolean> {
-    const bytes = currentAhxSource();
+    const bytes = currentAhxPreviewSource();
     if (!bytes) {
       // Not (or no longer) an AHX song: nothing left for a preview to sound.
       disposeAhxPreview();
@@ -458,7 +459,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * loaded.
    */
   async function prepareAhxPreview(): Promise<boolean> {
-    const bytes = currentAhxSource();
+    const bytes = currentAhxPreviewSource();
     if (!bytes) return false;
     ahxPreviewInstance ??= newAhxPreview();
     await ahxPreviewInstance.preload(bytes);
@@ -489,7 +490,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // What was said of the old song's edits is not the new one's to carry.
     clearAhxNotices();
     disposeAhxPreview();
-    if (currentAhxSource()) void prepareAhxPreview().catch(() => undefined);
+    if (currentAhxPreviewSource()) void prepareAhxPreview().catch(() => undefined);
   });
 
   /**
@@ -719,6 +720,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     );
     const rows = trackerStore.rowsForPattern(song.sequence[position]);
     const row = Math.max(0, Math.min(Math.round(startRow), rows - 1));
+    // What the editor holds (an edit the store has not flushed yet, an
+    // instrument or title change) is in the bytes before they are compared or
+    // loaded: the next Play plays what the grid shows. Swaps the bytes only
+    // when their content changed, so a resume in place is not lost by asking.
+    trackerStore.flushAhxBytes();
     // Decided before anything awaits or loads, from where the song is now: a
     // load of other bytes (the jukebox moving on) is never a resume.
     const bytes = currentAhxSource();

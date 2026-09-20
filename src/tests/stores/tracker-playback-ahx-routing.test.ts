@@ -202,6 +202,7 @@ import { ahxSourceOf, currentAhxSource, setCurrentAhxSource } from 'src/audio/tr
 import type { Song } from '@another-synth/tracker-playback';
 
 const karmaBytes = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/ahx/karma.ahx'));
+const hvlBytes = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/ahx/chiprolled.hvl'));
 
 /** The wiring `useTrackerSongHost` gives the file IO, over the real stores. */
 function setupHost() {
@@ -249,12 +250,9 @@ function setupHost() {
 }
 
 /** Open karma.ahx as the app does: bytes -> parse -> apply -> initialise playback. */
-async function openAhx(host: ReturnType<typeof setupHost>) {
+async function openAhx(host: ReturnType<typeof setupHost>, bytes: Buffer = karmaBytes) {
   const file = await host.fileIO.parseSongBuffer(
-    karmaBytes.buffer.slice(
-      karmaBytes.byteOffset,
-      karmaBytes.byteOffset + karmaBytes.byteLength,
-    ) as ArrayBuffer,
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
   );
   await host.fileIO.applySongFile(file);
   return file;
@@ -290,7 +288,10 @@ describe('AHX song opened through the real load path', () => {
     const host = setupHost();
     const file = await openAhx(host);
     expect(host.trackerStore.moduleFormat).toBe('ahx');
-    expect(host.trackerStore.isReadOnly).toBe(true);
+    // A song with its bytes has a doc: it is an AHX song and it is editable.
+    expect(host.trackerStore.isAhxSong).toBe(true);
+    expect(host.trackerStore.isAhxEditable).toBe(true);
+    expect(host.trackerStore.isReadOnly).toBe(false);
     expect(currentAhxSource()).toBe(ahxSourceOf(file));
     expect(h.postFxLoads).toEqual(['ahx']);
     const song = host.buildSong();
@@ -862,8 +863,12 @@ describe('other formats', () => {
 describe('a read-only song', () => {
   it('refuses structural edits and history', async () => {
     const host = setupHost();
-    await openAhx(host);
+    // HVL has no doc: it is the read-only case now (an AHX song with bytes is editable).
+    await openAhx(host, hvlBytes);
     const t = host.trackerStore;
+    expect(t.isAhxSong).toBe(true);
+    expect(t.isReadOnly).toBe(true);
+    expect(t.ahxDoc).toBeNull();
     const before = JSON.stringify([t.sequence, t.patterns.length, t.patterns[0]?.tracks.length]);
 
     t.pushHistory();
@@ -881,6 +886,30 @@ describe('a read-only song', () => {
     expect(JSON.stringify([t.sequence, t.patterns.length, t.patterns[0]?.tracks.length])).toBe(
       before,
     );
+  });
+
+  it('an editable AHX song refuses the pattern-list edits without leaving a history step', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const t = host.trackerStore;
+    expect(t.isAhxEditable).toBe(true);
+    const before = JSON.stringify([t.sequence, t.patterns.length, t.patterns[0]?.tracks.length]);
+
+    expect(t.addTrack()).toBe(false);
+    expect(t.removeTrack(0)).toBe(false);
+    expect(t.createPattern()).toBe('');
+    t.addPatternToSequence(t.sequence[0]!);
+    t.removePatternFromSequence(0);
+    t.moveSequenceItem(0, 1);
+    t.setPatternRows(8);
+    t.deletePattern(t.sequence[0]!);
+    t.setPatternName(t.sequence[0]!, 'renamed');
+
+    expect(JSON.stringify([t.sequence, t.patterns.length, t.patterns[0]?.tracks.length])).toBe(before);
+    expect(t.undoStack).toHaveLength(0);
+    // ... while history itself works: this song can be edited.
+    t.pushHistory();
+    expect(t.undoStack).toHaveLength(1);
   });
 
   it('is editable again once a different format is loaded', () => {

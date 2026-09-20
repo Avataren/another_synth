@@ -12,18 +12,19 @@ export { formatInstrumentId, normalizeInstrumentId } from '@another-synth/tracke
 
 /**
  * The instrument that should be selected: the current one while it still has
- * a patch, otherwise the first slot that has one, otherwise nothing.
+ * a patch, otherwise the first slot that has one, otherwise nothing. An AHX
+ * slot has an instrument instead of a patch (`ahxData`), and counts the same:
+ * an editable AHX song writes notes with the instrument selected here.
  */
 export function pickActiveInstrumentId(
   slots: readonly InstrumentSlot[],
   current: string | null,
 ): string | null {
+  const isFilled = (slot: InstrumentSlot) => Boolean(slot.patchId) || slot.ahxData !== undefined;
   if (current) {
-    const stillThere = slots.some(
-      (slot) => slot.patchId && formatInstrumentId(slot.slot) === current,
-    );
+    const stillThere = slots.some((slot) => isFilled(slot) && formatInstrumentId(slot.slot) === current);
     if (stillThere) return current;
   }
-  const firstWithPatch = slots.find((slot) => slot.patchId);
-  return firstWithPatch ? formatInstrumentId(firstWithPatch.slot) : null;
+  const firstFilled = slots.find(isFilled);
+  return firstFilled ? formatInstrumentId(firstFilled.slot) : null;
 }

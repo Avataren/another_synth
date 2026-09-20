@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
+import { effectScope, toRaw, watch } from 'vue';
 import { uid } from 'quasar';
-import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
+import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/tracker-types';
 import type { Patch } from 'src/audio/types/preset-types';
 import { clearLoadedSongHash } from 'src/composables/song-identity';
 import {
@@ -30,7 +31,33 @@ import {
   sanitizeAhxInstrument,
   serializeAhxInstrument,
 } from '@another-synth/tracker-playback';
-import { ahxSourceInfo, ahxSourceRecordOf, recordAhxInstrumentEdit } from 'src/audio/tracker/ahx-source';
+import {
+  ahxSourceInfo,
+  ahxSourceRecordOf,
+  recordAhxInstrumentEdit,
+  replaceCurrentAhxBytes,
+  type ReplaceAhxBytesOptions,
+} from 'src/audio/tracker/ahx-source';
+import {
+  AHX_CHANNELS,
+  ahxEditRefusal,
+  ahxInstrumentBytes,
+  allocTrack,
+  assignTrack,
+  buildAhxFile,
+  docFromBytes,
+  entriesToTrack,
+  isBlankTrack,
+  projectAhxPatterns,
+  projectTracks,
+  setTrack,
+  tracksEqual,
+  type AhxDoc,
+  type AhxDocTrack,
+  type AhxEditCheck,
+  type AhxOpContext,
+} from 'src/audio/tracker/ahx-doc';
+import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 
 export type {
   ModuleFormat,
@@ -145,6 +172,7 @@ interface TrackerSnapshot {
   defaultPatternRows: number;
   stepSize: number;
   baseOctave: number;
+  /** Empty for an editable AHX song: the grid is rebuilt from `ahxDoc` on apply. */
   patterns: TrackerPattern[];
   sequence: string[];
   currentPatternId: string | null;
@@ -152,6 +180,8 @@ interface TrackerSnapshot {
   activeInstrumentId: string | null;
   currentInstrumentPage: number;
   songPatches: Record<string, Patch>;
+  /** The AHX doc of an editable AHX song (a reference: docs are immutable). */
+  ahxDoc?: AhxDoc | null;
 }
 
 interface TrackerStoreState {
@@ -223,6 +253,14 @@ interface TrackerStoreState {
   undoStack: TrackerSnapshot[];
   /** Redo history stack */
   redoStack: TrackerSnapshot[];
+  /**
+   * The structure of an editable AHX song (see `ahx-doc`); `null` for every
+   * other song, and for an AHX/HVL song that has no doc (it stays read-only).
+   * Always a `markRaw` object, replaced (never mutated) by an edit.
+   */
+  ahxDoc: AhxDoc | null;
+  /** Counts every change of `ahxDoc`, including the one that clears it. */
+  ahxRevision: number;
 }
 
 const DEFAULT_TRACK_COLORS = [
@@ -372,6 +410,34 @@ export interface TrackerSongFile {
   };
 }
 
+/**
+ * What the AHX write-back has reconciled: the raw `entries` array of every
+ * (position, channel) cell as it last stood in step with the doc. A cell whose
+ * array is another one has been edited (every edit site replaces the array, none
+ * mutates it). Not reactive and not state: it is bookkeeping of the watcher,
+ * kept per store.
+ */
+interface AhxSyncCache {
+  cells: unknown[][];
+  watching: boolean;
+}
+const ahxSyncCaches = new WeakMap<object, AhxSyncCache>();
+
+function ahxSyncCacheOf(store: { $state: object }): AhxSyncCache {
+  const key = toRaw(store.$state);
+  let cache = ahxSyncCaches.get(key);
+  if (!cache) {
+    cache = { cells: [], watching: false };
+    ahxSyncCaches.set(key, cache);
+  }
+  return cache;
+}
+
+/** Which pattern id a saved id was at, as the stable id of that position. */
+function stableIdOf(index: number): string {
+  return `ahx-pos-${index}`;
+}
+
 export const useTrackerStore = defineStore('trackerStore', {
   state: (): TrackerStoreState => {
     const defaultPattern = createDefaultPattern();
@@ -400,17 +466,38 @@ export const useTrackerStore = defineStore('trackerStore', {
       songPatches: {},
       editingSlot: null,
       undoStack: [],
-      redoStack: []
+      redoStack: [],
+      ahxDoc: null,
+      ahxRevision: 0
     };
   },
   getters: {
+    /** The song is an AHX song (editable or not): what the scope and waveform code means. */
+    isAhxSong(): boolean {
+      return this.moduleFormat === 'ahx';
+    },
+    /** The song is an AHX song with a doc: its grid is edited and written back to the doc. */
+    isAhxEditable(): boolean {
+      return this.moduleFormat === 'ahx' && this.ahxDoc !== null;
+    },
     /**
-     * The song's row model is display only. An AHX/HVL song is played from
-     * its file by the worklet's own engine; the patterns here mirror it for
-     * the eye, so an edit to them would never reach the audio.
+     * The song's row model is display only. An HVL song, or an AHX song that
+     * has no doc (a saved file without its bytes), is played from its file by
+     * the worklet's own engine; the patterns here mirror it for the eye, so an
+     * edit to them would never reach the audio. An AHX song with a doc is
+     * editable: `isAhxSong` is the question "is it AHX", this is "may I write".
      */
     isReadOnly(): boolean {
-      return this.moduleFormat === 'ahx';
+      return this.moduleFormat === 'ahx' && this.ahxDoc === null;
+    },
+    /**
+     * Why an AHX step cannot hold what an edit wants to write (`null` when it
+     * can, and for every song that is not an editable AHX one). Asked at the
+     * top of a handler that can refuse, before its undo snapshot and before
+     * the cursor moves; the write-back's safety net asks the same rules.
+     */
+    ahxRefusal(): (check: AhxEditCheck) => string | null {
+      return (check) => (this.ahxDoc === null ? null : ahxEditRefusal(check, this.ahxDoc.trackLength));
     },
     /**
      * Row count of the pattern currently being edited. This is what the grid,
@@ -451,6 +538,10 @@ export const useTrackerStore = defineStore('trackerStore', {
   actions: {
     /** Create a deep snapshot of the current tracker song state (for undo/redo). */
     createSnapshot(): TrackerSnapshot {
+      // Before anything is read: an edit the watcher has not flushed yet must
+      // be in the doc this snapshot keeps, or an undo would lose it.
+      this.syncAhxWriteBack();
+      const ahxDoc = this.moduleFormat === 'ahx' ? this.ahxDoc : null;
       return {
         currentSong: { ...this.currentSong },
         moduleFormat: this.moduleFormat,
@@ -463,13 +554,17 @@ export const useTrackerStore = defineStore('trackerStore', {
         defaultPatternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         baseOctave: this.baseOctave,
-        patterns: JSON.parse(JSON.stringify(this.patterns)),
+        // An editable AHX song keeps the doc (a reference: it is immutable) and
+        // no grid: up to 129 patterns per keystroke are what the doc replaces,
+        // and `applySnapshot` projects them again.
+        patterns: ahxDoc ? [] : JSON.parse(JSON.stringify(this.patterns)),
         sequence: [...this.sequence],
         currentPatternId: this.currentPatternId,
         instrumentSlots: JSON.parse(JSON.stringify(this.instrumentSlots)),
         activeInstrumentId: this.activeInstrumentId,
         currentInstrumentPage: this.currentInstrumentPage,
-        songPatches: JSON.parse(JSON.stringify(this.songPatches))
+        songPatches: JSON.parse(JSON.stringify(this.songPatches)),
+        ahxDoc
       };
     },
     /** Apply a snapshot back into the store state. */
@@ -486,7 +581,13 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.stepSize = snapshot.stepSize;
       this.baseOctave = snapshot.baseOctave;
 
-      this.patterns = JSON.parse(JSON.stringify(snapshot.patterns));
+      // The snapshot's doc (`null` for any other song): the song being applied
+      // decides, never the doc that happens to be in the store.
+      const ahxDoc = snapshot.moduleFormat === 'ahx' ? snapshot.ahxDoc ?? null : null;
+      this.ahxDoc = ahxDoc;
+      this.ahxRevision += 1;
+      clearAhxEditNotice();
+      this.patterns = ahxDoc ? projectAhxPatterns(ahxDoc) : JSON.parse(JSON.stringify(snapshot.patterns));
 
       const patternIds = new Set(this.patterns.map((p) => p.id));
       const sequence = (snapshot.sequence ?? []).filter((id) => patternIds.has(id));
@@ -506,6 +607,14 @@ export const useTrackerStore = defineStore('trackerStore', {
 
       // Editing slot is only meaningful while on the patch page; reset on snapshot apply.
       this.editingSlot = null;
+
+      if (ahxDoc) {
+        // The grid is the projection of the doc just set: nothing to write back.
+        this.primeAhxWriteBack();
+        // The slots have just gone back too, so the recorded instrument edits
+        // are stale: start the song's bytes over (a full reload at the next Play).
+        this.publishAhxBytes({ resetEdits: true });
+      }
     },
     /** Push the current state onto the undo stack and clear redo history. */
     pushHistory() {
@@ -550,6 +659,10 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.editingSlot = null;
       this.undoStack = [];
       this.redoStack = [];
+      this.ahxDoc = null;
+      this.ahxRevision += 1;
+      ahxSyncCacheOf(this).cells = [];
+      clearAhxEditNotice();
     },
     undo() {
       if (this.isReadOnly) return;
@@ -572,7 +685,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.baseOctave = clamped;
     },
     addTrack(): boolean {
-      if (this.isReadOnly) return false;
+      // AHX has exactly four channels, editable or not.
+      if (this.isAhxSong) return false;
       const maxTracks = 32;
       if (!this.patterns.length) return false;
       const currentCount = this.patterns[0]?.tracks.length ?? 0;
@@ -593,7 +707,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       return true;
     },
     removeTrack(_trackIndex: number): boolean {
-      if (this.isReadOnly) return false;
+      if (this.isAhxSong) return false;
       const minTracks = 1;
       if (!this.patterns.length) return false;
       const currentCount = this.patterns[0]?.tracks.length ?? 0;
@@ -624,6 +738,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
     },
     createPattern() {
+      // An AHX song's patterns are its positions: the position ops make them.
+      if (this.isAhxSong) return '';
       const newPattern: TrackerPattern = {
         id: uid(),
         name: `Pattern ${this.patterns.length + 1}`,
@@ -641,7 +757,7 @@ export const useTrackerStore = defineStore('trackerStore', {
      * song-level control behaved before per-pattern lengths existed.
      */
     setPatternRows(rows: number, patternId?: string) {
-      if (this.isReadOnly) return;
+      if (this.isAhxSong) return;
       const targetId = patternId ?? this.currentPatternId;
       const pattern = this.patterns.find(p => p.id === targetId);
       if (!pattern) return;
@@ -650,7 +766,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.defaultPatternRows = clamped;
     },
     deletePattern(patternId: string) {
-      if (this.isReadOnly) return;
+      if (this.isAhxSong) return;
       if (this.patterns.length <= 1) {
         // eslint-disable-next-line no-console
         console.warn('Cannot delete the last pattern');
@@ -668,24 +784,24 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
     },
     addPatternToSequence(patternId: string) {
-      if (this.isReadOnly) return;
+      if (this.isAhxSong) return;
       this.sequence.push(patternId);
     },
     removePatternFromSequence(index: number) {
-      if (this.isReadOnly) return;
+      if (this.isAhxSong) return;
       if (index >= 0 && index < this.sequence.length) {
         this.sequence.splice(index, 1);
       }
     },
     setPatternName(patternId: string, name: string) {
-      if (this.isReadOnly) return;
+      if (this.isAhxSong) return;
       const pattern = this.patterns.find(p => p.id === patternId);
       if (pattern) {
         pattern.name = name;
       }
     },
     moveSequenceItem(fromIndex: number, toIndex: number) {
-      if (this.isReadOnly) return;
+      if (this.isAhxSong) return;
       if (
         fromIndex < 0 ||
         fromIndex >= this.sequence.length ||
@@ -721,7 +837,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
     },
     clearSlot(slotNumber: number) {
-      if (this.isReadOnly) return;
+      // An AHX song's instruments are numbered in order: none is cleared here.
+      if (this.isAhxSong) return;
       const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
       if (slot) {
         // Remove patch from song patches if no other slot uses it
@@ -772,7 +889,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       // Like `assignPatchToSlot`: an AHX song's slots are read-only to the
       // patch editor, and no patch is ever written into an AHX slot (it would
       // give the slot a `patchId` next to its `ahxData`).
-      if (this.isReadOnly) return;
+      if (this.isAhxSong) return;
       if (this.editingSlot === null || !patch.metadata?.id) return;
 
       const slot = this.instrumentSlots.find(s => s.slot === this.editingSlot);
@@ -801,7 +918,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     /** Assign a patch to a slot (copies it to song patches) */
     assignPatchToSlot(slotNumber: number, patch: Patch, bankName: string) {
-      if (this.isReadOnly) return;
+      if (this.isAhxSong) return;
       if (!patch.metadata?.id) return;
 
       const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
@@ -887,6 +1004,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       return recordAhxInstrumentEdit(slotNumber, serializeAhxInstrument(played, format)) ? 'applied' : 'kept';
     },
     serializeSong(): TrackerSongFile {
+      // An edit the watcher has not flushed yet is part of the song.
+      this.flushAhxBytes();
       // Only persist patches that are actually referenced by at least one
       // instrument slot. This keeps the song file from accumulating old
       // swapped-out patches (and their audio assets) over time.
@@ -946,6 +1065,12 @@ export const useTrackerStore = defineStore('trackerStore', {
         return;
       }
       const data = file.data;
+
+      // The doc belongs to the song that is being replaced: whichever song this
+      // is, it starts without one (an editable AHX song sets its own below).
+      this.ahxDoc = null;
+      this.ahxRevision += 1;
+      clearAhxEditNotice();
 
       this.currentSong = {
         title: data.currentSong?.title ?? 'Untitled song',
@@ -1059,6 +1184,208 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
       this.songPatches = filteredSongPatches;
       this.editingSlot = null;
+
+      if (this.moduleFormat === 'ahx') this.adoptAhxDoc(file, data);
+    },
+
+    // ------------------------------------------------------------------
+    // Editable AHX songs: the doc and the write-back (see `ahx-doc`)
+    // ------------------------------------------------------------------
+
+    /**
+     * Gives the AHX song just loaded its doc when its bytes are known: the grid
+     * becomes the doc's projection (no latch, no clamp, stable ids), so what the
+     * user edits is exactly what `entriesToTrack` reads back. A song with no
+     * bytes, HVL, or bytes the parser rejects stays a read-only display.
+     */
+    adoptAhxDoc(file: TrackerSongFile, data: TrackerSongFile['data']) {
+      const record = ahxSourceRecordOf(file);
+      if (!record || record.format !== 'ahx') return;
+      let doc: AhxDoc;
+      try {
+        doc = docFromBytes(record.bytes);
+      } catch (error) {
+        console.warn('[TrackerStore] AHX song kept read-only: its bytes have no editable doc', error);
+        return;
+      }
+      const oldIndex = (data.patterns ?? []).findIndex((pattern) => pattern.id === data.currentPatternId);
+      this.ahxDoc = doc;
+      this.patterns = projectAhxPatterns(doc);
+      this.sequence = this.patterns.map((pattern) => pattern.id);
+      this.currentPatternId = stableIdOf(Math.max(0, Math.min(doc.positions.length - 1, oldIndex)));
+      this.primeAhxWriteBack();
+    },
+    /** Marks the grid as reconciled with the doc (it was just built from it) and makes sure the watcher runs. */
+    primeAhxWriteBack() {
+      const cache = ahxSyncCacheOf(this);
+      cache.cells = this.patterns.map((pattern) => pattern.tracks.map((track) => toRaw(track.entries)));
+      if (cache.watching) return;
+      cache.watching = true;
+      // Detached: it lives as long as the store, not as long as whatever
+      // component happened to load the song.
+      effectScope(true).run(() => {
+        watch(
+          () => (this.ahxDoc === null ? null : this.patterns.map((pattern) => pattern.tracks.map((track) => track.entries))),
+          () => {
+            this.syncAhxWriteBack();
+          }
+        );
+      });
+    },
+    /** What the size limit needs to know of the file besides the doc. */
+    ahxOpContext(): AhxOpContext {
+      const instruments = this.instrumentSlots.flatMap((slot) => (slot.ahxData ? [slot.ahxData] : []));
+      return { instrumentBytes: ahxInstrumentBytes(instruments) };
+    },
+    /**
+     * Writes every edited grid cell back into the doc. Idempotent, and safe to
+     * call at any moment (the watcher calls it; so does every flush point, so
+     * that nothing depends on when the watcher runs).
+     *
+     * A cell is edited when its `entries` array is another one than at the last
+     * reconciliation. Its rows become a track (`entriesToTrack`); when that
+     * equals the doc's track for the cell (compared as steps, in doc space) there
+     * is nothing to write, which is also what makes a re-projected sibling, a
+     * loaded song and an applied snapshot no-ops: no flag marks "I am writing".
+     * Otherwise the track is written in place (a shared track changes for every
+     * cell using it; the cells that show it are re-projected), except the blank
+     * track 0, which is never written: the cell gets a track of its own first.
+     * Whatever the format cannot hold (the pre-guards should have caught it) is
+     * reverted from the doc, with a notice. Returns whether the doc changed.
+     */
+    syncAhxWriteBack(): boolean {
+      const doc = this.ahxDoc;
+      if (doc === null || this.moduleFormat !== 'ahx') return false;
+      const cache = ahxSyncCacheOf(this);
+      const patterns = this.patterns;
+      const count = Math.min(patterns.length, doc.positions.length);
+
+      interface Edited {
+        p: number;
+        c: number;
+        entries: TrackerEntryData[];
+        encoded?: AhxDocTrack;
+        revert?: boolean;
+      }
+      const edited: Edited[] = [];
+      for (let p = 0; p < count; p++) {
+        const cells = patterns[p]?.tracks;
+        if (!cells) continue;
+        for (let c = 0; c < AHX_CHANNELS; c++) {
+          const cell = cells[c];
+          if (!cell) continue;
+          const raw = toRaw(cell.entries);
+          if (cache.cells[p]?.[c] !== raw) edited.push({ p, c, entries: raw });
+        }
+      }
+      if (edited.length === 0) return false;
+
+      const context = this.ahxOpContext();
+      let next = doc;
+      let problem: string | null = null;
+      for (const cell of edited) {
+        const encoded = entriesToTrack(cell.entries, doc.trackLength);
+        if ('error' in encoded) {
+          cell.revert = true;
+          problem ??= encoded.error;
+          continue;
+        }
+        cell.encoded = encoded;
+        let track = next.positions[cell.p]?.track[cell.c] as number;
+        if (tracksEqual(encoded, next.tracks[track] as AhxDocTrack)) continue;
+        let working = next;
+        if (track === 0 && isBlankTrack(working.tracks[0] as AhxDocTrack)) {
+          // Track 0 is what every blank cell points at: never written, so a
+          // blank cell that gets its first step gets a track of its own.
+          const fresh = allocTrack(working, {}, context);
+          if (!fresh.ok) {
+            cell.revert = true;
+            problem ??= fresh.reason;
+            continue;
+          }
+          const assigned = assignTrack(fresh.doc, cell.p, cell.c, fresh.track);
+          if (!assigned.ok) {
+            cell.revert = true;
+            problem ??= assigned.reason;
+            continue;
+          }
+          working = assigned.doc;
+          track = fresh.track;
+        }
+        const written = setTrack(working, track, encoded);
+        if (!written.ok) {
+          cell.revert = true;
+          problem ??= written.reason;
+          continue;
+        }
+        next = written.doc;
+      }
+
+      if (next !== doc || edited.some((cell) => cell.revert)) {
+        // Every cell that shows a track that changed (or is now another track),
+        // and every reverted cell, gets the doc's rows. A cell that was edited
+        // and now agrees with the doc keeps the text the user typed.
+        const own = new Map(edited.map((cell) => [cell.p * AHX_CHANNELS + cell.c, cell]));
+        const targets: { p: number; c: number; track: number }[] = [];
+        for (let p = 0; p < count; p++) {
+          for (let c = 0; c < AHX_CHANNELS; c++) {
+            const track = next.positions[p]?.track[c] as number;
+            const before = doc.positions[p]?.track[c] as number;
+            const mine = own.get(p * AHX_CHANNELS + c);
+            if (mine?.encoded && tracksEqual(mine.encoded, next.tracks[track] as AhxDocTrack)) continue;
+            const moved = track !== before || next.tracks[track] !== doc.tracks[before];
+            if (mine?.revert || moved) targets.push({ p, c, track });
+          }
+        }
+        const projected = projectTracks(next, targets.map((target) => target.track));
+        for (const { p, c, track } of targets) {
+          const cell = patterns[p]?.tracks[c];
+          if (cell) cell.entries = (projected.get(track) ?? []).map((entry) => ({ ...entry }));
+        }
+      }
+      cache.cells = patterns.map((pattern) => pattern.tracks.map((track) => toRaw(track.entries)));
+
+      const changed = next !== doc;
+      if (changed) this.commitAhxDoc(next);
+      if (problem !== null) reportAhxEditNotice(problem);
+      return changed;
+    },
+    /**
+     * Installs `next` as the song's doc and hands the engine's bytes the change:
+     * from here on the next Play plays what the grid shows.
+     */
+    commitAhxDoc(next: AhxDoc, options: ReplaceAhxBytesOptions = {}) {
+      this.ahxDoc = next;
+      this.ahxRevision += 1;
+      clearAhxEditNotice();
+      this.publishAhxBytes(options);
+    },
+    /**
+     * Serializes doc + slots + title and swaps them in as the song's current
+     * bytes when they differ (not debounced: a debounce and a live reload come
+     * with the engine path). Never throws: a doc the writer refuses (the ops
+     * cannot make one) leaves the previous bytes and says so.
+     */
+    publishAhxBytes(options: ReplaceAhxBytesOptions = {}) {
+      const doc = this.ahxDoc;
+      if (doc === null) return;
+      try {
+        const { bytes } = buildAhxFile({ doc, slots: this.instrumentSlots, title: this.currentSong.title });
+        replaceCurrentAhxBytes(bytes, options);
+      } catch (error) {
+        console.error('[TrackerStore] the AHX song could not be written; the engine keeps the previous version', error);
+      }
+    },
+    /**
+     * Brings the current bytes up to date with everything the editor holds:
+     * the grid (written back first), the slots' instruments and the title.
+     * Called before a Play, a save, an export and a snapshot; cheap when
+     * nothing changed (the bytes are only swapped when they differ).
+     */
+    flushAhxBytes() {
+      if (this.ahxDoc === null) return;
+      this.syncAhxWriteBack();
+      this.publishAhxBytes();
     }
   }
 });

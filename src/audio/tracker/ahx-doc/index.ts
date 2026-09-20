@@ -26,4 +26,5 @@ export {
   type BuiltAhxFile,
 } from './build-file';
 export { toLatin1 } from './latin1';
-export { projectAhxPatterns } from './projection';
+export { projectAhxPatterns, projectTracks } from './projection';
+export { AHX_MAX_INPUT_MIDI, AHX_MIN_INPUT_MIDI, ahxEditRefusal, type AhxEditCheck, type AhxEditGate } from './edit-guard';

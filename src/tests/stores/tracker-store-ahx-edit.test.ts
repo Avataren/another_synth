@@ -194,9 +194,12 @@ describe('tracker store: crafted ahxData on load', () => {
 describe('tracker store: updateEditingPatch guard', () => {
   beforeEach(() => setActivePinia(createPinia()));
 
-  it('does nothing in a read-only (AHX) song, and never gives an AHX slot a patch', () => {
+  it('does nothing in an AHX song, and never gives an AHX slot a patch', () => {
     const store = loadedKarma();
-    expect(store.isReadOnly).toBe(true);
+    // The import carries its bytes, so the song has a doc and is editable; its
+    // instrument slots are still not the patch editor's.
+    expect(store.isAhxSong).toBe(true);
+    expect(store.isReadOnly).toBe(false);
     store.startEditingSlot(1);
     store.updateEditingPatch(patchNamed('p1'));
     expect(store.instrumentSlots[0]!.patchId).toBeUndefined();

@@ -65,6 +65,15 @@ export interface AhxInstrumentEdit {
 
 let current: Uint8Array | null = null;
 /**
+ * The bytes the keyboard preview keys on. Equal to `current` except after an
+ * edit of the song's structure (`replaceCurrentAhxBytes`): the preview needs
+ * the instrument list, never the patterns, and it tells songs apart by byte
+ * identity, so a cell edit that swapped `current` must not make its next note
+ * reload its worklet. It moves when the instruments do (`instrumentsChanged`,
+ * `resetEdits`) and when a different song is applied.
+ */
+let previewBytes: Uint8Array | null = null;
+/**
  * The current song's header info, reactive: `null` when no AHX song's bytes are
  * current, which is the byte-less state where an edit is kept but cannot be
  * heard (`AhxInstrumentPage` says so).
@@ -139,6 +148,7 @@ export function setCurrentAhxSource(
   const reapplied = bytes !== null && bytes === current && (edits.size > 0 || restored.length > 0);
   if (bytes === current && !reapplied) return;
   current = reapplied ? bytes.slice() : bytes;
+  previewBytes = current;
   const header = bytes ? ahxSourceInfoOf(bytes) : null;
   ahxSourceInfo.value = header && { format: extra.format ?? header.format, version: extra.version ?? header.version };
   edits.clear();
@@ -158,6 +168,48 @@ export function onCurrentAhxSourceChange(listener: () => void): () => void {
 
 export function currentAhxSource(): Uint8Array | null {
   return current;
+}
+
+/** What the keyboard preview loads and identifies its song by (see `previewBytes`). */
+export function currentAhxPreviewSource(): Uint8Array | null {
+  return previewBytes;
+}
+
+export interface ReplaceAhxBytesOptions {
+  /** The instrument list changed (one was added): the preview must reload. */
+  instrumentsChanged?: boolean;
+  /** Start again from these bytes: the recorded instrument edits are dropped (an undo). */
+  resetEdits?: boolean;
+}
+
+/**
+ * The editor changed the song's structure: `bytes` (a fresh array from
+ * `buildAhxFile`) are what the current song is now. The song is the same one,
+ * so this does not fire `onCurrentAhxSourceChange` (that means "a different
+ * song" and disposes the preview worklet), and the recorded instrument edits
+ * stay unless `resetEdits`.
+ *
+ * `current` is swapped only when the content differs, so a flush that changed
+ * nothing keeps the identity a worklet's resume-in-place rests on. It has no
+ * listeners and does not reload anything: the next Play loads the new bytes,
+ * because loaders tell songs apart by identity. Returns whether it swapped;
+ * `false` also when no AHX song is current.
+ */
+export function replaceCurrentAhxBytes(bytes: Uint8Array, options: ReplaceAhxBytesOptions = {}): boolean {
+  if (!current) return false;
+  const reset = options.resetEdits === true;
+  if (!reset && sameBytes(bytes, current)) return false;
+  current = bytes;
+  if (reset) edits.clear();
+  if (reset || options.instrumentsChanged === true) previewBytes = bytes;
+  return true;
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 /**
