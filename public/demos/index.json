@@ -1,11 +1,29 @@
 {
   "version": 1,
-  "generated": "2026-09-19T21:37:19.819Z",
+  "generated": "2026-09-20T06:17:19.683Z",
   "collections": [
     {
       "id": "ahx",
       "name": "AHX / HivelyTracker",
       "songs": [
+        {
+          "title": "64k_is_all_you_need",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 70,
+          "instruments": 11,
+          "file": "ahx/64k_is_all_you_need.ahx",
+          "bytes": 4907
+        },
+        {
+          "title": "MotionRide - 8bit Fall",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 22,
+          "instruments": 8,
+          "file": "ahx/8bit_fall.ahx",
+          "bytes": 5181
+        },
         {
           "title": "A New Beginning",
           "format": "AHX",
@@ -23,6 +41,42 @@
           "instruments": 12,
           "file": "ahx/a_new_beginning_ii.ahx",
           "bytes": 6975
+        },
+        {
+          "title": "(451) - ACES HIGH",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 74,
+          "instruments": 34,
+          "file": "ahx/aces_high.ahx",
+          "bytes": 26327
+        },
+        {
+          "title": "All That She Wants",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 1,
+          "instruments": 8,
+          "file": "ahx/all_that_she_wants.ahx",
+          "bytes": 1298
+        },
+        {
+          "title": "aufwiedersehenmonty",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 27,
+          "instruments": 7,
+          "file": "ahx/aufwiedersehenmonty.ahx",
+          "bytes": 4459
+        },
+        {
+          "title": "bill buys a hoover",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 50,
+          "instruments": 7,
+          "file": "ahx/bill_buys_a_hoover.ahx",
+          "bytes": 1826
         },
         {
           "title": "Blondie",
@@ -52,6 +106,33 @@
           "bytes": 4280
         },
         {
+          "title": "Bubble_bobble",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 9,
+          "instruments": 6,
+          "file": "ahx/bubble_bobble.ahx",
+          "bytes": 2237
+        },
+        {
+          "title": "Carpe Noctem >Theme<",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 64,
+          "instruments": 10,
+          "file": "ahx/carpe_noctem_theme.ahx",
+          "bytes": 4992
+        },
+        {
+          "title": "cats on the catwalk",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 26,
+          "instruments": 7,
+          "file": "ahx/cats_on_the_catwalk.ahx",
+          "bytes": 15140
+        },
+        {
           "title": "never gonna give you up",
           "format": "HVL",
           "channels": 6,
@@ -59,6 +140,15 @@
           "instruments": 11,
           "file": "ahx/chiprolled.hvl",
           "bytes": 5812
+        },
+        {
+          "title": "Classic Cracktro",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 13,
+          "instruments": 7,
+          "file": "ahx/classic_cracktro.ahx",
+          "bytes": 4440
         },
         {
           "title": "Countdown to NIL",
@@ -79,6 +169,24 @@
           "bytes": 12918
         },
         {
+          "title": "Digital Retribution",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 94,
+          "instruments": 18,
+          "file": "ahx/digital_retribution.ahx",
+          "bytes": 11776
+        },
+        {
+          "title": "Disco Zax (DRAX)",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 20,
+          "instruments": 8,
+          "file": "ahx/disco_zax_drax.ahx",
+          "bytes": 2244
+        },
+        {
           "title": "doobrey gubbins",
           "format": "HVL",
           "channels": 11,
@@ -97,6 +205,78 @@
           "bytes": 5036
         },
         {
+          "title": "Dreamer",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 24,
+          "instruments": 11,
+          "file": "ahx/dreamer.ahx",
+          "bytes": 2912
+        },
+        {
+          "title": "doh-Dreams Odyssee(pri)",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 89,
+          "instruments": 23,
+          "file": "ahx/dreams_odyssee.ahx",
+          "bytes": 8068
+        },
+        {
+          "title": "Envy of Myra",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 25,
+          "instruments": 9,
+          "file": "ahx/envy_of_myra.ahx",
+          "bytes": 15199
+        },
+        {
+          "title": "Epic",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 36,
+          "instruments": 7,
+          "file": "ahx/epic.ahx",
+          "bytes": 20774
+        },
+        {
+          "title": "Everlasting Heroes",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 29,
+          "instruments": 15,
+          "file": "ahx/everlasting_heroes_hey!.ahx",
+          "bytes": 7410
+        },
+        {
+          "title": "ExplodingFist",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 32,
+          "instruments": 5,
+          "file": "ahx/explodingfist.ahx",
+          "bytes": 979
+        },
+        {
+          "title": "FinalFantasy2",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 8,
+          "instruments": 31,
+          "file": "ahx/finalfantasy2.ahx",
+          "bytes": 4616
+        },
+        {
+          "title": "Gates",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 25,
+          "instruments": 17,
+          "file": "ahx/gates.ahx",
+          "bytes": 10255
+        },
+        {
           "title": "GET TO THE CHOPPER!",
           "format": "AHX",
           "channels": 4,
@@ -104,6 +284,24 @@
           "instruments": 30,
           "file": "ahx/get_to_the_chopper.ahx",
           "bytes": 14687
+        },
+        {
+          "title": "GhostBusters",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 11,
+          "instruments": 9,
+          "file": "ahx/ghostbusters.ahx",
+          "bytes": 2969
+        },
+        {
+          "title": "GoodTimes",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 16,
+          "instruments": 7,
+          "file": "ahx/goodtimes.ahx",
+          "bytes": 1864
         },
         {
           "title": "I Love Holy Daze",
@@ -124,6 +322,15 @@
           "bytes": 1499
         },
         {
+          "title": "Joyous",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 20,
+          "instruments": 21,
+          "file": "ahx/joyous.ahx",
+          "bytes": 8000
+        },
+        {
           "title": "Karma",
           "format": "AHX",
           "channels": 4,
@@ -133,6 +340,24 @@
           "bytes": 15788
         },
         {
+          "title": "lets_go",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 20,
+          "instruments": 5,
+          "file": "ahx/lets_go.ahx",
+          "bytes": 1883
+        },
+        {
+          "title": "lightforce_trainer",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 24,
+          "instruments": 3,
+          "file": "ahx/lightforce_trainer.ahx",
+          "bytes": 1315
+        },
+        {
           "title": "Luminous",
           "format": "AHX",
           "channels": 4,
@@ -140,6 +365,24 @@
           "instruments": 18,
           "file": "ahx/luminous.ahx",
           "bytes": 5647
+        },
+        {
+          "title": "magneto_crack",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 4,
+          "instruments": 1,
+          "file": "ahx/magneto_crack.ahx",
+          "bytes": 293
+        },
+        {
+          "title": "master_cracker",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 32,
+          "instruments": 9,
+          "file": "ahx/master_cracker.ahx",
+          "bytes": 1307
         },
         {
           "title": "Melodious",
@@ -169,6 +412,69 @@
           "bytes": 5628
         },
         {
+          "title": "Nightmar3",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 13,
+          "instruments": 9,
+          "file": "ahx/nightmar3.ahx",
+          "bytes": 4453
+        },
+        {
+          "title": "Nyrmodian Cityscape [Strobe/TiTAN]",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 23,
+          "instruments": 8,
+          "file": "ahx/nyrmodian_cityscape.ahx",
+          "bytes": 15910
+        },
+        {
+          "title": "MotionRide - Outcast",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 21,
+          "instruments": 8,
+          "file": "ahx/outcast.ahx",
+          "bytes": 50199
+        },
+        {
+          "title": "Pilgrim",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 26,
+          "instruments": 31,
+          "file": "ahx/pilgrim.ahx",
+          "bytes": 40742
+        },
+        {
+          "title": "Platou",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 10,
+          "instruments": 11,
+          "file": "ahx/platou.ahx",
+          "bytes": 2367
+        },
+        {
+          "title": "Purple-Shades",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 16,
+          "instruments": 8,
+          "file": "ahx/purple-shades.ahx",
+          "bytes": 5676
+        },
+        {
+          "title": "Quite_classic",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 19,
+          "instruments": 10,
+          "file": "ahx/quite_classic.ahx",
+          "bytes": 4448
+        },
+        {
           "title": "Robocop III (J.Tel)",
           "format": "AHX",
           "channels": 4,
@@ -178,6 +484,24 @@
           "bytes": 10105
         },
         {
+          "title": "running",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 35,
+          "instruments": 7,
+          "file": "ahx/running.ahx",
+          "bytes": 4971
+        },
+        {
+          "title": "(451) - SHUT UP AND CALCULATE.AHX",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 29,
+          "instruments": 31,
+          "file": "ahx/shut_up_and_calculate.ahx",
+          "bytes": 11270
+        },
+        {
           "title": "sliding away",
           "format": "HVL",
           "channels": 6,
@@ -185,6 +509,33 @@
           "instruments": 4,
           "file": "ahx/sliding_away.hvl",
           "bytes": 2851
+        },
+        {
+          "title": "streets",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 73,
+          "instruments": 16,
+          "file": "ahx/streets.ahx",
+          "bytes": 13453
+        },
+        {
+          "title": "strobulation",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 23,
+          "instruments": 22,
+          "file": "ahx/strobulation.ahx",
+          "bytes": 11342
+        },
+        {
+          "title": "sundown",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 65,
+          "instruments": 28,
+          "file": "ahx/sundown.ahx",
+          "bytes": 26415
         },
         {
           "title": "sunspots",
@@ -205,6 +556,15 @@
           "bytes": 7583
         },
         {
+          "title": "the chase",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 44,
+          "instruments": 8,
+          "file": "ahx/the_chase.ahx",
+          "bytes": 3216
+        },
+        {
           "title": "The Fugitive",
           "format": "AHX",
           "channels": 4,
@@ -214,6 +574,24 @@
           "bytes": 6199
         },
         {
+          "title": "the magic spoon",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 22,
+          "instruments": 3,
+          "file": "ahx/the_magic_spoon.ahx",
+          "bytes": 1183
+        },
+        {
+          "title": "m0d-therapie",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 54,
+          "instruments": 22,
+          "file": "ahx/therapie.ahx",
+          "bytes": 13785
+        },
+        {
           "title": "Wave Stepper",
           "format": "AHX",
           "channels": 4,
@@ -221,6 +599,33 @@
           "instruments": 43,
           "file": "ahx/wave_stepper.ahx",
           "bytes": 19975
+        },
+        {
+          "title": "weekend",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 17,
+          "instruments": 10,
+          "file": "ahx/weekend.ahx",
+          "bytes": 2917
+        },
+        {
+          "title": "Winter Dreams",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 9,
+          "instruments": 6,
+          "file": "ahx/winter_dreams.ahx",
+          "bytes": 2518
+        },
+        {
+          "title": "yesterday night",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 16,
+          "instruments": 14,
+          "file": "ahx/yesterday_night.ahx",
+          "bytes": 7966
         }
       ]
     },
