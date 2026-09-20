@@ -124,6 +124,18 @@ describe('the AHX exporter with the real store', () => {
     for (let n = 2; n <= original.instrumentNr; n++) expect(parsed.instruments[n]).toEqual(original.instruments[n]);
   });
 
+  it('an unchanged name is not a rename: an unnamed instrument keeps its empty name in the exported file', () => {
+    const unnamed = demo('64k_is_all_you_need.ahx');
+    const original = parseAhx(unnamed);
+    expect(original.instruments[4]!.name).toBe('');
+    store = openInEditor(unnamed);
+    // Import seeds the slot with the fallback, which the file never had.
+    expect(store.instrumentSlots[3]!.instrumentName).toBe('Instrument 04');
+    store.setInstrumentName(4, '  Instrument 04 ');
+    expect(slotInstrument(4).name).toBe('');
+    expect(exportNow(store)).toEqual(unnamed);
+  });
+
   it('an instrument name the format cannot hold is repaired with a warning, not a failed export', () => {
     store.setInstrumentName(2, 'Lead \u20ac\u{1f600}');
     const song = snapshotEditorSong(store);

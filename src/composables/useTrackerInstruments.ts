@@ -135,6 +135,15 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
     if (instrumentNameEditSlot.value !== slotNumber) {
       return;
     }
+    const slot = context.trackerStore.instrumentSlots.find((s) => s.slot === slotNumber);
+    // Enter and blur both commit, so an untouched draft arrives here too: it is
+    // no rename, and must not add a history entry or turn a fallback display
+    // name ("Instrument 03") into a real one.
+    const current = slot ? getInstrumentDisplayName(slot).replace(/^—$/, '') : '';
+    if (slot && instrumentNameDraft.value.trim() === current) {
+      instrumentNameEditSlot.value = null;
+      return;
+    }
     context.trackerStore.pushHistory();
     context.trackerStore.setInstrumentName(slotNumber, instrumentNameDraft.value);
     instrumentNameEditSlot.value = null;

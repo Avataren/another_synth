@@ -710,10 +710,15 @@ export const useTrackerStore = defineStore('trackerStore', {
     setInstrumentName(slotNumber: number, name: string) {
       const slot = this.instrumentSlots.find((s) => s.slot === slotNumber);
       if (!slot) return;
+      const previous = slot.instrumentName;
       slot.instrumentName = name?.trim() ?? '';
       // An AHX slot's name is the instrument's own (the AHX exporter writes
-      // `ahxData.name` into the file), so a rename has to reach it too.
-      if (isAhxSlot(slot) && slot.ahxData) slot.ahxData.name = slot.instrumentName;
+      // `ahxData.name` into the file), so a rename has to reach it too. An
+      // unchanged name is not a rename: import seeds `instrumentName` with
+      // "Instrument NN" for an unnamed instrument, which the file never had.
+      if (isAhxSlot(slot) && slot.ahxData && slot.instrumentName !== previous) {
+        slot.ahxData.name = slot.instrumentName;
+      }
     },
     clearSlot(slotNumber: number) {
       if (this.isReadOnly) return;
