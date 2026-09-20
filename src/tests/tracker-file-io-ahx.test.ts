@@ -70,6 +70,7 @@ describe('saving', () => {
 
     expect(notify).toHaveBeenCalledOnce();
     expect(notify.mock.calls[0]![0]).toMatch(/AHX\/HVL songs cannot be saved/);
+    expect(notify.mock.calls[0]![0]).toMatch(/Use Export to write it as an \.ahx file \(AHX songs only\)\.$/);
     expect(serializeSong).not.toHaveBeenCalled();
     expect(picker).not.toHaveBeenCalled();
     expect(createUrl).not.toHaveBeenCalled();

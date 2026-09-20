@@ -140,6 +140,16 @@
           <button
             type="button"
             class="song-button ghost"
+            data-testid="song-export-open"
+            title="Export the song (AHX songs only for now)"
+            :disabled="isLoadingSong"
+            @click="showSongExport = true"
+          >
+            Export…
+          </button>
+          <button
+            type="button"
+            class="song-button ghost"
             :disabled="isLoadingSong"
             @click="openDemoBrowser()"
           >
@@ -219,6 +229,16 @@
             :disabled="isLoadingSong"
           >
             Save
+          </button>
+          <button
+            type="button"
+            class="song-button ghost"
+            data-testid="song-export-open"
+            title="Export the song (AHX songs only for now)"
+            @click="showSongExport = true"
+            :disabled="isLoadingSong"
+          >
+            Export…
           </button>
           <button
             type="button"
@@ -846,6 +866,7 @@
       </div>
     </div>
     <DemoSongBrowser v-model="showDemoBrowser" @select="handleDemoSelect" />
+    <SongExportDialog :open="showSongExport" :get-song="getExportSong" @close="showSongExport = false" />
 
     <div v-if="showBugReport" class="bug-report-float">
       <BugReportDialog :preset="bugReportPreset" @close="closeBugReport" />
@@ -945,6 +966,8 @@ import { useTrackerNavigation } from 'src/composables/useTrackerNavigation';
 import type { TrackerNavigationContext } from 'src/composables/useTrackerNavigation';
 import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
 import BugReportDialog from 'src/components/tracker/BugReportDialog.vue';
+import SongExportDialog from 'src/components/tracker/SongExportDialog.vue';
+import { snapshotEditorSong } from 'src/audio/tracker/ahx-source';
 import {
   channelsFromSelection,
   selectionToReportRange,
@@ -971,6 +994,8 @@ const userSettingsStore = useUserSettingsStore();
 const { settings: userSettings } = storeToRefs(userSettingsStore);
 const trackerStore = useTrackerStore();
 trackerStore.initializeIfNeeded();
+const showSongExport = ref(false);
+const getExportSong = () => snapshotEditorSong(trackerStore);
 const keyboardStore = useKeyboardStore();
 const {
   currentSong,
