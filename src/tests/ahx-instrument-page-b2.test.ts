@@ -139,7 +139,7 @@ describe('AhxInstrumentPage, EDITOR-UX batch 2 "see the sound"', () => {
       await el(w, 'ahx-field-hardCutRelease').setValue(false);
       expect(ins().hardCutReleaseFrames).toBe(2);
       expect((el(w, 'ahx-field-hardCutReleaseFrames').element as HTMLInputElement).disabled).toBe(false);
-      expect(el(w, 'ahx-hardcut-abrupt').text()).toMatch(/muted abruptly 2 ticks before the next note/);
+      expect(el(w, 'ahx-hardcut-abrupt').text()).toMatch(/muted abruptly 2 ticks before the next row that sets an instrument/);
       await el(w, 'ahx-field-hardCutReleaseFrames').setValue('0');
       expect(has(w, 'ahx-hardcut-abrupt')).toBe(false);
     });
@@ -271,7 +271,7 @@ describe('AhxInstrumentPage, EDITOR-UX batch 2 "see the sound"', () => {
         'ahx-field-vibratoSpeed': /wobbles/i,
         'ahx-field-vibratoDepth': /wobbles/i,
         'ahx-field-hardCutRelease': /following row sets an instrument.*ramps down/i,
-        'ahx-field-hardCutReleaseFrames': /before the next note/i,
+        'ahx-field-hardCutReleaseFrames': /before the next row that sets an instrument/i,
         'ahx-field-volume': /how loud/i,
         'ahx-plist-speed': /tick/i,
         'ahx-plist-0-fixed': /fixed pitch/i,

@@ -125,7 +125,7 @@
       </template>
       <template v-else>
         Hard cut is off for the release: the note is muted {{ hardCutFrames }}
-        {{ hardCutFrames === 1 ? 'frame' : 'frames' }} before the next note (when a following row sets an instrument) instead of ramping.
+        {{ hardCutFrames === 1 ? 'frame' : 'frames' }} before the next row that sets an instrument instead of ramping.
       </template>
       Only songs have a next note; the audition keys never hard-cut.
     </p>
