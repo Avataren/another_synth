@@ -320,13 +320,14 @@ describe('a song that comes back from the Jukebox', () => {
     // ... and put the editor's song back on the way out.
     await host.fileIO.applySongFile(snapshot);
     expect(host.trackerStore.moduleFormat).toBe('ahx');
-    // The snapshot flushed the editor's song into its bytes, so what comes back
-    // is never older than the slots: another identity than the imported file,
-    // with the edit baked in (the recorded edit is still on top of it).
+    // The snapshot carries the flushed file (`data.ahxFile`), and the put-back
+    // rebuilds doc, slots and bytes from it, so what comes back is never older
+    // than the slots: another identity than the imported file, with the edit
+    // baked in (so nothing is recorded on top of it).
     const back = currentAhxSource()!;
     expect(back).not.toBe(bytes);
     expect(parseAhx(back).instruments[16]!.volume).toBe(edited);
-    expect(currentAhxInstrumentEdits().map((e) => e.instrument)).toEqual([16]);
+    expect(currentAhxInstrumentEdits()).toEqual([]);
     expect(host.trackerStore.instrumentSlots.find((s) => s.slot === 16)!.ahxData!.volume).toBe(edited);
 
     // Auditioning works, and the worklets load the song with the edit in it.
@@ -335,18 +336,19 @@ describe('a song that comes back from the Jukebox', () => {
     await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
     await settle();
     expect(song()).toBeDefined();
-    expect(song()!.loads.at(-1)!.map((e) => e.instrument)).toEqual([16]);
-    expect(preview()!.loads.at(-1)!.map((e) => e.instrument)).toEqual([16]);
+    expect(song()!.loads.at(-1)).toEqual([]);
+    expect(preview()!.loads.at(-1)).toEqual([]);
     // And an edit made now still reaches the song player.
     const again = host.trackerStore.instrumentSlots.find((s) => s.slot === 16)!;
     expect(host.trackerStore.updateAhxInstrument(16, setAhxNumber(again.ahxData!, 'volume', 3))).toBe('applied');
   });
 
-  it('is the bug this fixes when the snapshot is a bare song file: no source, nothing to audition', async () => {
+  it('is the bug this fixes when the snapshot is a bare pre-v5 song file: no source, nothing to audition', async () => {
     const host = setupHost();
     await openAhx(host);
     await settle();
     const bare = host.trackerStore.serializeSong();
+    delete bare.data.ahxFile;
     await host.fileIO.applySongFile(bare);
     expect(currentAhxSource()).toBeNull();
     expect(await host.playbackStore.previewAhxNoteOn(16, 60, 100)).toBe(false);

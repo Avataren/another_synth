@@ -370,6 +370,8 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
     if (context.isReadOnly?.value) return;
     if (!context.currentPattern.value) return;
 
+    // Pending edits first (see `transposeSelection`).
+    context.ahx?.flush?.();
     const track = context.currentPattern.value.tracks[context.activeTrack.value];
     if (!track) return;
 

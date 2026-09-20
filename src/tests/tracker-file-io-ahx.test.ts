@@ -27,6 +27,8 @@ function makeContext(moduleFormat: string) {
     moduleFormat,
     serializeSong,
     loadSongFile: vi.fn(),
+    ahxDoc: null,
+    currentAhxBytes: vi.fn(() => null),
     instrumentSlots: [],
     linearFrequency: false,
     amigaLimits: false,
@@ -90,6 +92,38 @@ describe('saving', () => {
     expect(picker).toHaveBeenCalledOnce();
     expect(write).toHaveBeenCalledOnce();
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('saves an editable AHX song (v5 embeds its file), without a notification', async () => {
+    const write = vi.fn();
+    const picker = vi.fn(async () => ({
+      createWritable: async () => ({ write, close: async () => {} }),
+    }));
+    vi.stubGlobal('window', { ...window, showSaveFilePicker: picker });
+    const { ctx, notify, serializeSong, trackerStore } = makeContext('ahx');
+    Object.assign(trackerStore, { isAhxEditable: true });
+    serializeSong.mockReturnValue({ version: '5', data: { moduleFormat: 'ahx', ahxFile: 'AAAA' } } as never);
+
+    await useTrackerFileIO(ctx).handleSaveSongFile();
+
+    expect(serializeSong).toHaveBeenCalledOnce();
+    expect(picker).toHaveBeenCalledOnce();
+    expect(write).toHaveBeenCalledOnce();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('still refuses an AHX song whose file could not be built (an editable song that serialized without ahxFile)', async () => {
+    const picker = vi.fn();
+    vi.stubGlobal('window', { ...window, showSaveFilePicker: picker });
+    const { ctx, notify, serializeSong, trackerStore } = makeContext('ahx');
+    Object.assign(trackerStore, { isAhxEditable: true });
+    serializeSong.mockReturnValue({ version: '5', data: { moduleFormat: 'ahx' } } as never);
+
+    await useTrackerFileIO(ctx).handleSaveSongFile();
+
+    expect(notify).toHaveBeenCalledOnce();
+    expect(notify.mock.calls[0]![0]).toMatch(/AHX\/HVL songs can't be saved as \.cmod\./);
+    expect(picker).not.toHaveBeenCalled();
   });
 
   it('falls back to the log when the host gave no notify', async () => {

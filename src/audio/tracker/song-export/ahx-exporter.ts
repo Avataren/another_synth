@@ -6,6 +6,7 @@ import {
 } from '@another-synth/tracker-playback';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 import type { AhxSource } from 'src/audio/tracker/ahx-source';
+import { decodeAhxFile } from 'src/audio/tracker/ahx-doc';
 import {
   authorOrBpmChanged,
   AUTHOR_BPM_NOTE,
@@ -20,9 +21,15 @@ import { convertHvlToAhx, HVL_MIX_NOTE } from './hvl-to-ahx';
 import { SongExportError, type SongExportCheck, type SongExporter } from './types';
 
 /**
- * The AHX exporter: an overlay, not a serialization of the store.
+ * The AHX exporter.
  *
- * The store's row model of an AHX song is display only (no track table, no
+ * An editable song's snapshot carries its file (`data.ahxFile`, written by
+ * `buildAhxFile` when the song was serialized: patterns, positions, instruments
+ * and title), and that is what is exported, byte for byte. The snapshot is
+ * rebuilt from the live document, so those bytes are never stale.
+ *
+ * A song without one is an overlay, not a serialization of the store: the
+ * store's row model of an AHX song is display only (no track table, no
  * transposes, latched instruments), so the file's structure comes from the
  * bytes the song was imported from (`ahx-source`), and what the editor can
  * change comes from the store: the instruments (`slot.ahxData`) and the title.
@@ -30,15 +37,37 @@ import { SongExportError, type SongExportCheck, type SongExporter } from './type
  * model have no AHX home and are never written.
  *
  * An HVL song is exported as AHX only when it fits (`convertHvlToAhx`); it has
- * no instrument slots in the store, so only its title is overlaid.
+ * no instrument slots in the store, so only its title is overlaid. It never
+ * embeds a file, so it always takes the overlay path.
  */
 
 /** What the exporter works from: the parsed source, and the AHX song it becomes. */
 type Plan =
-  | { ok: true; source: AhxSource; base: AhxSong; ahx: AhxSong; converted: boolean }
+  | {
+      ok: true;
+      /** The song's own embedded file (`data.ahxFile`), when it carries one. */
+      file?: Uint8Array;
+      /** The song the file was imported from, when there is one (`ahx-source`). */
+      source?: AhxSource;
+      base: AhxSong;
+      ahx: AhxSong;
+      converted: boolean;
+    }
   | { ok: false; reason: string };
 
 function plan(song: TrackerSongFile): Plan {
+  // The embedded file is the authority: it is rebuilt from the live document,
+  // so a stale record cannot beat it.
+  if (song.data.ahxFile !== undefined) {
+    const decoded = decodeAhxFile(song.data.ahxFile);
+    if (decoded.ok) {
+      // `decodeAhxFile` has already parsed these bytes successfully.
+      const base = parseAhx(decoded.bytes);
+      return { ok: true, file: decoded.bytes, base, ahx: base, converted: false };
+    }
+    // A file that will not decode falls through to the source record or the
+    // refusal below, matching load's warn-and-read-only behaviour.
+  }
   const found = sourceRecordFor(song, 'AHX');
   if (!found.ok) return found;
   const source = found.record;
@@ -97,6 +126,8 @@ function warnings(song: TrackerSongFile): string[] {
 function serialize(song: TrackerSongFile): Uint8Array {
   const planned = plan(song);
   if (!planned.ok) throw new SongExportError(planned.reason);
+  if (planned.file) return planned.file.slice();
+  if (!planned.source) throw new SongExportError('This song has no original file to export from.');
   const merged = withStoreEdits(planned.ahx, planned.base, song, !planned.converted);
   try {
     // A converted song has no AHX base to copy from; the writer works from the model alone.

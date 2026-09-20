@@ -121,9 +121,16 @@ export function snapshotAhxSource(): AhxSource | null {
  * that a song file does not carry: its bytes, header info and instrument edits
  * (the Jukebox keeps this while it plays other songs and applies it on the way
  * out). For any other song it is `store.serializeSong()` as it is.
+ *
+ * An editable AHX song needs nothing attached: its song file already carries the
+ * flushed file (`data.ahxFile`), with the slots' edits and the title in it, and
+ * putting the song back rebuilds doc, slots and engine bytes from that. The
+ * current bytes are not used for it, because they can be older than the slots
+ * (an instrument-parameter edit does not touch them).
  */
 export function snapshotEditorSong(store: { serializeSong(): TrackerSongFile }): TrackerSongFile {
   const songFile = store.serializeSong();
+  if (songFile.data.ahxFile !== undefined) return songFile;
   const source = snapshotAhxSource();
   if (source) attachAhxSource(songFile, source.bytes, source, source.edits);
   return songFile;

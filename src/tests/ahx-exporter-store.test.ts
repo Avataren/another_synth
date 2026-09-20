@@ -9,6 +9,8 @@ import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import {
   ahxSourceInfoOf,
   ahxSourceRecordOf,
+  attachAhxSource,
+  currentAhxSource,
   currentAhxInstrumentEdits,
   setCurrentAhxSource,
   snapshotEditorSong,
@@ -25,6 +27,19 @@ function openInEditor(bytes: Uint8Array) {
   store.loadSongFile(importAhxToTrackerSong(bytes.slice().buffer));
   setCurrentAhxSource(bytes.slice(), ahxSourceInfoOf(bytes));
   return store;
+}
+
+/**
+ * A snapshot as the Jukebox took it before songs embedded their file (v4): the
+ * song file plus the current bytes and edits as the source record, no `ahxFile`.
+ * The exporter's overlay path (record + the store's instruments and title) is
+ * still what such a song, and one whose file could not be built, is exported by.
+ */
+function recordSnapshot(store: ReturnType<typeof useTrackerStore>) {
+  const song = snapshotEditorSong(store);
+  delete song.data.ahxFile;
+  attachAhxSource(song, currentAhxSource()!, ahxSourceInfoOf(currentAhxSource()!), currentAhxInstrumentEdits());
+  return song;
 }
 
 const exportNow = (store: ReturnType<typeof useTrackerStore>): Uint8Array =>
@@ -100,10 +115,13 @@ describe('the AHX exporter with the real store', () => {
     const before = slotInstrument(2);
     expect(store.updateAhxInstrument(2, setAhxNumber(before, 'volume', before.volume === 7 ? 8 : 7))).toBe('applied');
     const song = snapshotEditorSong(store);
-    const edits = ahxSourceRecordOf(song)!.edits!;
+    const edits = currentAhxInstrumentEdits();
     expect(edits.map((e) => e.instrument)).toEqual([2]);
     expect(edits[0]!.bytes).toEqual(serializeAhxInstrument(song.data.instrumentSlots[1]!.ahxData!, 'ahx'));
-    expect(currentAhxInstrumentEdits()[0]!.bytes).toEqual(edits[0]!.bytes);
+    // The snapshot's own file holds the same instrument (the file is the authority on load).
+    expect(parseAhx(ahxExporter.serialize(song)).instruments[2]).toEqual(song.data.instrumentSlots[1]!.ahxData);
+    // The record path (a v4 snapshot) carries the same edits.
+    expect(ahxSourceRecordOf(recordSnapshot(store))!.edits!.map((e) => e.instrument)).toEqual([2]);
   });
 
   it('an edited title becomes the song name and nothing else in the file moves', () => {
@@ -145,7 +163,7 @@ describe('the AHX exporter with the real store', () => {
   });
 
   it('a song file seen through a reactive wrapper still finds its source bytes (the WeakMap is keyed by identity)', () => {
-    const song = snapshotEditorSong(store);
+    const song = recordSnapshot(store);
     expect(ahxSourceRecordOf(reactive(song) as typeof song)).not.toBeNull();
     expect(ref(song).value === song).toBe(false); // the wrapper really is a different object
     expect(ahxExporter.check(ref(song).value)).toEqual({ ok: true });
@@ -215,10 +233,29 @@ describe('the AHX exporter with the real store', () => {
     expect(exportNow(openInEditor(out))).toEqual(out);
   });
 
-  it('a song whose bytes are gone (an edit was only kept, or it came from a saved file) is unavailable', () => {
-    // A saved file loaded back: the slots without the bytes, so no doc either (an
-    // editable AHX song always has its bytes; `publishAhxBytes` puts them back).
-    store.loadSongFile(JSON.parse(JSON.stringify(store.serializeSong())));
+  it('Export heals an editable song whose bytes are gone: the snapshot flushes the grid, and the file is the edited song (review N6)', () => {
+    const cell = store.patterns[0]!.tracks[0]!;
+    cell.entries = [...cell.entries.filter((e) => e.row !== 5), { row: 5, note: 'C-3', instrument: '01' }];
+    setCurrentAhxSource(null);
+    expect(store.isAhxEditable).toBe(true);
+
+    const song = snapshotEditorSong(store);
+    expect(currentAhxSource()).not.toBeNull();
+    expect(ahxExporter.check(song)).toEqual({ ok: true });
+    const out = parseAhx(ahxExporter.serialize(song));
+    const doc = store.ahxDoc!;
+    expect(out.tracks[doc.positions[0]!.track[0] as number]![5]!.note).toBe(25);
+    // Nothing else moved: the unedited positions are the source's.
+    expect(out.positions.slice(1)).toEqual(parseAhx(source).positions.slice(1));
+  });
+
+  it('a song with no file to write from (a .cmod saved before v5) is unavailable', () => {
+    // A pre-v5 saved file loaded back: the slots without the bytes, so no doc
+    // either (an editable AHX song always has its bytes; `publishAhxBytes` puts
+    // them back).
+    const legacy = JSON.parse(JSON.stringify(store.serializeSong()));
+    delete legacy.data.ahxFile;
+    store.loadSongFile(legacy);
     setCurrentAhxSource(null);
     expect(store.isAhxEditable).toBe(false);
     expect(store.updateAhxInstrument(1, setAhxNumber(slotInstrument(1), 'volume', 5))).toBe('kept');
@@ -228,8 +265,9 @@ describe('the AHX exporter with the real store', () => {
     expect(() => ahxExporter.serialize(song)).toThrow(SongExportError);
     expect(ahxExporter.warnings!(song)).toEqual([]);
 
-    // A .cmod round trip: the file holds the slots but not the bytes.
+    // A pre-v5 .cmod round trip: the file holds the slots but not the bytes.
     const saved = JSON.parse(JSON.stringify(store.serializeSong()));
+    delete saved.data.ahxFile;
     setActivePinia(createPinia());
     const fromSaved = useTrackerStore();
     fromSaved.loadSongFile(saved);
@@ -250,11 +288,11 @@ describe('the AHX exporter with the real store', () => {
   });
 
   it('an instrument slot without data, or with invalid data, is a SongExportError, never a partial file', () => {
-    const missing = snapshotEditorSong(store);
+    const missing = recordSnapshot(store);
     delete missing.data.instrumentSlots[0]!.ahxData;
     expect(() => ahxExporter.serialize(missing)).toThrow(/Instrument 1 is missing/);
 
-    const invalid = snapshotEditorSong(store);
+    const invalid = recordSnapshot(store);
     invalid.data.instrumentSlots[2]!.ahxData!.volume = 999;
     let caught: unknown;
     try {

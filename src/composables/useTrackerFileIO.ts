@@ -7,7 +7,8 @@ import { looksLikeMod, importModToTrackerSong } from 'src/audio/tracker/mod-impo
 import { looksLikeXm, importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { looksLikeS3m, importS3mToTrackerSong } from 'src/audio/tracker/s3m-import';
 import { looksLikeAhxModule, importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
-import { ahxSourceRecordOf, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
+import { attachAhxSource, ahxSourceRecordOf, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
+import { decodeAhxFile } from 'src/audio/tracker/ahx-doc';
 import { recordLoadedSongHash } from 'src/composables/song-identity';
 import { usePostFxStore } from 'src/stores/post-fx-store';
 
@@ -174,25 +175,36 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     });
   }
 
+  function refuseSavingAhx(): void {
+    const message = "AHX/HVL songs can't be saved as .cmod. Use Export to save an .ahx or .hvl file.";
+    if (context.notify) {
+      context.notify(message);
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn(message);
+    }
+  }
+
   /**
    * Save the current song to a .cmod file (zipped JSON)
    */
   async function handleSaveSongFile() {
-    // An AHX/HVL song is played from the original file's bytes; the store only
-    // holds a display model of it, which a .cmod cannot turn back into sound.
-    // Saving one would write a file that never plays, so say so instead.
-    if (context.trackerStore.moduleFormat === 'ahx') {
-      const message = "AHX/HVL songs can't be saved as .cmod. Use Export to save an .ahx or .hvl file.";
-      if (context.notify) {
-        context.notify(message);
-      } else {
-        // eslint-disable-next-line no-console
-        console.warn(message);
-      }
+    // An editable AHX song saves its file inside the .cmod (`data.ahxFile`). One
+    // the editor has no doc for (an HVL song, or an AHX file it could not read)
+    // is only a display model of a file it plays from, which a .cmod cannot turn
+    // back into sound: saving it would write a file that never plays.
+    if (context.trackerStore.moduleFormat === 'ahx' && !context.trackerStore.isAhxEditable) {
+      refuseSavingAhx();
       return;
     }
     try {
       const songFile = context.trackerStore.serializeSong();
+      // The belt to the check above: an AHX song that could not be written
+      // carries no file, and a .cmod without one would never play.
+      if (songFile.data.moduleFormat === 'ahx' && songFile.data.ahxFile === undefined) {
+        refuseSavingAhx();
+        return;
+      }
       const json = JSON.stringify(songFile, null, 2);
       const safeTitle = (context.currentSong.value.title || 'song').replace(/[^a-z0-9-_]+/gi, '_');
       const zip = new JSZip();
@@ -273,7 +285,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
         throw new Error('No JSON file found in song archive');
       }
       const text = await zipFile.async('string');
-      return JSON.parse(text) as TrackerSongFile;
+      return finishSongFile(JSON.parse(text) as TrackerSongFile);
     }
     if (looksLikeMod(buffer)) {
       // Raw Amiga-style MOD module
@@ -294,7 +306,26 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     }
     // Plain JSON .cmod/.json file
     const decoder = new TextDecoder('utf-8');
-    return JSON.parse(decoder.decode(buffer)) as TrackerSongFile;
+    return finishSongFile(JSON.parse(decoder.decode(buffer)) as TrackerSongFile);
+  }
+
+  /**
+   * What both JSON paths of `parseSongBuffer` (the zipped `.cmod` and the plain
+   * JSON) do with a parsed song file. A v5 AHX song carries its file
+   * (`data.ahxFile`); when it is valid its bytes are attached as the song's
+   * source record, so the consumers that read the record before the store has
+   * loaded the song (the exporter) see the bytes the store will build from. The
+   * store prefers the file to the record, so the two cannot disagree; an
+   * unusable file is left for the store, which warns and keeps the song
+   * read-only.
+   */
+  function finishSongFile(songFile: TrackerSongFile): TrackerSongFile {
+    const data = songFile?.data;
+    if (data?.moduleFormat === 'ahx' && data.ahxFile !== undefined) {
+      const decoded = decodeAhxFile(data.ahxFile);
+      if (decoded.ok) attachAhxSource(songFile, decoded.bytes);
+    }
+    return songFile;
   }
 
   /**
@@ -371,8 +402,18 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     // An AHX/HVL song is played from its file, not from the store: keep the
     // bytes the import attached for the playback store to hand to the worklet.
     // Any other song clears them.
-    const ahxSource = ahxSourceRecordOf(songFile);
-    setCurrentAhxSource(ahxSource?.bytes ?? null, ahxSource ?? {});
+    // An editable song's bytes are the store's own (the doc, the slots and the
+    // title, through the one writer the save and the export use), so slots, doc,
+    // engine and file cannot disagree; the recorded edits are baked into them.
+    // Any other AHX song has its record; every other format clears the bytes.
+    const store = context.trackerStore;
+    const ahxBytes = store.currentAhxBytes();
+    if (ahxBytes !== null && store.ahxDoc !== null) {
+      setCurrentAhxSource(ahxBytes, { format: 'ahx', version: store.ahxDoc.version, edits: [] });
+    } else {
+      const ahxSource = ahxSourceRecordOf(songFile);
+      setCurrentAhxSource(ahxSource?.bytes ?? null, ahxSource ?? {});
+    }
 
     // AUTO resets its LED-filter state on every song replacement -- this path
     // covers file open, the demo browser, URL loads and the jukebox (all
