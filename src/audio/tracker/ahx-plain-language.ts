@@ -99,9 +99,9 @@ export const AHX_HELP: Readonly<Record<AhxHelpKey, string>> = {
     'How long the note takes to rise from silence to its first level: short is a hard strike, long is a slow fade-in (0 skips the attack \u2014 the note then starts silent).',
   envAttackVolume: 'How loud the note gets at the end of the attack.',
   envDecayFrames:
-    'How long the note takes to settle from the attack level to the sustain level (0 skips the decay; with the attack time at 0 it rises from silence to the sustain level instead).',
+    'How long the note takes to settle from the attack level to the sustain level (0 skips the decay; with the attack time at 0 the decay then starts from silence and jumps to the sustain level on its last frame).',
   envDecayVolume:
-    'The level the note settles at (with a non-zero attack and the decay time at 0 it stays at the attack level instead; with the attack and decay times both 0 the note never rises and stays silent); it holds there for the sustain time, then starts to die away (with the release time at 0 nothing dies away).',
+    'The level the note settles at (with a non-zero attack and the decay time at 0 it stays at the attack level instead; with the attack and decay times both 0 the note stays silent through the sustain); it holds there for the sustain time, then starts to die away (with the release time at 0 nothing dies away).',
   envSustainFrames:
     'How long the note holds its level before it starts to die away (with the release time at 0 nothing dies away).',
   envReleaseFrames:

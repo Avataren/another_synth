@@ -127,7 +127,7 @@
         Hard cut is off for the release: the note is muted {{ hardCutFrames }}
         {{ hardCutFrames === 1 ? 'frame' : 'frames' }} before the next row that sets an instrument instead of ramping.
       </template>
-      Only songs have a next note; the audition keys never hard-cut.
+      Only a song has a next row that sets an instrument; the audition keys never hard-cut.
     </p>
   </div>
 </template>
