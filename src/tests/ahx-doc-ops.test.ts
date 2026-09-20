@@ -211,6 +211,29 @@ describe('tracks: allocation, sharing, the 256 limit', () => {
     expect(refusal(makeUnique(d, 0, 4))).toMatch(/channels/);
   });
 
+  it('makeUnique never hands the blank track 0 back to a cell, even the last one using it', () => {
+    // A new song: [1,0,0,0]. Making channels 2 and 3 unique leaves channel 4 as the only
+    // cell on track 0; it used to be told "already alone" and keep it (unwritable).
+    let d = createNewAhxDoc();
+    expect(d.positions[0]!.track).toEqual([1, 0, 0, 0]);
+    for (const ch of [1, 2, 3]) {
+      const r = ok(makeUnique(d, 0, ch));
+      expect(r.track).not.toBe(0);
+      d = r.doc;
+    }
+    const tracks = d.positions[0]!.track;
+    expect(tracks[0]).toBe(1);
+    expect(tracks.slice(1).every((t) => t !== 0)).toBe(true);
+    expect(new Set(tracks).size).toBe(4);
+    expect(trackUsage(d)[0]).toBe(0);
+    expect(isBlankTrack(d.tracks[0]!)).toBe(true);
+    // A non-blank track 0 (legal in a loaded file) is an ordinary track: alone stays alone.
+    const loud = synthetic({ tracks: [[step(3), ...blankTrack(3)], blankTrack(4)], positions: [pos(0, 1, 1, 1)] });
+    const alone = ok(makeUnique(loud, 0, 0));
+    expect(alone.track).toBe(0);
+    expect(alone.doc).toBe(loud);
+  });
+
   it('assignTrack and setTranspose validate and are no-ops on the same value', () => {
     const d = synthetic({ tracks: [blankTrack(4), blankTrack(4)], positions: [pos(1, 0, 0, 0)] });
     expect(doc(assignTrack(d, 0, 0, 1))).toBe(d);

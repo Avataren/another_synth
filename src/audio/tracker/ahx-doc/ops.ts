@@ -174,13 +174,17 @@ export function setTranspose(doc: AhxDoc, position: number, channel: number, val
 /**
  * Gives the cell a track of its own: when other cells use its track, a copy of
  * it is assigned to this one (`track` is the number the cell now has; the
- * original when it was already alone).
+ * original when it was already alone). While track 0 is blank it counts as
+ * always shared, so the cell gets a copy even when it is the last one using it.
  */
 export function makeUnique(doc: AhxDoc, position: number, channel: number, context: AhxOpContext = {}): AhxOpResult<{ track: number }> {
   const where = positionAt(doc, position, channel);
   if (where !== null) return refuse(where);
   const current = (doc.positions[position] as AhxDocPosition).track[channel] as number;
-  if ((trackUsage(doc)[current] ?? 0) <= 1) return { ok: true, doc, track: current };
+  // The blank track 0 is shared by definition (no cell may write it, so a cell
+  // must never be handed it back as "its own"), however few cells point at it.
+  const blankShared = current === 0 && isBlankTrack(doc.tracks[0] as AhxDocTrack);
+  if (!blankShared && (trackUsage(doc)[current] ?? 0) <= 1) return { ok: true, doc, track: current };
   const copy = allocTrack(doc, { copyOf: current }, context);
   if (!copy.ok) return copy;
   const assigned = assignTrack(copy.doc, position, channel, copy.track);
