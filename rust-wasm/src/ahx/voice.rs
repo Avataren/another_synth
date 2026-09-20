@@ -246,6 +246,11 @@ pub struct Voice {
     pub perf_current: i32,
     pub perf_speed: i32,
     pub perf_wait: i32,
+    /// The PList row the last step ran (`-1`: none since the trigger). Unlike
+    /// `perf_current`, which is the row that runs *next* and holds the target
+    /// after a Jump. Write-only as far as the render goes: only the editor's
+    /// playhead reads it (`AhxEngine::live_plist_state`).
+    pub perf_row: i32,
 
     pub audio_source: AudioSourceRef,
     pub audio_period: i32,
@@ -340,6 +345,7 @@ impl Voice {
             perf_current: 0,
             perf_speed: 0,
             perf_wait: 0,
+            perf_row: -1,
             audio_source: AudioSourceRef::Waves(WO_TRIANGLE_04),
             audio_period: 0,
             audio_volume: 0,
@@ -447,6 +453,7 @@ impl Voice {
 
         self.perf_wait = 0;
         self.perf_current = 0;
+        self.perf_row = -1;
         self.perf_speed = ins.plist.speed as i32;
 
         // hvl_replay.c:960 -- only the mix source is cleared; vc_RingAudioSource
@@ -542,6 +549,7 @@ impl Voice {
                 self.perf_wait -= 1;
                 if signed_overflow || (self.perf_wait as i8) <= 0 {
                     let cur = self.perf_current as usize;
+                    self.perf_row = cur as i32;
                     self.perf_current += 1;
                     self.perf_wait = self.perf_speed;
 

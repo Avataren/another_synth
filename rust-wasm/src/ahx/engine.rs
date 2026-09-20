@@ -900,6 +900,19 @@ impl AhxEngine {
         self.live.is_some()
     }
 
+    /// The previewed note's PList position: `(instrument, row)` for the row
+    /// its voice ran last, for the editor's playhead. `None` in song mode, with
+    /// no note, once the note's release is over (where `live_tick` cuts it) and
+    /// for an instrument whose PList has not run a row (an empty one).
+    pub fn live_plist_state(&self) -> Option<(usize, usize)> {
+        let live = self.live.as_ref()?;
+        let voice = &self.voices[0];
+        if voice.instrument_idx == 0 || voice.perf_row < 0 || (live.released && voice.adsr.r_frames <= 0) {
+            return None;
+        }
+        Some((voice.instrument_idx as usize, voice.perf_row as usize))
+    }
+
     /// Ticks the preview prewarm holds a key down for `instrument` (1-based):
     /// what [`live_warm_hold_ticks`] says for the instrument as it is now.
     /// `None` for an instrument the song does not have.
