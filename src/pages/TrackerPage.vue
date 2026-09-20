@@ -141,7 +141,7 @@
             type="button"
             class="song-button ghost"
             data-testid="song-export-open"
-            title="Export the song (AHX songs only for now)"
+            title="Export the song as a file"
             :disabled="isLoadingSong"
             @click="showSongExport = true"
           >
@@ -234,7 +234,7 @@
             type="button"
             class="song-button ghost"
             data-testid="song-export-open"
-            title="Export the song (AHX songs only for now)"
+            title="Export the song as a file"
             @click="showSongExport = true"
             :disabled="isLoadingSong"
           >

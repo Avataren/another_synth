@@ -45,8 +45,7 @@ const changedOffsets = (a: Uint8Array, b: Uint8Array): number[] => {
   return out;
 };
 
-const NO_SOURCE =
-  'This AHX song has no source file (it was loaded from a saved file), so it cannot be exported.';
+const NO_SOURCE = 'This song has no original file to export from.';
 
 describe('the AHX exporter with the real store', () => {
   const source = demo('karma.ahx');
@@ -140,7 +139,7 @@ describe('the AHX exporter with the real store', () => {
     store.setInstrumentName(2, 'Lead \u20ac\u{1f600}');
     const song = snapshotEditorSong(store);
     expect(ahxExporter.warnings!(song)).toEqual([
-      "Some characters in an instrument name can't be stored in an AHX file and are replaced or removed.",
+      "Some characters in an instrument name can't be saved and are replaced or removed.",
     ]);
     expect(parseAhx(ahxExporter.serialize(song)).instruments[2]!.name).toBe('Lead ??');
   });
@@ -161,7 +160,7 @@ describe('the AHX exporter with the real store', () => {
     store.currentSong.title = 'A\u0000B\u20ac\u{1f600}\u00e9';
     const song = snapshotEditorSong(store);
     expect(ahxExporter.warnings!(song)).toEqual([
-      "Some characters in the title can't be stored in an AHX file and are replaced or removed.",
+      "Some characters in the title can't be saved and are replaced or removed.",
     ]);
     expect(parseAhx(ahxExporter.serialize(song)).name).toBe('AB??\u00e9');
   });
@@ -178,6 +177,22 @@ describe('the AHX exporter with the real store', () => {
     store.currentSong.bpm = 77;
     expect(exportNow(store)).toEqual(same);
     expect(same).toEqual(source);
+  });
+
+  it('says author and bpm are not saved only when one of them was changed', () => {
+    expect(ahxExporter.warnings!(snapshotEditorSong(store))).toEqual([]);
+    store.currentSong.bpm = 77;
+    expect(ahxExporter.warnings!(snapshotEditorSong(store))).toEqual(["Author and BPM changes aren't saved."]);
+    store.currentSong.bpm = 125;
+    store.currentSong.author = 'Somebody Else';
+    expect(ahxExporter.warnings!(snapshotEditorSong(store))).toEqual(["Author and BPM changes aren't saved."]);
+  });
+
+  it('a song made in the editor from scratch is refused with a plain line, not exported', () => {
+    store.moduleFormat = 'native';
+    const song = snapshotEditorSong(store);
+    expect(ahxExporter.check(song)).toEqual({ ok: false, reason: "Songs made from scratch can't be exported yet." });
+    expect(() => ahxExporter.serialize(song)).toThrow("Songs made from scratch can't be exported yet.");
   });
 
   it('is loadable by our own importer: the patterns, slots and title survive a re-import', () => {
@@ -219,13 +234,13 @@ describe('the AHX exporter with the real store', () => {
   });
 
   it.each([
-    ['protracker', 'a MOD'],
-    ['xm', 'an XM'],
-    ['s3m', 'an S3M'],
-  ] as const)('a %s song is unavailable, whatever bytes are current', (format, article) => {
+    ['protracker', 'MOD'],
+    ['xm', 'XM'],
+    ['s3m', 'S3M'],
+  ] as const)('a %s song is unavailable, whatever bytes are current', (format, name) => {
     store.moduleFormat = format;
     const song = snapshotEditorSong(store);
-    const reason = `This song is ${article} song, not an AHX song: converting between formats isn't supported.`;
+    const reason = `${name} songs can't be saved as AHX.`;
     expect(ahxExporter.check(song)).toEqual({ ok: false, reason });
     expect(() => ahxExporter.serialize(song)).toThrow(reason);
   });
@@ -244,7 +259,7 @@ describe('the AHX exporter with the real store', () => {
       caught = error;
     }
     expect(caught).toBeInstanceOf(SongExportError);
-    expect((caught as Error).message).toMatch(/Instrument 3 cannot be written/);
+    expect((caught as Error).message).toMatch(/^Instrument 3 can't be saved: /);
   });
 
   it('a song past the 16-bit size limit is a SongExportError carrying the writer reason', () => {

@@ -182,9 +182,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     // holds a display model of it, which a .cmod cannot turn back into sound.
     // Saving one would write a file that never plays, so say so instead.
     if (context.trackerStore.moduleFormat === 'ahx') {
-      const message =
-        'AHX/HVL songs cannot be saved as .cmod: the song plays from the original file, which is unchanged. ' +
-        'Use Export to write it as an .ahx file (AHX songs only).';
+      const message = "AHX/HVL songs can't be saved as .cmod. Use Export to save an .ahx or .hvl file.";
       if (context.notify) {
         context.notify(message);
       } else {

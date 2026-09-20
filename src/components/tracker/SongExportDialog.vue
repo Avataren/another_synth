@@ -37,7 +37,13 @@
               Download
             </button>
           </div>
-          <p class="song-export-description">{{ row.exporter.description }}</p>
+          <p
+            v-if="row.exporter.description"
+            class="song-export-description"
+            :data-testid="`song-export-description-${row.exporter.id}`"
+          >
+            {{ row.exporter.description }}
+          </p>
           <p
             v-if="row.state.reason"
             class="song-export-reason"
@@ -149,11 +155,11 @@ function download(exporter: SongExporter): void {
     const fresh = props.getSong();
     song.value = fresh;
     const state = describeSongExporter(exporter, fresh);
-    if (state.state !== 'enabled') throw new SongExportError(state.reason ?? 'This song cannot be exported.');
+    if (state.state !== 'enabled') throw new SongExportError(state.reason ?? "This song can't be exported.");
     const bytes = exporter.serialize(fresh);
     const fileName = exportFileName(fresh.data.currentSong.title, exporter.extension);
     downloadBytes(bytes, fileName, exporter.mimeType);
-    status.value = `Download started: ${fileName} (${bytes.length} bytes)`;
+    status.value = `Download started: ${fileName}`;
   } catch (caught) {
     error.value = caught instanceof SongExportError ? caught.message : `Export failed: ${(caught as Error).message}`;
   }
