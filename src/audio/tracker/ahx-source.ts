@@ -1,4 +1,4 @@
-import { shallowRef, type ShallowRef } from 'vue';
+import { shallowRef, toRaw, type ShallowRef } from 'vue';
 import type { AhxSongFormat } from '@another-synth/tracker-playback';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 
@@ -80,7 +80,7 @@ export function attachAhxSource(
   info: AhxSourceInfo = ahxSourceInfoOf(bytes),
   editsMade?: readonly AhxInstrumentEdit[],
 ): void {
-  attached.set(songFile, {
+  attached.set(toRaw(songFile), {
     bytes,
     format: info.format,
     version: info.version,
@@ -89,12 +89,14 @@ export function attachAhxSource(
 }
 
 export function ahxSourceOf(songFile: TrackerSongFile): Uint8Array | null {
-  return attached.get(songFile)?.bytes ?? null;
+  return attached.get(toRaw(songFile))?.bytes ?? null;
 }
 
 /** Everything attached to `songFile`: bytes, header info and any snapshot edits. */
 export function ahxSourceRecordOf(songFile: TrackerSongFile): AhxSource | null {
-  return attached.get(songFile) ?? null;
+  // The map is keyed by identity, which a reactive wrapper around the same song
+  // file does not have, so look up (and attach) by the raw object.
+  return attached.get(toRaw(songFile)) ?? null;
 }
 
 const copyEdit = (edit: AhxInstrumentEdit): AhxInstrumentEdit => ({ instrument: edit.instrument, bytes: edit.bytes.slice() });

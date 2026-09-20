@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
+import { reactive, ref } from 'vue';
 import { parseAhx, serializeAhxInstrument, type AhxInstrument } from '@another-synth/tracker-playback';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
@@ -111,6 +112,33 @@ describe('the AHX exporter with the real store', () => {
     const parsed = parseAhx(exportNow(store));
     expect(parsed.name).toBe('My Remix');
     expect({ ...parsed, name: '' }).toEqual({ ...parseAhx(source), name: '' });
+  });
+
+  it('renaming an instrument in the slot list reaches the file, and nothing else in it moves', () => {
+    store.setInstrumentName(1, '  Renamed Lead  ');
+    expect(slotInstrument(1).name).toBe('Renamed Lead');
+    const parsed = parseAhx(exportNow(store));
+    expect(parsed.instruments[1]!.name).toBe('Renamed Lead');
+    const original = parseAhx(source);
+    expect({ ...parsed.instruments[1]!, name: '' }).toEqual({ ...original.instruments[1]!, name: '' });
+    for (let n = 2; n <= original.instrumentNr; n++) expect(parsed.instruments[n]).toEqual(original.instruments[n]);
+  });
+
+  it('an instrument name the format cannot hold is repaired with a warning, not a failed export', () => {
+    store.setInstrumentName(2, 'Lead \u20ac\u{1f600}');
+    const song = snapshotEditorSong(store);
+    expect(ahxExporter.warnings!(song)).toEqual([
+      "Some characters in an instrument name can't be stored in an AHX file and are replaced or removed.",
+    ]);
+    expect(parseAhx(ahxExporter.serialize(song)).instruments[2]!.name).toBe('Lead ??');
+  });
+
+  it('a song file seen through a reactive wrapper still finds its source bytes (the WeakMap is keyed by identity)', () => {
+    const song = snapshotEditorSong(store);
+    expect(ahxSourceRecordOf(reactive(song) as typeof song)).not.toBeNull();
+    expect(ref(song).value === song).toBe(false); // the wrapper really is a different object
+    expect(ahxExporter.check(ref(song).value)).toEqual({ ok: true });
+    expect(ahxExporter.serialize(ref(song).value)).toEqual(ahxExporter.serialize(song));
   });
 
   it('an untouched title keeps the file name as it is', () => {

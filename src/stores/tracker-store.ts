@@ -711,6 +711,9 @@ export const useTrackerStore = defineStore('trackerStore', {
       const slot = this.instrumentSlots.find((s) => s.slot === slotNumber);
       if (!slot) return;
       slot.instrumentName = name?.trim() ?? '';
+      // An AHX slot's name is the instrument's own (the AHX exporter writes
+      // `ahxData.name` into the file), so a rename has to reach it too.
+      if (isAhxSlot(slot) && slot.ahxData) slot.ahxData.name = slot.instrumentName;
     },
     clearSlot(slotNumber: number) {
       if (this.isReadOnly) return;

@@ -29,20 +29,22 @@ const NO_SOURCE_REASON =
 const HVL_REASON = 'HVL (.hvl) songs are not exported yet: only .ahx songs.';
 const TITLE_NOTE =
   "Some characters in the title can't be stored in an AHX file and are replaced or removed.";
+const INSTRUMENT_NAME_NOTE =
+  "Some characters in an instrument name can't be stored in an AHX file and are replaced or removed.";
 
 const FORMAT_NAMES: Partial<Record<ModuleFormat, string>> = {
   protracker: 'a MOD',
   xm: 'an XM',
   s3m: 'an S3M',
-  native: 'a native',
 };
 
 /** The song's source record when it is exportable as `.ahx`, else why not. */
 function sourceOf(song: TrackerSongFile): { ok: true; record: AhxSource } | { ok: false; reason: string } {
   const format = song.data.moduleFormat;
   if (format !== 'ahx') {
-    const name = FORMAT_NAMES[format ?? 'native'] ?? 'a non-AHX';
-    return { ok: false, reason: `This song is ${name} song, not an AHX song: converting between formats isn't supported.` };
+    const name = format === undefined || format === 'native' ? undefined : (FORMAT_NAMES[format] ?? 'a non-AHX');
+    const what = name === undefined ? 'This song was made in the editor' : `This song is ${name} song`;
+    return { ok: false, reason: `${what}, not an AHX song: converting between formats isn't supported.` };
   }
   const record = ahxSourceRecordOf(song);
   if (!record) return { ok: false, reason: NO_SOURCE_REASON };
@@ -59,17 +61,23 @@ function sourceOf(song: TrackerSongFile): { ok: true; record: AhxSource } | { ok
  */
 function songNameFor(base: AhxSong, title: string): { name: string; altered: boolean } {
   if (title === (base.name.trim() || IMPORT_FALLBACK_TITLE)) return { name: base.name, altered: false };
-  let name = '';
+  const { text, altered } = toLatin1(title);
+  return { name: text, altered };
+}
+
+/** `text` as the format can hold it: NUL removed, anything above U+00FF replaced by `?`. */
+function toLatin1(text: string): { text: string; altered: boolean } {
+  let out = '';
   let altered = false;
-  for (const char of title) {
+  for (const char of text) {
     const code = char.codePointAt(0) ?? 0;
     if (code === 0) altered = true;
     else if (code > 0xff) {
-      name += '?';
+      out += '?';
       altered = true;
-    } else name += char;
+    } else out += char;
   }
-  return { name, altered };
+  return { text: out, altered };
 }
 
 function withStoreEdits(base: AhxSong, song: TrackerSongFile): AhxSong {
@@ -82,7 +90,7 @@ function withStoreEdits(base: AhxSong, song: TrackerSongFile): AhxSong {
     }
     const problem = ahxInstrumentProblem(data, 'ahx');
     if (problem !== null) throw new SongExportError(`Instrument ${n} cannot be written to an AHX file: ${problem}.`);
-    instruments[n] = data;
+    instruments[n] = { ...data, name: toLatin1(data.name).text };
   }
   return { ...base, instruments, name: songNameFor(base, song.data.currentSong.title).name };
 }
@@ -101,7 +109,14 @@ function warnings(song: TrackerSongFile): string[] {
   } catch {
     return [];
   }
-  return songNameFor(base, song.data.currentSong.title).altered ? [TITLE_NOTE] : [];
+  const notes: string[] = [];
+  if (songNameFor(base, song.data.currentSong.title).altered) notes.push(TITLE_NOTE);
+  const slots = song.data.instrumentSlots;
+  const renamed = Array.from({ length: base.instrumentNr }, (_, i) => slots[i]?.ahxData?.name).some(
+    (name) => name !== undefined && toLatin1(name).altered,
+  );
+  if (renamed) notes.push(INSTRUMENT_NAME_NOTE);
+  return notes;
 }
 
 function serialize(song: TrackerSongFile): Uint8Array {
