@@ -69,8 +69,8 @@ describe('saving', () => {
     await useTrackerFileIO(ctx).handleSaveSongFile();
 
     expect(notify).toHaveBeenCalledOnce();
-    expect(notify.mock.calls[0]![0]).toMatch(/AHX\/HVL songs cannot be saved/);
-    expect(notify.mock.calls[0]![0]).toMatch(/Use Export to write it as an \.ahx file \(AHX songs only\)\.$/);
+    expect(notify.mock.calls[0]![0]).toMatch(/AHX\/HVL songs can't be saved as \.cmod\./);
+    expect(notify.mock.calls[0]![0]).toMatch(/Use Export to save an \.ahx or \.hvl file\.$/);
     expect(serializeSong).not.toHaveBeenCalled();
     expect(picker).not.toHaveBeenCalled();
     expect(createUrl).not.toHaveBeenCalled();
@@ -97,7 +97,7 @@ describe('saving', () => {
     const { ctx } = makeContext('ahx');
     delete ctx.notify;
     await useTrackerFileIO(ctx).handleSaveSongFile();
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/AHX\/HVL songs cannot be saved/));
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/AHX\/HVL songs can't be saved as \.cmod\./));
   });
 });
 

@@ -128,10 +128,10 @@ function walkBase(base: Uint8Array): BaseLayout {
   return { format, blankFirstTrack, instrumentCore };
 }
 
-const isBlankStep = (step: AhxStep): boolean =>
+export const isBlankStep = (step: AhxStep): boolean =>
   step.note === 0 && step.instrument === 0 && step.fx === 0 && step.fxParam === 0 && step.fxb === 0 && step.fxbParam === 0;
 
-const isBlankTrack = (track: AhxTrack): boolean => track.every(isBlankStep);
+export const isBlankTrack = (track: AhxTrack): boolean => track.every(isBlankStep);
 
 /** Latin-1, one byte per char, NUL-terminated (`parseAhx`'s `readCString` in reverse). */
 function cString(text: unknown, what: string): number[] {

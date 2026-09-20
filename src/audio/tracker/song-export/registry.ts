@@ -1,26 +1,26 @@
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { ahxExporter } from './ahx-exporter';
+import { hvlExporter } from './hvl-exporter';
 import { SongExportError, type SongExportFormatId, type SongExporter } from './types';
 
-export const NOT_IMPLEMENTED_REASON = 'Writer not implemented yet';
+export const NOT_IMPLEMENTED_REASON = 'Not available yet.';
 
 /** A row for a format whose writer does not exist yet: listed, disabled, never called. */
 function createPlaceholderExporter(
   id: SongExportFormatId,
   label: string,
   extension: string,
-  description: string,
 ): SongExporter {
   return {
     id,
     label,
     extension,
     mimeType: 'application/octet-stream',
-    description,
+    description: '',
     available: false,
     check: () => ({ ok: false, reason: NOT_IMPLEMENTED_REASON }),
     serialize: () => {
-      throw new SongExportError(`${label} writer not implemented yet`);
+      throw new SongExportError(`${label} export isn't available yet.`);
     },
   };
 }
@@ -28,9 +28,10 @@ function createPlaceholderExporter(
 /** Every format the export dialog lists, in display order. The dialog reads only this. */
 export const SONG_EXPORTERS: readonly SongExporter[] = [
   ahxExporter,
-  createPlaceholderExporter('mod', 'ProTracker MOD', '.mod', 'A ProTracker module file.'),
-  createPlaceholderExporter('xm', 'FastTracker 2 XM', '.xm', 'A FastTracker 2 extended module file.'),
-  createPlaceholderExporter('s3m', 'Scream Tracker 3 S3M', '.s3m', 'A Scream Tracker 3 module file.'),
+  hvlExporter,
+  createPlaceholderExporter('mod', 'ProTracker MOD', '.mod'),
+  createPlaceholderExporter('xm', 'FastTracker 2 XM', '.xm'),
+  createPlaceholderExporter('s3m', 'Scream Tracker 3 S3M', '.s3m'),
 ];
 
 export function getSongExporter(id: SongExportFormatId): SongExporter | undefined {
@@ -50,6 +51,6 @@ export function describeSongExporter(exporter: SongExporter, song: TrackerSongFi
     const verdict = exporter.check(song);
     return verdict.ok ? { state: 'enabled' } : { state: 'unavailable', reason: verdict.reason };
   } catch (error) {
-    return { state: 'unavailable', reason: `This song cannot be checked for export: ${(error as Error).message}` };
+    return { state: 'unavailable', reason: `This song can't be checked for export: ${(error as Error).message}` };
   }
 }

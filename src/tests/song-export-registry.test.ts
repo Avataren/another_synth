@@ -9,6 +9,7 @@ import {
   downloadBytes,
   exportFileName,
   getSongExporter,
+  hvlExporter,
   SONG_EXPORTERS,
   SongExportError,
 } from 'src/audio/tracker/song-export';
@@ -24,50 +25,98 @@ const ahxSong = (): TrackerSongFile => importAhxToTrackerSong(demo('karma.ahx'))
 const withoutSource = (song: TrackerSongFile): TrackerSongFile => ({ ...song, data: { ...song.data } });
 
 describe('the exporter registry', () => {
-  it('lists ahx, mod, xm, s3m in that order with unique ids', () => {
-    expect(SONG_EXPORTERS.map((e) => e.id)).toEqual(['ahx', 'mod', 'xm', 's3m']);
+  it('lists ahx, hvl, mod, xm, s3m in that order with unique ids', () => {
+    expect(SONG_EXPORTERS.map((e) => e.id)).toEqual(['ahx', 'hvl', 'mod', 'xm', 's3m']);
     expect(new Set(SONG_EXPORTERS.map((e) => e.id)).size).toBe(SONG_EXPORTERS.length);
   });
 
-  it('has a writer for ahx only', () => {
+  it('has a writer for ahx and hvl only', () => {
     expect(SONG_EXPORTERS.map((e) => [e.id, e.available])).toEqual([
       ['ahx', true],
+      ['hvl', true],
       ['mod', false],
       ['xm', false],
       ['s3m', false],
     ]);
     expect(getSongExporter('ahx')).toBe(ahxExporter);
+    expect(getSongExporter('hvl')).toBe(hvlExporter);
     expect(getSongExporter('xm')?.extension).toBe('.xm');
   });
 
-  it('gives every row a label, a dotted extension, a mime type and a description', () => {
+  it('gives every row a label, a dotted extension and a mime type; only rows with a writer have a description', () => {
     for (const e of SONG_EXPORTERS) {
       expect(e.label.length, e.id).toBeGreaterThan(0);
       expect(e.extension, e.id).toBe(`.${e.id}`);
       expect(e.mimeType, e.id).toBe('application/octet-stream');
-      expect(e.description.length, e.id).toBeGreaterThan(0);
+      expect(e.description.length > 0, e.id).toBe(e.available);
     }
+    expect(getSongExporter('hvl')?.label).toBe('HVL (Hively Tracker)');
+  });
+
+  it('pins the row descriptions: one short plain sentence, nothing about Author, BPM or the format', () => {
+    expect(ahxExporter.description).toBe('Saves the song as an .ahx file, with your instrument and title changes.');
+    expect(hvlExporter.description).toBe('Saves the song as an .hvl file, with your title change.');
+    for (const e of SONG_EXPORTERS) expect(e.description, e.id).not.toMatch(/author|bpm|speed multiplier|tempo|no place/i);
+  });
+
+  it('states every row for every kind of song', () => {
+    const native: TrackerSongFile = { ...withoutSource(ahxSong()), data: { ...ahxSong().data, moduleFormat: 'native' } };
+    const xm: TrackerSongFile = { ...withoutSource(ahxSong()), data: { ...ahxSong().data, moduleFormat: 'xm' } };
+    const rows = (song: TrackerSongFile) =>
+      Object.fromEntries(SONG_EXPORTERS.map((e) => [e.id, describeSongExporter(e, song)]));
+    const notYet = { state: 'not-implemented', reason: 'Not available yet.' };
+
+    expect(rows(ahxSong())).toEqual({
+      ahx: { state: 'enabled' },
+      hvl: { state: 'unavailable', reason: "AHX songs can't be saved as HVL." },
+      mod: notYet,
+      xm: notYet,
+      s3m: notYet,
+    });
+    expect(rows(importAhxToTrackerSong(demo('chiprolled.hvl')))).toEqual({
+      ahx: { state: 'unavailable', reason: 'AHX files have 4 tracks; this song reaches track 6. Export it as HVL instead.' },
+      hvl: { state: 'enabled' },
+      mod: notYet,
+      xm: notYet,
+      s3m: notYet,
+    });
+    expect(rows(xm)).toMatchObject({
+      ahx: { state: 'unavailable', reason: "XM songs can't be saved as AHX." },
+      hvl: { state: 'unavailable', reason: "XM songs can't be saved as HVL." },
+    });
+    expect(rows(native)).toMatchObject({
+      ahx: { state: 'unavailable', reason: "Songs made from scratch can't be exported yet." },
+      hvl: { state: 'unavailable', reason: "Songs made from scratch can't be exported yet." },
+    });
+    expect(rows(withoutSource(ahxSong()))).toMatchObject({
+      ahx: { state: 'unavailable', reason: 'This song has no original file to export from.' },
+      hvl: { state: 'unavailable', reason: 'This song has no original file to export from.' },
+    });
+    expect(rows(withoutSource(importAhxToTrackerSong(demo('chiprolled.hvl'))))).toMatchObject({
+      ahx: { state: 'unavailable', reason: 'This song has no original file to export from.' },
+      hvl: { state: 'unavailable', reason: 'This song has no original file to export from.' },
+    });
   });
 
   it('states the AHX row as enabled for an AHX song with its source', () => {
     expect(describeSongExporter(ahxExporter, ahxSong())).toEqual({ state: 'enabled' });
   });
 
-  it('states the AHX row as unavailable for an XM song, an HVL song and an AHX song without source', () => {
+  it('states the AHX row as unavailable for an XM song, a wide HVL song and an AHX song without source', () => {
     const xm: TrackerSongFile = { ...withoutSource(ahxSong()), data: { ...ahxSong().data, moduleFormat: 'xm' } };
     expect(describeSongExporter(ahxExporter, xm)).toEqual({
       state: 'unavailable',
-      reason: "This song is an XM song, not an AHX song: converting between formats isn't supported.",
+      reason: "XM songs can't be saved as AHX.",
     });
 
     expect(describeSongExporter(ahxExporter, importAhxToTrackerSong(demo('chiprolled.hvl')))).toEqual({
       state: 'unavailable',
-      reason: 'HVL (.hvl) songs are not exported yet: only .ahx songs.',
+      reason: 'AHX files have 4 tracks; this song reaches track 6. Export it as HVL instead.',
     });
 
     expect(describeSongExporter(ahxExporter, withoutSource(ahxSong()))).toEqual({
       state: 'unavailable',
-      reason: 'This AHX song has no source file (it was loaded from a saved file), so it cannot be exported.',
+      reason: 'This song has no original file to export from.',
     });
   });
 
@@ -77,7 +126,7 @@ describe('the exporter registry', () => {
       const check = vi.spyOn(exporter, 'check');
       expect(describeSongExporter(exporter, ahxSong()), id).toEqual({
         state: 'not-implemented',
-        reason: 'Writer not implemented yet',
+        reason: 'Not available yet.',
       });
       expect(check).not.toHaveBeenCalled();
       check.mockRestore();
@@ -88,7 +137,7 @@ describe('the exporter registry', () => {
     for (const id of ['mod', 'xm', 's3m'] as const) {
       const exporter = getSongExporter(id)!;
       expect(() => exporter.serialize(ahxSong()), id).toThrow(SongExportError);
-      expect(() => exporter.serialize(ahxSong()), id).toThrow(/writer not implemented yet/);
+      expect(() => exporter.serialize(ahxSong()), id).toThrow(`${exporter.label} export isn't available yet.`);
     }
   });
 
@@ -96,7 +145,7 @@ describe('the exporter registry', () => {
     const broken = { ...ahxExporter, check: () => { throw new Error('boom'); } };
     expect(describeSongExporter(broken, ahxSong())).toEqual({
       state: 'unavailable',
-      reason: 'This song cannot be checked for export: boom',
+      reason: "This song can't be checked for export: boom",
     });
   });
 });

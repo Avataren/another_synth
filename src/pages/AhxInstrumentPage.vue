@@ -14,7 +14,7 @@
           v-if="audible"
           class="ahx-banner__mode"
           data-testid="ahx-editable-badge"
-          title="Every change is made to the song's own instrument for this session: the song plays it from its next trigger and the keyboard sounds it at once. AHX/HVL songs cannot be saved as .cmod yet, so the edits last until the song is replaced."
+          title="Every change is made to the song's own instrument for this session: the song plays it from its next trigger and the keyboard sounds it at once. Use Export to save the changes in an .ahx file."
           >Edits this session</span
         >
         <span
