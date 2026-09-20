@@ -490,6 +490,7 @@
           :glyphs="WAVE_GLYPH"
           @select="selectRow"
         />
+        <PListCanvas :instrument="instrument" :selected="selectedRow" @select="selectRow" />
         <div v-if="instrument.plist.entries.length" class="ahx-plist-scroll">
           <table class="ahx-table" data-testid="ahx-plist">
             <thead>
@@ -505,6 +506,7 @@
                 :class="{ 'ahx-row--selected': index === selectedRow }"
                 :data-selected="index === selectedRow ? 'true' : 'false'"
                 :data-testid="`ahx-plist-row-${index}`"
+                @focusin="selectedRow = index"
               >
                 <td class="ahx-dim" :title="AHX_HELP.plistRow">{{ hex2(index) }}</td>
                 <td>
@@ -623,6 +625,7 @@ import AhxWaveShape from 'src/components/ahx/AhxWaveShape.vue';
 import AhxVibratoLane from 'src/components/ahx/AhxVibratoLane.vue';
 import AhxSweepLane from 'src/components/ahx/AhxSweepLane.vue';
 import AhxPListStrip from 'src/components/ahx/AhxPListStrip.vue';
+import PListCanvas from 'src/components/ahx/PListCanvas.vue';
 import {
   AHX_FX_NAMES,
   AHX_HELP,
@@ -730,7 +733,7 @@ const usesFilter = computed(() =>
   instrument.value ? ahxUsesFilter(instrument.value, sweepContext.value) : false,
 );
 
-/** The PList row the strip and the table highlight (a later task edits it). */
+/** The PList row the canvas, the strip and the table highlight (a later task edits it). */
 const selectedRow = ref<number | null>(null);
 function selectRow(row: number): void {
   selectedRow.value = row;

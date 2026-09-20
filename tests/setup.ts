@@ -9,6 +9,14 @@ beforeAll(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   global.AudioContext = vi.fn() as any;
 
+  // jsdom has no 2D context and logs a "Not implemented" error for every
+  // getContext call; a page that hosts a canvas (the AHX instrument page's PList
+  // canvas) then floods stderr on every mount. Return the same null quietly.
+  // Tests that need a context install their own (spyOn/defineProperty) after this.
+  if (typeof HTMLCanvasElement !== 'undefined') {
+    HTMLCanvasElement.prototype.getContext = (() => null) as unknown as HTMLCanvasElement['getContext'];
+  }
+
   // Mock atob/btoa for base64 operations
   if (typeof global.atob === 'undefined') {
     global.atob = (str: string) => Buffer.from(str, 'base64').toString('binary');
