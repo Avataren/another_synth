@@ -15,6 +15,11 @@ export const useKeyboardStore = defineStore('keyboard', {
     // New property to track only the latest event (for performance)
     latestEvent: null as NoteEvent | null,
     noteOnTimestamps: new Map<number, number>(),
+    // The synth pages' piano layout. The tracker's note entry and the AHX
+    // editor use `TRACKER_NOTE_KEY_MAP` (composables/keyboard/note-key-map.ts):
+    // it agrees with this map on every key it has, and this map adds two:
+    // `Quote` and `Backspace` are notes here only (in the tracker they are
+    // text and delete). Pinned by `keyboard-note-maps.test.ts`.
     keyMap: {
       // Lower octave - white keys
       'KeyZ': 48, // C3

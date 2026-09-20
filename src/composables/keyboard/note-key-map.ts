@@ -6,6 +6,10 @@
  *
  * Shared by the tracker's note entry and the AHX instrument editor's play
  * input, so the two pages always agree on which key is which note.
+ *
+ * `keyboardStore.keyMap` (the synth pages) is the same layout plus two keys,
+ * pinned by `keyboard-note-maps.test.ts`: `Quote` (F#4) and `Backspace` (G#5),
+ * which the tracker keeps for text and delete.
  */
 export const TRACKER_NOTE_KEY_MAP: Readonly<Record<string, number>> = {
   KeyZ: 48,
