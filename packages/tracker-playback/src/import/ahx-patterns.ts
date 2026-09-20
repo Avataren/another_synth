@@ -34,7 +34,7 @@ import type {
   TrackerEntryData,
 } from '../tracker-types';
 import { formatInstrumentId } from '../instrument-ids';
-import { midiToTrackerNote } from '../note-utils';
+import { midiToTrackerNote, parseTrackerNoteSymbol } from '../note-utils';
 
 /** AHX/HVL note range: 1..60, five octaves (`.ai/p0-report.md`'s correction
  * of `architecture-map.md`'s "3-octave" claim; `period_tab` has 61 entries,
@@ -57,10 +57,54 @@ export function ahxNoteIndexFromMidi(midi: number): number | undefined {
   return Math.max(1, Math.min(AHX_MAX_NOTE_INDEX, Math.round(midi) - AHX_NOTE_INDEX_TO_MIDI_OFFSET));
 }
 
-function ahxNoteToTrackerText(note: number): string | undefined {
+/** The largest note a step can hold: 6 bits. The engine clamps at 60. */
+const AHX_MAX_STEP_NOTE = 63;
+
+function ahxNoteToTrackerText(note: number, clampNotes: boolean): string | undefined {
   if (note <= 0) return undefined;
-  const clamped = Math.min(note, AHX_MAX_NOTE_INDEX);
-  return midiToTrackerNote(AHX_NOTE_INDEX_TO_MIDI_OFFSET + clamped);
+  const shown = clampNotes ? Math.min(note, AHX_MAX_NOTE_INDEX) : note;
+  return midiToTrackerNote(AHX_NOTE_INDEX_TO_MIDI_OFFSET + shown);
+}
+
+/**
+ * The inverse of the note text `buildAhxTrackerPatterns` writes: the step note
+ * (1..=63) a note name stands for, `undefined` for anything else (empty, `###`,
+ * a name outside the format's six bits). The text continues its own scheme past
+ * the engine's 60 (61..=63 read `C-6`, `C#6`, `D-6`), which only the
+ * `clampNotes: false` projection produces.
+ */
+export function ahxNoteFromTrackerText(text: string | undefined): number | undefined {
+  const { midi, isNoteOff } = parseTrackerNoteSymbol(text);
+  if (isNoteOff || midi === undefined) return undefined;
+  const note = midi - AHX_NOTE_INDEX_TO_MIDI_OFFSET;
+  return note >= 1 && note <= AHX_MAX_STEP_NOTE ? note : undefined;
+}
+
+/**
+ * How the row model is built. The defaults are the display import (one latched
+ * instrument per channel, notes shown as the engine plays them, random ids); an
+ * editable song's projection needs all three turned the other way, because it
+ * is only invertible when each holds:
+ *  - `latchInstruments: false` -- a row shows an instrument only where its step
+ *    has one (an inherited one written back would become an explicit one, and
+ *    the engine re-triggers the instrument on a non-zero byte);
+ *  - `clampNotes: false` -- a step's note 61..=63 keeps its own name instead of
+ *    reading as 60;
+ *  - `stableIds: true` -- a pattern's id is `ahx-pos-<position>`, so a selection
+ *    keyed on it survives a re-projection.
+ */
+export interface AhxPatternOptions {
+  /** Default true. */
+  latchInstruments?: boolean;
+  /** Default false: `crypto.randomUUID()` per pattern. */
+  stableIds?: boolean;
+  /** Default true. */
+  clampNotes?: boolean;
+}
+
+/** The id `stableIds` gives the pattern of position `positionIndex`. */
+export function ahxPositionPatternId(positionIndex: number): string {
+  return `ahx-pos-${positionIndex}`;
 }
 
 /**
@@ -78,6 +122,7 @@ function ahxStepToTrackerEntry(
   step: AhxStep,
   row: number,
   latchedInstrument: number,
+  clampNotes: boolean,
 ): TrackerEntryData | undefined {
   const hasNote = step.note > 0;
   const hasInstrument = step.instrument > 0;
@@ -104,7 +149,7 @@ function ahxStepToTrackerEntry(
   }
 
   if (hasNote) {
-    const noteText = ahxNoteToTrackerText(step.note);
+    const noteText = ahxNoteToTrackerText(step.note, clampNotes);
     if (noteText) entry.note = noteText;
   }
 
@@ -125,7 +170,11 @@ function ahxStepToTrackerEntry(
   return entry;
 }
 
-export function buildAhxTrackerPatterns(song: AhxSong): TrackerPattern[] {
+export function buildAhxTrackerPatterns(
+  song: AhxSong,
+  options: AhxPatternOptions = {},
+): TrackerPattern[] {
+  const { latchInstruments = true, stableIds = false, clampNotes = true } = options;
   // The engine plays at most AHX_MAX_CHANNELS voices (the reference's
   // 16-voice array); a malformed HVL header can claim more, and the editor
   // would otherwise grow tracks the engine never sounds.
@@ -149,7 +198,8 @@ export function buildAhxTrackerPatterns(song: AhxSong): TrackerPattern[] {
         const entry = ahxStepToTrackerEntry(
           step,
           row,
-          channelInstruments[ch] ?? 0,
+          latchInstruments ? (channelInstruments[ch] ?? 0) : 0,
+          clampNotes,
         );
         if (step.instrument > 0) channelInstruments[ch] = step.instrument;
         if (entry) entries.push(entry);
@@ -164,7 +214,7 @@ export function buildAhxTrackerPatterns(song: AhxSong): TrackerPattern[] {
     }
 
     return {
-      id: crypto.randomUUID(),
+      id: stableIds ? ahxPositionPatternId(positionIndex) : crypto.randomUUID(),
       name: `Position ${positionIndex + 1}`,
       rows: song.trackLength,
       tracks,
