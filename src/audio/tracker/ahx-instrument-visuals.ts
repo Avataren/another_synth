@@ -367,7 +367,8 @@ export interface AhxSweepContext {
 /**
  * Known limitation (review L7, follow-up): command 4 TOGGLES, but this reads the
  * first toggle row only. A second toggle, or a jump loop that runs back over the
- * toggle row, turns the sweep off again while the lane keeps saying "on"; and
+ * toggle row, turns the sweep off again while the lane keeps drawing it "on"
+ * (its caption says the lane does not follow that); and
  * the trace starts at tick 0 even when the toggle sits in a later row or the
  * square tone is only selected later. Tracking that needs a PList walk.
  */

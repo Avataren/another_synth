@@ -120,7 +120,7 @@ describe('AhxInstrumentPage, EDITOR-UX batch 2 "see the sound"', () => {
       await el(w, 'ahx-field-vibratoSpeed').setValue('32');
       expect(el(w, 'ahx-vibrato-caption').text()).toMatch(/nothing wobbles/);
       await el(w, 'ahx-field-vibratoSpeed').setValue('40');
-      expect(el(w, 'ahx-vibrato-caption').text()).toMatch(/backwards/);
+      expect(el(w, 'ahx-vibrato-caption').text()).toMatch(/upside down/);
     });
 
     it('a square preview with no pulse-width command starts where the engine does, position 0', async () => {
@@ -191,6 +191,7 @@ describe('AhxInstrumentPage, EDITOR-UX batch 2 "see the sound"', () => {
       expect(has(w, 'ahx-sweep-pulse-upper')).toBe(true);
       expect(el(w, 'ahx-sweep-caption-square').text()).toMatch(/thin and nasal/);
       expect(el(w, 'ahx-sweep-caption-square').text()).toMatch(/bigger number is slower/);
+      expect(el(w, 'ahx-sweep-caption-square').text()).toMatch(/second one, or a jump loop.*does not follow/);
     });
 
     it('the lanes redraw as the limits move', async () => {
@@ -269,7 +270,7 @@ describe('AhxInstrumentPage, EDITOR-UX batch 2 "see the sound"', () => {
         'ahx-field-vibratoDelay': /steady before the pitch/i,
         'ahx-field-vibratoSpeed': /wobbles/i,
         'ahx-field-vibratoDepth': /wobbles/i,
-        'ahx-field-hardCutRelease': /fade out/i,
+        'ahx-field-hardCutRelease': /next row sets an instrument.*ramps down/i,
         'ahx-field-hardCutReleaseFrames': /before the next note/i,
         'ahx-field-volume': /how loud/i,
         'ahx-plist-speed': /tick/i,

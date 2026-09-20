@@ -184,6 +184,13 @@ const pulseEnds = computed(() => {
   });
 });
 
+/** The lane reads the first toggle only; say so rather than imply it tracks later ones. */
+const toggleNote = computed(() =>
+  state.value === 'on'
+    ? ' The first switch-on command in the PList starts this sweep; a second one, or a jump loop back over it, would toggle it off again, and this picture does not follow that.'
+    : '',
+);
+
 const caption = computed(() => {
   const rate = ahxSweepRate(props.kind, speed.value);
   const pace =
@@ -199,7 +206,7 @@ const caption = computed(() => {
       lower === upper
         ? `The two limits are equal (${lower}), so there is nothing to bounce between and the brightness runs straight past them; set them apart.`
         : `The brightness sweeps between ${lower} and ${upper}: below 32 is soft and muffled, above 32 is thin and bright, 32 is untouched.`;
-    return `${range} ${slow}`;
+    return `${range} ${slow}${toggleNote.value}`;
   }
   const { min, max } = ahxSquareDutyRange(props.instrument);
   const thin = Math.round(min * 100);
@@ -208,7 +215,7 @@ const caption = computed(() => {
     bounds.value.lower === bounds.value.upper
       ? `The two widths are equal (${thin}%), so there is nothing to bounce between and the pulse width runs straight past them; set them apart.`
       : `The square wave\u2019s pulse width sweeps between ${thin}% (thin and nasal) and ${fat}% (fatter and hollower; 50% is the fullest).`;
-  return `${range} ${slow}`;
+  return `${range} ${slow}${toggleNote.value}`;
 });
 
 const offReason = computed(() => {

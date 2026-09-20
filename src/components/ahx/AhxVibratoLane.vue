@@ -81,7 +81,7 @@ const caption = computed(() => {
   const note = still
     ? ` Speed ${props.speed} only lands on the still points of the wobble (the number wraps around every 64), so nothing wobbles.`
     : backwards
-      ? ` Speed ${props.speed} wraps round to ${step}, which walks the wobble slowly backwards, like a speed of ${forward} the other way.`
+      ? ` Speed ${props.speed} wraps round to ${step}, which wobbles at the same rate as a speed of ${forward}, but upside down (starting downward).`
       : '';
   const wait = props.delay > 0 ? `steady for ${props.delay} ticks, then ` : '';
   const swing = up.value === down.value ? `up and down by up to ${up.value}` : `between +${up.value} and −${down.value}`;

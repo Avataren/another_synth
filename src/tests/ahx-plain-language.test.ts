@@ -142,7 +142,8 @@ describe('the PList strip chips (E6)', () => {
     it('vibrato speed says the number wraps and where nothing wobbles', () => {
       expect(AHX_HELP.vibratoSpeed).toMatch(/wraps around every 64/);
       expect(AHX_HELP.vibratoSpeed).toMatch(/32, 64, 128 and 192/);
-      expect(AHX_HELP.vibratoSpeed).toMatch(/backwards/);
+      expect(AHX_HELP.vibratoSpeed).toMatch(/64 minus the number, upside down/);
+      expect(AHX_HELP.vibratoSpeed).not.toMatch(/slowly/);
     });
 
     it('the hard cut says what happens with the release box unticked', () => {

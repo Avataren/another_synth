@@ -289,7 +289,7 @@
             data-testid="ahx-hardcut-abrupt"
           >
             Hard cut release is off, so the note is muted abruptly {{ instrument.hardCutReleaseFrames }}
-            {{ instrument.hardCutReleaseFrames === 1 ? 'tick' : 'ticks' }} before the next note.
+            {{ instrument.hardCutReleaseFrames === 1 ? 'tick' : 'ticks' }} before the next note (if the next row sets an instrument; a number above the tempo cuts from the start of the row).
           </p>
         </div>
       </section>
@@ -718,8 +718,8 @@ const previewKind = computed<AhxWaveformKind>(() => {
 });
 /**
  * The pulse width the square preview shows: where the PList sets it, else where
- * the engine starts, position 0 (a very thin pulse; a sweep, if on, slides in
- * from there). The same start as the sweep lane's trace (`startPos ?? 0`).
+ * a fresh voice starts, position 0 (a very thin pulse; a sweep, if on, slides in
+ * from there; a channel that has already played keeps the position it left, `voice.rs:129-132`). The same start as the sweep lane's trace (`startPos ?? 0`).
  */
 const previewSquarePos = computed(() => {
   const ins = instrument.value;
