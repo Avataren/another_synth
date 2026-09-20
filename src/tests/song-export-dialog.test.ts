@@ -10,10 +10,13 @@ vi.mock('src/audio/tracker/song-export/download', () => ({
 
 import SongExportDialog from 'src/components/tracker/SongExportDialog.vue';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
+import { parseAhx } from '@another-synth/tracker-playback';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
+import { fittingHvlModel, hvlBytesOf } from './helpers/fitting-hvl';
 import {
   ahxExporter,
   exportFileName,
+  HVL_MIX_NOTE,
   SONG_EXPORTERS,
   SongExportError,
   type SongExporter,
@@ -105,9 +108,28 @@ describe('SongExportDialog: what each row says', () => {
     expect(byId(w, 'song-export-filename-hvl').text()).toBe('Saves as: never_gonna_give_you_up.hvl');
     expect(button(w, 'song-export-download-ahx').disabled).toBe(true);
     expect(byId(w, 'song-export-reason-ahx').text()).toBe(
-      'AHX files have 4 tracks; this song uses 6. Export it as HVL instead.',
+      'AHX files have 4 tracks; this song reaches track 6. Export it as HVL instead.',
     );
     expect(w.text()).not.toMatch(/author|bpm|speed multiplier|tempo|no place/i);
+  });
+
+  it('enables the AHX row for an HVL song that fits 4 tracks, says the mix is not kept, and downloads an AHX file', async () => {
+    const model = fittingHvlModel();
+    const w = mountDialog(() => importAhxToTrackerSong(hvlBytesOf(model)));
+    expect(button(w, 'song-export-download-ahx').disabled).toBe(false);
+    expect(w.find('[data-testid="song-export-reason-ahx"]').exists()).toBe(false);
+    expect(button(w, 'song-export-download-hvl').disabled).toBe(false);
+    expect(byId(w, 'song-export-warning-ahx').text()).toBe(HVL_MIX_NOTE);
+    expect(w.find('[data-testid="song-export-warning-hvl"]').exists()).toBe(false);
+
+    await byId(w, 'song-export-download-ahx').trigger('click');
+    expect(download.calls).toHaveLength(1);
+    const [bytes, name] = download.calls[0]!;
+    expect(name.endsWith('.ahx')).toBe(true);
+    expect(byId(w, 'song-export-status').text()).toBe(`Download started: ${name}`);
+    const back = parseAhx(bytes);
+    expect(back.format).toBe('ahx');
+    expect(back.tracks).toEqual(model.tracks);
   });
 
   it('downloads the HVL file byte for byte for an HVL song', async () => {
@@ -136,7 +158,7 @@ describe('SongExportDialog: what each row says', () => {
     [
       'an HVL song with more than 4 tracks',
       () => importAhxToTrackerSong(demo('chiprolled.hvl')),
-      'AHX files have 4 tracks; this song uses 6. Export it as HVL instead.',
+      'AHX files have 4 tracks; this song reaches track 6. Export it as HVL instead.',
     ],
     [
       'an AHX song without its source',

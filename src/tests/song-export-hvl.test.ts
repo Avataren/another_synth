@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { parseAhx, type AhxSong } from '@another-synth/tracker-playback';
+import type { TrackerSongFile } from 'src/stores/tracker-store';
+import { clone, fittingHvlModel, hvlBytesOf } from './helpers/fitting-hvl';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import { ahxSourceInfoOf, setCurrentAhxSource, snapshotEditorSong } from 'src/audio/tracker/ahx-source';
@@ -23,10 +25,11 @@ const HVL_FILES = readdirSync(DEMOS).filter((name) => name.endsWith('.hvl'));
 const songOf = (name: string) => importAhxToTrackerSong(demo(name).slice().buffer);
 
 /**
- * How many channels each demo `.hvl` uses (the highest channel that holds a
+ * The highest track each demo `.hvl` reaches (the highest channel that holds a
  * non-blank track in any position, plus one), measured with the same scan the
  * exporter runs. No demo `.hvl` fits in 4: the smallest is 6. `moderate_sellotaping`
- * has 8 channels but never uses the last.
+ * has 8 channels but never uses the last. It is not how many tracks are in use:
+ * a channel below the highest may be blank.
  */
 const CHANNELS_USED: Record<string, number> = {
   'chiprolled.hvl': 6,
@@ -50,9 +53,9 @@ describe('the HVL exporter on the demo .hvl files', () => {
     expect(hvlExporter.warnings!(song)).toEqual([]);
   });
 
-  it.each(HVL_FILES)('%s: the AHX row is unavailable, and says how many tracks the song uses', (name) => {
+  it.each(HVL_FILES)('%s: the AHX row is unavailable, and says which track the song reaches', (name) => {
     const song = songOf(name);
-    const reason = `AHX files have 4 tracks; this song uses ${CHANNELS_USED[name]}. Export it as HVL instead.`;
+    const reason = `AHX files have 4 tracks; this song reaches track ${CHANNELS_USED[name]}. Export it as HVL instead.`;
     expect(describeSongExporter(ahxExporter, song)).toEqual({ state: 'unavailable', reason });
     expect(() => ahxExporter.serialize(song)).toThrow(SongExportError);
     expect(() => ahxExporter.serialize(song)).toThrow(reason);
@@ -145,19 +148,7 @@ describe('HVL songs and the editor store', () => {
  */
 describe('converting an HVL song to AHX', () => {
   const parsed = (name: string): AhxSong => parseAhx(demo(name));
-  const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
-
-  /** A real HVL model cut down until it fits: channels 0..3 only, no second effect column. */
-  function fitting(name = 'sliding_away.hvl'): AhxSong {
-    const song = clone(parsed(name));
-    const blank = song.tracks.findIndex((track) => track.every((s) => s.note === 0 && s.instrument === 0 && s.fx === 0 && s.fxParam === 0 && s.fxb === 0 && s.fxbParam === 0));
-    expect(blank, 'the file has a blank track to point the dropped channels at').toBeGreaterThanOrEqual(0);
-    for (const position of song.positions) {
-      for (let ch = 4; ch < song.channels; ch++) position.track[ch] = blank;
-    }
-    for (const track of song.tracks) for (const step of track) Object.assign(step, { fxb: 0, fxbParam: 0 });
-    return song;
-  }
+  const fitting = fittingHvlModel;
 
   it('the derived model fits: it is a real HVL song with data on 4 channels', () => {
     const song = fitting();
@@ -196,13 +187,13 @@ describe('converting an HVL song to AHX', () => {
     expect(song).toEqual(copy);
   });
 
-  it('data on a channel above the fourth refuses, and the count is the highest channel used', () => {
+  it('data on a channel above the fourth refuses, and the number is the highest track reached (channels 4 and below it may be blank)', () => {
     const song = fitting();
     const busy = song.tracks.findIndex((track) => track.some((s) => s.note !== 0));
     song.positions[0]!.track[5] = busy;
     expect(convertHvlToAhx(song)).toEqual({
       ok: false,
-      reason: 'AHX files have 4 tracks; this song uses 6. Export it as HVL instead.',
+      reason: 'AHX files have 4 tracks; this song reaches track 6. Export it as HVL instead.',
     });
   });
 
@@ -252,11 +243,184 @@ describe('converting an HVL song to AHX', () => {
     });
   });
 
+  /** A track no kept channel plays: only channels 4 and up (which the conversion drops) pointed at it. */
+  function unplayedTrack(song: AhxSong): number {
+    const kept = new Set(song.positions.flatMap((position) => position.track.slice(0, 4)));
+    const index = song.tracks.findIndex((_, i) => !kept.has(i));
+    expect(index, 'the cut-down song has a track only the dropped channels played').toBeGreaterThanOrEqual(0);
+    return index;
+  }
+
+  it('a track no kept channel plays is written too, so a second effect column in it refuses (the check runs the writer)', () => {
+    const song = fitting();
+    const index = unplayedTrack(song);
+    song.tracks[index]![0]!.fxb = 3;
+    expect(convertHvlToAhx(song)).toEqual({
+      ok: false,
+      reason: `AHX files can't hold this song: track ${index} row 0 has a second effect column, which AHX has no room for. Export it as HVL instead.`,
+    });
+  });
+
+  it('a note above 63 in a track no kept channel plays refuses the same way', () => {
+    const song = fitting();
+    const index = unplayedTrack(song);
+    song.tracks[index]![0]!.note = 64;
+    const result = convertHvlToAhx(song);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatch(new RegExp(`^AHX files can't hold this song: track ${index} row 0 note .*\\. Export it as HVL instead\\.$`));
+  });
+
   it('an AHX song is not converted', () => {
     expect(convertHvlToAhx(parsed('karma.ahx'))).toEqual({ ok: false, reason: 'Only HVL songs can be converted.' });
   });
 
   it('says the HVL mix is not kept', () => {
     expect(HVL_MIX_NOTE).toBe("AHX files don't store this song's stereo and volume mix.");
+  });
+});
+
+/**
+ * `ahxExporter` on an HVL `TrackerSongFile`, the way the dialog reaches it: a
+ * fitting HVL song (`fittingHvlModel`, written out as a real `.hvl` file) is
+ * imported by the store's own import path, so the export runs on the song the
+ * app would hold, source bytes attached.
+ */
+describe('the AHX exporter on an HVL song that fits', () => {
+  const importFitting = (edit?: (model: AhxSong) => void): { model: AhxSong; song: TrackerSongFile } => {
+    const model = fittingHvlModel();
+    edit?.(model);
+    return { model, song: importAhxToTrackerSong(hvlBytesOf(model)) };
+  };
+
+  it('is enabled, and the file is an AHX file holding the same song', () => {
+    const { model, song } = importFitting();
+    expect(model.name.trim(), 'a named song, so the name check below is not the fallback').not.toBe('');
+    expect(describeSongExporter(ahxExporter, song)).toEqual({ state: 'enabled' });
+
+    const out = ahxExporter.serialize(song);
+    expect([out[0], out[1], out[2]]).toEqual([0x54, 0x48, 0x58]); // THX
+    const back = parseAhx(out);
+    expect(back.format).toBe('ahx');
+    expect(back.channels).toBe(4);
+    expect(back.name).toBe(model.name);
+    expect(back.positions).toEqual(model.positions.map((p) => ({ track: p.track.slice(0, 4), transpose: p.transpose.slice(0, 4) })));
+    expect(back.tracks).toEqual(model.tracks);
+    expect(back.instruments).toEqual(model.instruments);
+    expect('mixgainRaw' in back).toBe(false);
+  });
+
+  it('is written from the converted model alone: it needs no instrument slots, and a base would be refused as an HVL file', () => {
+    const { model, song } = importFitting();
+    expect(song.data.instrumentSlots).toEqual([]);
+    expect(() => ahxExporter.serialize(song)).not.toThrow();
+    const converted = convertHvlToAhx(model);
+    if (!converted.ok) throw new Error(converted.reason);
+    const base = new Uint8Array(hvlBytesOf(model));
+    expect(() => serializeAhx(converted.song, { base })).toThrow(/base is an HVL file but the song is AHX/);
+    expect(serializeAhx(converted.song)).toEqual(ahxExporter.serialize(song));
+  });
+
+  it('warns that the HVL mix is not kept, and nothing else for an unedited song', () => {
+    const { song } = importFitting();
+    expect(ahxExporter.warnings!(song)).toEqual([HVL_MIX_NOTE]);
+  });
+
+  it('keeps the warnings in order: title characters, author and BPM, then the mix', () => {
+    const { song } = importFitting();
+    song.data.currentSong.title = 'Café €';
+    song.data.currentSong.bpm = 90;
+    expect(ahxExporter.warnings!(song)).toEqual([
+      "Some characters in the title can't be saved and are replaced or removed.",
+      "Author and BPM changes aren't saved.",
+      HVL_MIX_NOTE,
+    ]);
+    expect(parseAhx(ahxExporter.serialize(song)).name).toBe('Café ?');
+  });
+
+  it('an edited title becomes the name in the AHX file', () => {
+    const { song } = importFitting();
+    song.data.currentSong.title = 'My Remix';
+    expect(parseAhx(ahxExporter.serialize(song)).name).toBe('My Remix');
+  });
+
+  it('an unedited song with no name in the file writes no name, not the "Imported HVL" the import shows', () => {
+    const { song } = importFitting((model) => {
+      model.name = '';
+    });
+    expect(song.data.currentSong.title).toBe('Imported HVL');
+    expect(parseAhx(ahxExporter.serialize(song)).name).toBe('');
+    expect(ahxExporter.warnings!(song)).toEqual([HVL_MIX_NOTE]);
+    // The same song exported as HVL agrees.
+    expect(parseAhx(hvlExporter.serialize(song)).name).toBe('');
+  });
+
+  it('a name the user typed that happens to be "Imported AHX" is a real edit and is written', () => {
+    const { song } = importFitting((model) => {
+      model.name = '';
+    });
+    song.data.currentSong.title = 'Imported AHX';
+    expect(parseAhx(ahxExporter.serialize(song)).name).toBe('Imported AHX');
+  });
+
+  it('goes through the editor store the same way', () => {
+    setActivePinia(createPinia());
+    setCurrentAhxSource(null);
+    const bytes = new Uint8Array(hvlBytesOf(fittingHvlModel()));
+    const store = useTrackerStore();
+    store.loadSongFile(importAhxToTrackerSong(bytes.slice().buffer));
+    setCurrentAhxSource(bytes.slice(), ahxSourceInfoOf(bytes));
+    const snapshot = snapshotEditorSong(store);
+    expect(describeSongExporter(ahxExporter, snapshot)).toEqual({ state: 'enabled' });
+    expect(parseAhx(ahxExporter.serialize(snapshot)).tracks).toEqual(parseAhx(bytes).tracks);
+    expect(ahxExporter.warnings!(snapshot)).toEqual([HVL_MIX_NOTE]);
+  });
+
+  it('a track no playing channel uses does not slip past the check: the row is unavailable with the writer\'s reason, and serialize says the same', () => {
+    const { song } = importFitting((model) => {
+      const kept = new Set(model.positions.flatMap((position) => position.track.slice(0, 4)));
+      const index = model.tracks.findIndex((_, i) => !kept.has(i));
+      model.tracks[index]![0]!.fxb = 3;
+    });
+    const verdict = describeSongExporter(ahxExporter, song);
+    expect(verdict.state).toBe('unavailable');
+    const reason = (verdict as { reason: string }).reason;
+    expect(reason).toMatch(/^AHX files can't hold this song: track \d+ row 0 has a second effect column, which AHX has no room for\. Export it as HVL instead\.$/);
+    expect(() => ahxExporter.serialize(song)).toThrow(reason);
+    expect(hvlExporter.check(song)).toEqual({ ok: true });
+  });
+});
+
+/**
+ * The HVL row's `base`: the source bytes carry two things the model does not
+ * (the inert bytes 9..11 and the top two bits of byte 19 of an instrument),
+ * and the writer copies them back. No demo `.hvl` has any set, so this sets
+ * them by hand in a demo's bytes and checks they survive.
+ */
+describe('the HVL exporter keeps what only the source bytes hold', () => {
+  /** Offset of instrument `n`'s 22-byte core, counted back from the string table, independent of the writer. */
+  function instrumentCore(bytes: Uint8Array, n: number): number {
+    const song = parseAhx(bytes);
+    let at = (bytes[4]! << 8) | bytes[5]!;
+    for (let i = song.instrumentNr; i >= n; i--) at -= 22 + song.instruments[i]!.plist.entries.length * 5;
+    return at;
+  }
+
+  it('inert instrument bits set in the file are written back, though the model cannot see them', () => {
+    const original = demo('sliding_away.hvl');
+    const poked = original.slice();
+    const core = instrumentCore(poked, 1);
+    poked[core + 9] = 0xa5;
+    poked[core + 19] = poked[core + 19]! | 0xc0;
+
+    // The control has power: these bits are not part of the model, and a writer without `base` drops them.
+    expect(parseAhx(poked)).toEqual(parseAhx(original));
+    expect(serializeAhx(parseAhx(poked))).not.toEqual(poked);
+    expect(serializeAhx(parseAhx(poked))).toEqual(serializeAhx(parseAhx(original)));
+
+    const song = importAhxToTrackerSong(poked.slice().buffer);
+    const out = hvlExporter.serialize(song);
+    expect(out).toEqual(poked);
+    expect(out[core + 9]).toBe(0xa5);
+    expect(out[core + 19]! & 0xc0).toBe(0xc0);
   });
 });

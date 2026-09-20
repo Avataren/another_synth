@@ -53,8 +53,13 @@ function plan(song: TrackerSongFile): Plan {
   return converted.ok ? { ok: true, source, base, ahx: converted.song, converted: true } : converted;
 }
 
-function withStoreEdits(base: AhxSong, song: TrackerSongFile, instrumentEdits: boolean): AhxSong {
-  const name = songNameFor(base, song.data.currentSong.title).name;
+/**
+ * `base` with the store's edits on it. The name is judged against `nameFrom`,
+ * the song the file was imported from: the import's fallback title depends on
+ * that file's format, not on the one being written.
+ */
+function withStoreEdits(base: AhxSong, nameFrom: AhxSong, song: TrackerSongFile, instrumentEdits: boolean): AhxSong {
+  const name = songNameFor(nameFrom, song.data.currentSong.title).name;
   if (!instrumentEdits) return { ...base, name };
   const slots = song.data.instrumentSlots;
   const instruments: AhxInstrument[] = [...base.instruments];
@@ -92,7 +97,7 @@ function warnings(song: TrackerSongFile): string[] {
 function serialize(song: TrackerSongFile): Uint8Array {
   const planned = plan(song);
   if (!planned.ok) throw new SongExportError(planned.reason);
-  const merged = withStoreEdits(planned.ahx, song, !planned.converted);
+  const merged = withStoreEdits(planned.ahx, planned.base, song, !planned.converted);
   try {
     // A converted song has no AHX base to copy from; the writer works from the model alone.
     return serializeAhx(merged, planned.converted ? {} : { base: planned.source.bytes });

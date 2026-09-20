@@ -67,7 +67,7 @@ describe('the AHX exporter over the demo corpus, through the store', () => {
       const song = snapshotEditorSong(openInEditor(bytes));
       const verdict = ahxExporter.check(song);
       expect(verdict.ok, name).toBe(false);
-      if (!verdict.ok) expect(verdict.reason, name).toMatch(/^AHX files have 4 tracks; this song uses \d+\. Export it as HVL instead\.$/);
+      if (!verdict.ok) expect(verdict.reason, name).toMatch(/^AHX files have 4 tracks; this song reaches track \d+\. Export it as HVL instead\.$/);
       expect(() => ahxExporter.serialize(song), name).toThrow(/Export it as HVL instead/);
       checked++;
     }

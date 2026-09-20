@@ -74,7 +74,7 @@ describe('the exporter registry', () => {
       s3m: notYet,
     });
     expect(rows(importAhxToTrackerSong(demo('chiprolled.hvl')))).toEqual({
-      ahx: { state: 'unavailable', reason: 'AHX files have 4 tracks; this song uses 6. Export it as HVL instead.' },
+      ahx: { state: 'unavailable', reason: 'AHX files have 4 tracks; this song reaches track 6. Export it as HVL instead.' },
       hvl: { state: 'enabled' },
       mod: notYet,
       xm: notYet,
@@ -111,7 +111,7 @@ describe('the exporter registry', () => {
 
     expect(describeSongExporter(ahxExporter, importAhxToTrackerSong(demo('chiprolled.hvl')))).toEqual({
       state: 'unavailable',
-      reason: 'AHX files have 4 tracks; this song uses 6. Export it as HVL instead.',
+      reason: 'AHX files have 4 tracks; this song reaches track 6. Export it as HVL instead.',
     });
 
     expect(describeSongExporter(ahxExporter, withoutSource(ahxSong()))).toEqual({

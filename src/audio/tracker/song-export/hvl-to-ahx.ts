@@ -1,13 +1,15 @@
 import { ahxInstrumentProblem, type AhxSong } from '@another-synth/tracker-playback';
-import { isBlankTrack } from './ahx-writer';
+import { AhxEncodeError, isBlankTrack, serializeAhx } from './ahx-writer';
 
 /**
  * An HVL song as an AHX song, when the tune fits: the model of `parseAhx`
  * turned into another model of it, which `serializeAhx` then writes.
  *
- * Both formats play through the same replayer, so a tune that only uses what
- * AHX has plays the same; the rest is refused, one plain reason each, and
- * whenever this is unsure it refuses. What it checks:
+ * Both formats play through this app's replayer the same way, so a tune that
+ * only uses what AHX has plays the same here (that claim is for this engine;
+ * another AHX player may treat HVL-only effects such as panning differently).
+ * The rest is refused, one plain reason each, and whenever this is unsure it
+ * refuses. What it checks:
  *  - only channels 0..3 carry data, in any position (a channel above them that
  *    only holds blank tracks is dropped; data on a higher channel is not moved
  *    down, which would change where it sits in the stereo field);
@@ -16,7 +18,11 @@ import { isBlankTrack } from './ahx-writer';
  *  - every instrument is one AHX can write (`ahxInstrumentProblem`: HVL's
  *    wider PList entries and extra commands);
  *  - no `EF1` in a version-1 HVL song (the engine reads it there and never in
- *    AHX, so the tune would sound different).
+ *    AHX, so the tune would sound different);
+ *  - the converted song actually writes: every track is written, referenced or
+ *    not, so the writer is run once and whatever it rejects (a second effect
+ *    column in an unused track, a song past the 16-bit table offset) is refused
+ *    in the same words.
  * The HVL header's own mix gain and default stereo have no AHX field and are
  * dropped; `HVL_MIX_NOTE` tells the user.
  */
@@ -60,7 +66,7 @@ export function convertHvlToAhx(song: AhxSong): HvlToAhx {
   const used = channelsWithData(song);
   const width = (used[used.length - 1] ?? -1) + 1;
   if (width > AHX_CHANNELS) {
-    return { ok: false, reason: `AHX files have ${AHX_CHANNELS} tracks; this song uses ${width}. ${INSTEAD}` };
+    return { ok: false, reason: `AHX files have ${AHX_CHANNELS} tracks; this song reaches track ${width}. ${INSTEAD}` };
   }
 
   const positions = song.positions.map((position) => ({
@@ -92,5 +98,14 @@ export function convertHvlToAhx(song: AhxSong): HvlToAhx {
   const converted: AhxSong = { ...song, format: 'ahx', version: AHX_VERSION, channels: AHX_CHANNELS, positions };
   delete converted.mixgainRaw;
   delete converted.defstereo;
+
+  // The checks above only read tracks a kept channel plays; the writer writes them all.
+  try {
+    serializeAhx(converted);
+  } catch (error) {
+    if (!(error instanceof AhxEncodeError)) throw error;
+    const problem = error.message.replace(/^cannot write this AHX\/HVL song: /, '');
+    return { ok: false, reason: `AHX files can't hold this song: ${problem}. ${INSTEAD}` };
+  }
   return { ok: true, song: converted };
 }
