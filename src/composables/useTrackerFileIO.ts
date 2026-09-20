@@ -183,7 +183,8 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     // Saving one would write a file that never plays, so say so instead.
     if (context.trackerStore.moduleFormat === 'ahx') {
       const message =
-        'AHX/HVL songs cannot be saved as .cmod: the song plays from the original file, which is unchanged.';
+        'AHX/HVL songs cannot be saved as .cmod: the song plays from the original file, which is unchanged. ' +
+        'Use Export to write it as an .ahx file (AHX songs only).';
       if (context.notify) {
         context.notify(message);
       } else {
