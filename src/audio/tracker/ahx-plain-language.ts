@@ -58,7 +58,7 @@ export const AHX_HELP: Readonly<Record<AhxHelpKey, string>> = {
   vibratoDelay:
     'How long the note stays steady before the pitch starts to wobble (0 wobbles from the very start).',
   vibratoSpeed:
-    'How fast the pitch wobbles: from 1 up to about 16 a bigger number is a quicker warble. The number wraps around every 64, so 0, 32, 64, 128 and 192 give no wobble at all, and 33-63 wobble like 64 minus the number, upside down (starting downward): 33 is nearly as fast as 31, only 50-63 are slow.',
+    'How fast the pitch wobbles: from 1 up to about 16 a bigger number is a quicker warble. The number wraps around every 64, so 0, 32, 64, 128 and 192 give no wobble at all, and 33-63 wobble like 64 minus the number, upside down (starting downward): 33 is exactly as fast as 31, and 63 is as slow as 1.',
   vibratoDepth:
     'How far the pitch wobbles either side of the note: 0 is no vibrato at all, 15 is a wide, wobbly warble.',
   squareLowerLimit:
@@ -76,9 +76,9 @@ export const AHX_HELP: Readonly<Record<AhxHelpKey, string>> = {
   filterPosition:
     'Where the brightness sits right now: below 32 is muffled and soft, above 32 is thin and bright, 32 leaves the sound untouched (0 changes nothing).',
   hardCutRelease:
-    'If the next row sets an instrument, the note ramps down to its release level shortly before that row starts (not necessarily to silence), so notes end cleanly instead of running into each other. Unticked, a cut time above 0 mutes the note abruptly instead.',
+    'When a following row sets an instrument, the note ramps down to its release level shortly before that row starts (not necessarily to silence), so notes end cleanly instead of running into each other. Unticked, a cut time above 0 mutes the note abruptly instead.',
   hardCutReleaseFrames:
-    'How many ticks before the next note the note is cut short, if the next row sets an instrument (0 means it is never cut; a number above the song\u2019s tempo cuts right from the start of the row). With Hard cut release ticked it ramps to the release level over that time; unticked it is muted abruptly.',
+    'How many ticks before the next note the note is cut short, when a following row sets an instrument (0 means it is never cut; a number above the song\u2019s tempo cuts right from the start of the row). With Hard cut release ticked it ramps to the release level over that time (fewer ticks if the tempo is shorter); unticked it is muted abruptly.',
   plistSpeed:
     'How many ticks each PList row (one step of the sound’s own little score) lasts: from 2 to 127 a smaller number steps through the rows faster, and 0, 1 and 128-255 all step every tick.',
   plistAdd: 'Adds a new empty step at the end of the PList, the little score that changes the sound during a note.',
@@ -96,12 +96,12 @@ export const AHX_HELP: Readonly<Record<AhxHelpKey, string>> = {
   startWaveform:
     'The tone the note starts with: triangle is soft, sawtooth is bright and buzzy, square is hollow, noise is hiss; Keep leaves it as it was.',
   envAttackFrames:
-    'How long the note takes to rise from silence to its first level: short is a hard strike, long is a slow fade-in (0 skips the attack).',
+    'How long the note takes to rise from silence to its first level: short is a hard strike, long is a slow fade-in (0 skips the attack \u2014 the note then starts silent).',
   envAttackVolume: 'How loud the note gets at the end of the attack.',
   envDecayFrames:
     'How long the note takes to settle from the attack level to the sustain level (0 skips the decay).',
   envDecayVolume:
-    'The level the note settles at (with the decay time at 0 it stays at the attack level instead); it holds there for the sustain time, then starts to die away (with the release time at 0 nothing dies away).',
+    'The level the note settles at (with a non-zero attack and the decay time at 0 it stays at the attack level instead); it holds there for the sustain time, then starts to die away (with the release time at 0 nothing dies away).',
   envSustainFrames:
     'How long the note holds its level before it starts to die away (with the release time at 0 nothing dies away).',
   envReleaseFrames:

@@ -270,7 +270,7 @@ describe('AhxInstrumentPage, EDITOR-UX batch 2 "see the sound"', () => {
         'ahx-field-vibratoDelay': /steady before the pitch/i,
         'ahx-field-vibratoSpeed': /wobbles/i,
         'ahx-field-vibratoDepth': /wobbles/i,
-        'ahx-field-hardCutRelease': /next row sets an instrument.*ramps down/i,
+        'ahx-field-hardCutRelease': /following row sets an instrument.*ramps down/i,
         'ahx-field-hardCutReleaseFrames': /before the next note/i,
         'ahx-field-volume': /how loud/i,
         'ahx-plist-speed': /tick/i,

@@ -289,7 +289,7 @@
             data-testid="ahx-hardcut-abrupt"
           >
             Hard cut release is off, so the note is muted abruptly {{ instrument.hardCutReleaseFrames }}
-            {{ instrument.hardCutReleaseFrames === 1 ? 'tick' : 'ticks' }} before the next note (if the next row sets an instrument; a number above the tempo cuts from the start of the row).
+            {{ instrument.hardCutReleaseFrames === 1 ? 'tick' : 'ticks' }} before the next note (when a following row sets an instrument; a number above the tempo cuts from the start of the row).
           </p>
         </div>
       </section>
