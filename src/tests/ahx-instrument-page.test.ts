@@ -66,8 +66,9 @@ describe('AhxInstrumentPage as an editor', () => {
     const w = await mountEditor(1);
     expect(w.get('[data-testid="ahx-editable-badge"]').text()).toBe('Edits this session');
     expect(w.text()).not.toMatch(/read-only/i);
-    // No promise that saving keeps anything: an AHX song cannot be saved as .cmod.
-    expect(w.get('[data-testid="ahx-editable-badge"]').attributes('title')).not.toMatch(/saving keeps/i);
+    // An editable AHX song saves its instruments inside the .cmod (v5), and the tooltip no longer says it cannot.
+    expect(w.get('[data-testid="ahx-editable-badge"]').attributes('title')).toMatch(/\.cmod keeps the edits/);
+    expect(w.get('[data-testid="ahx-editable-badge"]').attributes('title')).not.toMatch(/cannot be saved|for this session/i);
     expect(w.find('[data-testid="ahx-source-missing"]').exists()).toBe(false);
     expect((w.get('[data-testid="ahx-audition-60"]').element as HTMLButtonElement).disabled).toBe(false);
   });

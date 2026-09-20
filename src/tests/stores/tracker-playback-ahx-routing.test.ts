@@ -198,8 +198,16 @@ import { useTrackerFileIO } from 'src/composables/useTrackerFileIO';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import { useTrackerSongBuilder } from 'src/composables/useTrackerSongBuilder';
 import { formatInstrumentId, normalizeInstrumentId } from 'src/audio/tracker/instrument-ids';
-import { ahxSourceOf, currentAhxSource, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
-import type { Song } from '@another-synth/tracker-playback';
+import {
+  ahxSourceInfo,
+  ahxSourceOf,
+  currentAhxInstrumentEdits,
+  currentAhxSource,
+  onCurrentAhxSourceChange,
+  recordAhxInstrumentEdit,
+  setCurrentAhxSource,
+} from 'src/audio/tracker/ahx-source';
+import { parseAhx, type Song } from '@another-synth/tracker-playback';
 
 const karmaBytes = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/ahx/karma.ahx'));
 const hvlBytes = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/ahx/chiprolled.hvl'));
@@ -292,7 +300,8 @@ describe('AHX song opened through the real load path', () => {
     expect(host.trackerStore.isAhxSong).toBe(true);
     expect(host.trackerStore.isAhxEditable).toBe(true);
     expect(host.trackerStore.isReadOnly).toBe(false);
-    expect(currentAhxSource()).toBe(ahxSourceOf(file));
+    // The store's own build of the doc (the bytes of an unedited song are the import's, byte for byte).
+    expect(currentAhxSource()).toEqual(ahxSourceOf(file));
     expect(h.postFxLoads).toEqual(['ahx']);
     const song = host.buildSong();
     expect(song.moduleFormat).toBe('ahx');
@@ -306,7 +315,8 @@ describe('AHX song opened through the real load path', () => {
 
     expect(h.engines).toHaveLength(0);
     const client = lastClient();
-    expect(client.loaded[0]).toBe(ahxSourceOf(file));
+    expect(client.loaded[0]).toBe(currentAhxSource());
+    expect(client.loaded[0]).toEqual(ahxSourceOf(file));
     expect(client.calls).toContain('play');
     expect(host.playbackStore.isPlaying).toBe(true);
     expect(host.playbackStore.hasSongLoaded).toBe(true);
@@ -925,4 +935,79 @@ describe('a read-only song', () => {
     t.createPattern();
     expect(t.patterns.length).toBe(rows + 1);
   });
+});
+
+describe('an editable AHX song whose bytes are gone (Play heals it, end to end)', () => {
+  it('Play flushes the doc into the engine\'s bytes: the worklet is loaded with the song, not refused (review N6)', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    // The byte-less editable state: reachable by no supported path today, and
+    // what every flush point repairs (the next Play, Export or save).
+    setCurrentAhxSource(null);
+    expect(host.trackerStore.isAhxEditable).toBe(true);
+    expect(currentAhxSource()).toBeNull();
+
+    await host.playbackStore.play(host.buildSong(), 'song', 0, 0);
+
+    expect(host.playbackStore.isPlaying).toBe(true);
+    expect(currentAhxSource()).not.toBeNull();
+    const loaded = lastClient().loaded[0] as Uint8Array;
+    expect(loaded).toEqual(currentAhxSource());
+    expect(parseAhx(loaded).positionNr).toBe(parseAhx(new Uint8Array(karmaBytes)).positionNr);
+    expect(lastClient().calls).toContain('play');
+  });
+});
+
+describe('a saved AHX song (.cmod v5) plays after it is loaded again', () => {
+  const asBuffer = (text: string): ArrayBuffer => {
+    const bytes = new TextEncoder().encode(text);
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  };
+
+  it('the saved file loads editable, with the edit in the worklet\'s bytes', async () => {
+    const host = setupHost();
+    await openAhx(host);
+    const slot = host.trackerStore.instrumentSlots[0]!.ahxData!;
+    const volume = slot.volume === 9 ? 10 : 9;
+    expect(host.trackerStore.updateAhxInstrument(1, { ...slot, volume })).toBe('applied');
+    host.trackerStore.currentSong.title = 'Saved Song';
+    const saved = JSON.stringify(host.trackerStore.serializeSong());
+
+    // Another song in between (nothing of this one current), then the file opened.
+    host.trackerStore.resetToNewSong();
+    setCurrentAhxSource(null);
+    const later = host;
+    const file = await later.fileIO.parseSongBuffer(asBuffer(saved));
+    await later.fileIO.applySongFile(file);
+    expect(later.trackerStore.isAhxEditable).toBe(true);
+    expect(later.trackerStore.currentSong.title).toBe('Saved Song');
+    await later.playbackStore.play(later.buildSong(), 'song', 0, 0);
+
+    expect(later.playbackStore.isPlaying).toBe(true);
+    const loaded = lastClient().loaded.at(-1) as Uint8Array;
+    expect(parseAhx(loaded).instruments[1]!.volume).toBe(volume);
+    expect(parseAhx(loaded).name).toBe('Saved Song');
+  });
+
+  for (const withEdit of [true, false]) {
+    it(`AHX A ${withEdit ? 'with' : 'without'} an instrument edit, then AHX B through applySongFile: registry empty, info and listeners are B's`, async () => {
+      const host = setupHost();
+      await openAhx(host);
+      if (withEdit) expect(recordAhxInstrumentEdit(1, new Uint8Array([1, 2, 3]))).toBe(true);
+      expect(currentAhxInstrumentEdits().length).toBe(withEdit ? 1 : 0);
+      const b = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/ahx/pilgrim.ahx'));
+      const fileB = await host.fileIO.parseSongBuffer(
+        b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer,
+      );
+      const changes = vi.fn();
+      const off = onCurrentAhxSourceChange(changes);
+      await host.fileIO.applySongFile(fileB);
+      off();
+
+      expect(changes).toHaveBeenCalledTimes(1);
+      expect(currentAhxInstrumentEdits()).toEqual([]);
+      expect(ahxSourceInfo.value).toMatchObject({ format: 'ahx', version: parseAhx(new Uint8Array(b)).version });
+      expect(parseAhx(currentAhxSource() as Uint8Array).instrumentNr).toBe(parseAhx(new Uint8Array(b)).instrumentNr);
+    });
+  }
 });

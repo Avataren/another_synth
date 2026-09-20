@@ -642,7 +642,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     const bytes = currentAhxSource();
     if (!bytes) {
       console.warn(
-        '[PlaybackStore] AHX song has no source bytes (a saved .cmod cannot carry them); cannot play',
+        '[PlaybackStore] AHX song has no source bytes (a .cmod saved before AHX songs could be saved cannot carry them); cannot play',
       );
       return false;
     }

@@ -16,6 +16,7 @@ import {
   onCurrentAhxSourceChange,
   recordAhxInstrumentEdit,
   setCurrentAhxSource,
+  snapshotEditorSong,
 } from 'src/audio/tracker/ahx-source';
 import { ahxEditNotice, clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
@@ -912,6 +913,36 @@ describe('undo across a song load (review 1: an editable doc with no engine byte
     });
   }
 
+  it('a native song: edit, load another native song, undo: the loaded song stays (review N3)', () => {
+    const store = useTrackerStore();
+    store.resetToNewSong();
+    store.currentSong.title = 'First';
+    store.pushHistory();
+    store.currentSong.title = 'First, edited';
+    expect(store.undoStack).toHaveLength(1);
+
+    const scratch = (() => {
+      const active = getActivePinia();
+      setActivePinia(createPinia());
+      try {
+        const other = useTrackerStore();
+        other.resetToNewSong();
+        other.currentSong.title = 'Loaded';
+        other.patterns[0]!.name = 'Loaded pattern';
+        return other.serializeSong();
+      } finally {
+        if (active) setActivePinia(active);
+      }
+    })();
+    store.loadSongFile(scratch);
+    expect(store.undoStack).toHaveLength(0);
+    expect(store.redoStack).toHaveLength(0);
+    store.undo();
+    store.redo();
+    expect(store.currentSong.title).toBe('Loaded');
+    expect(store.patterns[0]!.name).toBe('Loaded pattern');
+  });
+
   it('the redo stack is cleared by a load too', () => {
     const h = editedHarness();
     h.store.undo();
@@ -1089,6 +1120,20 @@ describe('the empty-slot warning (plan 1.3, review 9)', () => {
     expect(noticeText()).toBeNull();
   });
 
+  it('a refusal outranks the warning when one pass has both (review N2)', () => {
+    const h = harness();
+    // One pass: channel 2 gets a valid step naming an empty slot (a warning), channel 1 a volume digit (a refusal, reverted).
+    h.store.patterns[0]!.tracks[2]!.entries = [{ row: 3, note: 'C-3', instrument: '09' }];
+    h.store.patterns[0]!.tracks[1]!.entries = [{ row: 0, note: 'C-3', instrument: '01', volume: '40' }];
+    expect(h.store.syncAhxWriteBack()).toBe(true);
+    // The valid cell was written and the other one reverted ...
+    expect(h.docStep(0, 2, 3)).toMatchObject({ note: 25, instrument: 9 });
+    expect(h.trackOf(0, 1)).toBe(0);
+    // ... and the one notice is the refusal, not the warning.
+    expect(noticeText()).toMatch(/no volume column/);
+    expect(noticeText()).not.toMatch(/is empty/);
+  });
+
   it('a step that already names an empty slot (a file\'s own dormant reference) does not warn when only its effect is edited', () => {
     let doc = fixtureDoc();
     const put = setStep(doc, 1, 12, step(20, 9));
@@ -1144,6 +1189,17 @@ describe('bulk edits flush pending edits first (review 6)', () => {
     expect(h.docStep(0, 0, 6).note).toBeGreaterThan(0);
   });
 
+  it('transposeTrack straight after an unflushed edit on a shared track keeps the edit (review N1)', () => {
+    const h = harness();
+    editAtPositionOneThenReturn(h);
+    h.at(0, 0);
+    h.selection.transposeTrack(2);
+    h.store.syncAhxWriteBack();
+    expect(h.docStep(0, 0, 0).note).toBe(27);
+    expect(h.docStep(0, 0, 2)).toMatchObject({ note: 29 });
+    expect(h.docStep(1, 0, 2)).toMatchObject({ note: 29 });
+  });
+
   it('the undo step taken by the bulk edit holds the flushed edit', () => {
     const h = harness();
     editAtPositionOneThenReturn(h);
@@ -1152,5 +1208,60 @@ describe('bulk edits flush pending edits first (review 6)', () => {
     h.store.syncAhxWriteBack();
     // Undo returns to the state just before the transpose: the edit is in it.
     expect(h.docStep(0, 0, 2).note).toBe(27);
+  });
+});
+
+describe('the Jukebox put-back re-parses the song (review N4: characterized, not endorsed)', () => {
+  /** What `applySongFile` does for the song the Jukebox puts back. */
+  function putBack(store: ReturnType<typeof useTrackerStore>, file: TrackerSongFile) {
+    store.loadSongFile(file);
+    const bytes = store.currentAhxBytes() as Uint8Array;
+    setCurrentAhxSource(bytes, { format: 'ahx', version: (store.ahxDoc as AhxDoc).version, edits: [] });
+  }
+
+  it('a new doc (another `base`), song-change listeners fired once, the preview token moved; the grid is what was there', () => {
+    const h = harness();
+    h.at(2, 0);
+    h.editing.handleNoteEntry(50);
+    const docBefore = h.store.ahxDoc as AhxDoc;
+    const previewBefore = currentAhxPreviewSource();
+    const snapshot = snapshotEditorSong(h.store);
+
+    const changes = vi.fn();
+    const off = onCurrentAhxSourceChange(changes);
+    putBack(h.store, snapshot);
+    off();
+
+    const docAfter = h.store.ahxDoc as AhxDoc;
+    expect(docAfter).not.toBe(docBefore);
+    expect(docAfter.base).not.toBe(docBefore.base);
+    expect(changes).toHaveBeenCalledTimes(1);
+    expect(currentAhxPreviewSource()).not.toBe(previewBefore);
+    expect(currentAhxPreviewSource()).toBe(currentAhxSource());
+    // Same song, though: the edit is there in the doc, the grid and the bytes.
+    expect(h.docStep(0, 0, 2)).toMatchObject({ note: 27 });
+    const song = parseAhx(currentAhxSource() as Uint8Array);
+    expect(song.tracks[song.positions[0]!.track[0] as number]![2]!.note).toBe(27);
+  });
+
+  it('undo into a doc from before the put-back takes the install path (listeners fire again) and still plays the right bytes', () => {
+    const h = harness();
+    h.at(2, 0);
+    h.editing.handleNoteEntry(50);
+    // What the Jukebox carries across by hand.
+    const stack = h.store.undoStack.slice();
+    putBack(h.store, snapshotEditorSong(h.store));
+    h.store.undoStack = stack;
+
+    const changes = vi.fn();
+    const off = onCurrentAhxSourceChange(changes);
+    h.store.undo();
+    off();
+    // `base` identity differs across the put-back, so the undo is treated as another song's snapshot.
+    expect(changes).toHaveBeenCalledTimes(1);
+    expect(h.store.isAhxEditable).toBe(true);
+    const song = parseAhx(currentAhxSource() as Uint8Array);
+    expect(song.tracks[song.positions[0]!.track[0] as number]![2]!.note).toBe(0);
+    expect(ahxSourceInfo.value).toMatchObject({ format: 'ahx', version: 1 });
   });
 });

@@ -14,7 +14,7 @@
           v-if="audible"
           class="ahx-banner__mode"
           data-testid="ahx-editable-badge"
-          title="Every change is made to the song's own instrument for this session: the song plays it from its next trigger and the keyboard sounds it at once. AHX/HVL songs cannot be saved as .cmod yet, so the edits last until the song is replaced."
+          title="Every change is made to the song's own instrument: the song plays it from its next trigger and the keyboard sounds it at once. Saving the song as a .cmod keeps the edits."
           >Edits this session</span
         >
         <span
@@ -37,10 +37,10 @@
     </div>
 
     <div v-if="!audible" class="ahx-notice" role="alert" data-testid="ahx-source-missing">
-      This song's source file is not available (it was loaded from a saved
-      song, which cannot carry it), so the instruments can be edited here but
-      nothing can be heard. Open the .ahx/.hvl file again to audition and
-      play.
+      This song's source file is not available (it was loaded from a song
+      saved before .cmod files could carry AHX songs), so the instruments can
+      be edited here but nothing can be heard. Open the .ahx/.hvl file again
+      to audition and play.
     </div>
     <div
       v-for="notice in notices"

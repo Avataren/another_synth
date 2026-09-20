@@ -7,18 +7,25 @@ import {
 } from '@another-synth/tracker-playback';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { ahxSourceRecordOf, type AhxSource } from 'src/audio/tracker/ahx-source';
+import { decodeAhxFile } from 'src/audio/tracker/ahx-doc';
 import { AhxEncodeError, serializeAhx } from './ahx-writer';
 import { SongExportError, type SongExportCheck, type SongExporter } from './types';
 
 /**
- * The AHX exporter: an overlay, not a serialization of the store.
+ * The AHX exporter.
  *
- * The store's row model of an AHX song is display only (no track table, no
+ * An editable song's snapshot carries its file (`data.ahxFile`, written by
+ * `buildAhxFile` when the song was serialized: patterns, positions, instruments
+ * and title), and that is what is exported, byte for byte.
+ *
+ * A song without one is an overlay, not a serialization of the store: the
+ * store's row model of an AHX song is display only (no track table, no
  * transposes, latched instruments), so the file's structure comes from the
  * bytes the song was imported from (`ahx-source`), and what the editor can
  * change comes from the store: the instruments (`slot.ahxData`) and the title.
- * That is what plays, so it is what the export holds. Author, BPM and the row
- * model have no AHX home and are never written.
+ * That is what plays, so it is what the export holds. A song with neither (a
+ * `.cmod` saved before it could carry the file) has nothing to export. Author,
+ * BPM and the row model have no AHX home and are never written.
  */
 
 /** What the import calls a song whose file has no name (`importAhxToTrackerSong`). */
@@ -38,13 +45,25 @@ const FORMAT_NAMES: Partial<Record<ModuleFormat, string>> = {
   s3m: 'an S3M',
 };
 
-/** The song's source record when it is exportable as `.ahx`, else why not. */
-function sourceOf(song: TrackerSongFile): { ok: true; record: AhxSource } | { ok: false; reason: string } {
+/**
+ * What an exportable song is written from: `file` is its embedded file (final,
+ * written as it is), else `record` its imported source (overlaid with the
+ * store's edits).
+ */
+type ExportSource = { ok: true; file: Uint8Array } | { ok: true; record: AhxSource } | { ok: false; reason: string };
+
+/** The song's embedded file or source record when it is exportable as `.ahx`, else why not. */
+function sourceOf(song: TrackerSongFile): ExportSource {
   const format = song.data.moduleFormat;
   if (format !== 'ahx') {
     const name = format === undefined || format === 'native' ? undefined : (FORMAT_NAMES[format] ?? 'a non-AHX');
     const what = name === undefined ? 'This song was made in the editor' : `This song is ${name} song`;
     return { ok: false, reason: `${what}, not an AHX song: converting between formats isn't supported.` };
+  }
+  // The embedded file is the authority: a stale record cannot beat it.
+  if (song.data.ahxFile !== undefined) {
+    const decoded = decodeAhxFile(song.data.ahxFile);
+    if (decoded.ok) return { ok: true, file: decoded.bytes };
   }
   const record = ahxSourceRecordOf(song);
   if (!record) return { ok: false, reason: NO_SOURCE_REASON };
@@ -105,7 +124,7 @@ function warnings(song: TrackerSongFile): string[] {
   if (!source.ok) return [];
   let base: AhxSong;
   try {
-    base = parseAhx(source.record.bytes);
+    base = parseAhx('file' in source ? source.file : source.record.bytes);
   } catch {
     return [];
   }
@@ -122,6 +141,7 @@ function warnings(song: TrackerSongFile): string[] {
 function serialize(song: TrackerSongFile): Uint8Array {
   const source = sourceOf(song);
   if (!source.ok) throw new SongExportError(source.reason);
+  if ('file' in source) return source.file.slice();
   const { bytes } = source.record;
   let base: AhxSong;
   try {
@@ -144,7 +164,7 @@ export const ahxExporter: SongExporter = {
   extension: '.ahx',
   mimeType: 'application/octet-stream',
   description:
-    'Writes the song as an .ahx file: the patterns of the loaded file plus your instrument edits. ' +
+    'Writes the song as an .ahx file: your patterns, positions and instruments. ' +
     'Changing the song title renames the song inside the file. The Author and BPM fields have no place in an AHX file ' +
     '(it has its own speed multiplier, and tempo is set by effects), so they are not saved.',
   available: true,

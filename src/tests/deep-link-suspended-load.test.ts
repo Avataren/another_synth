@@ -58,6 +58,8 @@ function makeFileIOContext(
   const trackerStore = {
     loadSongFile: vi.fn(),
     instrumentSlots: [],
+    ahxDoc: null,
+    currentAhxBytes: vi.fn(() => null),
     moduleFormat: 'protracker',
     linearFrequency: false,
     amigaLimits: false,

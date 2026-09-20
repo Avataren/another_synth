@@ -15,19 +15,18 @@ import {
 import {
   DEFAULT_MODULE_FORMAT,
   TOTAL_SLOTS,
-  CURRENT_SONG_FILE_VERSION,
   DEFAULT_SPEED,
   DEFAULT_PATTERN_ROWS,
   MIN_PATTERN_ROWS,
   MAX_PATTERN_ROWS,
   clampPatternRows,
   type ModuleFormat,
-  type TrackerSongFileVersion,
   type TrackerPattern,
   type OplInstrumentData,
   type AhxInstrument,
   ahxInstrumentProblem,
   normalizeAhxInstrumentForVersion,
+  parseAhx,
   sanitizeAhxInstrument,
   serializeAhxInstrument,
 } from '@another-synth/tracker-playback';
@@ -47,7 +46,10 @@ import {
   allocTrack,
   assignTrack,
   buildAhxFile,
-  docFromBytes,
+  buildAhxSlots,
+  decodeAhxFile,
+  docFromSong,
+  encodeAhxFile,
   entriesToTrack,
   isBlankTrack,
   projectAhxPatterns,
@@ -63,13 +65,11 @@ import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-e
 
 export type {
   ModuleFormat,
-  TrackerSongFileVersion,
   TrackerPattern,
   OplInstrumentData,
 };
 export {
   TOTAL_SLOTS,
-  CURRENT_SONG_FILE_VERSION,
   DEFAULT_SPEED,
   DEFAULT_PATTERN_ROWS,
   MIN_PATTERN_ROWS,
@@ -132,10 +132,11 @@ export interface InstrumentSlot {
    * It is the song's instrument, not a copy of it: `updateAhxInstrument`
    * writes an edit here and, in the same call, replaces that instrument in the
    * song the worklets play (`ahx-source`'s recorded edits), so what this holds
-   * is what plays. It is what a song *file* would keep of an edit (`serializeSong`
-   * writes it, and the Jukebox's snapshot carries it), but an AHX song cannot be
-   * saved as a `.cmod` today (`handleSaveSongFile` refuses), so an edit is a
-   * session's. A song file from anywhere can put anything here, so `loadSongFile`
+   * is what plays. An editable AHX song saves it (`serializeSong` embeds the file
+   * built from the slots, `data.ahxFile`, and the Jukebox's snapshot carries it);
+   * a song with no doc cannot be saved as a `.cmod` (`handleSaveSongFile`
+   * refuses), so an edit to one is a session's. A song file from anywhere can put
+   * anything here, so `loadSongFile`
    * only keeps a value that `ahxInstrumentProblem` accepts (in the song's format).
    */
   ahxData?: AhxInstrument;
@@ -356,7 +357,20 @@ function normalizePatternRows(
   }));
 }
 
-// Both re-exported from the library; see the import at the top of this file.
+/**
+ * The `.cmod` format's version. Defined here, not in the library's
+ * `song-constants.ts` (which still says 4): the song file is the app's format,
+ * and v5 adds what only the app writes (`data.ahxFile`).
+ *
+ * v1..v4: see the library's `TrackerSongFileVersion`.
+ * v5: an editable AHX song carries its file (`data.ahxFile`, base64). Nothing
+ *     else changes shape, so every earlier version still loads.
+ *
+ * The reader accepts every version in `1..CURRENT_SONG_FILE_VERSION`; the
+ * writer always emits `CURRENT_SONG_FILE_VERSION`.
+ */
+export type TrackerSongFileVersion = 1 | 2 | 3 | 4 | 5;
+export const CURRENT_SONG_FILE_VERSION: TrackerSongFileVersion = 5;
 
 export interface TrackerSongFile {
   version: TrackerSongFileVersion;
@@ -409,6 +423,14 @@ export interface TrackerSongFile {
     activeInstrumentId: string | null;
     currentInstrumentPage: number;
     songPatches: Record<string, Patch>;
+    /**
+     * v5, editable AHX songs only: the song as an `.ahx` file (`buildAhxFile`,
+     * base64). It is the authority on load: the doc, the grid and the
+     * instrument slots are rebuilt from it, and the row model and slots written
+     * beside it are ignored for such a song. Absent for every other song, and
+     * for an AHX song with no editable doc (HVL, or bytes the parser rejects).
+     */
+    ahxFile?: string;
   };
 }
 
@@ -988,9 +1010,10 @@ export const useTrackerStore = defineStore('trackerStore', {
      * holding it keeps what its trigger copied and takes PList and envelope
      * changes at once).
      *
-     * The edit lasts for the session. An AHX song cannot be saved as a `.cmod`
-     * (`handleSaveSongFile` refuses), so what the slot holds is not written
-     * anywhere; it is what the editor shows and, through `ahx-source`, what plays.
+     * What the slot holds is what the editor shows and, through `ahx-source`, what
+     * plays. An editable AHX song saves it: `serializeSong` embeds the file built
+     * from the slots (`data.ahxFile`). A song with no doc (HVL) cannot be saved as a
+     * `.cmod` (`handleSaveSongFile` refuses), so an edit to one lasts for the session.
      *
      * The instrument is written in the song's own format (HVL's wider PList
      * entries and command set for an HVL song) and as its version's engine will
@@ -1065,16 +1088,16 @@ export const useTrackerStore = defineStore('trackerStore', {
         currentInstrumentPage: this.currentInstrumentPage,
         songPatches: filteredSongPatches
       };
+      // Both, as a belt against a stale doc: only an AHX song carries a file.
+      if (this.moduleFormat === 'ahx' && this.ahxDoc !== null) {
+        const bytes = this.currentAhxBytes();
+        if (bytes !== null) data.ahxFile = encodeAhxFile(bytes);
+      }
       return { version: CURRENT_SONG_FILE_VERSION, data };
     },
     loadSongFile(file: TrackerSongFile) {
       if (!file || !file.data) return;
-      if (
-        file.version !== 1 &&
-        file.version !== 2 &&
-        file.version !== 3 &&
-        file.version !== CURRENT_SONG_FILE_VERSION
-      ) {
+      if (!Number.isInteger(file.version) || file.version < 1 || file.version > CURRENT_SONG_FILE_VERSION) {
         return;
       }
       const data = file.data;
@@ -1217,26 +1240,73 @@ export const useTrackerStore = defineStore('trackerStore', {
      * becomes the doc's projection (no latch, no clamp, stable ids), so what the
      * user edits is exactly what `entriesToTrack` reads back. A song with no
      * bytes, HVL, or bytes the parser rejects stays a read-only display.
+     *
+     * Where the bytes come from: a valid `data.ahxFile` wins over the source
+     * record. The record can be older than the slots (an instrument-parameter
+     * edit does not touch the doc, so `current` may still be the pre-edit bytes
+     * while the edit lives in `slots[].ahxData`), and doc, slots and engine must
+     * come from one file. The file is `buildAhxFile(doc, slots, title)`, so it
+     * already holds every slot edit and name; the slots are rebuilt from it and
+     * the row model and slots written beside it are ignored. The record is what a
+     * fresh `.ahx` import (and an in-memory pre-v5 snapshot) has.
      */
     adoptAhxDoc(file: TrackerSongFile, data: TrackerSongFile['data']) {
-      const record = ahxSourceRecordOf(file);
-      if (!record || record.format !== 'ahx') return;
+      let bytes: Uint8Array | null = null;
+      let fromFile = false;
+      if (data.ahxFile !== undefined) {
+        const decoded = decodeAhxFile(data.ahxFile);
+        if (decoded.ok) {
+          bytes = decoded.bytes;
+          fromFile = true;
+        } else {
+          console.warn(`[TrackerStore] AHX song kept read-only: its embedded file is unusable (${decoded.reason})`);
+        }
+      }
+      if (bytes === null) {
+        const record = ahxSourceRecordOf(file);
+        if (!record || record.format !== 'ahx') return;
+        bytes = record.bytes;
+      }
       let doc: AhxDoc;
+      let slots: InstrumentSlot[] | null = null;
       try {
-        doc = docFromBytes(record.bytes);
+        const song = parseAhx(bytes);
+        doc = docFromSong(song, bytes);
+        if (fromFile) slots = buildAhxSlots(song);
       } catch (error) {
         console.warn('[TrackerStore] AHX song kept read-only: its bytes have no editable doc', error);
         return;
       }
       const oldIndex = (data.patterns ?? []).findIndex((pattern) => pattern.id === data.currentPatternId);
       this.ahxDoc = doc;
+      if (slots !== null) this.instrumentSlots = slots;
       this.patterns = projectAhxPatterns(doc);
       this.sequence = this.patterns.map((pattern) => pattern.id);
       this.currentPatternId = stableIdOf(Math.max(0, Math.min(doc.positions.length - 1, oldIndex)));
       this.primeAhxWriteBack();
-      // The bytes the record carries are what the engine holds for this song:
-      // nothing is dirty until an edit (a flush of an unedited song is a no-op).
+      // The bytes are what the engine holds for this song (`applySongFile` hands
+      // them over): nothing is dirty until an edit (a flush of an unedited song
+      // is a no-op).
       ahxSyncCacheOf(this).published = this.ahxPublishKey();
+    },
+    /**
+     * The song as an `.ahx` file, from the doc, the slots and the title (the
+     * grid written back first): what a save embeds, what an export writes and
+     * what the engine plays, all through `buildAhxFile`. `null` for a song
+     * without a doc. A pure build: it never swaps the engine's current bytes
+     * (`setCurrentAhxSource` installs them when a song is applied, and it must
+     * see them differ from the old song's).
+     */
+    currentAhxBytes(): Uint8Array | null {
+      const doc = this.ahxDoc;
+      if (doc === null || this.moduleFormat !== 'ahx') return null;
+      this.syncAhxWriteBack();
+      try {
+        return buildAhxFile({ doc: this.ahxDoc ?? doc, slots: this.instrumentSlots, title: this.currentSong.title }).bytes;
+      } catch (error) {
+        console.error('[TrackerStore] the AHX song could not be written', error);
+        return null;
+      }
     },
     /** Marks the grid as reconciled with the doc (it was just built from it) and makes sure the watcher runs. */
     primeAhxWriteBack() {

@@ -54,8 +54,8 @@ function file(
 describe('song file v4: instrument tags', () => {
   beforeEach(() => setActivePinia(createPinia()));
 
-  it('is version 4', () => {
-    expect(CURRENT_SONG_FILE_VERSION).toBe(4);
+  it('is version 5 (v5 only adds the AHX file; the v4 tags are unchanged)', () => {
+    expect(CURRENT_SONG_FILE_VERSION).toBe(5);
   });
 
   it.each([
@@ -188,7 +188,7 @@ describe('song file v4: instrument tags', () => {
       }),
     );
     const saved = store.serializeSong();
-    expect(saved.version).toBe(4);
+    expect(saved.version).toBe(CURRENT_SONG_FILE_VERSION);
     expect(saved.data.instrumentSlots[0]).toMatchObject({
       instrumentType: 'sampler',
       instrumentFormat: 'xm',
