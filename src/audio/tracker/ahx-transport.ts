@@ -5,7 +5,29 @@ import {
   type AhxSongInfo,
   type AhxWaveforms,
 } from 'src/audio/tracker/ahx-player';
-import { currentAhxInstrumentEdits, type AhxInstrumentEdit } from 'src/audio/tracker/ahx-source';
+import { reportAhxNotice } from 'src/audio/tracker/ahx-notices';
+import {
+  currentAhxInstrumentEdits,
+  lastGoodAhxLoad,
+  recordAhxLoad,
+  type AhxInstrumentEdit,
+} from 'src/audio/tracker/ahx-source';
+
+/** The id of the notice a rejected reload leaves (the store clears it when a reload succeeds). */
+export const AHX_RECOVERY_NOTICE_ID = 'ahx-reload-recovered';
+/** The id of the notice that a reload and its recovery were both refused. */
+export const AHX_RELOAD_FAILED_NOTICE_ID = 'ahx-reload-failed';
+
+/** What a `reloadInPlace` came to. */
+export type AhxReloadOutcome =
+  /** The engine took the new bytes. */
+  | { outcome: 'loaded'; info: AhxSongInfo }
+  /** The engine refused them; the last version it accepted is playing again. */
+  | { outcome: 'recovered'; info: AhxSongInfo; error: Error }
+  /** It refused both: the worklet holds no song and playback was paused. */
+  | { outcome: 'failed'; error: Error }
+  /** A newer load or reload (or a dispose) took over before this one answered. */
+  | { outcome: 'superseded' };
 
 /** What the transport needs from the song bank: a context and the mix bus. */
 export interface AhxTransportHost {
@@ -39,6 +61,11 @@ export class AhxTransport {
   private mute = 0;
   private solo = 0;
   private disposed = false;
+  /** Bumped by every load and reload: an answer that comes back to another value was superseded. */
+  private loadGeneration = 0;
+  /** What the last `seek` the worklet answered said (`AhxPosition.seekKind`); `null` before one. */
+  private seekKind: 1 | 2 | null = null;
+  private readonly seekKindListeners = new Set<(kind: 1 | 2) => void>();
   private readonly positionListeners = new Set<(p: AhxPosition) => void>();
   private readonly songEndListeners = new Set<() => void>();
   private readonly waveformListeners = new Set<(w: AhxWaveforms) => void>();
@@ -83,6 +110,10 @@ export class AhxTransport {
         client.setHifi(true);
         this.clientUnsubs = [
           client.onPosition((p) => {
+            if (p.seekKind !== undefined) {
+              this.seekKind = p.seekKind;
+              for (const listener of this.seekKindListeners) listener(p.seekKind);
+            }
             for (const listener of this.positionListeners) listener(p);
           }),
           client.onSongEnd(() => {
@@ -164,12 +195,112 @@ export class AhxTransport {
     if (this.isLoaded(bytes) && this.loadedInfo) return this.loadedInfo;
     this.loadedSource = null;
     this.loadedInfo = null;
+    this.loadGeneration++;
     // The song as edited, not as imported: a load after a reload of the worklet
     // must not lose the edits made since.
-    const info = await client.loadSong(bytes, 2, this.editsToApply());
+    const applied = this.editsToApply();
+    const info = await client.loadSong(bytes, 2, applied);
     this.loadedSource = bytes;
     this.loadedInfo = info;
+    recordAhxLoad(bytes, applied);
     return info;
+  }
+
+  /**
+   * Swap the song the worklet plays for `bytes` without the caller waiting for
+   * it, and put the playhead back: one `load-song`, one `seek(place)` and (when
+   * `resume`) one `play`, sent together, no await between them (the port is
+   * ordered, so the seek and the play land on the new song).
+   *
+   * A reload costs an audible dropout (the worklet prewarms the hi-fi tables on
+   * the audio thread), and the worklet drops its player *before* it parses, so
+   * a refused reload leaves it with no song at all. Then the last version it
+   * accepted (`lastGoodAhxLoad`) is loaded at `recoverPlace` (the place in
+   * *that* song's terms; `place` by default) and a persistent notice says the
+   * editor and the sound disagree. If that is refused too it does not go round
+   * again: playback is paused, the notice says so, and the outcome is `failed`.
+   *
+   * A concurrent `load(bytes)` for the same bytes joins this one. The `seek`
+   * kind the worklet answers with is read from `lastSeekKind` / `onSeekKind`.
+   */
+  async reloadInPlace(
+    bytes: Uint8Array,
+    place: { position: number; row: number },
+    resume: boolean,
+    recoverPlace: { position: number; row: number } = place,
+  ): Promise<AhxReloadOutcome> {
+    const client = await this.ensureClient();
+    const generation = ++this.loadGeneration;
+    this.loadedSource = null;
+    this.loadedInfo = null;
+    this.seekKind = null;
+    const applied = this.editsToApply();
+    const loading = client.loadSong(bytes, 2, applied);
+    const entry = { bytes, promise: loading };
+    this.loading = entry;
+    const clear = () => {
+      if (this.loading === entry) this.loading = null;
+    };
+    loading.then(clear, clear);
+    client.seek(place.position, place.row);
+    if (resume) client.play();
+    try {
+      const info = await loading;
+      if (generation !== this.loadGeneration) return { outcome: 'superseded' };
+      this.loadedSource = bytes;
+      this.loadedInfo = info;
+      recordAhxLoad(bytes, applied);
+      return { outcome: 'loaded', info };
+    } catch (error) {
+      if (generation !== this.loadGeneration || this.disposed) return { outcome: 'superseded' };
+      return this.recover(client, error instanceof Error ? error : new Error(String(error)), recoverPlace, resume, generation);
+    }
+  }
+
+  private async recover(
+    client: AhxPlayerClient,
+    error: Error,
+    place: { position: number; row: number },
+    resume: boolean,
+    generation: number,
+  ): Promise<AhxReloadOutcome> {
+    const good = lastGoodAhxLoad();
+    if (good) {
+      const loading = client.loadSong(good.bytes, 2, good.edits);
+      client.seek(place.position, place.row);
+      if (resume) client.play();
+      try {
+        const info = await loading;
+        if (generation !== this.loadGeneration) return { outcome: 'superseded' };
+        this.loadedSource = good.bytes;
+        this.loadedInfo = info;
+        reportAhxNotice(
+          'The last edit could not be loaded by the engine; playing the last version it accepted. What the editor shows and what plays differ until an edit loads.',
+          AHX_RECOVERY_NOTICE_ID,
+        );
+        return { outcome: 'recovered', info, error };
+      } catch (second) {
+        if (generation !== this.loadGeneration || this.disposed) return { outcome: 'superseded' };
+        error = second instanceof Error ? second : new Error(String(second));
+      }
+    }
+    client.pause();
+    reportAhxNotice(
+      `The engine could not load the edited song and no earlier version could be restored (${error.message}): playback stopped.`,
+      AHX_RELOAD_FAILED_NOTICE_ID,
+    );
+    return { outcome: 'failed', error };
+  }
+
+  /** What the worklet's last answer to a `seek` said: 1 the flow reaches the row, 2 it does not (cold start); `null` before one. */
+  get lastSeekKind(): 1 | 2 | null {
+    return this.seekKind;
+  }
+
+  /** Called with the kind of every `seek` the worklet answers (a reload's, or any other). */
+  onSeekKind(listener: (kind: 1 | 2) => void): () => void {
+    this.seekKindListeners.add(listener);
+    return () => this.seekKindListeners.delete(listener);
   }
 
   /**
@@ -243,8 +374,10 @@ export class AhxTransport {
   dispose(): void {
     this.disposed = true;
     this.disposeClient();
+    this.loadGeneration++;
     this.positionListeners.clear();
     this.songEndListeners.clear();
     this.waveformListeners.clear();
+    this.seekKindListeners.clear();
   }
 }

@@ -3412,7 +3412,9 @@ var AhxProcessorCore = class {
    */
   seek(position, row) {
     const player = this.player;
-    if (!player || player.seek(position, row) === 0) return;
+    if (!player) return;
+    const kind = player.seek(position, row);
+    if (kind === 0) return;
     this.resetReporting();
     this.lastPosition = player.position();
     this.lastRow = player.row();
@@ -3421,7 +3423,8 @@ var AhxProcessorCore = class {
       position: this.lastPosition,
       row: this.lastRow,
       tempo: player.tempo(),
-      ticks: player.ticks()
+      ticks: player.ticks(),
+      seekKind: kind === 1 ? 1 : 2
     });
   }
   /** Returns true when this quantum ended the song and the player was paused. */

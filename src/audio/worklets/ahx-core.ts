@@ -253,6 +253,12 @@ export type AhxEvent =
       row: number;
       tempo: number;
       ticks: number;
+      /**
+       * Only on the report a `seek` answers: 1 when the song's own flow reaches
+       * the row (every voice is as if it had played there), 2 when it never does
+       * (the row starts cold). The periodic reports leave it out.
+       */
+      seekKind?: 1 | 2;
     }
   | { type: 'song-end' }
   /**
@@ -604,7 +610,9 @@ export class AhxProcessorCore {
    */
   private seek(position: number, row: number): void {
     const player = this.player;
-    if (!player || player.seek(position, row) === 0) return;
+    if (!player) return;
+    const kind = player.seek(position, row);
+    if (kind === 0) return;
     this.resetReporting();
     this.lastPosition = player.position();
     this.lastRow = player.row();
@@ -614,6 +622,7 @@ export class AhxProcessorCore {
       row: this.lastRow,
       tempo: player.tempo(),
       ticks: player.ticks(),
+      seekKind: kind === 1 ? 1 : 2,
     });
   }
 
