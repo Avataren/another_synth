@@ -164,6 +164,14 @@ interface Props {
    */
   granularScroll?: boolean;
   /**
+   * Whether the playing row leaves a fading text trail on the rows above it
+   * (default true, the tracker). In a pattern those rows were just played; a
+   * host whose rows are not visited in order (the PList canvas, which has
+   * Jump commands) turns it off, because there "above" does not mean "just
+   * played".
+   */
+  showTrail?: boolean;
+  /**
    * Reserved for the editing cursor's keyboard wiring: pointer selection and
    * cell events emit regardless, exactly as the DOM grid does, so the page's
    * own edit-mode handlers stay the single gate.
@@ -185,6 +193,7 @@ const props = withDefaults(defineProps<Props>(), {
   enableEditing: false,
   upcomingPattern: null,
   granularScroll: true,
+  showTrail: true,
 });
 
 const emit = defineEmits<{
@@ -954,7 +963,7 @@ function paintOverlay(vt: number, vl: number): boolean {
   // depth so the clear band spans it and a moving playhead leaves no smear.
   const next: OverlayFootprint = {
     barRow,
-    trailRows: props.isPlaying && barRow >= 0 ? PLAYBACK_TRAIL_ALPHAS.length : 0,
+    trailRows: props.isPlaying && props.showTrail && barRow >= 0 ? PLAYBACK_TRAIL_ALPHAS.length : 0,
     cursor: cursorRect,
     viewTop: vt,
     viewLeft: vl,
@@ -1022,11 +1031,12 @@ function paintOverlay(vt: number, vl: number): boolean {
       //
       // Only the spans that carry a note or an effect (buildTrailSpanIndex),
       // so what lingers behind the playhead is the music, not the grid.
-      if (!trailSpanIndex) trailSpanIndex = buildTrailSpanIndex(l, props.tracks);
-      for (let i = 0; i < PLAYBACK_TRAIL_ALPHAS.length; i++) {
+      if (props.showTrail && !trailSpanIndex) trailSpanIndex = buildTrailSpanIndex(l, props.tracks);
+      const trail = props.showTrail ? trailSpanIndex : null;
+      for (let i = 0; trail && i < PLAYBACK_TRAIL_ALPHAS.length; i++) {
         const row = barRow - 1 - i;
         if (row < 0) break;
-        const spans = trailSpanIndex.get(row);
+        const spans = trail.get(row);
         if (!spans) continue;
         const trailSy = rowY(row) * bitmapDpr;
         const trailDy = rowY(row);
