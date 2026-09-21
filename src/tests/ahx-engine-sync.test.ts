@@ -70,6 +70,7 @@ vi.mock('src/audio/tracker/ahx-player', () => ({
       replaceInstruments(edits: ReadonlyArray<unknown>) {
         return edits.map(() => Promise.resolve());
       },
+      onPListRow: () => () => {},
       previewNoteOn: (i: number) => client.calls.push(`on:${i}`),
       previewNoteOff: () => client.calls.push('off'),
       play: () => client.calls.push('play'),
