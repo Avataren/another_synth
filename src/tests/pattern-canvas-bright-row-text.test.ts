@@ -252,7 +252,7 @@ function makeTrack(id: string, rows = 32): TrackerTrackData {
 }
 
 function mountCanvas(
-  opts: { isPlaying?: boolean; playbackRow?: number; tracks?: TrackerTrackData[] } = {},
+  opts: { isPlaying?: boolean; playbackRow?: number; tracks?: TrackerTrackData[]; showTrail?: boolean } = {},
 ) {
   return mount(PatternCanvas, {
     props: {
@@ -274,6 +274,8 @@ function mountCanvas(
       isMouseSelecting: false,
       showExtraEffectColumn: false,
       reserveSideGutter: false,
+      // Absent unless asked for, so every other test runs on the component's own default.
+      ...(opts.showTrail === undefined ? {} : { showTrail: opts.showTrail }),
     },
   });
 }
@@ -631,6 +633,29 @@ describe('canvas playing-row text trail', () => {
     // Source and destination agree — the bright pixels land on the plain ones.
     for (const t of trail) expect(t.sy).toBeCloseTo(t.dy, 5);
 
+    wrapper.unmount();
+  });
+
+  it('showTrail defaults to true: the trail is the tracker\'s, unchanged', async () => {
+    const wrapper = mountCanvas({ isPlaying: true, playbackRow: 4 });
+    expect((wrapper.props() as { showTrail: boolean }).showTrail).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('showTrail = false paints the playing row alone: no trail blits, and the clear band shrinks with it', async () => {
+    const wrapper = mountCanvas({ isPlaying: true, playbackRow: 4, showTrail: false });
+    pumpFrame();
+    const overlayCtx = ctxOf(layers(wrapper).overlay);
+    const blits = await tickBlits(wrapper, 5);
+    // Only the playing row's strip, at full strength, on the playing row.
+    expect(blits).toHaveLength(1);
+    expect(blits[0]!.alpha).toBe(1);
+    expect(blits[0]!.dy).toBeCloseTo(5 * rowPitchPx, 5);
+    // The footprint carries no trail rows, so no clear band is deeper than one row plus its padding.
+    const clears = overlayCtx.calls.filter((c) => c.op === 'clearRect') as unknown as { height: number }[];
+    const shown = clears.filter((c) => c.height < 300);
+    expect(shown.length).toBeGreaterThan(0);
+    for (const c of shown) expect(c.height).toBeLessThan(2 * rowPitchPx + 40);
     wrapper.unmount();
   });
 

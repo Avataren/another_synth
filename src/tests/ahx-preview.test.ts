@@ -176,6 +176,7 @@ function fakeClient(ctx: object) {
     output: { connect: vi.fn() },
     setPreview: (on: boolean) => calls.push(`preview:${on}`),
     setHifi: (on: boolean) => calls.push(`hifi:${on}`),
+    onPListRow: () => () => undefined,
     loadSong: vi.fn(async () => {
       calls.push('load');
       return {};

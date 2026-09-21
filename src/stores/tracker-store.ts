@@ -24,6 +24,7 @@ import {
   type TrackerPattern,
   type OplInstrumentData,
   type AhxInstrument,
+  type AhxSongFormat,
   ahxInstrumentProblem,
   normalizeAhxInstrumentForVersion,
   parseAhx,
@@ -51,6 +52,7 @@ import {
   docFromSong,
   encodeAhxFile,
   entriesToTrack,
+  instrumentGrowthRefusal,
   isBlankTrack,
   projectAhxPatterns,
   projectTracks,
@@ -1025,19 +1027,63 @@ export const useTrackerStore = defineStore('trackerStore', {
      *   (a song loaded from a saved file has none): it cannot be heard;
      * - `'rejected'`: changed nothing, for a slot that is not an AHX slot with an
      *   instrument, or a `next` that is not a valid instrument for the song's
-     *   format (`ahxInstrumentProblem`). The name is kept: it lives in the
-     *   song's string table, not in the instrument.
+     *   format (`ahxInstrumentProblem`), or one that grows an editable song's
+     *   file past the 16-bit limit (`instrumentGrowthRefusal`; the reason is
+     *   reported on the shared edit notice, and `ahxInstrumentRefusal` gives it
+     *   without writing). The name is kept: it lives in the song's string
+     *   table, not in the instrument.
      */
     updateAhxInstrument(slotNumber: number, next: AhxInstrument): AhxEditOutcome {
+      const checked = this.checkAhxInstrument(slotNumber, next);
+      if ('reason' in checked) {
+        // Only the size limit is worth saying: the other refusals are a caller's
+        // own doing (a slot that is not there, a value the format cannot hold).
+        if (checked.growth) reportAhxEditNotice(checked.reason);
+        return 'rejected';
+      }
+      const { slot, played, format } = checked;
+      slot.ahxData = played;
+      return recordAhxInstrumentEdit(slotNumber, serializeAhxInstrument(played, format)) ? 'applied' : 'kept';
+    },
+    /**
+     * Why `updateAhxInstrument` would answer `'rejected'` for `next` (`null`
+     * when it would take it), with nothing changed and nothing reported. The
+     * canvas asks this before it records an undo step: a refused keystroke must
+     * leave no step behind.
+     */
+    ahxInstrumentRefusal(slotNumber: number, next: AhxInstrument): string | null {
+      const checked = this.checkAhxInstrument(slotNumber, next);
+      return 'reason' in checked ? checked.reason : null;
+    },
+    /**
+     * The one place an instrument edit is judged: the slot, the format's own
+     * validity (`sanitizeAhxInstrument`) and the file's size. An editable song
+     * (one with a doc) has a 16-bit `nameOffset` the growth must not pass
+     * (`instrumentGrowthRefusal`); an edit that does not grow the file is never
+     * refused, so a full song can still be edited. A song with no doc (HVL, a
+     * read-only AHX) has no budget here: it cannot be exported from the editor.
+     */
+    checkAhxInstrument(
+      slotNumber: number,
+      next: AhxInstrument
+    ):
+      | { slot: InstrumentSlot; played: AhxInstrument; format: AhxSongFormat }
+      | { reason: string; growth: boolean } {
       const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
-      if (!slot || !isAhxSlot(slot) || !slot.ahxData) return 'rejected';
+      if (!slot || !isAhxSlot(slot) || !slot.ahxData) {
+        return { reason: `Slot ${slotNumber} holds no AHX instrument.`, growth: false };
+      }
       const info = ahxSourceInfo.value;
       const format = info?.format ?? 'ahx';
       const clean = sanitizeAhxInstrument({ ...next, name: slot.ahxData.name }, format);
-      if (!clean) return 'rejected';
+      if (!clean) return { reason: 'That is not a valid instrument for this song.', growth: false };
       const played = normalizeAhxInstrumentForVersion(clean, format, info?.version ?? 1);
-      slot.ahxData = played;
-      return recordAhxInstrumentEdit(slotNumber, serializeAhxInstrument(played, format)) ? 'applied' : 'kept';
+      if (this.moduleFormat === 'ahx' && this.ahxDoc !== null) {
+        const instruments = this.instrumentSlots.flatMap((s) => (s.ahxData ? [s.ahxData] : []));
+        const reason = instrumentGrowthRefusal(this.ahxDoc, ahxInstrumentBytes(instruments), slot.ahxData, played);
+        if (reason !== null) return { reason, growth: true };
+      }
+      return { slot, played, format };
     },
     serializeSong(): TrackerSongFile {
       // An edit the watcher has not flushed yet is part of the song.

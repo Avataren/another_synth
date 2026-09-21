@@ -11,10 +11,17 @@ import { usePostFxStore } from 'src/stores/post-fx-store';
 import { defaultLookaheadSeconds } from 'src/audio/device-profile';
 import { AhxTransport } from 'src/audio/tracker/ahx-transport';
 import { AhxPreview } from 'src/audio/tracker/ahx-preview';
+import {
+  clearAhxPListPlayhead,
+  pushAhxPListReport,
+  setAhxPListTimingSource,
+} from 'src/audio/tracker/ahx-plist-playhead';
+import { playheadLatencyMs, playheadTiming } from 'src/audio/tracker/plist-playhead-clock';
 import type { AhxPosition, AhxWaveforms } from 'src/audio/tracker/ahx-player';
 import {
   currentAhxSource,
   currentAhxPreviewSource,
+  ahxSpeedMultiplierOf,
   onAhxInstrumentEdit,
   onCurrentAhxSourceChange,
   type AhxInstrumentEdit,
@@ -470,15 +477,37 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     ahxPreviewInstance?.noteOff(midi);
   }
 
+  /**
+   * What the playhead's clock holds a row back by, and how often the engine
+   * can step: the preview's context latency (seconds; 0 where the browser does
+   * not report it) and the song's speed multiplier at the context's rate.
+   */
+  function ahxPlayheadTiming() {
+    const context = getSongBank().audioContext as AudioContext & { outputLatency?: number };
+    const bytes = currentAhxPreviewSource();
+    return playheadTiming(
+      context.sampleRate,
+      bytes ? ahxSpeedMultiplierOf(bytes) : 1,
+      playheadLatencyMs(context.baseLatency, context.outputLatency),
+    );
+  }
+
   function newAhxPreview(): AhxPreview {
-    return new AhxPreview(getSongBank(), undefined, undefined, (instruments) =>
+    const preview = new AhxPreview(getSongBank(), undefined, undefined, (instruments) =>
       reportRejectedAhxInstruments(instruments, 'keyboard preview'),
     );
+    // Lazy: this creates no worklet, it only says where to send the rows the
+    // preview's worklet reports once there is one.
+    preview.onPListRow(pushAhxPListReport);
+    setAhxPListTimingSource(ahxPlayheadTiming);
+    return preview;
   }
 
   function disposeAhxPreview(): void {
     ahxPreviewInstance?.dispose();
     ahxPreviewInstance = null;
+    // The row belonged to that preview's note.
+    clearAhxPListPlayhead();
   }
 
   // A new song (AHX or not) makes the preview voice stale: drop it at once,

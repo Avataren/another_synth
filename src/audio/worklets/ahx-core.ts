@@ -88,6 +88,14 @@ export interface AhxWasmPlayer {
   instrument_count(): number;
   /** Ticks a preview note-on's prewarm holds the key down for `instrument` (0 for none). */
   preview_warm_hold_ticks(instrument: number): number;
+  /**
+   * Preview mode: the PList row the sounding note's voice ran last, `-1` with
+   * none (no note, its release over, no row run yet, not a preview). A scalar:
+   * the render thread reads it every quantum.
+   */
+  preview_plist_row(): number;
+  /** The instrument (1-based) that row belongs to; `0` with none. */
+  preview_plist_instrument(): number;
   free(): void;
 }
 
@@ -272,6 +280,13 @@ export type AhxEvent =
    * full scale `+-AHX_SCOPE_FULL_SCALE`.
    */
   | { type: 'waveforms'; channels: number; points: number; data: Int16Array }
+  /**
+   * Preview mode: the PList row the sounding note is on, posted when it
+   * changes and not otherwise (so at most once per engine tick, and never for
+   * a song player). `instrument` is the one the row belongs to (1-based);
+   * `instrument: 0, row: -1` says nothing sounds any more.
+   */
+  | { type: 'plist-row'; instrument: number; row: number }
   /** `id` is set when the error answers a `load-song`; a render failure has none. */
   | { type: 'error'; message: string; id?: number };
 
@@ -320,6 +335,9 @@ export class AhxProcessorCore {
   private lastPosition = -1;
   private lastRow = -1;
   private songEndReported = false;
+  /** What the last `plist-row` said: `0, -1` is "nothing sounds", which is also the state a fresh player is in. */
+  private lastPlistInstrument = 0;
+  private lastPlistRow = -1;
   private scratch = new Float32Array(0);
   private lastLoadId = -1;
   private disposedFlag = false;
@@ -459,6 +477,7 @@ export class AhxProcessorCore {
         fadeOutTail(left);
         if (right) fadeOutTail(right);
       }
+      if (this.preview) this.reportPListRow(player);
     } catch (error) {
       // A wasm trap leaves the instance unusable; go silent rather than
       // throw into the render thread.
@@ -635,6 +654,20 @@ export class AhxProcessorCore {
     return false;
   }
 
+  /**
+   * The previewed note's PList row, posted when it changes. Two scalar reads a
+   * quantum and no allocation; a song player never gets here (`preview` is off
+   * for it), so it posts none and pays nothing.
+   */
+  private reportPListRow(player: AhxWasmPlayer): void {
+    const row = player.preview_plist_row();
+    const instrument = player.preview_plist_instrument();
+    if (row === this.lastPlistRow && instrument === this.lastPlistInstrument) return;
+    this.lastPlistRow = row;
+    this.lastPlistInstrument = instrument;
+    this.post({ type: 'plist-row', instrument, row });
+  }
+
   /** Snapshots every voice into the reused buffer and posts it. Allocates nothing per report. */
   private postWaveforms(player: AhxWasmPlayer): void {
     const channels = player.channels();
@@ -654,10 +687,19 @@ export class AhxProcessorCore {
     this.lastPosition = -1;
     this.lastRow = -1;
     this.songEndReported = false;
+    this.lastPlistInstrument = 0;
+    this.lastPlistRow = -1;
   }
 
   private dropPlayer(): void {
     this.playing = false;
+    // A row already reported belongs to the player that is going: say it is
+    // over, or the editor's playhead would sit on it until the next note.
+    if (this.lastPlistRow !== -1 || this.lastPlistInstrument !== 0) {
+      this.lastPlistRow = -1;
+      this.lastPlistInstrument = 0;
+      this.post({ type: 'plist-row', instrument: 0, row: -1 });
+    }
     if (this.player) {
       try {
         this.player.free();

@@ -216,6 +216,18 @@ impl AhxPlayer {
         self.engine.live_note_off();
     }
 
+    /// The PList row the previewed note's voice ran last, `-1` when there is
+    /// none (see [`AhxEngine::live_plist_state`]). A scalar, not a `Vec`: the
+    /// worklet reads it every render quantum.
+    pub fn preview_plist_row(&self) -> i32 {
+        self.engine.live_plist_state().map_or(-1, |(_, row)| row as i32)
+    }
+
+    /// The instrument (1-based) that row belongs to, `0` when there is none.
+    pub fn preview_plist_instrument(&self) -> u32 {
+        self.engine.live_plist_state().map_or(0, |(instrument, _)| instrument as u32)
+    }
+
     /// Keep the wave phase across instrument triggers (the 68k behaviour)
     /// instead of restarting it at 0; see
     /// [`AhxEngine::set_continue_phase_on_trigger`]. Off by default, so a bare

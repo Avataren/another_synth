@@ -188,6 +188,7 @@ function fakeClient(ctx: object) {
     onPosition: () => () => undefined,
     onSongEnd: () => () => undefined,
     onWaveforms: () => () => undefined,
+    onPListRow: () => () => undefined,
     loadSong: vi.fn(
       async (
         _bytes: Uint8Array,

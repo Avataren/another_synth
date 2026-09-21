@@ -57,6 +57,14 @@ export function ahxSourceInfoOf(bytes: Uint8Array): AhxSourceInfo {
   return { format: hvl ? 'hvl' : 'ahx', version: bytes[3] ?? 0 };
 }
 
+/**
+ * The song's speed multiplier, 1..4: bits 5-6 of header byte 6 in AHX and HVL
+ * alike (`format.rs`). The engine ticks `50 * multiplier` times a second.
+ */
+export function ahxSpeedMultiplierOf(bytes: Uint8Array): number {
+  return (((bytes[6] ?? 0) >> 5) & 3) + 1;
+}
+
 /** One instrument of the song, replaced: its 1-based number and its wire form. */
 export interface AhxInstrumentEdit {
   instrument: number;

@@ -20,6 +20,17 @@ export interface AhxPosition {
 }
 
 /**
+ * The PList row a preview note is on, as the worklet last reported it (see the
+ * `plist-row` event). `instrument: 0, row: -1` says nothing sounds.
+ */
+export interface AhxPListRow {
+  /** 1-based instrument the row belongs to; 0 with none. */
+  instrument: number;
+  /** The row the engine ran last; -1 with none. */
+  row: number;
+}
+
+/**
  * One snapshot of every voice's waveform (about 25 per second while capture is
  * on and the song plays): `channels` runs of `points` `i16`, voice-major,
  * oldest first. The array is this event's own copy, safe to keep.
@@ -55,6 +66,7 @@ export class AhxPlayerClient {
   private positionListeners = new Set<(p: AhxPosition) => void>();
   private songEndListeners = new Set<() => void>();
   private waveformListeners = new Set<(w: AhxWaveforms) => void>();
+  private plistRowListeners = new Set<(r: AhxPListRow) => void>();
   private errorListeners = new Set<(error: Error) => void>();
   private hifiStatsWaiters: Array<(stats: AhxHifiStats) => void> = [];
   private warmHoldWaiters: Array<(ticks: number) => void> = [];
@@ -305,6 +317,15 @@ export class AhxPlayerClient {
     return () => this.waveformListeners.delete(listener);
   }
 
+  /**
+   * The preview note's PList row, each time it changes (see the `plist-row`
+   * event). Only a preview worklet reports it; a song player never does.
+   */
+  onPListRow(listener: (r: AhxPListRow) => void): () => void {
+    this.plistRowListeners.add(listener);
+    return () => this.plistRowListeners.delete(listener);
+  }
+
   /** Fires once when the song first reaches its end (it then keeps looping). */
   onSongEnd(listener: () => void): () => void {
     this.songEndListeners.add(listener);
@@ -331,6 +352,7 @@ export class AhxPlayerClient {
     this.positionListeners.clear();
     this.songEndListeners.clear();
     this.waveformListeners.clear();
+    this.plistRowListeners.clear();
     this.errorListeners.clear();
     // Straight to the port: `send` refuses once `disposed` is set, and the
     // worklet only frees its wasm player (and lets the node be collected)
@@ -407,6 +429,11 @@ export class AhxPlayerClient {
           data: event.data,
         };
         for (const listener of this.waveformListeners) listener(waveforms);
+        break;
+      }
+      case 'plist-row': {
+        const plistRow: AhxPListRow = { instrument: event.instrument, row: event.row };
+        for (const listener of this.plistRowListeners) listener(plistRow);
         break;
       }
       case 'song-end':

@@ -1,6 +1,7 @@
 import { ahxNoteIndexFromMidi } from '@another-synth/tracker-playback';
 import {
   createAhxPlayer,
+  type AhxPListRow,
   type AhxPlayerClient,
 } from 'src/audio/tracker/ahx-player';
 import type { AhxTransportHost } from 'src/audio/tracker/ahx-transport';
@@ -39,6 +40,9 @@ export class AhxPreview {
   /** The key that should be sounding: set at note-on, cleared by its note-off. */
   private wanted: { midi: number } | null = null;
   private disposed = false;
+  /** Kept here, not on a client, so subscribing creates nothing and a client made later (or replaced) gets them. */
+  private readonly plistRowListeners = new Set<(r: AhxPListRow) => void>();
+  private clientUnsubs: Array<() => void> = [];
 
   constructor(
     private readonly host: AhxTransportHost & {
@@ -57,6 +61,17 @@ export class AhxPreview {
   /** Whether a preview worklet currently exists (for tests and diagnostics). */
   get active(): boolean {
     return this.client !== null;
+  }
+
+  /**
+   * The PList row the sounding preview note is on, each time it changes, and
+   * `{ instrument: 0, row: -1 }` when the note is over (or its worklet goes).
+   * Lazy: subscribing does not create the worklet (`preload` and the first key
+   * do), and a listener stays through the worklet being replaced.
+   */
+  onPListRow(listener: (r: AhxPListRow) => void): () => void {
+    this.plistRowListeners.add(listener);
+    return () => this.plistRowListeners.delete(listener);
   }
 
   /**
@@ -134,6 +149,7 @@ export class AhxPreview {
     this.disposed = true;
     this.wanted = null;
     this.disposeClient();
+    this.plistRowListeners.clear();
   }
 
   private ready(bytes: Uint8Array): Promise<AhxPlayerClient | null> {
@@ -178,6 +194,11 @@ export class AhxPreview {
         // note-on's prewarm rather than walking a song that is never played.
         client.setPreview(true);
         client.setHifi(true);
+        this.clientUnsubs = [
+          client.onPListRow((r) => {
+            for (const listener of this.plistRowListeners) listener(r);
+          }),
+        ];
         this.client = client;
         return client;
       })
@@ -188,6 +209,10 @@ export class AhxPreview {
   }
 
   private disposeClient(): void {
+    for (const unsubscribe of this.clientUnsubs) unsubscribe();
+    this.clientUnsubs = [];
+    // The worklet that reported a row is gone, and with it the note.
+    if (this.client) for (const listener of this.plistRowListeners) listener({ instrument: 0, row: -1 });
     this.client?.dispose();
     this.client = null;
     this.loadedSource = null;

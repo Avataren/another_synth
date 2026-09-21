@@ -636,6 +636,16 @@ var AhxPlayer = class {
     return ret !== 0;
   }
   /**
+   * The PList row the previewed note's voice ran last, `-1` when there is
+   * none (see [`AhxEngine::live_plist_state`]). A scalar, not a `Vec`: the
+   * worklet reads it every render quantum.
+   * @returns {number}
+   */
+  preview_plist_row() {
+    const ret = wasm.ahxplayer_preview_plist_row(this.__wbg_ptr);
+    return ret;
+  }
+  /**
    * Loop the current position instead of moving on from it; see
    * [`AhxEngine::set_loop_position`]. Kept across `restart` and `seek`.
    * @param {boolean} on
@@ -709,6 +719,14 @@ var AhxPlayer = class {
    */
   preview_warm_hold_ticks(instrument) {
     const ret = wasm.ahxplayer_preview_warm_hold_ticks(this.__wbg_ptr, instrument);
+    return ret >>> 0;
+  }
+  /**
+   * The instrument (1-based) that row belongs to, `0` when there is none.
+   * @returns {number}
+   */
+  preview_plist_instrument() {
+    const ret = wasm.ahxplayer_preview_plist_instrument(this.__wbg_ptr);
     return ret >>> 0;
   }
   /**

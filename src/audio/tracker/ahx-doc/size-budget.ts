@@ -47,8 +47,29 @@ export const formatBytes = (n: number): string => n.toString().replace(/\B(?=(\d
  * refused, so an already-full song can still be edited and shrunk.
  */
 export function sizeRefusal(prev: AhxDoc, next: AhxDoc, instrumentBytes: number, what: string): string | null {
-  const before = ahxUsedBytes(prev, instrumentBytes);
-  const after = ahxUsedBytes(next, instrumentBytes);
+  return growthRefusal(ahxUsedBytes(prev, instrumentBytes), ahxUsedBytes(next, instrumentBytes), what);
+}
+
+function growthRefusal(before: number, after: number, what: string): string | null {
   if (after <= AHX_SIZE_LIMIT || after <= before) return null;
   return `Song is ${formatBytes(before)} of ${formatBytes(AHX_SIZE_LIMIT)} bytes; ${what} needs ${formatBytes(after - before)}.`;
+}
+
+/**
+ * Why `next` cannot take the place of `prev` in the song, when the swap grows
+ * the file past the limit; `null` otherwise. `instrumentBytes` is what every
+ * instrument of the song takes now (`ahxInstrumentBytes`, `prev` included).
+ * Only PList rows change an instrument's size, so the growth is said in rows.
+ * As with `sizeRefusal`, an edit that does not grow the file is never refused.
+ */
+export function instrumentGrowthRefusal(
+  doc: AhxDoc,
+  instrumentBytes: number,
+  prev: Pick<AhxInstrument, 'plist'>,
+  next: Pick<AhxInstrument, 'plist'>,
+): string | null {
+  const before = ahxUsedBytes(doc, instrumentBytes);
+  const after = ahxUsedBytes(doc, instrumentBytes - ahxInstrumentBytes([prev]) + ahxInstrumentBytes([next]));
+  const rows = (after - before) / PLIST_ENTRY_BYTES;
+  return growthRefusal(before, after, rows === 1 ? 'a PList row' : `${formatBytes(rows)} PList rows`);
 }
