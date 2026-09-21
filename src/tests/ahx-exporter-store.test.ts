@@ -306,13 +306,19 @@ describe('the AHX exporter with the real store', () => {
 
   it('a song past the 16-bit size limit is a SongExportError carrying the writer reason', () => {
     // pilgrim.ahx is 40742 bytes with 31 instruments; every PList filled to 255 rows is ~72 kB.
+    // `updateAhxInstrument` no longer lets an editable song get there (its size guard refuses
+    // the growth: tracker-store-plist-guard.test.ts), so the slots are written directly: this
+    // test is about the exporter's own safety net for a song that got past the guard.
     const big = openInEditor(demo('pilgrim.ahx'));
+    let refused = false;
     for (const slot of big.instrumentSlots) {
       if (!slot.ahxData) continue;
       let ins = slot.ahxData;
       while (ins.plist.entries.length < 255) ins = addAhxPListEntry(ins);
-      expect(big.updateAhxInstrument(slot.slot, ins)).toBe('applied');
+      if (big.ahxInstrumentRefusal(slot.slot, ins) !== null) refused = true;
+      slot.ahxData = ins;
     }
+    expect(refused).toBe(true);
     let caught: unknown;
     try {
       exportNow(big);

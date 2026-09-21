@@ -240,6 +240,22 @@ export function removeAhxPListEntry(ins: AhxInstrument, row: number): AhxInstrum
   return next;
 }
 
+/** Insert a copy of `row` right after it; an unknown row or a full PList is unchanged. */
+export function duplicateAhxPListEntry(ins: AhxInstrument, row: number): AhxInstrument {
+  const next = copy(ins);
+  const entry = next.plist.entries[row];
+  if (!entry || next.plist.entries.length >= AHX_MAX_PLIST_ENTRIES) return next;
+  next.plist.entries.splice(row + 1, 0, { ...entry, fx: [...entry.fx], fxParam: [...entry.fxParam] } as AhxPListEntry);
+  return next;
+}
+
+/** Empty row `row` in place (the row stays, so no later row moves); an unknown row is unchanged. */
+export function clearAhxPListEntry(ins: AhxInstrument, row: number): AhxInstrument {
+  const next = copy(ins);
+  if (next.plist.entries[row]) next.plist.entries[row] = emptyPListEntry();
+  return next;
+}
+
 // ---------------------------------------------------------------------------
 // "The waveform": what the first PList row picks
 // ---------------------------------------------------------------------------
