@@ -1,5 +1,6 @@
 import { shallowRef, toRaw, type ShallowRef } from 'vue';
 import type { AhxSongFormat } from '@another-synth/tracker-playback';
+import type { AhxPositionMap } from 'src/audio/tracker/ahx-doc';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 
 /**
@@ -81,6 +82,9 @@ let previewBytes: Uint8Array | null = null;
 export const ahxSourceInfo: ShallowRef<AhxSourceInfo | null> = shallowRef(null);
 const edits = new Map<number, Uint8Array>();
 const changeListeners = new Set<() => void>();
+const structureListeners = new Set<(change: AhxStructureChange) => void>();
+/** What the song worklet last loaded successfully; see `recordAhxLoad`. */
+let lastGood: AhxLoadedSong | null = null;
 const editListeners = new Set<(edit: AhxInstrumentEdit) => void>();
 
 export function attachAhxSource(
@@ -156,6 +160,7 @@ export function setCurrentAhxSource(
   if (bytes === current && !reapplied) return;
   current = reapplied ? bytes.slice() : bytes;
   previewBytes = current;
+  lastGood = null;
   const header = bytes ? ahxSourceInfoOf(bytes) : null;
   ahxSourceInfo.value = header && { format: extra.format ?? header.format, version: extra.version ?? header.version };
   edits.clear();
@@ -187,6 +192,24 @@ export interface ReplaceAhxBytesOptions {
   instrumentsChanged?: boolean;
   /** Start again from these bytes: the recorded instrument edits are dropped (an undo). */
   resetEdits?: boolean;
+  /**
+   * Where the edit moved the song's positions (old index to new, `null` for one
+   * that is gone), when it was a position op. Absent: no position moved.
+   */
+  mapPosition?: AhxPositionMap;
+  /**
+   * Swap the bytes without telling `onAhxStructureChange` listeners: for a flush
+   * of what is already sounding (a live instrument-parameter edit or a title),
+   * which is not an edit of the song's structure and must not reload the engine.
+   */
+  silent?: boolean;
+}
+
+/** What `onAhxStructureChange` listeners are told: the same options, all present but the map. */
+export interface AhxStructureChange {
+  instrumentsChanged: boolean;
+  resetEdits: boolean;
+  mapPosition?: AhxPositionMap;
 }
 
 /**
@@ -197,10 +220,10 @@ export interface ReplaceAhxBytesOptions {
  * stay unless `resetEdits`.
  *
  * `current` is swapped only when the content differs, so a flush that changed
- * nothing keeps the identity a worklet's resume-in-place rests on. It has no
- * listeners and does not reload anything: the next Play loads the new bytes,
- * because loaders tell songs apart by identity. Returns whether it swapped;
- * `false` also when no AHX song is current.
+ * nothing keeps the identity a worklet's resume-in-place rests on. A swap is
+ * announced to `onAhxStructureChange` listeners (the playback store reloads a
+ * playing song from it) unless `silent`. Returns whether it swapped; `false`
+ * also when no AHX song is current.
  */
 export function replaceCurrentAhxBytes(bytes: Uint8Array, options: ReplaceAhxBytesOptions = {}): boolean {
   if (!current) return false;
@@ -208,8 +231,48 @@ export function replaceCurrentAhxBytes(bytes: Uint8Array, options: ReplaceAhxByt
   if (!reset && sameBytes(bytes, current)) return false;
   current = bytes;
   if (reset) edits.clear();
-  if (reset || options.instrumentsChanged === true) previewBytes = bytes;
+  const instrumentsChanged = options.instrumentsChanged === true;
+  if (reset || instrumentsChanged) previewBytes = bytes;
+  if (options.silent !== true) {
+    const change: AhxStructureChange = {
+      instrumentsChanged,
+      resetEdits: reset,
+      ...(options.mapPosition ? { mapPosition: options.mapPosition } : {}),
+    };
+    for (const listener of [...structureListeners]) listener(change);
+  }
   return true;
+}
+
+/**
+ * Called whenever the editor swaps in new bytes for the *same* song (a cell,
+ * position or header edit, an added instrument, an undo). Not for a different
+ * song (`onCurrentAhxSourceChange`) and not for a silent flush.
+ */
+export function onAhxStructureChange(listener: (change: AhxStructureChange) => void): () => void {
+  structureListeners.add(listener);
+  return () => structureListeners.delete(listener);
+}
+
+/** A song as a worklet was handed it: the file and the instrument edits sent with it. */
+export interface AhxLoadedSong {
+  bytes: Uint8Array;
+  edits: readonly AhxInstrumentEdit[];
+}
+
+/**
+ * The song worklet has accepted `bytes` with `loadedEdits` (a `song-loaded`).
+ * Kept so a later reload the engine refuses can put this version back: a
+ * rejected `load-song` has already dropped the worklet's player, so without it
+ * the song would be silent until the next successful load.
+ */
+export function recordAhxLoad(bytes: Uint8Array, loadedEdits: readonly AhxInstrumentEdit[]): void {
+  lastGood = { bytes, edits: loadedEdits.map(copyEdit) };
+}
+
+/** The last version the song worklet accepted, or `null` (none yet, or a different song since). */
+export function lastGoodAhxLoad(): AhxLoadedSong | null {
+  return lastGood;
 }
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {

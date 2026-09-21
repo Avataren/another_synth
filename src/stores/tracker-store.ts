@@ -60,6 +60,7 @@ import {
   type AhxDocTrack,
   type AhxEditCheck,
   type AhxOpContext,
+  type AhxPositionMap,
 } from 'src/audio/tracker/ahx-doc';
 import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 
@@ -1475,13 +1476,23 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     /**
      * Installs `next` as the song's doc and hands the engine's bytes the change:
-     * from here on the next Play plays what the grid shows.
+     * from here on the next Play plays what the grid shows, and a playing song
+     * is reloaded (`onAhxStructureChange`). A position op passes its
+     * `mapPosition`: the current pattern's id (`ahx-pos-<n>`, derived from the
+     * index) moves with it, a deleted position's to the one now at that index.
      */
     commitAhxDoc(next: AhxDoc, options: ReplaceAhxBytesOptions = {}) {
       this.ahxDoc = next;
       this.ahxRevision += 1;
       clearAhxEditNotice();
+      if (options.mapPosition) this.remapCurrentAhxPatternId(next, options.mapPosition);
       this.publishAhxBytes(options);
+    },
+    remapCurrentAhxPatternId(doc: AhxDoc, map: AhxPositionMap) {
+      const match = /^ahx-pos-(\d+)$/.exec(this.currentPatternId ?? '');
+      if (!match) return;
+      const old = Number(match[1]);
+      this.currentPatternId = stableIdOf(Math.max(0, Math.min(doc.positions.length - 1, map(old) ?? old)));
     },
     /**
      * Serializes doc + slots + title and swaps them in as the song's current
@@ -1522,7 +1533,10 @@ export const useTrackerStore = defineStore('trackerStore', {
       // alone. A song whose re-serialisation is not byte-identical would
       // otherwise be swapped for re-encoded bytes without an edit being made.
       if (ahxSyncCacheOf(this).published === this.ahxPublishKey() && currentAhxSource() !== null) return;
-      this.publishAhxBytes();
+      // Silent: what is flushed here (a live instrument-parameter edit, a title)
+      // is already sounding or not audio at all, so it must not reload the engine.
+      // A doc change found by the write-back above has told its listeners itself.
+      this.publishAhxBytes({ silent: true });
     },
     /** Everything `buildAhxFile` reads besides the doc's tracks, as one comparable string: the revision counts the doc's changes. */
     ahxPublishKey(): string {

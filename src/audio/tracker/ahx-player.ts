@@ -17,6 +17,12 @@ export interface AhxPosition {
   /** Ticks per row. */
   tempo: number;
   ticks: number;
+  /**
+   * Set only on the report a `seek` answers: 1 when the song's own flow reaches
+   * the row (every voice continues as if it had played there), 2 when it never
+   * does and the row starts cold. Periodic reports leave it out.
+   */
+  seekKind?: 1 | 2;
 }
 
 /**
@@ -396,6 +402,7 @@ export class AhxPlayerClient {
           row: event.row,
           tempo: event.tempo,
           ticks: event.ticks,
+          ...(event.seekKind !== undefined ? { seekKind: event.seekKind } : {}),
         };
         for (const listener of this.positionListeners) listener(position);
         break;
