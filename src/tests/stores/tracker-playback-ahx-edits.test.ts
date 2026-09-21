@@ -87,6 +87,7 @@ vi.mock('src/audio/tracker/ahx-player', () => ({
         client.disposed = true;
       },
       onPosition: () => () => {},
+      onPListRow: () => () => {},
       onSongEnd: () => () => {},
       onWaveforms: () => () => {},
     };

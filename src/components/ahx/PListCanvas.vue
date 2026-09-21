@@ -65,6 +65,10 @@
       <p class="plist-canvas__note" data-testid="ahx-plist-canvas-caption">
         One row per step, numbered in hex like the table below. Click a row to select it; with the
         canvas focused, the arrow keys, Home, End and Page Up / Down move the selection.
+        <span v-if="audible" data-testid="ahx-plist-canvas-caption-playhead">
+          Play a key to hear this instrument: the bar shows the step its note is on. A step shorter than a
+          screen frame is passed over, not drawn.
+        </span>
       </p>
     </template>
   </div>
@@ -78,10 +82,11 @@
  * names the columns (`plist-legend.ts`). The table below stays the exact-entry
  * editor, and the selection is shared with it.
  *
- * Nothing here writes: the canvas selects and navigates. The playhead is the
- * next batch; `playheadRow` is its seam (it drives `PatternCanvas`'s own
- * playing-row pill, with the trail off: in a PList the rows above the playing
- * one are not necessarily the rows just played).
+ * Nothing here writes: the canvas selects and navigates. `playheadRow` (B4) is
+ * the engine's own row for the sounding preview note, already matched to this
+ * instrument by the page; it drives `PatternCanvas`'s playing-row pill, with the
+ * trail off: in a PList the rows above the playing one are not necessarily the
+ * rows just played.
  *
  * `instrument` is reactive store state, replaced wholesale on every edit; the
  * projection reads it through `toRaw` and is memoised on content, so an edit
@@ -104,11 +109,16 @@ interface Props {
   instrument: AhxInstrument | null;
   /** The selected step, or `null` for none (shared with the table and the chip strip). */
   selected: number | null;
-  /** The step the engine is on, or -1 for none. The playhead batch feeds this; it defaults to none. */
+  /** The step the engine's preview note is on, or -1 for none (the page has already matched the instrument). */
   playheadRow?: number;
+  /**
+   * Whether a note can sound here at all (the song's bytes are there to play from). The line about the bar is
+   * only said then: with nothing to hear there is no bar to explain.
+   */
+  audible?: boolean;
 }
 
-const props = withDefaults(defineProps<Props>(), { playheadRow: -1 });
+const props = withDefaults(defineProps<Props>(), { playheadRow: -1, audible: false });
 const emit = defineEmits<{ (event: 'select', row: number): void }>();
 
 /** Rows the card shows before the canvas scrolls. */

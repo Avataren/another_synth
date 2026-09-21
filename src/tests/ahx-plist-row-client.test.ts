@@ -29,8 +29,10 @@ vi.mock('src/audio/tracker/ahx-player', async (importOriginal) => {
     }),
   };
 });
+// What the preview's context says of itself; the playhead's clock reads it (rate and latency).
+const contextFacts = vi.hoisted(() => ({}) as { sampleRate?: number; baseLatency?: number; outputLatency?: number });
 vi.mock('src/stores/tracker-audio-store', () => ({
-  useTrackerAudioStore: () => ({ songBank: { audioContext: {}, output: {} } }),
+  useTrackerAudioStore: () => ({ songBank: { audioContext: contextFacts, output: {} } }),
 }));
 vi.mock('src/stores/tracker-store', () => ({ useTrackerStore: () => ({}) }));
 
@@ -232,7 +234,11 @@ describe('ahxPListPlayhead', () => {
 describe('the playback store’s wiring', () => {
   const bytes = () => new Uint8Array([0x54, 0x48, 0x58, 0, 1, 2, 3]);
 
+  // Reports reach the playhead from a frame (a 60 Hz timer in this run, which has no requestAnimationFrame).
   beforeEach(() => {
+    // The driver stamps reports with performance.now(), so that is faked too.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    for (const key of Object.keys(contextFacts)) delete contextFacts[key as keyof typeof contextFacts];
     created.length = 0;
     setActivePinia(createPinia());
     clearAhxPListPlayhead();
@@ -242,7 +248,11 @@ describe('the playback store’s wiring', () => {
     const { useTrackerPlaybackStore } = await import('src/stores/tracker-playback-store');
     useTrackerPlaybackStore().dispose();
     setCurrentAhxSource(null);
+    vi.useRealTimers();
   });
+
+  /** Frames go by: `ms` of fake time. */
+  const frames = (ms: number) => vi.advanceTimersByTime(ms);
 
   async function storeWithPreview() {
     const { useTrackerPlaybackStore } = await import('src/stores/tracker-playback-store');
@@ -263,25 +273,67 @@ describe('the playback store’s wiring', () => {
   it('a row the preview’s worklet reports lands in ahxPListPlayhead', async () => {
     const { worklet } = await storeWithPreview();
     worklet.emit({ instrument: 3, row: 2 });
+    frames(20);
     expect(ahxPListPlayhead.value).toEqual({ instrument: 3, row: 2 });
     worklet.emit({ instrument: 0, row: -1 });
+    frames(20);
     expect(ahxPListPlayhead.value).toBeNull();
+  });
+
+  it('holds a row for the context’s base + output latency, as the audio is heard that much later', async () => {
+    contextFacts.sampleRate = 48000;
+    contextFacts.baseLatency = 0.01;
+    contextFacts.outputLatency = 0.06;
+    const { worklet } = await storeWithPreview();
+    worklet.emit({ instrument: 3, row: 2 });
+    // 70 ms: the frames at 16.7, 33.3, 50 and 66.7 find it not due, the one at 83.3 shows it.
+    frames(70);
+    expect(ahxPListPlayhead.value).toBeNull();
+    frames(20);
+    expect(ahxPListPlayhead.value).toEqual({ instrument: 3, row: 2 });
+  });
+
+  it('a context that reports no latency shows a row at the next frame', async () => {
+    const { worklet } = await storeWithPreview();
+    worklet.emit({ instrument: 3, row: 2 });
+    expect(ahxPListPlayhead.value).toBeNull();
+    frames(17);
+    expect(ahxPListPlayhead.value).toEqual({ instrument: 3, row: 2 });
+  });
+
+  it('a burst of rows inside one frame is one update: the newest', async () => {
+    const { worklet } = await storeWithPreview();
+    for (const row of [0, 1, 2, 3]) worklet.emit({ instrument: 3, row });
+    frames(17);
+    expect(ahxPListPlayhead.value).toEqual({ instrument: 3, row: 3 });
   });
 
   it('a different song clears the row', async () => {
     const { worklet } = await storeWithPreview();
     worklet.emit({ instrument: 3, row: 2 });
+    frames(20);
+    expect(ahxPListPlayhead.value).not.toBeNull();
     setCurrentAhxSource(new Uint8Array([0x54, 0x48, 0x58, 0, 9, 9]));
     expect(ahxPListPlayhead.value).toBeNull();
     expect(worklet.dispose).toHaveBeenCalled();
     // The old worklet's late report cannot bring it back.
     worklet.emit({ instrument: 3, row: 3 });
+    frames(40);
+    expect(ahxPListPlayhead.value).toBeNull();
+  });
+
+  it('a row still waiting for its frame when the song changes is dropped, not shown afterwards', async () => {
+    const { worklet } = await storeWithPreview();
+    worklet.emit({ instrument: 3, row: 2 });
+    setCurrentAhxSource(new Uint8Array([0x54, 0x48, 0x58, 0, 9, 9]));
+    frames(40);
     expect(ahxPListPlayhead.value).toBeNull();
   });
 
   it('a non-AHX song (no bytes) clears the row', async () => {
     const { worklet } = await storeWithPreview();
     worklet.emit({ instrument: 3, row: 2 });
+    frames(20);
     setCurrentAhxSource(null);
     expect(ahxPListPlayhead.value).toBeNull();
   });
@@ -289,9 +341,11 @@ describe('the playback store’s wiring', () => {
   it('dispose clears the row and drops the subscription', async () => {
     const { store, worklet } = await storeWithPreview();
     worklet.emit({ instrument: 3, row: 2 });
+    frames(20);
     store.dispose();
     expect(ahxPListPlayhead.value).toBeNull();
     worklet.emit({ instrument: 3, row: 4 });
+    frames(40);
     expect(ahxPListPlayhead.value).toBeNull();
   });
 });

@@ -490,7 +490,13 @@
           :glyphs="WAVE_GLYPH"
           @select="selectRow"
         />
-        <PListCanvas :instrument="instrument" :selected="selectedRow" @select="selectRow" />
+        <PListCanvas
+          :instrument="instrument"
+          :selected="selectedRow"
+          :playhead-row="playheadRow"
+          :audible="audible"
+          @select="selectRow"
+        />
         <div v-if="instrument.plist.entries.length" class="ahx-plist-scroll">
           <table class="ahx-table" data-testid="ahx-plist">
             <thead>
@@ -503,8 +509,9 @@
               <tr
                 v-for="(entry, index) in instrument.plist.entries"
                 :key="index"
-                :class="{ 'ahx-row--selected': index === selectedRow }"
+                :class="{ 'ahx-row--selected': index === selectedRow, 'ahx-row--playing': index === playheadRow }"
                 :data-selected="index === selectedRow ? 'true' : 'false'"
+                :data-playing="index === playheadRow ? 'true' : 'false'"
                 :data-testid="`ahx-plist-row-${index}`"
                 @focusin="selectedRow = index"
               >
@@ -616,6 +623,7 @@ import {
 } from 'src/composables/useAhxPlayInput';
 import AhxPianoStrip from 'src/components/ahx/AhxPianoStrip.vue';
 import { ahxSourceInfo } from 'src/audio/tracker/ahx-source';
+import { ahxPListPlayhead } from 'src/audio/tracker/ahx-plist-playhead';
 import { ahxNotices, reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
 import AhxSliderField from 'src/components/ahx/AhxSliderField.vue';
@@ -750,6 +758,23 @@ watch(
     if (selectedRow.value !== null && selectedRow.value >= count) selectedRow.value = null;
   },
 );
+
+/**
+ * The PList row the engine's preview note is on, for this slot, or -1. The
+ * instrument stamp comes from the engine with each report: a note of another
+ * instrument, or a row the list no longer has, is not this list's playhead.
+ */
+const playheadRow = computed(() => {
+  const playhead = ahxPListPlayhead.value;
+  const count = instrument.value?.plist.entries.length ?? 0;
+  return playhead !== null &&
+    slotNumber.value !== null &&
+    playhead.instrument === slotNumber.value &&
+    playhead.row >= 0 &&
+    playhead.row < count
+    ? playhead.row
+    : -1;
+});
 
 const enableSweep = (kind: AhxSweepKind) =>
   commit((ins) => enableAhxSweep(ins, kind, sweepContext.value));
@@ -1319,6 +1344,13 @@ onUnmounted(() => {
 
 .ahx-row--selected td {
   background: var(--tracker-active-bg, #14283d);
+}
+
+/* The step the note is on: a marker on the row number, not a background, so it reads beside the selection. The table does not scroll to it. */
+.ahx-row--playing td:first-child {
+  box-shadow: inset 3px 0 0 var(--tracker-accent-primary, #f0b25e);
+  color: var(--tracker-accent-primary, #f0b25e);
+  font-weight: 700;
 }
 
 .ahx-plist-fx {
