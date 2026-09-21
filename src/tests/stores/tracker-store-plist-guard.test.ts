@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
+import { toRaw } from 'vue';
 import type { AhxInstrument } from '@another-synth/tracker-playback';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
@@ -22,6 +23,8 @@ type Store = ReturnType<typeof useTrackerStore>;
 const AHX = { format: 'ahx', version: 1 } as const;
 const toBuffer = (b: Uint8Array): ArrayBuffer => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+/** A deep copy that keeps typed arrays (the doc's `base` bytes): `clone` would turn them into plain objects. */
+const snapshotOf = <T>(v: T): T => structuredClone(toRaw(v));
 
 /** Karma as an editable song (a doc), with its slots and doc grown to within `slack` bytes of the limit. */
 function nearFullStore(slack: number): Store {
@@ -50,6 +53,7 @@ function hostOf(store: Store): PListEditHost {
   return {
     canUndo: () => store.isAhxEditable,
     pushHistory: () => store.pushHistory(),
+    discardHistory: () => void store.undoStack.pop(),
     ahxInstrumentRefusal: (slot, next) => store.ahxInstrumentRefusal(slot, next),
     updateAhxInstrument: (slot, next) => store.updateAhxInstrument(slot, next),
   };
@@ -126,6 +130,8 @@ describe('the size guard in trackerStore.updateAhxInstrument', () => {
       const host = hostOf(store);
       const gesture = createPListGesture();
       const original = clone(store.instrumentSlots[0]!.ahxData!);
+      const originalSlots = snapshotOf(store.instrumentSlots);
+      const originalDoc = snapshotOf(store.ahxDoc);
       const steps = (): number => store.undoStack.length;
       const start = steps();
 
@@ -151,9 +157,50 @@ describe('the size guard in trackerStore.updateAhxInstrument', () => {
       expect(commitPListEdit(host, gesture, 1, deletePListRow(cur, 0, AHX)).ok).toBe(true);
       expect(steps()).toBe(start + 2);
 
+      // Undo takes the whole song back, not just the PList: the slot, the doc and the title.
       store.undo();
       store.undo();
-      expect(store.instrumentSlots[0]!.ahxData!.plist).toEqual(original.plist);
+      expect(store.instrumentSlots[0]!.ahxData).toEqual(original);
+      expect(snapshotOf(store.instrumentSlots)).toEqual(originalSlots);
+      expect(snapshotOf(store.ahxDoc)).toEqual(originalDoc);
+      expect(store.undoStack.length).toBe(start);
+      expect(store.redoStack.length).toBe(2);
+    });
+
+    it('a refused key in the middle of a gesture leaves the run one step, and one undo takes it all back', () => {
+      const store = nearFullStore(40);
+      const host = hostOf(store);
+      const gesture = createPListGesture();
+      const originalSlots = snapshotOf(store.instrumentSlots);
+      const originalDoc = snapshotOf(store.ahxDoc);
+      const start = store.undoStack.length;
+      const at = (): AhxInstrument => store.instrumentSlots[0]!.ahxData!;
+
+      expect(commitPListEdit(host, gesture, 1, writePListNibble(at(), 0, 0, 0, 5, AHX), { continues: true }).ok).toBe(true);
+      // Command 9 is not an AHX command: refused, in the middle of the run.
+      const refused = commitPListEdit(host, gesture, 1, writePListNibble(at(), 1, 0, 0, 9, AHX), { continues: true });
+      expect(refused.ok).toBe(false);
+      expect(commitPListEdit(host, gesture, 1, writePListNibble(at(), 0, 0, 1, 2, AHX), { continues: true }).ok).toBe(true);
+      expect(commitPListEdit(host, gesture, 1, writePListNibble(at(), 0, 0, 2, 3, AHX), { continues: true }).ok).toBe(true);
+      expect(store.undoStack.length).toBe(start + 1);
+      expect(at().plist.entries[0]!.fx[0]).toBe(5);
+      expect(at().plist.entries[0]!.fxParam[0]).toBe(0x23);
+
+      store.undo();
+      expect(snapshotOf(store.instrumentSlots)).toEqual(originalSlots);
+      expect(snapshotOf(store.ahxDoc)).toEqual(originalDoc);
+      expect(store.undoStack.length).toBe(start);
+    });
+
+    it('a write the store refuses after the snapshot leaves no step behind, and the gesture starts over', () => {
+      const store = nearFullStore(40);
+      const gesture = createPListGesture();
+      const host: PListEditHost = { ...hostOf(store), updateAhxInstrument: () => 'rejected' };
+      const start = store.undoStack.length;
+      const r = commitPListEdit(host, gesture, 1, modifyPListEntry(store.instrumentSlots[0]!.ahxData!, 0, { field: 'note', value: 9 }, AHX));
+      expect(r.ok).toBe(false);
+      expect(store.undoStack.length).toBe(start);
+      expect(gesture.recorded).toBe(false);
     });
 
     it('a refused growth leaves no undo step, and the song still serializes', () => {

@@ -29,6 +29,13 @@ export interface AhxPlayInputOptions {
   requestMidi?: RequestMidiAccess;
   /** Start listening for MIDI as soon as the page is up (the user's "Enable MIDI input" setting). */
   autoMidi?: Ref<boolean> | boolean;
+  /**
+   * While true the computer keyboard does not play (a key going *down* is not taken, and the
+   * octave shortcut goes with it): the PList canvas's Edit mode types with those keys. A key going
+   * *up* is still honoured, so a note struck before the mode began is let go of. The on-screen
+   * keys, MIDI and Latch are not affected.
+   */
+  suspended?: Ref<boolean>;
 }
 
 interface Holding {
@@ -131,6 +138,12 @@ export function useAhxPlayInput(options: AhxPlayInputOptions) {
     dropAll();
   }
 
+  /** Let go of every note the computer keyboard holds (Edit mode is about to take those keys); the on-screen keys, MIDI and Latch stay. */
+  function releaseKeyboard(): void {
+    keyNotes.clear();
+    releaseSource('kbd:');
+  }
+
   /** Let go of what one source holds (every MIDI note when a device goes). */
   function releaseSource(prefix: string): void {
     for (const [midi, holding] of [...holdings]) {
@@ -160,6 +173,7 @@ export function useAhxPlayInput(options: AhxPlayInputOptions) {
 
   /** Returns whether the key was a play key (and so was consumed). */
   function onKeyDown(event: KeyboardEvent): boolean {
+    if (options.suspended?.value === true) return false;
     if (event.ctrlKey || event.metaKey || event.altKey) return false;
     if (isTextEntryTarget(event.target)) return false;
     // The tracker's octave keys.
@@ -263,6 +277,7 @@ export function useAhxPlayInput(options: AhxPlayInputOptions) {
     press,
     release,
     releaseAll,
+    releaseKeyboard,
     restrikeHeld,
     onKeyDown,
     onKeyUp,

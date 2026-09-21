@@ -482,6 +482,29 @@
           >
             Add row
           </button>
+          <button
+            v-if="canEditPList"
+            type="button"
+            class="ahx-btn ahx-plist-edit-toggle"
+            :class="{ 'ahx-btn--active': plistEdit.mode }"
+            :aria-pressed="plistEdit.mode ? 'true' : 'false'"
+            :disabled="!plistEdit.mode && instrument.plist.entries.length === 0"
+            :title="EDIT_TOGGLE_TITLE"
+            data-testid="ahx-plist-edit-toggle"
+            @click="setPListEditMode(!plistEdit.mode)"
+          >
+            {{ plistEdit.mode ? 'Edit steps: on (keyboard piano off)' : 'Edit steps (F2)' }}
+          </button>
+          <span
+            v-else
+            class="ahx-dim ahx-plist-edit-unavailable"
+            :title="EDIT_UNAVAILABLE_TITLE"
+            data-testid="ahx-plist-edit-unavailable"
+            >Canvas editing needs an editable AHX song; the table edits any.</span
+          >
+        </div>
+        <div v-if="editNotice" class="ahx-notice ahx-notice--edit" role="status" data-testid="ahx-edit-notice">
+          {{ editNotice.message }}
         </div>
         <AhxPListStrip
           v-if="instrument.plist.entries.length"
@@ -491,11 +514,24 @@
           @select="selectRow"
         />
         <PListCanvas
+          ref="plistCanvasRef"
           :instrument="instrument"
           :selected="selectedRow"
           :playhead-row="playheadRow"
           :audible="audible"
-          @select="selectRow"
+          :editable="canEditPList"
+          :edit-mode="plistEdit.mode"
+          :cursor="plistCursor"
+          :step-size="trackerStore.stepSize"
+          :octave="octave"
+          :menu-reasons="plistMenuReasons"
+          @select="onPListSelect"
+          @cursor="onPListCursor"
+          @edit="onPListEdit"
+          @refuse="reportAhxEditNotice"
+          @undo="onPListUndo"
+          @redo="onPListRedo"
+          @focus-field="focusField"
         />
         <div v-if="instrument.plist.entries.length" class="ahx-plist-scroll">
           <table class="ahx-table" data-testid="ahx-plist">
@@ -601,7 +637,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   AHX_MAX_PLIST_ENTRIES,
@@ -634,6 +670,22 @@ import AhxVibratoLane from 'src/components/ahx/AhxVibratoLane.vue';
 import AhxSweepLane from 'src/components/ahx/AhxSweepLane.vue';
 import AhxPListStrip from 'src/components/ahx/AhxPListStrip.vue';
 import PListCanvas from 'src/components/ahx/PListCanvas.vue';
+import { ahxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
+import { isTextEntryTarget } from 'src/composables/keyboard/note-key-map';
+import {
+  commitPListEdit,
+  createPListGesture,
+  type PListEditHost,
+  type PListNibble,
+} from 'src/audio/tracker/plist-edit';
+import {
+  PLIST_MENU_ACTIONS,
+  runPListIntent,
+  type PListColumn,
+  type PListCursor,
+  type PListIntent,
+  type PListMenuAction,
+} from 'src/audio/tracker/plist-edit-input';
 import {
   AHX_FX_NAMES,
   AHX_HELP,
@@ -660,7 +712,6 @@ import {
   AHX_EDIT_MAX_VOLUME,
   AHX_MAX_FILTER_POSITION,
   AHX_NUMBER_FIELDS,
-  addAhxPListEntry,
   ahxEnvelopeWarnings,
   enableAhxSweep,
   ahxFxParamMax,
@@ -668,7 +719,6 @@ import {
   ahxStartWaveform,
   canSetAhxStartFilterPosition,
   editAhxPListEntry,
-  removeAhxPListEntry,
   setAhxEnvelope,
   setAhxEnvelopeFields,
   setAhxHardCutRelease,
@@ -898,15 +948,130 @@ const setEnvelopeFields = (patch: Partial<AhxEnvelope>) =>
 function focusField(testid: string): void {
   const el = document.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`);
   el?.focus();
-  el?.select();
+  // A select (the tone, a command) has no text to select.
+  el?.select?.();
 }
 const setStartWaveform = (value: number) => commit((ins) => setAhxStartWaveform(ins, value));
 const setStartFilter = (value: number) => commit((ins) => setAhxStartFilterPosition(ins, value));
 const setPListSpeed = (value: number) => commit((ins) => setAhxPListSpeed(ins, value));
 const editEntry = (row: number, edit: AhxPListEdit) =>
   commit((ins) => editAhxPListEntry(ins, row, edit, songFormat.value));
-const addRow = (after?: number) => commit((ins) => addAhxPListEntry(ins, after));
-const removeRow = (row: number) => commit((ins) => removeAhxPListEntry(ins, row));
+
+// ---------------------------------------------------------------------------
+// Editing steps: the row buttons, the canvas keys and the row menu are one path
+// ---------------------------------------------------------------------------
+
+/** Off on every load and slot change, never saved: a saved mode would turn the keyboard piano off on the next visit. */
+const plistEdit = reactive<{ mode: boolean; column: PListColumn; nibble: PListNibble }>({ mode: false, column: 0, nibble: 0 });
+const plistCanvasRef = ref<InstanceType<typeof PListCanvas> | null>(null);
+const editNotice = ahxEditNotice;
+
+/** Canvas editing is offered where an edit has an undo: an editable AHX song. */
+const canEditPList = computed(() => trackerStore.isAhxEditable);
+
+const plistCursor = computed(() => ({ column: plistEdit.column, nibble: plistEdit.nibble }));
+const plistContext = computed(() => ({ format: songFormat.value, version: sourceVersion.value }));
+
+const EDIT_TOGGLE_TITLE =
+  'Type into the step under the canvas cursor. While this is on the computer keyboard no longer plays notes (the on-screen keys and MIDI still do). F2 or Esc turns it off.';
+const EDIT_UNAVAILABLE_TITLE =
+  'The canvas edits songs that can be undone: an AHX song opened here with its source. An HVL song, or an AHX song saved without its file, is edited in the table.';
+
+const plistGesture = createPListGesture();
+const plistHost: PListEditHost = {
+  canUndo: () => trackerStore.isAhxEditable,
+  pushHistory: () => trackerStore.pushHistory(),
+  // Only reached if the store refuses a write it had just said yes to; the redo steps `pushHistory` cleared are not brought back.
+  discardHistory: () => void trackerStore.undoStack.pop(),
+  ahxInstrumentRefusal: (slotNo, next) => trackerStore.ahxInstrumentRefusal(slotNo, next),
+  updateAhxInstrument: (slotNo, next) => trackerStore.updateAhxInstrument(slotNo, next),
+};
+
+/**
+ * One edit: the op for `intent`, committed once (undo step per gesture, the size
+ * guard, the notice); if it worked the cursor goes where `cursorAfter` says.
+ */
+function runPListEdit(intent: PListIntent, cursorAfter: PListCursor | null, continues: boolean): void {
+  const current = instrument.value;
+  const slotNo = slotNumber.value;
+  if (!current || slotNo === null) return;
+  const outcome = commitPListEdit(plistHost, plistGesture, slotNo, runPListIntent(current, intent, plistContext.value), { continues });
+  if (!outcome.ok || cursorAfter === null) return;
+  plistEdit.column = cursorAfter.column;
+  plistEdit.nibble = cursorAfter.nibble;
+  selectRow(cursorAfter.row);
+}
+
+/** The table's `+` and `×`, and Add row: the same ops as the canvas, each click its own step. */
+function runTableRowOp(intent: PListIntent): void {
+  plistGesture.close();
+  runPListEdit(intent, null, false);
+}
+const addRow = (after?: number) =>
+  runTableRowOp({ kind: 'insert-below', row: after ?? (instrument.value?.plist.entries.length ?? 0) - 1 });
+const removeRow = (row: number) => runTableRowOp({ kind: 'delete', row });
+
+function setPListEditMode(on: boolean): void {
+  if (on === plistEdit.mode) return;
+  if (on && (!canEditPList.value || (instrument.value?.plist.entries.length ?? 0) === 0)) return;
+  plistEdit.mode = on;
+  plistGesture.close();
+  if (!on) return;
+  if (selectedRow.value === null) selectRow(0);
+  // A note the keyboard holds when the mode begins is let go of; its key-up finds nothing more to do.
+  play.releaseKeyboard();
+  plistCanvasRef.value?.focus();
+}
+
+/** A cursor move (a key, a click in Edit mode) ends the run of strokes that was one undo step. */
+function onPListCursor(cursor: PListCursor): void {
+  plistGesture.close();
+  plistEdit.column = cursor.column;
+  plistEdit.nibble = cursor.nibble;
+  selectRow(cursor.row);
+}
+function onPListSelect(row: number): void {
+  plistGesture.close();
+  selectRow(row);
+}
+const onPListEdit = (request: { intent: PListIntent; cursorAfter: PListCursor | null; continues: boolean }) =>
+  runPListEdit(request.intent, request.cursorAfter, request.continues);
+
+/** Undo and redo are the song's (an editable AHX song's snapshots); the song reloads, so the gesture starts over. */
+function onPListUndo(): void {
+  plistGesture.close();
+  trackerStore.undo();
+}
+function onPListRedo(): void {
+  plistGesture.close();
+  trackerStore.redo();
+}
+
+/** Why each row-menu item cannot be done on `row` right now: the op's own refusal, then the store's (the file's size). */
+function plistMenuReasons(row: number): Partial<Record<PListMenuAction, string>> {
+  const current = instrument.value;
+  const slotNo = slotNumber.value;
+  if (!current || slotNo === null) return {};
+  const reasons: Partial<Record<PListMenuAction, string>> = {};
+  for (const action of PLIST_MENU_ACTIONS) {
+    const result = runPListIntent(current, { kind: action, row }, plistContext.value);
+    const reason = !result.ok ? result.reason : result.changed ? trackerStore.ahxInstrumentRefusal(slotNo, result.instrument) : null;
+    if (reason !== null) reasons[action] = reason;
+  }
+  return reasons;
+}
+
+// The mode ends with what it needs: another instrument, a song that cannot be edited, no rows left.
+watch(slotNumber, () => setPListEditMode(false));
+watch(canEditPList, (can) => {
+  if (!can) setPListEditMode(false);
+});
+watch(
+  () => instrument.value?.plist.entries.length ?? 0,
+  (count) => {
+    if (count === 0) setPListEditMode(false);
+  },
+);
 
 /** Middle-of-the-keyboard notes to hold: C-2 .. C-5 as MIDI. */
 const AUDITION_KEYS = [
@@ -928,6 +1093,8 @@ const play = useAhxPlayInput({
     noteOff: (midi) => playbackStore.previewAhxNoteOff(midi),
   },
   autoMidi: computed(() => userSettings.settings.enableMidi),
+  // Edit mode types with the keys the piano would take; the on-screen keys and MIDI still play.
+  suspended: computed(() => plistEdit.mode),
 });
 const { heldKeys, latch, octave } = play;
 
@@ -981,7 +1148,19 @@ function backToTracker() {
 function handleKeyDown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     event.preventDefault();
+    // Edit mode first: only a second Escape leaves the page.
+    if (plistEdit.mode) {
+      setPListEditMode(false);
+      return;
+    }
     backToTracker();
+    return;
+  }
+  if (event.key === 'F2' && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+    // A field being typed in keeps its keys; F2 is only the canvas's toggle.
+    if (isTextEntryTarget(event.target) || !canEditPList.value) return;
+    event.preventDefault();
+    setPListEditMode(!plistEdit.mode);
   }
 }
 
@@ -1212,6 +1391,27 @@ onUnmounted(() => {
 
 .ahx-btn--small {
   padding: 0 8px;
+}
+
+.ahx-btn--active {
+  color: var(--app-background, #0b111a);
+  background: var(--tracker-accent-primary, #f0b25e);
+  border-color: var(--tracker-accent-primary, #f0b25e);
+}
+
+.ahx-notice--edit {
+  margin: 0 0 8px;
+}
+
+.ahx-plist-edit-unavailable {
+  font-size: 0.8rem;
+}
+
+/* A soft keyboard cannot type into a canvas: on touch the row menu and the table are the editors. */
+@media (hover: none) {
+  .ahx-plist-edit-toggle {
+    display: none;
+  }
 }
 
 .ahx-note {

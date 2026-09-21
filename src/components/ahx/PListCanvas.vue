@@ -10,6 +10,10 @@
     :data-playhead-row="playbackRow"
     :data-playing="playbackRow >= 0 ? 'true' : 'false'"
     :data-selected-row="selectedRowValue"
+    :data-edit="editMode ? 'true' : 'false'"
+    :data-cursor-row="editMode ? selectedRowValue : -1"
+    :data-cursor-column="editMode ? stop.column : -1"
+    :data-cursor-nibble="editMode ? stop.nibble : -1"
     @keydown="onKeydown"
   >
     <p v-if="rowCount === 0" class="plist-canvas__note" data-testid="ahx-plist-canvas-empty">
@@ -20,7 +24,12 @@
     </p>
     <template v-else>
       <div class="plist-canvas__panel" :style="{ width: `${panelWidth}px` }">
-        <div class="plist-canvas__stage" :style="{ height: `${stageHeight}px` }">
+        <div
+          class="plist-canvas__stage"
+          :style="{ height: `${stageHeight}px` }"
+          @dblclick="onDoubleClick"
+          @contextmenu="onContextMenu"
+        >
           <!--
             The legend takes the place of the canvas's own header chip ("1 PList", hidden below): it sits in that
             band, over the columns it names. DOM, so it is selectable and testable.
@@ -41,9 +50,9 @@
             :rows="rowCount"
             :selected-row="selectedRowValue"
             :playback-row="playbackRow"
-            :active-track="-1"
-            :active-column="-1"
-            :active-macro-nibble="0"
+            :active-track="editMode ? 0 : -1"
+            :active-column="editMode ? stop.column : -1"
+            :active-macro-nibble="editMode ? stop.nibble : 0"
             :selection-rect="selectionRect"
             :auto-scroll="true"
             :is-playing="playbackRow >= 0"
@@ -55,21 +64,38 @@
             :is-mouse-selecting="false"
             :show-extra-effect-column="true"
             :reserve-side-gutter="false"
-            @row-selected="onPointerSelect"
-            @cell-selected="onPointerSelect($event.row)"
+            @row-selected="onRowSelected"
+            @cell-selected="onCellSelected"
             @scroll="onCanvasScroll"
             @renderer-error="failed = true"
           />
         </div>
       </div>
+      <p v-if="editMode" class="plist-canvas__note plist-canvas__note--edit" data-testid="ahx-plist-edit-hint">
+        Typed keys edit the step under the cursor: hex digits, + and −, Delete to clear, F to fix a note (then a
+        piano key types its pitch), Insert to add a row above, Ctrl+Delete to remove the row. Keyboard piano keys
+        are off; the on-screen keys and MIDI still play. Ctrl+Z undoes (the song reloads, which stops a sounding note). Esc leaves.
+      </p>
       <p class="plist-canvas__note" data-testid="ahx-plist-canvas-caption">
         One row per step, numbered in hex like the table below. Click a row to select it; with the
-        canvas focused, the arrow keys, Home, End and Page Up / Down move the selection.
+        canvas focused, the arrow keys, Home, End and Page Up / Down move the selection. Double-click a cell to
+        edit it in the table below.<span v-if="editable" data-testid="ahx-plist-canvas-caption-menu">
+          Right-click a row for the row menu.</span
+        >
         <span v-if="audible" data-testid="ahx-plist-canvas-caption-playhead">
           Play a key to hear this instrument: the bar shows the step its note is on. A step shorter than a
           screen frame is passed over, not drawn.
         </span>
       </p>
+      <PListCanvasMenu
+        :open="menu.open"
+        :x="menu.x"
+        :y="menu.y"
+        :row="menu.row"
+        :reasons="menu.reasons"
+        @pick="onMenuPick"
+        @close="closeMenu"
+      />
     </template>
   </div>
 </template>
@@ -92,15 +118,29 @@
  * projection reads it through `toRaw` and is memoised on content, so an edit
  * that leaves the PList alone (an envelope drag) does not repaint the canvas.
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import type { AhxInstrument } from '@another-synth/tracker-playback';
 import PatternCanvas from 'src/components/tracker/pattern-canvas/PatternCanvas.vue';
+import PListCanvasMenu from './PListCanvasMenu.vue';
 import {
   GUTTER_WIDTH_PX,
   patternPanelWidth,
+  rowHeightPx,
   rowPitchPx,
   totalTracksWidth,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
+import { isTextEntryTarget } from 'src/composables/keyboard/note-key-map';
+import { AHX_DEFAULT_OCTAVE } from 'src/composables/useAhxPlayInput';
+import {
+  PLIST_PAGE_ROWS,
+  plistKeyAction,
+  snapToStop,
+  type PListColumn,
+  type PListCursor,
+  type PListIntent,
+  type PListMenuAction,
+} from 'src/audio/tracker/plist-edit-input';
+import type { PListNibble } from 'src/audio/tracker/plist-edit';
 import type { TrackerSelectionRect } from 'src/components/tracker/tracker-types';
 import { createPListTrackMemo, rawPListEntries } from 'src/audio/tracker/plist-track';
 import { plistLegendCells, PLIST_TRACK_WIDTH_PX } from './plist-legend';
@@ -116,17 +156,52 @@ interface Props {
    * only said then: with nothing to hear there is no bar to explain.
    */
   audible?: boolean;
+  /** The song can be edited from here (an editable AHX song: its edits have an undo): the row menu is offered. */
+  editable?: boolean;
+  /** Edit mode: the cursor cell is drawn and the keyboard types into it (the page owns the mode). */
+  editMode?: boolean;
+  /** Where the cursor stands in its row; the row is `selected`. */
+  cursor?: { column: PListColumn; nibble: PListNibble };
+  /** The tracker's edit step, and the page's octave: what a finished entry advances by, and what a piano key enters. */
+  stepSize?: number;
+  octave?: number;
+  /** Why a menu action cannot be done on `row` right now (the 255-row cap, the file's size); an action not listed can. */
+  menuReasons?: (row: number) => Partial<Record<PListMenuAction, string>>;
 }
 
-const props = withDefaults(defineProps<Props>(), { playheadRow: -1, audible: false });
-const emit = defineEmits<{ (event: 'select', row: number): void }>();
+const props = withDefaults(defineProps<Props>(), {
+  playheadRow: -1,
+  audible: false,
+  editable: false,
+  editMode: false,
+  cursor: () => ({ column: 0, nibble: 0 }),
+  stepSize: 1,
+  octave: AHX_DEFAULT_OCTAVE,
+  menuReasons: () => ({}),
+});
+const emit = defineEmits<{
+  (event: 'select', row: number): void;
+  /** Edit mode: the cursor moves (a key or a click); the page sets the row and the stop. */
+  (event: 'cursor', cursor: PListCursor): void;
+  /** A key or a menu pick asks for an edit; `cursorAfter` is where the cursor goes if it worked. */
+  (event: 'edit', request: { intent: PListIntent; cursorAfter: PListCursor | null; continues: boolean }): void;
+  /** A key the canvas took cannot be done. */
+  (event: 'refuse', reason: string): void;
+  (event: 'undo'): void;
+  (event: 'redo'): void;
+  /** Double-click: the table field for the cell. */
+  (event: 'focus-field', testid: string): void;
+}>();
 
 /** Rows the card shows before the canvas scrolls. */
-const VIEW_ROWS = 8;
+const VIEW_ROWS = PLIST_PAGE_ROWS;
 /** Air between two legend labels: a label narrower than its column, so "Command 1" wraps rather than touching the next one. */
 const LEGEND_CELL_GAP_PX = 8;
 /** The panel's own chrome around the scroller: padding 14 + 12, border 2, gap 8, header strip 46. */
 const STAGE_CHROME_PX = 14 + 12 + 2 + 8 + 46;
+
+/** Where the cursor stands in its row (its row is the selected one). */
+const stop = computed(() => props.cursor ?? { column: 0 as PListColumn, nibble: 0 as PListNibble });
 
 const rootRef = ref<HTMLElement | null>(null);
 const failed = ref(false);
@@ -198,15 +273,130 @@ function onPointerSelect(row: number): void {
   rootRef.value?.focus({ preventScroll: true });
 }
 
+/** The last cell a click landed on: a double-click is that cell's hand-off to the table. */
+let lastCell: { row: number; column: number; nibble: number } | null = null;
+
+function onCellSelected(payload: { row: number; column: number; macroNibble?: number }): void {
+  const snapped = snapToStop(payload.column, payload.macroNibble);
+  lastCell = { row: payload.row, column: snapped.column, nibble: snapped.nibble };
+  onPointerSelect(payload.row);
+  if (props.editMode && payload.row >= 0 && payload.row < rowCount.value) emit('cursor', { row: payload.row, ...snapped });
+}
+
+function onRowSelected(row: number): void {
+  lastCell = null;
+  onPointerSelect(row);
+}
+
+/** The table field a cell hands off to: a command's digit is its command select, its two parameter digits its number field. */
+function fieldTestid(cell: { row: number; column: number; nibble: number }): string {
+  const base = `ahx-plist-${cell.row}`;
+  if (cell.column === 0) return `${base}-note`;
+  if (cell.column === 1) return `${base}-waveform`;
+  const slot = cell.column === 5 ? 1 : 0;
+  return cell.nibble === 0 ? `${base}-fx${slot}` : `${base}-param${slot}`;
+}
+
+function onDoubleClick(): void {
+  if (lastCell === null || lastCell.row >= rowCount.value) return;
+  emit('focus-field', fieldTestid(lastCell));
+}
+
+// --- the row menu ----------------------------------------------------------
+
+const menu = reactive<{ open: boolean; x: number; y: number; row: number; reasons: Partial<Record<PListMenuAction, string>> }>({
+  open: false,
+  x: 0,
+  y: 0,
+  row: 0,
+  reasons: {},
+});
+
+/** The row under a pointer event: the canvas's own arithmetic (the scroll offset plus the y in its viewport, a row's gap is no row). */
+function rowAtEvent(event: MouseEvent): number | null {
+  const canvas = event.target instanceof Element ? event.target.closest('canvas') : null;
+  if (!canvas) return null;
+  const localY = event.clientY - canvas.getBoundingClientRect().top + scrollTop.value;
+  if (localY < 0 || localY % rowPitchPx >= rowHeightPx) return null;
+  const row = Math.floor(localY / rowPitchPx);
+  return row < rowCount.value ? row : null;
+}
+
+function onContextMenu(event: MouseEvent): void {
+  if (!props.editable) return;
+  const row = rowAtEvent(event);
+  if (row === null) return;
+  event.preventDefault();
+  emit('select', row);
+  menu.row = row;
+  menu.x = event.clientX;
+  menu.y = event.clientY;
+  menu.reasons = props.menuReasons(row);
+  menu.open = true;
+}
+
+/** Escape gives the keyboard back to the canvas; a click elsewhere takes it wherever the click went. */
+function closeMenu(how: 'escape' | 'outside'): void {
+  menu.open = false;
+  if (how === 'escape') focus();
+}
+
+function onMenuPick(action: PListMenuAction): void {
+  menu.open = false;
+  focus();
+  const row = menu.row;
+  const at = stop.value;
+  const after = (nextRow: number): PListCursor => ({ row: Math.max(0, nextRow), column: at.column, nibble: at.nibble });
+  const count = rowCount.value;
+  switch (action) {
+    case 'insert-above':
+      return emit('edit', { intent: { kind: 'insert-above', row }, cursorAfter: after(row), continues: false });
+    case 'insert-below':
+      return emit('edit', { intent: { kind: 'insert-below', row }, cursorAfter: after(row + 1), continues: false });
+    case 'duplicate':
+      return emit('edit', { intent: { kind: 'duplicate', row }, cursorAfter: after(row + 1), continues: false });
+    case 'delete':
+      return emit('edit', { intent: { kind: 'delete', row }, cursorAfter: after(Math.min(row, count - 2)), continues: false });
+    case 'clear':
+      return emit('edit', { intent: { kind: 'clear', row }, cursorAfter: after(row), continues: false });
+    case 'fixed':
+      return emit('edit', { intent: { kind: 'fixed', row }, cursorAfter: after(row), continues: false });
+  }
+}
+
+// The menu is about a row that may be gone or another instrument's by the next repaint.
+watch([rowCount, () => props.editable], () => {
+  menu.open = false;
+});
+
+/** Give the canvas the keyboard (entering Edit mode does). */
+function focus(): void {
+  void nextTick(() => rootRef.value?.focus({ preventScroll: true }));
+}
+defineExpose({ focus });
+
+// --- the keyboard ------------------------------------------------------------
+
 /**
- * Arrow keys, Home, End and Page Up / Down move the selection. Only these keys
- * are taken, and only when no modifier is held: every other key passes through
- * (the audition keys, Escape, and Shift+Page Up / Down, the octave shortcut).
+ * View mode: arrow keys, Home, End and Page Up / Down move the selection. Only
+ * these keys are taken, and only when no modifier is held: every other key
+ * passes through (the audition keys, Escape, and Shift+Page Up / Down, the
+ * octave shortcut).
+ *
+ * Edit mode: the key table (`plist-edit-input.ts`); a key it does not know
+ * passes through as well. Keys typed into a text field, or into the row menu, are
+ * not the canvas's.
  */
 function onKeydown(event: KeyboardEvent): void {
-  if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
   const count = rowCount.value;
   if (count === 0) return;
+  // The row menu sits inside this element: its keys are its own.
+  if (event.target instanceof Element && event.target.closest('[data-testid="ahx-plist-canvas-menu"]')) return;
+  if (props.editMode) {
+    onEditKeydown(event);
+    return;
+  }
+  if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
   const current = selectedRowValue.value;
   let next: number;
   switch (event.key) {
@@ -234,6 +424,37 @@ function onKeydown(event: KeyboardEvent): void {
   event.preventDefault();
   event.stopPropagation();
   emit('select', next);
+}
+
+function onEditKeydown(event: KeyboardEvent): void {
+  if (isTextEntryTarget(event.target)) return;
+  const row = selectedRowValue.value < 0 ? 0 : selectedRowValue.value;
+  const entry = rawPListEntries(props.instrument)[row];
+  const action = plistKeyAction(
+    event,
+    { row, column: stop.value.column, nibble: stop.value.nibble },
+    { rowCount: rowCount.value, rowFixed: entry?.fixed === true, stepSize: props.stepSize, octave: props.octave },
+  );
+  if (action.type === 'pass') return;
+  event.preventDefault();
+  event.stopPropagation();
+  switch (action.type) {
+    case 'move':
+      emit('cursor', action.cursor);
+      break;
+    case 'edit':
+      emit('edit', { intent: action.intent, cursorAfter: action.cursorAfter, continues: action.continues });
+      break;
+    case 'refuse':
+      emit('refuse', action.reason);
+      break;
+    case 'undo':
+      emit('undo');
+      break;
+    case 'redo':
+      emit('redo');
+      break;
+  }
 }
 </script>
 
@@ -294,6 +515,11 @@ function onKeydown(event: KeyboardEvent): void {
   margin: 0;
   font-size: 0.8rem;
   opacity: 0.7;
+}
+
+.plist-canvas__note--edit {
+  opacity: 1;
+  color: var(--tracker-accent-primary, #f0b25e);
 }
 
 /* Matches PatternCanvas's phone layout, which shrinks the panel's chrome to 6px padding + 1px border. */

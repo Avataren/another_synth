@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseAhx, ahxPListCommandsFor, type AhxInstrument } from '@another-synth/tracker-playback';
+import { parseAhx, ahxPListCommandsFor, normalizeAhxInstrumentForVersion, type AhxInstrument } from '@another-synth/tracker-playback';
 import {
   AHX_SIZE_LIMIT,
   ahxInstrumentBytes,
@@ -215,10 +215,37 @@ describe('PList ops: refusals say why and change nothing', () => {
     expect(ok(writePListNibble(four, 0, 0, 1, 3, AHX)).plist.entries[0]!.fxParam[0]).toBe(0x35);
     const five = withRows([{ fx: [5, 0], fxParam: [0x50, 0] }]);
     expect(ok(modifyPListEntry(five, 0, { field: 'fxParam', slot: 0, value: 0xff }, AHX_V0)).plist.entries[0]!.fxParam[0]).toBe(0xff);
-    // Turning a command with a big parameter into a version-0 command 4 is refused too.
+    // The table's own path (a field write) still refuses a command a big parameter cannot go with.
     expect(reason(modifyPListEntry(five, 0, { field: 'fx', slot: 0, value: 4 }, AHX_V0))).toBe(
       'Command 4 takes a parameter of 0 to F in a version-0 AHX file (got 50).',
     );
+  });
+
+  it('typing 4 first on a row whose parameter is above F writes it, cuts the parameter as the load would, and says so', () => {
+    const five = withRows([{ fx: [5, 0], fxParam: [0x3c, 0] }]);
+    const typed = writePListNibble(five, 0, 0, 0, 4, AHX_V0);
+    expect(typed).toMatchObject({
+      ok: true,
+      changed: true,
+      notice: "Command 4 takes a parameter of 0 to F in a version-0 AHX file: this row's 3C became 0C.",
+    });
+    expect((typed as { instrument: AhxInstrument }).instrument.plist.entries[0]).toMatchObject({ fx: [4, 0], fxParam: [0x0c, 0] });
+    // The cut is what the file would do to it at load (nothing else changes).
+    expect(normalizeAhxInstrumentForVersion((typed as { instrument: AhxInstrument }).instrument, 'ahx', 0).plist).toEqual(
+      (typed as { instrument: AhxInstrument }).instrument.plist,
+    );
+    // Then the parameter can be typed in either order.
+    const c = ok(typed);
+    expect(ok(writePListNibble(c, 0, 0, 2, 5, AHX_V0)).plist.entries[0]!.fxParam[0]).toBe(0x05);
+    // No notice when nothing has to be cut: another version, another command, or a parameter that fits.
+    expect(writePListNibble(five, 0, 0, 0, 4, AHX)).not.toHaveProperty('notice');
+    expect(writePListNibble(five, 0, 0, 0, 3, AHX_V0)).not.toHaveProperty('notice');
+    expect(writePListNibble(withRows([{ fx: [5, 0], fxParam: [0x05, 0] }]), 0, 0, 0, 4, AHX_V0)).not.toHaveProperty('notice');
+    // A command the format lacks is still refused, for the command.
+    expect(reason(writePListNibble(five, 0, 0, 0, 9, AHX_V0))).toBe('Command 9 is not available in an AHX PList.');
+    // + and - on the command digit reaches 4 the same way.
+    const nudged = nudgePListEntry(withRows([{ fx: [3, 0], fxParam: [0x3c, 0] }]), 0, { field: 'nibble', slot: 0, nibble: 0 }, 1, AHX_V0);
+    expect(nudged).toMatchObject({ ok: true, instrument: { plist: { entries: [{ fx: [4, 0], fxParam: [0x0c, 0] }] } } });
   });
 
   it('an op that would change nothing hands back the very same instrument', () => {
@@ -316,26 +343,63 @@ describe('PList ops: nibbles, nudges and clears', () => {
 });
 
 describe('the Jump notice (§4.7)', () => {
+  // Row 1 jumps to 0A (past the end), row 3's second command jumps to 01.
   const jumpy = (): AhxInstrument =>
     withRows([{ note: 1 }, { fx: [5, 0], fxParam: [0x0a, 0] }, { note: 3 }, { fx: [0, 5], fxParam: [0, 0x01] }, { note: 5 }]);
 
-  it('counts the fx === 5 slots and says so, for an insert and a delete', () => {
+  it('counts the fx === 5 slots', () => {
+    expect(countPListJumps(jumpy())).toBe(2);
+  });
+
+  it('counts only the Jumps whose target moved: one that aims before the change is not told about', () => {
     const ins = jumpy();
-    expect(countPListJumps(ins)).toBe(2);
+    // Insert at 2: the jump to 0A moves; the jump to 01 aims before the change and stays.
     const r = insertPListRowBefore(ins, 2, AHX);
-    expect(r.ok && r.notice).toBe('Rows after 02 moved; 2 Jump commands (5xx) still point at their old row numbers.');
+    expect(r.ok && r.notice).toBe('Rows after 02 moved; 1 Jump command (5xx) still points at its old row number.');
+    // Insert at 0 moves both targets.
+    const top = insertPListRowBefore(ins, 0, AHX);
+    expect(top.ok && top.notice).toBe('Rows after 00 moved; 2 Jump commands (5xx) still point at their old row numbers.');
+    // Delete at 0: both.
     const d = deletePListRow(ins, 0, AHX);
     expect(d.ok && d.notice).toBe('Rows after 00 moved; 2 Jump commands (5xx) still point at their old row numbers.');
+    // Duplicate row 1 (a copy lands at 2, and it is a Jump to 0A too): the jump to 01 aims before it.
     const dup = duplicatePListRow(ins, 1, AHX);
-    expect(dup.ok && dup.notice).toBe('Rows after 02 moved; 3 Jump commands (5xx) still point at their old row numbers.');
+    expect(dup.ok && dup.notice).toBe('Rows after 02 moved; 2 Jump commands (5xx) still point at their old row numbers.');
+    // Insert after row 0 = insert at 1: a Jump to 01 aimed at the row that moved to 02.
     const after = insertPListRowAfter(ins, 0, AHX);
     expect(after.ok && after.notice).toBe('Rows after 01 moved; 2 Jump commands (5xx) still point at their old row numbers.');
+  });
+
+  it('is silent when every Jump aims before the change, wherever the Jump itself is', () => {
+    // A Jump in row 4 to row 01, and an insert at 3: rows before 3 did not move.
+    const ins = withRows([{ note: 1 }, { note: 2 }, { note: 3 }, { note: 4 }, { fx: [5, 0], fxParam: [1, 0] }]);
+    const r = insertPListRowBefore(ins, 3, AHX);
+    expect(r.ok && r.notice).toBeUndefined();
+    const d = deletePListRow(ins, 3, AHX);
+    expect(d.ok && d.notice).toBeUndefined();
   });
 
   it('says it in the singular for one Jump', () => {
     const one = withRows([{ note: 1 }, { fx: [5, 0], fxParam: [1, 0] }, { note: 2 }]);
     const r = insertPListRowBefore(one, 0, AHX);
     expect(r.ok && r.notice).toBe('Rows after 00 moved; 1 Jump command (5xx) still points at its old row number.');
+  });
+
+  it('deleting the last row moves nothing, but says so when a Jump aimed at it or past it', () => {
+    const ins = jumpy();
+    // Row 4 is the last; the jump to 0A aims past the end (it always did) and is now told: it aims at or after 04.
+    const lastGone = deletePListRow(ins, 4, AHX);
+    expect(lastGone.ok && lastGone.notice).toBe('Row 04 was removed; 1 Jump command (5xx) now points past the end of the list.');
+    const both = withRows([{ fx: [5, 0], fxParam: [1, 0] }, { note: 2 }, { fx: [0, 5], fxParam: [0, 2] }]);
+    const two = deletePListRow(both, 2, AHX);
+    // The Jump that sat in the removed row is gone; the one to row 1 aims before the end.
+    expect(two.ok && two.notice).toBeUndefined();
+    const aimedAtLast = withRows([{ fx: [5, 0], fxParam: [2, 0] }, { note: 2 }, { note: 3 }]);
+    const r = deletePListRow(aimedAtLast, 2, AHX);
+    expect(r.ok && r.notice).toBe('Row 02 was removed; 1 Jump command (5xx) now points past the end of the list.');
+    const plural = withRows([{ fx: [5, 0], fxParam: [2, 0] }, { fx: [5, 0], fxParam: [3, 0] }, { note: 3 }]);
+    const p = deletePListRow(plural, 2, AHX);
+    expect(p.ok && p.notice).toBe('Row 02 was removed; 2 Jump commands (5xx) now point past the end of the list.');
   });
 
   it('changes no entry other than the inserted or removed one, and no Jump parameter', () => {
@@ -350,23 +414,29 @@ describe('the Jump notice (§4.7)', () => {
     expect(dup.plist.entries[2]).toEqual(ins.plist.entries[1]);
   });
 
-  it('is silent when nothing moved, when there is no Jump, for HVL, and for a clear', () => {
+  it('is silent when nothing moved and nothing points past the end, when there is no Jump, and for a clear', () => {
     const ins = jumpy();
     const atEnd = insertPListRowAfter(ins, 4, AHX);
     expect(atEnd.ok && atEnd.notice).toBeUndefined();
-    const lastGone = deletePListRow(ins, 4, AHX);
-    expect(lastGone.ok && lastGone.notice).toBeUndefined();
     const noJump = insertPListRowBefore(withRows([{ note: 1 }, { note: 2 }]), 0, AHX);
     expect(noJump.ok && noJump.notice).toBeUndefined();
+    const noJumpLast = deletePListRow(withRows([{ note: 1 }, { note: 2 }]), 1, AHX);
+    expect(noJumpLast.ok && noJumpLast.notice).toBeUndefined();
+    expect(clearPListRow(ins, 1)).not.toHaveProperty('notice');
+  });
+
+  it('is not given for HVL: the plan keeps the notice to AHX (the canvas prints HVL commands raw)', () => {
+    const ins = jumpy();
     const hvl = insertPListRowBefore(ins, 0, HVL);
     expect(hvl.ok && hvl.notice).toBeUndefined();
     expect(plistJumpNotice(ins, 0, HVL, true)).toBeUndefined();
-    expect(clearPListRow(ins, 1)).not.toHaveProperty('notice');
+    expect(plistJumpNotice(ins, 4, HVL, false)).toBeUndefined();
   });
 
   it('a deleted Jump is not counted', () => {
     const ins = jumpy();
     const r = deletePListRow(ins, 1, AHX);
+    // The Jump in row 1 is gone with it; the one to 01 aims at the row that was deleted, now the next one.
     expect(r.ok && r.notice).toBe('Rows after 01 moved; 1 Jump command (5xx) still points at its old row number.');
   });
 });
@@ -379,6 +449,7 @@ describe('committing: guards, once-per-gesture undo, notices', () => {
     const host: PListEditHost = {
       canUndo: () => true,
       pushHistory: vi.fn(() => void calls.push('push')),
+      discardHistory: vi.fn(() => void calls.push('discard')),
       ahxInstrumentRefusal: vi.fn(() => null),
       updateAhxInstrument: vi.fn(() => {
         calls.push('update');
@@ -414,6 +485,23 @@ describe('committing: guards, once-per-gesture undo, notices', () => {
     commitPListEdit(host, gesture, 1, modifyPListEntry(ins, 0, { field: 'note', value: 2 }, AHX));
     commitPListEdit(host, gesture, 1, modifyPListEntry(ins, 0, { field: 'note', value: 3 }, AHX));
     expect(host.pushHistory).toHaveBeenCalledTimes(2);
+  });
+
+  it('a write the store turns down after the snapshot takes the snapshot back, and the gesture starts over', () => {
+    const { host, calls } = fakeHost({ updateAhxInstrument: vi.fn(() => 'rejected' as const) });
+    const gesture = createPListGesture();
+    const r = commitPListEdit(host, gesture, 1, modifyPListEntry(withRows([{ note: 1 }]), 0, { field: 'note', value: 2 }, AHX));
+    expect(r.ok).toBe(false);
+    expect(calls).toEqual(['push', 'discard']);
+    expect(gesture.recorded).toBe(false);
+    // A rejection later in a gesture that was already recorded keeps the earlier step.
+    const good = fakeHost();
+    const g2 = createPListGesture();
+    commitPListEdit(good.host, g2, 1, modifyPListEntry(withRows([{ note: 1 }]), 0, { field: 'note', value: 2 }, AHX), { continues: true });
+    const bad = fakeHost({ updateAhxInstrument: vi.fn(() => 'rejected' as const) });
+    commitPListEdit(bad.host, g2, 1, modifyPListEntry(withRows([{ note: 1 }]), 0, { field: 'note', value: 3 }, AHX), { continues: true });
+    expect(bad.calls).toEqual([]);
+    expect(g2.recorded).toBe(true);
   });
 
   it('pushes nothing on a refusal (the op’s or the store’s), and says why', () => {

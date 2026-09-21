@@ -161,6 +161,37 @@ export function togglePListFixed(ins: AhxInstrument, row: number, context: PList
 export type PListNibble = 0 | 1 | 2;
 
 /**
+ * What a command digit does to the parameter beside it. A command a version-0
+ * AHX file cannot give the row's parameter to (command 4 keeps only the low
+ * digit there) is written anyway with the parameter cut to what the file holds,
+ * and the notice says so: the parameter that is about to be typed is not the
+ * one to blame, and the cut is what `normalizeAhxInstrumentForVersion` does to
+ * the file at load, so the row shows what plays.
+ */
+function setCommandFitting(
+  ins: AhxInstrument,
+  row: number,
+  slot: 0 | 1,
+  command: number,
+  context: PListEditContext,
+): PListOpResult<{ readonly notice?: string }> {
+  const problem = plistCommandProblem(command, context.format);
+  if (problem !== null) return refuse(problem);
+  const param = ins.plist.entries[row]!.fxParam[slot] ?? 0;
+  const max = ahxFxParamMax(command, context.format, context.version ?? 1);
+  if (param <= max) return modifyPListEntry(ins, row, { field: 'fx', slot, value: command }, context);
+  const kept = param & max;
+  const withParam = editAhxPListEntry(ins, row, { field: 'fxParam', slot, value: kept }, context.format);
+  const next = editAhxPListEntry(withParam, row, { field: 'fx', slot, value: command }, context.format);
+  return {
+    ok: true,
+    instrument: next,
+    changed: true,
+    notice: `Command ${hex(command)} takes a parameter of 0 to ${hex(max)} in a version-0 AHX file: this row's ${hex2(param)} became ${hex2(kept)}.`,
+  };
+}
+
+/**
  * Writes one hex digit of command slot `slot`: nibble 0 the command, nibble 1
  * the parameter's high half, nibble 2 its low half; the other nibbles stay.
  */
@@ -171,12 +202,12 @@ export function writePListNibble(
   nibble: PListNibble,
   digit: number,
   context: PListEditContext,
-): PListOpResult {
+): PListOpResult<{ readonly notice?: string }> {
   if (!isInt(digit, 0, 15)) return refuse(`A hex digit is 0 to F (got ${String(digit)}).`);
   const bad = rowProblem(ins, row);
   if (bad !== null) return refuse(bad);
   const param = ins.plist.entries[row]!.fxParam[slot] ?? 0;
-  if (nibble === 0) return modifyPListEntry(ins, row, { field: 'fx', slot, value: digit }, context);
+  if (nibble === 0) return setCommandFitting(ins, row, slot, digit, context);
   const value = nibble === 1 ? (digit << 4) | (param & 0x0f) : (param & 0xf0) | digit;
   return modifyPListEntry(ins, row, { field: 'fxParam', slot, value }, context);
 }
@@ -200,7 +231,7 @@ export function nudgePListEntry(
   target: PListNudgeTarget,
   delta: number,
   context: PListEditContext,
-): PListOpResult {
+): PListOpResult<{ readonly notice?: string }> {
   if (!Number.isInteger(delta)) return refuse(`A step is a whole number (got ${String(delta)}).`);
   const bad = rowProblem(ins, row);
   if (bad !== null) return refuse(bad);
@@ -218,7 +249,7 @@ export function nudgePListEntry(
       );
     case 'nibble': {
       if (target.nibble === 0) {
-        return modifyPListEntry(ins, row, { field: 'fx', slot: target.slot, value: clampTo((entry.fx[target.slot] ?? 0) + delta, 15) }, context);
+        return setCommandFitting(ins, row, target.slot, clampTo((entry.fx[target.slot] ?? 0) + delta, 15), context);
       }
       const param = entry.fxParam[target.slot] ?? 0;
       const max = ahxFxParamMax(entry.fx[target.slot] ?? 0, context.format, context.version ?? 1);
@@ -258,19 +289,45 @@ export function countPListJumps(ins: Pick<AhxInstrument, 'plist'>): number {
   return count;
 }
 
+/** How many Jump slots (5xx) in `ins` aim at row `from` or later: the ones an insert or a delete at `from` leaves pointing at a different step. */
+function countJumpsAtOrAfter(ins: Pick<AhxInstrument, 'plist'>, from: number): number {
+  let count = 0;
+  for (const entry of ins.plist.entries) {
+    for (let slot = 0; slot < entry.fx.length; slot++) {
+      if (entry.fx[slot] === AHX_JUMP_COMMAND && (entry.fxParam[slot] ?? 0) >= from) count++;
+    }
+  }
+  return count;
+}
+
 /**
  * Inserting or deleting a row moves every later row and leaves the Jump
  * parameters alone (absolute row numbers, §4.7): say so, once, when an AHX
- * instrument has Jumps and rows did move. `at` is the row that was inserted or
- * removed. HVL is not told: its command 5 is not assumed to be a Jump (D94).
+ * instrument has Jumps this changed. `at` is the row that was inserted or
+ * removed, `after` the instrument with the change made. A Jump that aims before
+ * `at` is untouched (its target did not move) and is not counted, wherever it
+ * sits; deleting the last row moves nothing, but a Jump that aimed at it or past
+ * it now points past the end, and that is said instead.
+ *
+ * HVL is not told: the plan (§4.7) keeps the notice to AHX, the format the
+ * canvas edits, and the canvas prints an HVL PList's commands raw without
+ * assuming what they mean. (The engine does jump an HVL PList by absolute row
+ * as well, so extending the notice to HVL is a decision for the plan, not a
+ * fix here.)
  */
 export function plistJumpNotice(after: AhxInstrument, at: number, context: PListEditContext, inserted: boolean): string | undefined {
   if (context.format !== 'ahx') return undefined;
   const moved = after.plist.entries.length - (inserted ? at + 1 : at);
-  const jumps = countPListJumps(after);
-  if (moved <= 0 || jumps === 0) return undefined;
-  const which = jumps === 1 ? '1 Jump command (5xx) still points at its old row number' : `${jumps} Jump commands (5xx) still point at their old row numbers`;
-  return `Rows after ${hex2(at)} moved; ${which}.`;
+  const jumps = countJumpsAtOrAfter(after, at);
+  if (jumps === 0) return undefined;
+  if (moved > 0) {
+    const which = jumps === 1 ? '1 Jump command (5xx) still points at its old row number' : `${jumps} Jump commands (5xx) still point at their old row numbers`;
+    return `Rows after ${hex2(at)} moved; ${which}.`;
+  }
+  // Nothing moved: an insert at the end has no later row to disturb; a delete of the last row leaves those Jumps past the end.
+  if (inserted) return undefined;
+  const which = jumps === 1 ? '1 Jump command (5xx) now points' : `${jumps} Jump commands (5xx) now point`;
+  return `Row ${hex2(at)} was removed; ${which} past the end of the list.`;
 }
 
 const FULL = `A PList has at most ${AHX_MAX_PLIST_ENTRIES} rows.`;
@@ -325,6 +382,8 @@ export interface PListEditHost {
   /** The song has undo (an editable AHX song). */
   readonly canUndo: () => boolean;
   readonly pushHistory: () => void;
+  /** Takes back the step `pushHistory` just recorded (the write it was recorded for did not happen). */
+  readonly discardHistory: () => void;
   /** Why the store would refuse `next` for the slot (`null` when it would take it). */
   readonly ahxInstrumentRefusal: (slot: number, next: AhxInstrument) => string | null;
   readonly updateAhxInstrument: (slot: number, next: AhxInstrument) => 'applied' | 'kept' | 'rejected';
@@ -392,13 +451,22 @@ export function commitPListEdit(
     reportAhxEditNotice(refusal);
     return { ok: false, reason: refusal };
   }
+  // The snapshot has to be the song before the write, so it is taken first and
+  // given back if the write is refused after all.
+  let pushed = false;
   if (host.canUndo() && !gesture.recorded) {
     host.pushHistory();
     gesture.markRecorded();
+    pushed = true;
   }
   const outcome = host.updateAhxInstrument(slot, result.instrument);
   if (outcome === 'rejected') {
-    // The store said yes a moment ago: nothing here can get this far.
+    // The store said yes a moment ago: nothing here can get this far. If it
+    // does, no step stays behind for a change that never happened.
+    if (pushed) {
+      host.discardHistory();
+      gesture.close();
+    }
     const reason = 'That change is not a valid instrument for this song and was not applied.';
     reportAhxEditNotice(reason);
     return { ok: false, reason };
