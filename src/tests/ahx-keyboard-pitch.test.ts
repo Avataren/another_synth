@@ -68,6 +68,7 @@ function keyboard(songName: string) {
     output: { connect: () => undefined },
     setPreview: (enabled: boolean) => core.handle({ type: 'set-preview', enabled }),
     setHifi: (enabled: boolean) => core.handle({ type: 'set-hifi', enabled }),
+    onPListRow: () => () => undefined,
     loadSong: async (bytes: Uint8Array) => {
       core.handle({ type: 'load-song', id: loadId++, bytes: bytes.slice() });
       return {};

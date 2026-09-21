@@ -610,6 +610,16 @@ var AhxPlayer = class {
     return ret !== 0;
   }
   /**
+   * The PList row the previewed note's voice ran last, `-1` when there is
+   * none (see [`AhxEngine::live_plist_state`]). A scalar, not a `Vec`: the
+   * worklet reads it every render quantum.
+   * @returns {number}
+   */
+  preview_plist_row() {
+    const ret = wasm.ahxplayer_preview_plist_row(this.__wbg_ptr);
+    return ret;
+  }
+  /**
    * Loop the current position instead of moving on from it; see
    * [`AhxEngine::set_loop_position`]. Kept across `restart` and `seek`.
    * @param {boolean} on
@@ -683,6 +693,14 @@ var AhxPlayer = class {
    */
   preview_warm_hold_ticks(instrument) {
     const ret = wasm.ahxplayer_preview_warm_hold_ticks(this.__wbg_ptr, instrument);
+    return ret >>> 0;
+  }
+  /**
+   * The instrument (1-based) that row belongs to, `0` when there is none.
+   * @returns {number}
+   */
+  preview_plist_instrument() {
+    const ret = wasm.ahxplayer_preview_plist_instrument(this.__wbg_ptr);
     return ret >>> 0;
   }
   /**
@@ -3160,6 +3178,9 @@ var AhxProcessorCore = class {
     __publicField(this, "lastPosition", -1);
     __publicField(this, "lastRow", -1);
     __publicField(this, "songEndReported", false);
+    /** What the last `plist-row` said: `0, -1` is "nothing sounds", which is also the state a fresh player is in. */
+    __publicField(this, "lastPlistInstrument", 0);
+    __publicField(this, "lastPlistRow", -1);
     __publicField(this, "scratch", new Float32Array(0));
     __publicField(this, "lastLoadId", -1);
     __publicField(this, "disposedFlag", false);
@@ -3289,6 +3310,7 @@ var AhxProcessorCore = class {
         fadeOutTail(left);
         if (right) fadeOutTail(right);
       }
+      if (this.preview) this.reportPListRow(player);
     } catch (error) {
       this.dropPlayer();
       left.fill(0);
@@ -3435,6 +3457,19 @@ var AhxProcessorCore = class {
     });
     return false;
   }
+  /**
+   * The previewed note's PList row, posted when it changes. Two scalar reads a
+   * quantum and no allocation; a song player never gets here (`preview` is off
+   * for it), so it posts none and pays nothing.
+   */
+  reportPListRow(player) {
+    const row = player.preview_plist_row();
+    const instrument = player.preview_plist_instrument();
+    if (row === this.lastPlistRow && instrument === this.lastPlistInstrument) return;
+    this.lastPlistRow = row;
+    this.lastPlistInstrument = instrument;
+    this.post({ type: "plist-row", instrument, row });
+  }
   /** Snapshots every voice into the reused buffer and posts it. Allocates nothing per report. */
   postWaveforms(player) {
     const channels = player.channels();
@@ -3453,9 +3488,16 @@ var AhxProcessorCore = class {
     this.lastPosition = -1;
     this.lastRow = -1;
     this.songEndReported = false;
+    this.lastPlistInstrument = 0;
+    this.lastPlistRow = -1;
   }
   dropPlayer() {
     this.playing = false;
+    if (this.lastPlistRow !== -1 || this.lastPlistInstrument !== 0) {
+      this.lastPlistRow = -1;
+      this.lastPlistInstrument = 0;
+      this.post({ type: "plist-row", instrument: 0, row: -1 });
+    }
     if (this.player) {
       try {
         this.player.free();

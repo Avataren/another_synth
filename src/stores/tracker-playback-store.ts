@@ -11,6 +11,7 @@ import { usePostFxStore } from 'src/stores/post-fx-store';
 import { defaultLookaheadSeconds } from 'src/audio/device-profile';
 import { AhxTransport } from 'src/audio/tracker/ahx-transport';
 import { AhxPreview } from 'src/audio/tracker/ahx-preview';
+import { clearAhxPListPlayhead, setAhxPListPlayhead } from 'src/audio/tracker/ahx-plist-playhead';
 import type { AhxPosition, AhxWaveforms } from 'src/audio/tracker/ahx-player';
 import {
   currentAhxSource,
@@ -471,14 +472,20 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   }
 
   function newAhxPreview(): AhxPreview {
-    return new AhxPreview(getSongBank(), undefined, undefined, (instruments) =>
+    const preview = new AhxPreview(getSongBank(), undefined, undefined, (instruments) =>
       reportRejectedAhxInstruments(instruments, 'keyboard preview'),
     );
+    // Lazy: this creates no worklet, it only says where to send the rows the
+    // preview's worklet reports once there is one.
+    preview.onPListRow(setAhxPListPlayhead);
+    return preview;
   }
 
   function disposeAhxPreview(): void {
     ahxPreviewInstance?.dispose();
     ahxPreviewInstance = null;
+    // The row belonged to that preview's note.
+    clearAhxPListPlayhead();
   }
 
   // A new song (AHX or not) makes the preview voice stale: drop it at once,
