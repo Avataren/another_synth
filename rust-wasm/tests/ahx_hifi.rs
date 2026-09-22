@@ -519,7 +519,7 @@ fn cold_start_render_of_a_sixteen_voice_hvl_with_and_without_prewarm() {
         stats.ticks,
         stats.sources,
         stats.tables,
-        stats.tables as f64 * (TABLE_BYTES as f64) / 1048576.0,
+        warm.hifi_table_bytes() as f64 / 1048576.0,
         warm.hifi_misses()
     );
 
@@ -530,6 +530,3 @@ fn cold_start_render_of_a_sixteen_voice_hvl_with_and_without_prewarm() {
     // Nothing was degraded, so it is the same audio, sample for sample.
     assert_eq!(warm_out, cold_out, "prewarmed hi-fi differs from lazily built hi-fi");
 }
-
-/// `TABLE_SIZE * size_of::<i16>()`.
-const TABLE_BYTES: usize = audio_processor::ahx::hifi::TABLE_SIZE * 2;

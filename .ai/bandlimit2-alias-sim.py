@@ -1,4 +1,7 @@
-import numpy as np, math
+import numpy as np, math, sys
+# Adaptive-size multiplier: Sad = max(clamp(next_pow2(MULT*H),64,4096), n).
+# Run 1 used 8 (D1, falsified); the revised plan's D1' is 64. Override: argv[1].
+MULT=int(sys.argv[1]) if len(sys.argv)>1 else 64
 MAXH=512
 def ladder():
     return [max(1,round(512*2**(-l/2))) for l in range(18)]
@@ -46,13 +49,18 @@ def run(name,cyc,bps_list):
     for bps in bps_list:
         delta=round(bps*65536); f0=delta/65536/n
         l=level_for(f0); H=LAD[l]
-        Sad=max(min(max(64,1<<(8*H-1).bit_length()),4096),n)
+        Sad=max(min(max(64,1<<(MULT*H-1).bit_length()),4096),n)
         row=[]
         for S,frac in [(4096,4),(4096,7),(4096,None),(Sad,7),(Sad,None)]:
             tab=build(c,H,S,frac)
             x=render(tab,n,delta,65536)
             row.append(inharm(x,f0,H))
-        print(f"{name:10s} bps {bps:.3f} f0 {f0:.4f} H {H:3d} Sad {Sad:4d}: S4096/F4 {row[0]:7.1f}  S4096/F7 {row[1]:7.1f}  S4096/float {row[2]:7.1f} | Sad/F7 {row[3]:7.1f}  Sad/float {row[4]:7.1f}")
+        d=row[3]-row[0]
+        verdict="REGRESS" if d>0.5 else "ok"
+        RESULTS.append((name,f0,H,Sad,row[0],row[3],d,verdict))
+        print(f"{name:10s} bps {bps:.3f} f0 {f0:.4f} H {H:3d} Sad {Sad:4d}: S4096/F4 {row[0]:7.1f}  S4096/F7 {row[1]:7.1f}  S4096/float {row[2]:7.1f} | Sad/F7 {row[3]:7.1f}  Sad/float {row[4]:7.1f} | d(Sad/F7-now) {d:+6.1f} {verdict}")
+RESULTS=[]
+print(f'=== adaptive column: Sad = max(clamp(next_pow2({MULT}*H),64,4096), n); REGRESS = Sad/F7 more than 0.5 dB above S4096/F4 ===')
 fs=48000
 bps=[3546895/p/fs for p in (0xd60,0x400,0x280,0x180,0xe2,0x71)]
 run("sq4",[127,127,-128,-128],bps)
@@ -63,6 +71,8 @@ run("saw128",saw(128),bps)
 tri=lambda n:[int(round(127*(1-abs(4*i/n-2)) if True else 0)) for i in range(n)]
 run("tri16",tri(16),bps)
 
+print(f"\nSUMMARY M{MULT}: {len(RESULTS)} cases, worst d {max(r[6] for r in RESULTS):+.1f} dB, best d {min(r[6] for r in RESULTS):+.1f} dB, regressions {sum(r[7]=='REGRESS' for r in RESULTS)}")
+if len(sys.argv)>2 and sys.argv[2]=='nosweep': sys.exit(0)
 print("\n=== multiplier sweep (FRAC 7, Sad = clamp(next_pow2(M*H),64,4096) max n) ===")
 def run2(name,cyc,bps_list):
     n=len(cyc); c=spectrum(cyc)

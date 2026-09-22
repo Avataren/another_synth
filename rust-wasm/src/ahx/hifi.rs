@@ -24,10 +24,20 @@
 //! with `X` the N-point DFT of the table (the `sin` term is the zero-order
 //! hold's sinc, so the staircase images are kept -- below Nyquist they are
 //! part of the sound). A mip level keeps harmonics `1..=H`, inverse-FFTs them
-//! into a [`TABLE_SIZE`]-point cycle and is used only while
+//! into a [`table_size_for`]`(H)`-point cycle and is used only while
 //! `H * f0 <= Nyquist`, so nothing above Nyquist exists to fold. That is the
 //! whole idea: the reference sound, minus exactly the part that cannot be
 //! represented.
+//!
+//! * **Table size** follows the level: 64 points per period of the top partial
+//!   (`next_pow2(64 * H)`), clamped to `64..=`[`TABLE_SIZE`], and never below
+//!   the cycle's own `N` (so `size / N` stays a whole number). The table is
+//!   read with linear interpolation, which images the top partial around
+//!   multiples of the table's point rate: with only 8 points per period those
+//!   images fold back 50-60 dB down on a thin level, with 64 they sit at or
+//!   under what a fixed 4096-point table gave. Levels with 45 or more partials
+//!   keep 4096 points (level 0 still has 8 per period, buried under 511 other
+//!   partials, as it always was); only the thinner ones shrink.
 //!
 //! * **Levels** are a geometric ladder of harmonic counts (`LEVELS_PER_OCTAVE`
 //!   per octave, from [`MAX_HARMONICS`] down to 1) and are built lazily, the
@@ -40,7 +50,8 @@
 //!   contents share one spectrum and one set of levels.
 //! * **DC is kept** (the reference's squares carry a duty-dependent DC and its
 //!   sawtooth a half-LSB one); `wavetable.rs` zeroes DC because its sources are
-//!   symmetric. The Nyquist bin is never populated: `H <= TABLE_SIZE / 8`.
+//!   symmetric. The Nyquist bin is never populated: `H <= size / 8` at every
+//!   level (level 0's 512 partials in 4096 points is the tightest).
 //!
 //! ## The AHX filter
 //!
@@ -108,10 +119,22 @@ use rustfft::{num_complex::Complex, Fft, FftPlanner};
 use std::simd::i32x4;
 use std::sync::{Arc, OnceLock};
 
-/// Samples per band-limited cycle (a power of two). At the top level
-/// (`MAX_HARMONICS` = 512) that is 8 points per period of the highest
-/// partial, where linear interpolation costs under half a dB.
+/// Most samples per band-limited cycle (a power of two): the size of every
+/// level with 64 or more partials. At the top level (`MAX_HARMONICS` = 512)
+/// that is 8 points per period of the highest partial, where linear
+/// interpolation costs under half a dB of level; see [`table_size_for`] for the
+/// rest of the ladder.
 pub const TABLE_SIZE: usize = 4096;
+
+/// Fewest samples per band-limited cycle (the 1-partial level).
+pub const MIN_TABLE_SIZE: usize = 64;
+
+/// Table points per period of a level's top partial, before the clamp to
+/// `MIN_TABLE_SIZE..=TABLE_SIZE`. Linear interpolation images the top partial
+/// around multiples of the point rate; 8 points per period left them 50-60 dB
+/// down (measured, `.ai/checks-bandlimit2.txt`), 64 keeps every level at or
+/// under what the fixed 4096-point tables gave.
+pub const POINTS_PER_TOP_PARTIAL: usize = 64;
 
 /// Most partials a level can hold; `TABLE_SIZE / 8`. Only reached for
 /// fundamentals below `Nyquist / 512` (~47 Hz at 48 kHz), where the reference's
@@ -128,19 +151,17 @@ pub const LEVELS_PER_OCTAVE: usize = 2;
 pub const LEVEL_COUNT: usize = 9 * LEVELS_PER_OCTAVE;
 
 /// Fixed-point fraction bits of a table sample: entries are the waveform
-/// (`i8` scale) times 16, so the table's own rounding sits 24 dB under the
-/// reference's `i8` quantisation instead of at it.
-pub const FRAC_BITS: u32 = 4;
-
-/// Mask for a 16.16 table phase.
-const PHASE_MASK: u64 = ((TABLE_SIZE as u64) << 16) - 1;
+/// (`i8` scale) times 128, so the table's own rounding sits 42 dB under the
+/// reference's `i8` quantisation instead of at it. The Gibbs overshoot peaks
+/// at ~1.19 x `i8` full scale, ~19 300 here: inside `i16` with room to spare.
+pub const FRAC_BITS: u32 = 7;
 
 /// Tables kept before the cache is dropped and rebuilt on demand. Tables are
 /// pure functions of their key, so eviction can only cost time, never change
 /// a sample.
 ///
-/// The ceiling is bigger than the tables alone: each table is 8 KiB, so 4096
-/// of them are 32 MiB, and every cached table hangs off a [`Source`] that is
+/// The ceiling is bigger than the tables alone: a table is at most 8 KiB, so
+/// 4096 of them are at most 32 MiB, and every cached table hangs off a [`Source`] that is
 /// not counted here -- 513 `Complex<f32>` (4104 B), its `<= 128 B` key and an
 /// 18-slot level array (288 B), ~4.5 KiB each. A source holds at least one
 /// table, so there are at most 4096 of them: up to ~18 MiB more, ~50 MiB in
@@ -169,6 +190,25 @@ pub fn level_harmonics(level: usize) -> usize {
     }
 }
 
+/// Points in a level's table with `harmonics` partials:
+/// `next_pow2(POINTS_PER_TOP_PARTIAL * harmonics)`, clamped to
+/// `MIN_TABLE_SIZE..=TABLE_SIZE`. Levels 0-7 (512..45 partials) get 4096,
+/// down to 64 for the 1-partial level. A power of two, and at least
+/// `8 * harmonics` for every level on the ladder.
+pub fn table_size_for(harmonics: usize) -> usize {
+    (POINTS_PER_TOP_PARTIAL * harmonics).next_power_of_two().clamp(MIN_TABLE_SIZE, TABLE_SIZE)
+}
+
+/// The size a source with an `n`-byte cycle builds `harmonics` partials at:
+/// [`table_size_for`], floored at `n`. Both are powers of two, so the floor
+/// keeps `size / n` -- the oscillator's phase ratio -- a whole number (a table
+/// smaller than its cycle would give a ratio of 0). In the engine a level thin
+/// enough to need the floor is never selected for a cycle long enough to hit
+/// it; only a fundamental near Nyquist on a long cycle gets there.
+fn level_table_size(harmonics: usize, n: usize) -> usize {
+    table_size_for(harmonics).max(n)
+}
+
 /// The level for a voice stepping `f0` cycles per output sample: the first
 /// (richest) level whose top partial is strictly under Nyquist
 /// (`H * f0 < 0.5`; a partial exactly at Nyquist has no defined phase to
@@ -183,21 +223,32 @@ pub fn level_for(f0_cycles_per_sample: f64) -> usize {
 #[derive(Clone)]
 pub struct HifiOsc {
     table: Arc<[i16]>,
-    /// `TABLE_SIZE / N`: the mixer position counts bytes of a `0x280` buffer
+    /// `table.len() / N`: the mixer position counts bytes of a `0x280` buffer
     /// that holds `0x280 / N` whole cycles, so `pos * ratio` is table phase.
     ratio: u64,
+    /// Mask for a 16.16 phase into this table: `(table.len() << 16) - 1`.
+    phase_mask: u64,
+    /// Index wrap for the interpolation's second read: `table.len() - 1`.
+    last: usize,
 }
 
 impl HifiOsc {
+    /// `table` (a power-of-two length, at least `n`) played as an `n`-byte cycle.
+    fn new(table: Arc<[i16]>, n: usize) -> Self {
+        let size = table.len();
+        debug_assert!(size.is_power_of_two() && size >= n && size % n == 0);
+        HifiOsc { ratio: (size / n) as u64, phase_mask: ((size as u64) << 16) - 1, last: size - 1, table }
+    }
+
     /// The band-limited value at 16.16 buffer position `pos`, in `i8` scale
     /// times `1 << FRAC_BITS`; linearly interpolated.
     #[inline]
     pub fn sample(&self, pos: u32) -> i32 {
-        let p = (pos as u64 * self.ratio) & PHASE_MASK;
+        let p = (pos as u64 * self.ratio) & self.phase_mask;
         let i = (p >> 16) as usize;
         let frac = (p & 0xffff) as i32;
         let a = self.table[i] as i32;
-        let b = self.table[(i + 1) & (TABLE_SIZE - 1)] as i32;
+        let b = self.table[(i + 1) & self.last] as i32;
         a + (((b - a) * frac) >> 16)
     }
 
@@ -211,11 +262,11 @@ impl HifiOsc {
         let mut b = [0i32; 4];
         let mut frac = [0i32; 4];
         for k in 0..4 {
-            let p = (pos[k] as u64 * self.ratio) & PHASE_MASK;
+            let p = (pos[k] as u64 * self.ratio) & self.phase_mask;
             let i = (p >> 16) as usize;
             frac[k] = (p & 0xffff) as i32;
             a[k] = self.table[i] as i32;
-            b[k] = self.table[(i + 1) & (TABLE_SIZE - 1)] as i32;
+            b[k] = self.table[(i + 1) & self.last] as i32;
         }
         let (a, b, frac) = (i32x4::from_array(a), i32x4::from_array(b), i32x4::from_array(frac));
         a + (((b - a) * frac) >> i32x4::splat(16))
@@ -243,9 +294,13 @@ pub enum BankMode {
 
 /// Lazy cache of band-limited cycles, keyed by table contents.
 pub struct HifiBank {
-    inverse: Arc<dyn Fft<f32>>,
+    /// Inverse FFTs, one plan per table size (the planner caches them).
+    planner: FftPlanner<f32>,
     sources: FxHashMap<Box<[i8]>, Source>,
     cached_tables: usize,
+    /// Samples in the cached tables (they differ in size by level).
+    cached_points: usize,
+    /// `TABLE_SIZE` slots; a build uses the first `size`.
     scratch: Vec<Complex<f32>>,
     mode: BankMode,
     /// Lookups a `Locked` bank could not serve from the exact level.
@@ -262,11 +317,11 @@ impl Default for HifiBank {
 
 impl HifiBank {
     pub fn new() -> Self {
-        let mut planner = FftPlanner::new();
         HifiBank {
-            inverse: planner.plan_fft_inverse(TABLE_SIZE),
+            planner: FftPlanner::new(),
             sources: FxHashMap::default(),
             cached_tables: 0,
+            cached_points: 0,
             scratch: vec![Complex::new(0.0, 0.0); TABLE_SIZE],
             mode: BankMode::Lazy,
             misses: 0,
@@ -301,6 +356,7 @@ impl HifiBank {
     pub fn clear(&mut self) {
         self.sources.clear();
         self.cached_tables = 0;
+        self.cached_points = 0;
         self.full = false;
     }
 
@@ -325,6 +381,11 @@ impl HifiBank {
         self.cached_tables
     }
 
+    /// Bytes of `i16` samples in the cached tables (diagnostics and tests).
+    pub fn table_bytes(&self) -> usize {
+        self.cached_points * std::mem::size_of::<i16>()
+    }
+
     /// The oscillator for one cycle (`cycle.len()` is `4 << wave_length`) read
     /// at `f0_cycles_per_sample`; `None` for a silent table (the reference
     /// path already plays exactly that) and, in `Locked` mode, when the source
@@ -340,7 +401,7 @@ impl HifiBank {
             BankMode::Locked => self.lookup(cycle, level),
             BankMode::Lazy | BankMode::Prewarm => self.get_or_build(cycle, level),
         }?;
-        Some(HifiOsc { table, ratio: (TABLE_SIZE / n) as u64 })
+        Some(HifiOsc::new(table, n))
     }
 
     /// `Locked`: the exact level, else the nearest built level with fewer
@@ -368,14 +429,19 @@ impl HifiBank {
             }
             self.sources.clear();
             self.cached_tables = 0;
+            self.cached_points = 0;
         }
         if !self.sources.contains_key(cycle) {
             self.sources.insert(cycle.into(), Source { coeffs: staircase_spectrum(cycle), levels: Default::default() });
         }
         let source = self.sources.get_mut(cycle).expect("inserted above");
-        let t = build_level(&*self.inverse, &mut self.scratch, &source.coeffs, level_harmonics(level));
+        let harmonics = level_harmonics(level);
+        let size = level_table_size(harmonics, cycle.len());
+        let inverse = self.planner.plan_fft_inverse(size);
+        let t = build_level(&*inverse, &mut self.scratch[..size], &source.coeffs, harmonics);
         source.levels[level] = Some(t.clone());
         self.cached_tables += 1;
+        self.cached_points += size;
         Some(t)
     }
 }
@@ -417,15 +483,19 @@ fn staircase_spectrum(cycle: &[i8]) -> Vec<Complex<f32>> {
 }
 
 /// One mip level: bins `1..=harmonics` (and their conjugates) populated, every
-/// other bin zero -- `wavetable.rs`'s truncation -- then one inverse FFT.
+/// other bin zero -- `wavetable.rs`'s truncation -- then one inverse FFT of
+/// `scratch.len()` points (the level's table size, `inverse`'s length).
 fn build_level(inverse: &dyn Fft<f32>, scratch: &mut [Complex<f32>], coeffs: &[Complex<f32>], harmonics: usize) -> Arc<[i16]> {
+    let size = scratch.len();
+    debug_assert_eq!(inverse.len(), size);
+    debug_assert!(harmonics <= size / 8);
     scratch.fill(Complex::new(0.0, 0.0));
-    let m = TABLE_SIZE as f32;
+    let m = size as f32;
     scratch[0] = coeffs[0] * m;
     for k in 1..=harmonics {
         let v = coeffs[k] * m;
         scratch[k] = v;
-        scratch[TABLE_SIZE - k] = v.conj();
+        scratch[size - k] = v.conj();
     }
     inverse.process(scratch);
     // rustfft's inverse is unscaled: dividing by M gives sum_k c_k e^(+i..)
@@ -469,6 +539,96 @@ mod tests {
         assert_eq!(4.0 * f0, 0.5);
         let h = level_harmonics(level_for(f0));
         assert!((h as f64) * f0 < 0.5, "level keeps {h} partials");
+    }
+
+    #[test]
+    fn table_size_follows_the_level_ladder() {
+        // (harmonics, size) for every level: 64 points per top partial,
+        // clamped to 64..=4096.
+        let want = [
+            (512, 4096),
+            (362, 4096),
+            (256, 4096),
+            (181, 4096),
+            (128, 4096),
+            (91, 4096),
+            (64, 4096),
+            (45, 4096),
+            (32, 2048),
+            (23, 2048),
+            (16, 1024),
+            (11, 1024),
+            (8, 512),
+            (6, 512),
+            (4, 256),
+            (3, 256),
+            (2, 128),
+            (1, 64),
+        ];
+        assert_eq!(want.len(), LEVEL_COUNT);
+        for (level, &(h, size)) in want.iter().enumerate() {
+            assert_eq!(level_harmonics(level), h, "level {level}");
+            assert_eq!(table_size_for(h), size, "level {level} (H={h})");
+            // The Nyquist bin stays empty: at least 8 points per top partial.
+            assert!(h <= size / 8, "level {level}");
+        }
+        // Per source, every level built: 18 x 4096 before, this now.
+        assert_eq!(want.iter().map(|&(_, s)| s).sum::<usize>(), 40640);
+    }
+
+    #[test]
+    fn table_size_clamps_at_both_ends() {
+        assert_eq!(table_size_for(1), MIN_TABLE_SIZE);
+        assert_eq!(table_size_for(0), MIN_TABLE_SIZE);
+        assert_eq!(table_size_for(MAX_HARMONICS), TABLE_SIZE);
+        // 64 x 64 is exactly 4096: no rounding up past the clamp needed.
+        assert_eq!(table_size_for(64), 4096);
+        assert_eq!(table_size_for(33), 4096);
+        // Not a power of two: 64 x 45 = 2880, rounded up.
+        assert_eq!(table_size_for(45), 4096);
+        assert_eq!(table_size_for(23), 2048);
+        for h in 1..=MAX_HARMONICS {
+            assert!(table_size_for(h).is_power_of_two());
+        }
+    }
+
+    #[test]
+    fn a_table_is_never_shorter_than_its_cycle() {
+        for n in [4usize, 8, 16, 32, 64, 128] {
+            let cycle: Vec<i8> = (0..n).map(|i| if i < n / 3 { 100 } else { -60 }).collect();
+            // What the engine can ask for (`f0 * n <= 0.65` bytes per sample):
+            // the level's own size already covers the cycle, the floor is idle.
+            for i in 1..=200 {
+                let f0 = 0.65 / n as f64 * i as f64 / 200.0;
+                let h = level_harmonics(level_for(f0));
+                assert!(table_size_for(h) >= n, "n {n} f0 {f0}: H={h} gives {} points", table_size_for(h));
+            }
+            // Anything else (up to past Nyquist): the floor holds the ratio whole.
+            let mut bank = HifiBank::new();
+            for i in 1..=400 {
+                let f0 = 0.9 * i as f64 / 400.0;
+                let o = bank.oscillator(&cycle, f0).unwrap();
+                let size = o.table.len();
+                assert!(size >= n && size % n == 0, "n {n} f0 {f0}: size {size}");
+                assert_eq!(o.ratio as usize * n, size);
+                assert_eq!(size, level_table_size(level_harmonics(level_for(f0)), n));
+            }
+            // The floor does bite past the engine's range: 1 partial of a
+            // 128-byte cycle is 128 points, not 64.
+            assert_eq!(level_table_size(1, 128), 128);
+        }
+    }
+
+    #[test]
+    fn table_bytes_counts_each_table_at_its_own_size() {
+        let cycle: Vec<i8> = (0..32).map(|i| if i < 9 { 90 } else { -30 }).collect();
+        let mut bank = HifiBank::new();
+        bank.oscillator(&cycle, 1e-5).unwrap(); // level 0: 4096 points
+        bank.oscillator(&cycle, 0.3).unwrap(); // 1 partial: 64 points (>= n = 32, no floor)
+        assert_eq!(bank.table_count(), 2);
+        assert_eq!(bank.table_bytes(), (4096 + 64) * 2);
+        bank.clear();
+        assert_eq!(bank.table_bytes(), 0);
     }
 
     fn osc(cycle: &[i8], f0: f64) -> HifiOsc {
@@ -526,10 +686,11 @@ mod tests {
         let o = bank.oscillator(&cycle, f0).unwrap();
         let h = level_harmonics(level_for(f0));
         assert!(h as f64 * f0 < 0.5);
+        let size = o.table.len();
         let mut spec: Vec<Complex<f32>> = o.table.iter().map(|&s| Complex::new(s as f32, 0.0)).collect();
-        FftPlanner::new().plan_fft_forward(TABLE_SIZE).process(&mut spec);
+        FftPlanner::new().plan_fft_forward(size).process(&mut spec);
         let peak = spec[1..=h].iter().map(|c| c.norm()).fold(0.0, f32::max);
-        let above = spec[h + 2..TABLE_SIZE / 2].iter().map(|c| c.norm()).fold(0.0, f32::max);
+        let above = spec[h + 2..size / 2].iter().map(|c| c.norm()).fold(0.0, f32::max);
         assert!(above < peak * 1e-3, "energy above H={h}: {above} vs peak {peak}");
     }
 
