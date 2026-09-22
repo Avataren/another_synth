@@ -885,8 +885,8 @@ impl AudioEngine {
 
         #[cfg(not(feature = "wasm"))]
         let elapsed_sec = start.elapsed().as_secs_f64();
-        // The available time per quantum (128 samples) is:
-        let quantum_sec = 128.0 / self.sample_rate as f64;
+        // The available time for this block (`frames` samples) is:
+        let quantum_sec = frames as f64 / self.sample_rate as f64;
         // Accumulate processing and quantum times:
         self.cpu_time_accum += elapsed_sec;
         self.audio_time_accum += quantum_sec;
