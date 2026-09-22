@@ -1,0 +1,32 @@
+Gate output for the 2026-09-22 architecture review (.ai/arch-review-2026-09-22.md)
+Tree: agent/arch-review-0922a @ e31dc0df, clean worktree; no code changed by the review.
+Run 2026-09-22 ~20:05-20:12 local. The raw run was ~57k lines of mostly console noise
+from the test suite, so this file keeps the verdict lines and trims the rest.
+
+=== 1. npx vue-tsc --noEmit -p tsconfig.json
+    exit 0. No diagnostics printed: 0 TypeScript errors, .vue SFCs included.
+    Only output: npm "Unknown project config" warnings (shamefully-hoist,
+    strict-peer-dependencies, resolution-mode) from .npmrc.
+
+=== 2. npm run lint   (eslint --ext .js,.ts,.vue ./)
+    exit 0. No lint diagnostics printed: 0 errors, 0 warnings.
+
+=== 3. npm run test:run   (vitest run, pool: threads)
+    exit 0.
+     Test Files  233 passed (233)
+          Tests  3743 passed (3743)
+       Duration  62.67s (transform 30.13s, setup 5.33s, collect 184.81s, tests 387.07s,
+                 environment 191.04s, prepare 50.04s)
+    src/tests/tracker-playback-event-stream.test.ts: 139 tests passed (30.5 s). The
+    parallel-pool flake recorded in project memory did not happen on this run, and
+    SKIPSET is empty (tracker-playback-event-stream.test.ts:69).
+    Expected stderr noise (all in passing tests), for example:
+      [PooledInstrument] Failed to connect worklet to destination TypeError:
+        this.workletNode.connect is not a function   (worklet-graph-sync.test.ts mock)
+      PromiseRejectionHandledWarning: Promise rejection was handled asynchronously
+
+=== 4. gitleaks detect --no-git --source .
+    NOT RUN. This session's permission policy blocks the gitleaks binary
+    ("This command requires approval"), and it also blocked `gitleaks version`.
+    Run it by hand before any follow-up lands. (.gitignore:38 excludes
+    /deploy-local.sh, which "carries a host password". That file is the one to watch.)
