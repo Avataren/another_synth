@@ -54,6 +54,34 @@ describe('profileForFormat', () => {
   });
 });
 
+// Arch review N8: the per-song engine preference is staged but unset, so the
+// app's global useSimplifiedModInstruments setting still decides everywhere.
+describe('FormatProfile.instrumentEngine', () => {
+  it('is absent from every built-in profile', () => {
+    for (const format of ['protracker', 'xm', 's3m', 'ahx', 'native'] as const) {
+      expect(profileForFormat(format).instrumentEngine).toBeUndefined();
+    }
+    expect(
+      profileForFormat('s3m', { amigaLimits: true, fastVolumeSlides: true })
+        .instrumentEngine,
+    ).toBeUndefined();
+  });
+
+  it('returns the shared constant unchanged when not supplied', () => {
+    expect(profileForFormat('xm', {})).toBe(XM_PROFILE);
+  });
+
+  it('is copied onto the profile when supplied, leaving the rest intact', () => {
+    const profile = profileForFormat('xm', { instrumentEngine: 'worklet' });
+    expect(profile.instrumentEngine).toBe('worklet');
+    expect({ ...profile, instrumentEngine: undefined }).toEqual({
+      ...XM_PROFILE,
+      instrumentEngine: undefined,
+    });
+    expect(XM_PROFILE.instrumentEngine).toBeUndefined();
+  });
+});
+
 describe('engine resolves a profile from the song', () => {
   it('adopts the profile matching the song format', () => {
     const engine = new PlaybackEngine();

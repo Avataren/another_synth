@@ -1925,7 +1925,15 @@ export class TrackerSongBank implements TrackerSink {
     // does implement XM's tracker volume/pan envelopes, auto-vibrato and
     // per-channel voice ownership, so this is an architecture cleanup rather
     // than a functional gap.
-    const useSimplified = userSettings.settings.useSimplifiedModInstruments;
+    //
+    // The per-song `FormatProfile.instrumentEngine` wins when present; no
+    // song sets it yet, so the global setting still decides for all of them.
+    const instrumentEngine =
+      this.formatProfile.instrumentEngine ??
+      (userSettings.settings.useSimplifiedModInstruments
+        ? 'sampler'
+        : 'worklet');
+    const useSimplified = instrumentEngine === 'sampler';
 
     // DETAILED DEBUGGING
     console.log('[SongBank] === INSTRUMENT CREATION DEBUG ===');

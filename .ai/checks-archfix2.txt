@@ -1,0 +1,101 @@
+
+=== 1a touched vitest suites (HEAD b4fe9146) — 2026-09-22T21:02:39+02:00 ===
+[SongBank] syncSlots complete: 0/5 instruments loaded
+[SongBank] Active instruments: 
+[SongBank] ✅ Master gain connected to destination
+
+stderr | src/tests/tracker-song-bank-instrument-build-slicing.test.ts > TrackerSongBank.syncSlots: idle-scheduled instrument build slicing > resolves only once every desired instrument has actually been ensured
+[SongBank] ⚠️ Only 0/5 instruments loaded
+
+ ✓ src/tests/tracker-song-bank-instrument-build-slicing.test.ts (2 tests) 16ms
+ ✓ src/tests/synth-worklet-pooled-scoping.test.ts (5 tests) 744ms
+
+ Test Files  7 passed (7)
+      Tests  68 passed (68)
+   Start at  21:02:40
+   Duration  1.67s (transform 956ms, setup 45ms, collect 1.96s, tests 1.18s, environment 1.09s, prepare 2.54s)
+
+exit 0
+
+=== 1b FULL npx vitest run — 2026-09-22T21:02:41+02:00 ===
+    volumeColumnPans: 0,
+    unmappedCommands: 0,
+    stereoSamples: 0,
+    packedSamples: 0,
+    disabledChannelCells: 0
+  }
+}
+
+ ✓ src/tests/stores/tracker-store-plist-guard.test.ts (11 tests) 37883ms
+   ✓ the size guard in trackerStore.updateAhxInstrument > refuses growth past the limit (the table’s Add row included) with the reason, and changes nothing 405ms
+   ✓ the size guard in trackerStore.updateAhxInstrument > accepts a shrink, and then the row fits again, exactly to the limit 338ms
+   ✓ the size guard in trackerStore.updateAhxInstrument > the undo hook > one undo step per gesture, none for a refusal, and undo brings the PList back 2862ms
+   ✓ the size guard in trackerStore.updateAhxInstrument > the undo hook > a refused key in the middle of a gesture leaves the run one step, and one undo takes it all back 1974ms
+   ✓ the size guard in trackerStore.updateAhxInstrument > the undo hook > a write the store refuses after the snapshot leaves no step behind, and the gesture starts over 342ms
+   ✓ the size guard in trackerStore.updateAhxInstrument > the undo hook > a refused growth leaves no undo step, and the song still serializes 655ms
+   ✓ the size guard in trackerStore.updateAhxInstrument > property (store path): random PList edits through the store keep the file serializable 30753ms
+ ✓ src/tests/ahx-doc-ops.test.ts (31 tests) 36995ms
+   ✓ size budget > used equals the serialized nameOffset, for real songs and a new one 306ms
+   ✓ property: whatever the ops accept serializes, parses back to the doc and projects the same > 300 random op sequences on 8 corpus songs and a new song, with and without size pressure 35849ms
+
+ Test Files  236 passed (236)
+      Tests  3758 passed (3758)
+   Start at  21:02:42
+   Duration  63.07s (transform 30.78s, setup 6.00s, collect 184.42s, tests 399.30s, environment 199.86s, prepare 51.25s)
+
+exit 0
+
+=== 2 npm run lint — 2026-09-22T21:03:45+02:00 ===
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 lint
+npm notice run eslint --ext .js,.ts,.vue ./
+exit 0
+
+=== 3 npx vue-tsc --noEmit — 2026-09-22T21:03:52+02:00 ===
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 npx
+npm notice run 'vue-tsc' --noEmit
+exit 0
+
+=== 4a cargo test (rust-wasm/, plain — as specified) — 2026-09-22T21:04:01+02:00 ===
+error[E0432]: unresolved import `audio_processor::audio_engine::native`
+error[E0432]: unresolved import `audio_processor::audio_engine::native`
+error: could not compile `audio_processor` (test "engine_node_integration") due to 1 previous error; 4 warnings emitted
+error: could not compile `audio_processor` (test "envelope_preview") due to 1 previous error
+exit 101
+
+=== 4b cargo test --features native-host (rust-wasm/) — 2026-09-22T21:04:05+02:00 ===
+test audio_engine::wav_decode::tests::complete_16bit_data_keeps_the_i16_max_scale ... ok
+test audio_engine::wav_decode::tests::truncated_data_chunk_is_an_error_not_a_panic ... ok
+test result: ok. 116 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 44.10s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 94.28s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.57s
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.66s
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 46.81s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.26s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+test result: FAILED. 38 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.51s
+error: test failed, to rerun pass `--test ahx_render_golden`
+exit 101
+
+=== 5 npm run check:artifacts — 2026-09-22T21:07:44+02:00 ===
+npm notice run node scripts/check-artifacts.cjs
+✓ public/worklets and public/wasm match their sources
+exit 0
+
+=== 6 regression-test red-run evidence (old binary) — recorded 2026-09-22, measured ~21:02 ===
+Red against the old artifact (MEASURED): with base's audio_processor_bg.wasm
+swapped in temporarily, both tests in src/tests/synth-worklet-truncated-wav.test.ts
+fail — the caught value is an object (RuntimeError: unreachable), and the
+subsequent valid sample import exports [] (engine dead, wasm-bindgen borrow
+never released). With the new wasm: caught value is the string
+"Failed to read enough bytes.", the re-import round-trips exactly, the IR
+re-import exports, and both slots render (RMS > 1e-3). New wasm restored
+(sha 763c2488… re-verified).
