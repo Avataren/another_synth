@@ -107,6 +107,8 @@ describe('AhxInstrumentPage analyzer row (B2)', () => {
     expect(freq.exists()).toBe(true);
     expect(osc.props('node')).toBe(ahxPreviewOutputNode.value);
     expect(freq.props('node')).toBe(ahxPreviewOutputNode.value);
+    // AHX preview is monophonic: the oscilloscope must not do a stereo split.
+    expect(osc.props('mono')).toBe(true);
     expect(osc.props('node')).toBeNull();
   });
 

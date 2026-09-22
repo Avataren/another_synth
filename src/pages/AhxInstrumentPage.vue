@@ -265,7 +265,7 @@
             @toggle-midi="play.toggleMidi"
           />
           <div v-if="audible" class="ahx-analyzer" data-testid="ahx-analyzer-row">
-            <OscilloscopeComponent :node="ahxPreviewOutputNode" data-testid="ahx-analyzer-oscilloscope" />
+            <OscilloscopeComponent :node="ahxPreviewOutputNode" :mono="true" data-testid="ahx-analyzer-oscilloscope" />
             <FrequencyAnalyzerComponent :node="ahxPreviewOutputNode" data-testid="ahx-analyzer-frequency" />
           </div>
           <span v-else class="ahx-dim" data-testid="ahx-analyzer-off"
