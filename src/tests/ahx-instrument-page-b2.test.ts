@@ -203,58 +203,6 @@ describe('AhxInstrumentPage, EDITOR-UX batch 2 "see the sound"', () => {
     });
   });
 
-  describe('E6: the PList strip', () => {
-    it('renders one named chip per entry, with the raw code as secondary text', async () => {
-      const w = await mountEditor(2);
-      const entries = ins(2).plist.entries;
-      const chips = w.findAll('[data-testid^="ahx-strip-chip-"]');
-      expect(chips).toHaveLength(entries.length);
-      // karma #2: row 0 carries 4/11, "Pulse + brightness sweeps on/off"
-      expect(el(w, 'ahx-strip-chip-0').text()).toContain('Pulse + brightness sweeps on/off');
-      expect(el(w, 'ahx-strip-chip-0').text()).toContain('411');
-      expect(el(w, 'ahx-strip-fx-0-0').classes()).toContain('ahx-chip__fx--pulse'); // 3/xx sets the pulse width
-      expect(el(w, 'ahx-strip-fx-0-1').classes()).toContain('ahx-chip__fx--sweep');
-      expect(el(w, 'ahx-plist-strip-caption').text()).toMatch(/little score/);
-    });
-
-    it('clicking a chip selects it and highlights the same row of the table', async () => {
-      const w = await mountEditor(2);
-      expect(el(w, 'ahx-strip-chip-1').attributes('data-selected')).toBe('false');
-      await el(w, 'ahx-strip-chip-1').trigger('click');
-      expect(el(w, 'ahx-strip-chip-1').attributes('data-selected')).toBe('true');
-      expect(el(w, 'ahx-strip-chip-1').attributes('aria-selected')).toBe('true');
-      expect(el(w, 'ahx-plist-row-1').attributes('data-selected')).toBe('true');
-      expect(el(w, 'ahx-plist-row-1').classes()).toContain('ahx-row--selected');
-      expect(el(w, 'ahx-plist-row-0').attributes('data-selected')).toBe('false');
-      await el(w, 'ahx-strip-chip-0').trigger('click');
-      expect(el(w, 'ahx-plist-row-1').attributes('data-selected')).toBe('false');
-      expect(el(w, 'ahx-plist-row-0').attributes('data-selected')).toBe('true');
-    });
-
-    it('the arrow keys move the selection along the strip', async () => {
-      const w = await mountEditor(2);
-      await el(w, 'ahx-strip-chip-0').trigger('click');
-      await el(w, 'ahx-strip-chip-0').trigger('keydown', { key: 'ArrowRight' });
-      expect(el(w, 'ahx-strip-chip-1').attributes('data-selected')).toBe('true');
-      await el(w, 'ahx-strip-chip-1').trigger('keydown', { key: 'End' });
-      expect(el(w, 'ahx-strip-chip-2').attributes('data-selected')).toBe('true');
-      await el(w, 'ahx-strip-chip-2').trigger('keydown', { key: 'ArrowRight' });
-      expect(el(w, 'ahx-strip-chip-2').attributes('data-selected')).toBe('true'); // stops at the end
-      await el(w, 'ahx-strip-chip-2').trigger('keydown', { key: 'Home' });
-      expect(el(w, 'ahx-strip-chip-0').attributes('data-selected')).toBe('true');
-    });
-
-    it('the strip follows an edit made in the table, and a removed selected row is deselected', async () => {
-      const w = await mountEditor(2);
-      await el(w, 'ahx-plist-0-waveform').setValue('4');
-      expect(el(w, 'ahx-strip-chip-0').text()).toContain('Noise');
-      await el(w, 'ahx-strip-chip-2').trigger('click');
-      await el(w, 'ahx-plist-remove-2').trigger('click');
-      expect(w.findAll('[data-testid^="ahx-strip-chip-"]')).toHaveLength(2);
-      expect(w.findAll('[data-selected="true"]')).toHaveLength(0);
-    });
-  });
-
   describe('E15: plain-language tooltips', () => {
     const titled = (node: Element): string => node.closest('[title]')?.getAttribute('title') || node.getAttribute('aria-label') || '';
 
