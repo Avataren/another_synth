@@ -108,7 +108,7 @@ describe('AhxInstrumentPage as an editor', () => {
     expect(slot().envelope).toMatchObject({ aFrames: 4, dVolume: 20, rFrames: 9 });
     await input(w, 'ahx-field-waveLength').setValue('3');
     expect(slot().waveLength).toBe(3);
-    await input(w, 'ahx-start-waveform').setValue('4');
+    await input(w, 'ahx-seg-startWaveform-4').setValue(true);
     expect(slot().plist.entries[0]!.waveform).toBe(4);
     await input(w, 'ahx-plist-speed').setValue('7');
     expect(slot().plist.speed).toBe(7);
