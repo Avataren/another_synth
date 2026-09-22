@@ -57,10 +57,52 @@
       one of its instruments from the list.
     </div>
 
-    <div v-else class="ahx-body">
+    <template v-else>
+    <!--
+      The sound band: the keys and the analyzer, sticky above both zones so they stay in view while any control
+      is dragged. Outside the grid, so its sticky containing block is the page and not a content-sized row.
+    -->
+    <div class="ahx-sound-band" data-testid="ahx-sound-band">
+      <AhxAuditionBar
+        :audible="audible"
+        :held-keys="heldKeys"
+        v-model:latch="latch"
+        v-model:restrike="restrike"
+        :octave="octave"
+        :strip-start="stripStart"
+        :midi-status="play.midiStatus.value"
+        @pointer-down="play.pointerDown"
+        @pointer-up="play.pointerUp"
+        @set-octave="play.setOctave"
+        @toggle-midi="play.toggleMidi"
+      />
+      <div v-if="audible" class="ahx-analyzer-wrap">
+        <div class="ahx-analyzer" data-testid="ahx-analyzer-row">
+          <figure class="ahx-analyzer__slot">
+            <OscilloscopeComponent :node="ahxPreviewOutputNode" :mono="true" data-testid="ahx-analyzer-oscilloscope" />
+            <figcaption class="ahx-dim" data-testid="ahx-analyzer-caption-wave">Wave</figcaption>
+          </figure>
+          <figure class="ahx-analyzer__slot">
+            <FrequencyAnalyzerComponent :node="ahxPreviewOutputNode" data-testid="ahx-analyzer-frequency" />
+            <figcaption class="ahx-dim" data-testid="ahx-analyzer-caption-spectrum">Spectrum</figcaption>
+          </figure>
+        </div>
+        <span v-if="!ahxPreviewOutputNode" class="ahx-dim ahx-analyzer__idle" data-testid="ahx-analyzer-idle"
+          >Play a note to see it here.</span
+        >
+      </div>
+      <span v-else class="ahx-dim" data-testid="ahx-analyzer-off"
+        >Unavailable: there is no source file to play this instrument from.</span
+      >
+    </div>
+
+    <div class="ahx-body">
       <div class="ahx-left">
         <fieldset class="ahx-card">
           <legend>Level &amp; wave</legend>
+          <p class="ahx-dim ahx-note" data-testid="ahx-group-intro-level">
+            How loud the instrument is, and how finely its tone is drawn.
+          </p>
           <div class="ahx-fields">
             <AhxSliderField
               label="Volume"
@@ -95,6 +137,16 @@
 
         <fieldset class="ahx-card">
           <legend>Vibrato</legend>
+          <span
+            class="ahx-status"
+            :class="{ 'ahx-status--on': groupStatus.vibrato.on }"
+            :title="groupStatus.vibrato.title"
+            data-testid="ahx-status-vibrato"
+            >{{ groupStatus.vibrato.on ? 'On' : 'Off' }}</span
+          >
+          <p class="ahx-dim ahx-note" data-testid="ahx-group-intro-vibrato">
+            Makes the pitch wobble, after a short steady start.
+          </p>
           <div class="ahx-fields">
             <AhxSliderField
               label="Vibrato delay"
@@ -135,6 +187,17 @@
 
         <fieldset class="ahx-card">
           <legend>Square</legend>
+          <span
+            class="ahx-status"
+            :class="{ 'ahx-status--on': groupStatus.square.on }"
+            :title="groupStatus.square.title"
+            data-testid="ahx-status-square"
+            >{{ groupStatus.square.on ? 'On' : 'Off' }}</span
+          >
+          <p class="ahx-dim ahx-note" data-testid="ahx-group-intro-square">
+            Sweeps the square wave between thin and fat while a note plays. Only heard once a PList row switches
+            the sweep on.
+          </p>
           <div class="ahx-fields">
             <AhxSliderField
               label="Square lower"
@@ -176,6 +239,17 @@
 
         <fieldset class="ahx-card">
           <legend>Filter</legend>
+          <span
+            class="ahx-status"
+            :class="{ 'ahx-status--on': groupStatus.filter.on }"
+            :title="groupStatus.filter.title"
+            data-testid="ahx-status-filter"
+            >{{ groupStatus.filter.on ? 'On' : 'Off' }}</span
+          >
+          <p class="ahx-dim ahx-note" data-testid="ahx-group-intro-filter">
+            Sweeps the brightness between muffled and thin while a note plays. Only heard once a PList row
+            switches the sweep on.
+          </p>
           <div class="ahx-fields">
             <AhxSliderField
               label="Filter lower"
@@ -209,6 +283,21 @@
               :title="AHX_HELP.filterSpeed"
               @update:model-value="setNumber('filterSpeed', $event)"
             />
+          </div>
+          <AhxSweepLane
+            class="ahx-fieldset-lane"
+            kind="filter"
+            :instrument="instrument"
+            :format="songFormat"
+            :version="sourceVersion"
+            @enable="enableSweep('filter')"
+          />
+          <!-- Not a filter setting: kept in this fieldset per the approved four groups, but labelled as its own thing. -->
+          <div class="ahx-subgroup" data-testid="ahx-subgroup-note-ending">
+            <h4 class="ahx-subgroup__title">Note ending (hard cut)</h4>
+            <p class="ahx-dim ahx-note">
+              Not a filter setting: how a note is cut short when the next one arrives. The volume envelope draws it.
+            </p>
             <div class="ahx-field-row">
               <label class="ahx-check" :title="AHX_HELP.hardCutRelease">
                 <input
@@ -238,43 +327,84 @@
               {{ instrument.hardCutReleaseFrames === 1 ? 'tick' : 'ticks' }} before the next row that sets an instrument (a number above the tempo cuts from the start of the row).
             </p>
           </div>
-          <AhxSweepLane
-            class="ahx-fieldset-lane"
-            kind="filter"
-            :instrument="instrument"
-            :format="songFormat"
-            :version="sourceVersion"
-            @enable="enableSweep('filter')"
-          />
         </fieldset>
       </div>
 
       <div class="ahx-right">
-        <div class="ahx-right-top">
-          <AhxAuditionBar
-            :audible="audible"
-            :held-keys="heldKeys"
-            v-model:latch="latch"
-            v-model:restrike="restrike"
-            :octave="octave"
-            :strip-start="stripStart"
-            :midi-status="play.midiStatus.value"
-            @pointer-down="play.pointerDown"
-            @pointer-up="play.pointerUp"
-            @set-octave="play.setOctave"
-            @toggle-midi="play.toggleMidi"
+      <section class="ahx-card" data-testid="ahx-card-tone">
+        <h3>Starting tone</h3>
+        <p class="ahx-dim ahx-note">
+          An AHX instrument has no waveform of its own: each PList row picks one.
+          These edit what the first row (the note's starting timbre) picks.
+        </p>
+        <div class="ahx-fields">
+          <AhxSegmented
+            label="Starts with"
+            :model-value="startWaveform"
+            :options="START_WAVE_OPTIONS"
+            :title="AHX_HELP.startWaveform"
+            testid="ahx-seg-startWaveform"
+            @update:model-value="setStartWaveform"
           />
-          <div v-if="audible" class="ahx-analyzer" data-testid="ahx-analyzer-row">
-            <OscilloscopeComponent :node="ahxPreviewOutputNode" :mono="true" data-testid="ahx-analyzer-oscilloscope" />
-            <FrequencyAnalyzerComponent :node="ahxPreviewOutputNode" data-testid="ahx-analyzer-frequency" />
-          </div>
-          <span v-else class="ahx-dim" data-testid="ahx-analyzer-off"
-            >Unavailable: there is no source file to play this instrument from.</span
-          >
+          <label class="ahx-field" :title="AHX_HELP.startWaveform">
+            <span class="ahx-field__label">Exact value</span>
+            <select
+              class="ahx-select"
+              data-testid="ahx-start-waveform"
+              :title="AHX_HELP.startWaveform"
+              :value="startWaveform"
+              @change="setStartWaveform(Number(($event.target as HTMLSelectElement).value))"
+            >
+              <option v-for="wave in WAVEFORM_CHOICES" :key="wave.value" :value="wave.value">
+                {{ wave.label }}
+              </option>
+            </select>
+          </label>
+          <AhxSliderField
+            label="Starting brightness"
+            :model-value="startFilterPosition"
+            :min="0"
+            :max="AHX_MAX_FILTER_POSITION"
+            :throttle-ms="AHX_TABLE_THROTTLE_MS"
+            :marker="AHX_FILTER_NEUTRAL"
+            marker-title="32 is the neutral position: no filtering"
+            :disabled="!canSetFilter"
+            :title="
+              canSetFilter
+                ? AHX_HELP.filterPosition
+                : 'The first PList row has no free command slot for a brightness (filter position) command.'
+            "
+            testid="ahx-start-filter"
+            @update:model-value="setStartFilter"
+          />
         </div>
+        <AhxWaveShape
+          :kind="previewKind"
+          :wave-length="instrument.waveLength"
+          :square-pos="previewSquarePos"
+          :filtered="usesFilter"
+        />
+        <p class="ahx-dim ahx-note" data-testid="ahx-wave-character">{{ AHX_WAVE_CHARACTER[previewKind] }}</p>
+        <ul v-if="waveforms.length" class="ahx-waves" data-testid="ahx-waveforms">
+          <li v-for="wave in waveforms" :key="wave.field" class="ahx-wave">
+            <svg class="ahx-wave__glyph" viewBox="0 0 32 16" aria-hidden="true">
+              <path :d="WAVE_GLYPH[wave.kind]" />
+            </svg>
+            <span class="ahx-wave__name">{{ waveLabel(wave.field) }}</span>
+            <span class="ahx-dim"
+              >first at row {{ hex2(wave.firstRow) }}, used {{ wave.count }}×</span
+            >
+          </li>
+        </ul>
+        <p v-else class="ahx-dim">The PList selects no waveform.</p>
+      </section>
 
-        <section class="ahx-card">
+      <section class="ahx-card" data-testid="ahx-card-envelope">
         <h3>Volume envelope</h3>
+        <p class="ahx-dim ahx-note" data-testid="ahx-envelope-howto">
+          Drag a dot to shape how the volume rises and falls over a note (arrow keys work too); double-click a dot
+          to type its exact value.
+        </p>
         <AhxEnvelopeEditor
           :envelope="instrument.envelope"
           :volume="instrument.volume"
@@ -284,7 +414,22 @@
           @hard-cut-frames="setNumber('hardCutReleaseFrames', $event)"
           @focus-field="focusField"
         />
-        <table class="ahx-table ahx-table--compact" data-testid="ahx-envelope-table">
+        <button
+          type="button"
+          class="ahx-btn"
+          :class="{ 'ahx-btn--active': envelopeTableVisible }"
+          :aria-expanded="envelopeTableVisible ? 'true' : 'false'"
+          title="Every stage's frames and level as typed numbers, for exact values."
+          data-testid="ahx-envelope-table-toggle"
+          @click="envelopeTableVisible = !envelopeTableVisible"
+        >
+          {{ envelopeTableVisible ? 'Hide exact values' : 'Type exact values' }}
+        </button>
+        <table
+          v-show="envelopeTableVisible"
+          class="ahx-table ahx-table--compact ahx-envelope-table"
+          data-testid="ahx-envelope-table"
+        >
           <thead>
             <tr><th>Stage</th><th>Frames</th><th>Volume</th></tr>
           </thead>
@@ -325,74 +470,6 @@
           {{ warning.text }}
         </p>
       </section>
-
-      <section class="ahx-card">
-        <h3>Waveform</h3>
-        <p class="ahx-dim ahx-note">
-          An AHX instrument has no waveform of its own: each PList row picks one.
-          These edit what the first row (the note's starting timbre) picks.
-        </p>
-        <div class="ahx-fields">
-          <AhxSegmented
-            label="Starts with"
-            :model-value="startWaveform"
-            :options="START_WAVE_OPTIONS"
-            :title="AHX_HELP.startWaveform"
-            testid="ahx-seg-startWaveform"
-            @update:model-value="setStartWaveform"
-          />
-          <label class="ahx-field" :title="AHX_HELP.startWaveform">
-            <span class="ahx-field__label">Exact value</span>
-            <select
-              class="ahx-select"
-              data-testid="ahx-start-waveform"
-              :title="AHX_HELP.startWaveform"
-              :value="startWaveform"
-              @change="setStartWaveform(Number(($event.target as HTMLSelectElement).value))"
-            >
-              <option v-for="wave in WAVEFORM_CHOICES" :key="wave.value" :value="wave.value">
-                {{ wave.label }}
-              </option>
-            </select>
-          </label>
-          <AhxSliderField
-            label="Filter position"
-            :model-value="startFilterPosition"
-            :min="0"
-            :max="AHX_MAX_FILTER_POSITION"
-            :throttle-ms="AHX_TABLE_THROTTLE_MS"
-            :marker="AHX_FILTER_NEUTRAL"
-            marker-title="32 is the neutral position: no filtering"
-            :disabled="!canSetFilter"
-            :title="
-              canSetFilter
-                ? AHX_HELP.filterPosition
-                : 'The first PList row has no free command slot for a brightness (filter position) command.'
-            "
-            testid="ahx-start-filter"
-            @update:model-value="setStartFilter"
-          />
-        </div>
-        <AhxWaveShape
-          :kind="previewKind"
-          :wave-length="instrument.waveLength"
-          :square-pos="previewSquarePos"
-          :filtered="usesFilter"
-        />
-        <p class="ahx-dim ahx-note" data-testid="ahx-wave-character">{{ AHX_WAVE_CHARACTER[previewKind] }}</p>
-        <ul v-if="waveforms.length" class="ahx-waves" data-testid="ahx-waveforms">
-          <li v-for="wave in waveforms" :key="wave.field" class="ahx-wave">
-            <svg class="ahx-wave__glyph" viewBox="0 0 32 16" aria-hidden="true">
-              <path :d="WAVE_GLYPH[wave.kind]" />
-            </svg>
-            <span class="ahx-wave__name">{{ waveLabel(wave.field) }}</span>
-            <span class="ahx-dim"
-              >first at row {{ hex2(wave.firstRow) }}, used {{ wave.count }}×</span
-            >
-          </li>
-        </ul>
-        <p v-else class="ahx-dim">The PList selects no waveform.</p>
-      </section>
       </div>
 
       <section class="ahx-card ahx-plist-full">
@@ -403,6 +480,10 @@
             {{ instrument.plist.speed }}</span
           >
         </h3>
+        <p class="ahx-dim ahx-note" data-testid="ahx-plist-intro">
+          The instrument's own little score: while a note sounds, it steps down these rows, and each row can change
+          the pitch, switch the tone or add an effect.
+        </p>
         <div class="ahx-fields ahx-fields--inline">
           <AhxSliderField
             stepper
@@ -579,6 +660,7 @@
         <p v-else class="ahx-dim">This instrument has no PList. Add a row to give it one.</p>
       </section>
     </div>
+    </template>
   </q-page>
 </template>
 
@@ -629,7 +711,9 @@ import {
 } from 'src/audio/tracker/ahx-plain-language';
 import {
   ahxSweepSetup,
+  ahxSweepState,
   ahxUsesFilter,
+  ahxVibratoStep,
   type AhxSweepKind,
 } from 'src/audio/tracker/ahx-instrument-visuals';
 import { AHX_TABLE_THROTTLE_MS } from 'src/composables/useAhxDrag';
@@ -723,6 +807,39 @@ const previewSquarePos = computed(() => {
 const usesFilter = computed(() =>
   instrument.value ? ahxUsesFilter(instrument.value, sweepContext.value) : false,
 );
+
+/**
+ * The On/Off pill beside each moving group's legend. Read from the same helpers
+ * the lanes draw from (`AhxVibratoLane`'s depth-0 / still-speed cases,
+ * `AhxSweepLane`'s `ahxSweepState`), so the pill and the lane never disagree.
+ */
+const groupStatus = computed(() => {
+  const ins = instrument.value;
+  const sweep = (kind: AhxSweepKind) => {
+    const state = ins ? ahxSweepState(ahxSweepSetup(ins, kind, sweepContext.value), kind) : 'no-toggle';
+    const what = kind === 'square' ? 'pulse-width' : 'brightness';
+    const title =
+      state === 'on'
+        ? `A PList row switches the ${what} sweep on, so these settings are heard.`
+        : state === 'unavailable'
+          ? `This AHX version-0 file cannot sweep the ${what}, so these settings do nothing.`
+          : state === 'no-square-row'
+            ? 'The sweep is switched on, but no PList row uses the square wave, so nothing moves. See the button below the picture.'
+            : `Nothing in the PList switches the ${what} sweep on, so these settings do nothing yet. See the button below the picture.`;
+    return { on: state === 'on', title };
+  };
+  const vibratoOn = !!ins && ins.vibratoDepth > 0 && !ahxVibratoStep(ins.vibratoSpeed).still;
+  return {
+    vibrato: {
+      on: vibratoOn,
+      title: vibratoOn
+        ? 'The pitch wobbles.'
+        : 'No wobble: the depth is 0, or the speed lands on a value (0, 32, 64…) that does not move.',
+    },
+    square: sweep('square'),
+    filter: sweep('filter'),
+  };
+});
 
 /** The PList row the canvas and the table highlight. */
 const selectedRow = ref<number | null>(null);
@@ -890,6 +1007,8 @@ const editEntry = (row: number, edit: AhxPListEdit) =>
 const editNotice = ahxEditNotice;
 /** The full PList table sits behind this toggle (default hidden); a double-click hand-off (`focusField`) opens it too. */
 const plistTableVisible = ref(false);
+/** The envelope's typed stage table, behind the same kind of toggle (default hidden); a node double-click opens it. */
+const envelopeTableVisible = ref(false);
 
 const {
   plistEdit,
@@ -920,13 +1039,14 @@ const {
 
 /**
  * Double-click on an envelope node, or the canvas's hand-off to the same table
- * field: the typed field for the same value. A PList field opens the table
- * first if it is behind the `v-show` toggle — `display:none` cannot receive
- * focus, so the ref flip must land in the DOM (`nextTick`) before the
+ * field: the typed field for the same value. A PList or envelope field opens
+ * its table first if it is behind the `v-show` toggle — `display:none` cannot
+ * receive focus, so the ref flip must land in the DOM (`nextTick`) before the
  * querySelector/focus.
  */
 async function focusField(testid: string): Promise<void> {
   if (/^ahx-plist-\d+-/.test(testid)) plistTableVisible.value = true;
+  if (testid.startsWith('ahx-env-')) envelopeTableVisible.value = true;
   await nextTick();
   const el = document.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`);
   el?.focus();
@@ -1062,6 +1182,7 @@ onUnmounted(() => {
 .ahx-right {
   display: grid;
   gap: 12px;
+  align-content: start;
 }
 
 .ahx-plist-full {
@@ -1271,30 +1392,123 @@ onUnmounted(() => {
   font-size: 0.8rem;
 }
 
-.ahx-right-top {
+/*
+ * The keys and the analyzer, stuck under the app header while the page scrolls.
+ * A direct child of the page (not a grid item, not a content-sized row), so the
+ * sticky box has the whole page to travel in.
+ */
+.ahx-sound-band {
+  position: sticky;
+  top: 0;
+  z-index: 6;
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: stretch;
   flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--app-background, #0b111a);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ahx-sound-band > .ahx-audition-bar {
+  flex: 1 1 420px;
+  /* The band is what sticks now; the bar inside it just fills its slot. */
+  position: static;
+}
+
+.ahx-analyzer-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
 .ahx-analyzer {
   display: flex;
+  gap: 8px;
+}
+
+.ahx-analyzer__slot {
+  display: flex;
   flex-direction: column;
-  gap: 6px;
-  width: 280px;
+  gap: 2px;
+  width: 150px;
+  margin: 0;
+}
+
+.ahx-analyzer__slot figcaption {
+  font-size: 0.7rem;
+  text-align: center;
 }
 
 /* FrequencyAnalyzerComponent inherits height: 100% with no fallback, so an
    unsized flex slot would collapse its canvas to 0 and it would draw
    nothing; OscilloscopeComponent has its own fixed 120px canvas that this
    caps down to match. */
-.ahx-analyzer > * {
-  height: 70px;
+.ahx-analyzer__slot > :first-child {
+  height: 56px;
 }
 
-.ahx-analyzer :deep(canvas) {
-  height: 70px;
+.ahx-analyzer__slot :deep(canvas) {
+  height: 56px;
+}
+
+.ahx-analyzer__slot :deep(.q-card__section) {
+  padding: 0;
+}
+
+/* Over the two boxes until the first note makes the preview voice (and its output) exist. */
+.ahx-analyzer__idle {
+  position: absolute;
+  inset: 0 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+
+.ahx-status {
+  float: right;
+  margin: -4px 0 0 8px;
+  padding: 0 8px;
+  border: 1px solid currentColor;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+
+.ahx-status--on {
+  color: var(--tracker-accent-secondary, #5ec2e8);
+  opacity: 1;
+}
+
+.ahx-subgroup {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+.ahx-subgroup__title {
+  margin: 0 0 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.ahx-envelope-table {
+  margin-top: 8px;
+}
+
+/* A phone: one column, and the band scrolls with the page (wrapped, it would cover too much of the screen). */
+@media (max-width: 760px) {
+  .ahx-body {
+    grid-template-columns: 1fr;
+  }
+
+  .ahx-sound-band {
+    position: static;
+  }
 }
 
 .ahx-fieldset-lane {
