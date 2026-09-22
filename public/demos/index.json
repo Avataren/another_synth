@@ -1,11 +1,20 @@
 {
   "version": 1,
-  "generated": "2026-09-20T18:01:37.365Z",
+  "generated": "2026-09-22T12:34:20.247Z",
   "collections": [
     {
       "id": "ahx",
       "name": "AHX / HivelyTracker",
       "songs": [
+        {
+          "title": "q22",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 128,
+          "instruments": 40,
+          "file": "ahx/(iridion 0.5)q22.ahx",
+          "bytes": 3689
+        },
         {
           "title": "64k_is_all_you_need",
           "format": "AHX",
@@ -50,6 +59,15 @@
           "instruments": 34,
           "file": "ahx/aces_high.ahx",
           "bytes": 26327
+        },
+        {
+          "title": "Afternoon Voyage III",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 29,
+          "instruments": 10,
+          "file": "ahx/afternoon voyage iii.ahx",
+          "bytes": 4116
         },
         {
           "title": "All That She Wants",
@@ -160,6 +178,15 @@
           "bytes": 9449
         },
         {
+          "title": "Cruisin",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 37,
+          "instruments": 12,
+          "file": "ahx/cruisin.ahx",
+          "bytes": 3941
+        },
+        {
           "title": "Depressed",
           "format": "AHX",
           "channels": 4,
@@ -223,6 +250,15 @@
           "bytes": 8068
         },
         {
+          "title": "Einlauf",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 49,
+          "instruments": 12,
+          "file": "ahx/einlauf (outrun).ahx",
+          "bytes": 3698
+        },
+        {
           "title": "Envy of Myra",
           "format": "AHX",
           "channels": 4,
@@ -259,6 +295,15 @@
           "bytes": 979
         },
         {
+          "title": "Fame",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 43,
+          "instruments": 18,
+          "file": "ahx/fame.ahx",
+          "bytes": 4400
+        },
+        {
           "title": "FinalFantasy2",
           "format": "AHX",
           "channels": 4,
@@ -293,6 +338,15 @@
           "instruments": 9,
           "file": "ahx/ghostbusters.ahx",
           "bytes": 2969
+        },
+        {
+          "title": "Gone",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 28,
+          "instruments": 12,
+          "file": "ahx/gone (filtered).ahx",
+          "bytes": 6639
         },
         {
           "title": "GoodTimes",
@@ -340,6 +394,24 @@
           "bytes": 15788
         },
         {
+          "title": "Kids",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 36,
+          "instruments": 19,
+          "file": "ahx/kids.ahx",
+          "bytes": 5071
+        },
+        {
+          "title": "Klisje paa Klisje",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 93,
+          "instruments": 20,
+          "file": "ahx/klisje paa klisje.ahx",
+          "bytes": 35060
+        },
+        {
           "title": "lets_go",
           "format": "AHX",
           "channels": 4,
@@ -365,6 +437,15 @@
           "instruments": 18,
           "file": "ahx/luminous.ahx",
           "bytes": 5647
+        },
+        {
+          "title": "Magical Shower",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 26,
+          "instruments": 22,
+          "file": "ahx/magical shower.ahx",
+          "bytes": 3233
         },
         {
           "title": "magneto_crack",
@@ -394,6 +475,15 @@
           "bytes": 3954
         },
         {
+          "title": "Mid Day Action",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 10,
+          "instruments": 20,
+          "file": "ahx/mid day action.ahx",
+          "bytes": 6243
+        },
+        {
           "title": "moderate sellotaping",
           "format": "HVL",
           "channels": 8,
@@ -401,6 +491,15 @@
           "instruments": 9,
           "file": "ahx/moderate_sellotaping.hvl",
           "bytes": 2719
+        },
+        {
+          "title": "my frend is a dick because he told me 4th channel is a lie",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 1,
+          "instruments": 8,
+          "file": "ahx/my frend is a dick because he told me 4th channel is a lie.ahx",
+          "bytes": 19525
         },
         {
           "title": "New song",
@@ -511,6 +610,15 @@
           "bytes": 2851
         },
         {
+          "title": "Stormlord",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 178,
+          "instruments": 30,
+          "file": "ahx/stormlord (hardcut).ahx",
+          "bytes": 10683
+        },
+        {
           "title": "streets",
           "format": "AHX",
           "channels": 4,
@@ -547,6 +655,15 @@
           "bytes": 4153
         },
         {
+          "title": "Tattoo in the armpit",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 33,
+          "instruments": 11,
+          "file": "ahx/tattoo in the armpit.ahx",
+          "bytes": 14108
+        },
+        {
           "title": "That's the Wave it is",
           "format": "AHX",
           "channels": 4,
@@ -554,6 +671,15 @@
           "instruments": 19,
           "file": "ahx/thats_the_wave_it_is.ahx",
           "bytes": 7583
+        },
+        {
+          "title": "The Floor is Moving Away[opt]",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 32,
+          "instruments": 36,
+          "file": "ahx/the floor is moving away.ahx",
+          "bytes": 16057
         },
         {
           "title": "the chase",
@@ -626,6 +752,15 @@
           "instruments": 14,
           "file": "ahx/yesterday_night.ahx",
           "bytes": 7966
+        },
+        {
+          "title": "Zero Impression",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 18,
+          "instruments": 33,
+          "file": "ahx/zero impression.ahx",
+          "bytes": 6548
         }
       ]
     },
