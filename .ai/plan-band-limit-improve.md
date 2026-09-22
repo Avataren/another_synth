@@ -40,11 +40,13 @@ Input: `.ai/band-limit-analysis.md` (committed on main; read-only analysis pass
   Why 7: alias floor −86…−90 dB vs −81…−86 dB for 6 (analysis M4, MEASURED in
   simulation), at zero per-sample CPU cost either way.
   Headroom check (analysis M4 + MEASURED off the code):
-  - Table peak ≤ 1.19 × i8 full scale (M5/M6 Gibbs bound) →
-    1.19 · 127 · 2^7 ≈ 19 341 < `i16::MAX` = 32 767; `build_level`'s clamp
-    (`hifi.rs:435`) never saturates. FRAC 6 would give ~9 671.
+  - Table peak ≤ 1.19 × i8 full scale (M5/M6 Gibbs bound estimate) →
+    1.19 · 127 · 2^7 ≈ 19 341; MEASURED table peak in the landed 64·H build is
+    ~22 900 i16 (landing review, 2026-09-22) — both < `i16::MAX` = 32 767;
+    `build_level`'s clamp (`hifi.rs:435`) never saturates. FRAC 6 would be
+    roughly half of these figures.
   - Mixer scale-through (`engine.rs` mix_chunk, HIFI lanes `:1394-1411`,
-    scalar `:1432-1466`): `s·vol` ≤ 19 341·64 ≈ 1.24e6 (i32 ✓);
+    scalar `:1432-1466`): `s·vol` ≤ 22 900·64 ≈ 1.47e6 (i32 ✓);
     `(j·pan) >> 7` with pan multiplier ≤ 255 (verify `pan_mult_left/right`
     provenance ≤ 255 when implementing; even 256 keeps it ≈ 3.2e8 < i32::MAX,
     ~6.8× margin) ✓; per-channel sum over 16 voices ≤ ~4e7 (i32 ✓); the
@@ -228,3 +230,90 @@ On `agent/band-limit-improve-0922a` only. NO push, NO merge, NO rebase.
   retune the cap in this pass.
 - No public/demos changes; no TrackerPage/IndexPage changes; rust-wasm edits
   limited to hifi/table-size + FRAC_BITS scope.
+## Landed (2026-09-22)
+
+Landed on `main` from `agent/band-limit-improve-0922a` @ 20c33f08 (base
+b6febdee, ancestor of main) via no-ff merge `df2b34a6`; push range
+`32aacc6a..df2b34a6`. Worktree `.ai/worktrees/bandlimit2` and the branch are
+left in place, clean.
+
+### Review
+
+PASS. Independent reviewer verified all 8 verification areas; 2 non-blocking
+nits (the doc nit is fixed in this landing commit — see below).
+
+### The falsification story (§9)
+
+- D1 (8·H sizing) was falsified by measurement before any code change:
+  bit-faithful numpy simulation (`.ai/bandlimit2-alias-sim.py`) showed that 8
+  table points per period of the top partial create interpolation images
+  folding into the audible range — 10–28 dB worse at mid/high pitches
+  (−50…−60 dB floor), which FRAC_BITS 7 cannot rescue. The coder run stopped
+  under D5 having edited nothing (session e0d5e212, 21:22).
+- Morten un-stopped with option (a): **64·H sizing + FRAC_BITS 7** (D1′).
+  Simulation: 64·H matches or beats current at every pitch tested.
+
+### Measured before/after (native, 44.1 kHz, release; checks-bandlimit2.txt)
+
+- Quality guardrail: **30/30 cases, worst d −0.0 dB, best d −13.2 dB,
+  regressions 0** (SUMMARY M64).
+- Table memory: total table_bytes 42,770,432 → 40,497,152 (**−5.3%** over the
+  7 baseline songs; per-song −1.2%…−27.8%); per-source ceiling 73,728 → 40,640
+  points (−44.9%). Table/source/tick counts identical on all 7 songs.
+- Prewarm: ~unchanged (median deltas −7.1%…+1.9%; two songs +≤2%, measurement
+  noise).
+- Baseline regen (D5): `ahx_hifi_baseline` hashes regenerated with counts
+  verified unchanged; old pin FAILED before regen (karma moved) as expected.
+- Untouched-by-construction: 84-song byte-exact export suites pass; all 38
+  `ahx_render_golden` fixture renders pass (the manifest test's known
+  pre-existing fixture-count failure untouched — 24 vs 84,
+  `.ai/plan-arch-fix2.md:196`).
+
+### Post-merge gates on main (df2b34a6, real exit codes)
+
+| Gate | Result |
+|---|---|
+| `npm run test:run` | PASS — 236 files / 3758 tests, exit 0 |
+| eslint | PASS, exit 0 |
+| `vue-tsc --noEmit` | PASS, exit 0 |
+| `npm run check:artifacts` | PASS — worklets/wasm match sources, exit 0 |
+| `gitleaks detect --no-git` | PASS — no leaks |
+| `cargo test --features native-host` | 268 passed, 1 known pre-existing failure (`ahx_render_golden::manifest_covers_every_fixture`, 24 vs 84 — documented, NOT a blocker) |
+
+### Deploy (2026-09-22 ~22:08–22:10)
+
+`scripts/deploy.sh` →
+avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth. Full output:
+`.ai/deploy-bandlimit-20260922.log` (force-added; `.ai/` is gitignored at
+`.gitignore:41`). Build succeeded; script's own verify: "Deployed and
+verified". Independent md5 byte-match, local `dist/spa` ↔ remote — all 8
+artifacts identical:
+
+| Artifact | md5 | match |
+|---|---|---|
+| index.html | 9a6484b9c32508a3d3aed1c4c2efcd8b | ✓ |
+| wasm/audio_processor_bg.wasm | e52bf5a9cd4f38e458532726f86e3f67 | ✓ |
+| wasm/audio_processor.js | b4a1b4ccd50a92959320c9763539ef94 | ✓ |
+| worklets/ahx-worklet.js | 0b1e28a2d692f80a2f9fc3a46d77f1e6 | ✓ |
+| worklets/effects-worklet.js | ea0b2d2be2fd5dd6ec9a6a6ccb5c5e71 | ✓ |
+| worklets/recording-worklet.js | 9c96bf69c35c1b90db4314dd0923147f | ✓ |
+| worklets/synth-worklet.js | d3be4813a900d1db107ac182b425f346 | ✓ |
+| demos/index.json | eb5a5b28e6a62dc81ec3cd28998ccdd6 | ✓ |
+
+Wasm provenance note: the deploy rebuild produced sha256 `a9f17cab…` while the
+committed SOURCE_HASH.json output record is `61a0c69e…`; the SOURCE hash is
+identical on both (`5c9e359d…`, 75 files), so the difference is the documented
+non-byte-reproducible wasm rebuild class (timestamp/build-path), not source
+drift. The deployed wasm is built from the merged sources and byte-matches the
+local dist exactly. `audio_processor.js` glue unchanged (`58a87d19…`, matches
+the committed record). Postdeploy residue (demos/index.json timestamp + wasm
+rebuild) stashed residue-recoverable per the arch-fix2 precedent
+(stash@{0} "On main: bandlimit postdeploy: deploy residue").
+
+### Reviewer's doc nit — handling
+
+The plan doc's D3 headroom check claimed table peak ~19 341 i16 (Gibbs-bound
+estimate); the reviewer measured ~22 900 i16. Fixed in this landing commit:
+the D3 bullet now records both the estimate and the measured peak
+(~22 900 < `i16::MAX`, clamp never saturates) and the mixer-scale margin uses
+the measured (larger) value (22 900·64 ≈ 1.47e6, i32 ✓). Conclusion unaffected.
