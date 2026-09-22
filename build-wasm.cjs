@@ -2,6 +2,7 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const chokidar = require('chokidar');
+const { writeWasmManifest } = require('./scripts/artifact-freshness.cjs');
 
 const RUST_DIR = path.join(__dirname, 'rust-wasm');
 const WASM_DIST = path.join(__dirname, 'public', 'wasm');
@@ -99,6 +100,11 @@ function buildWasm() {
       path.join(RUST_DIR, 'pkg', 'audio_processor_bg.wasm'),
       path.join(WASM_DIST, 'audio_processor_bg.wasm'),
     );
+
+    // Record what this binary was built from, for the freshness gate
+    // (scripts/artifact-freshness.cjs). Commit it with the binary.
+    const { sourceHash } = writeWasmManifest();
+    console.log(`🔏 Wrote public/wasm/SOURCE_HASH.json (sources ${sourceHash.slice(0, 12)})`);
 
     console.log('✅ WebAssembly build complete!');
     return true;

@@ -1,0 +1,16 @@
+{
+  "comment": "Written by build-wasm.cjs. Checked by scripts/artifact-freshness.cjs; regenerate with npm run build:wasm.",
+  "sourceRoots": [
+    "rust-wasm/src",
+    "rust-wasm/Cargo.toml",
+    "rust-wasm/Cargo.lock",
+    "rust-wasm/rust-toolchain.toml",
+    "rust-wasm/.cargo/config.toml"
+  ],
+  "sourceFileCount": 74,
+  "sourceHash": "581ee7b89d10545d2237970844ae7e615b9c1e83aca7ae2a572ce2b010e5b316",
+  "outputs": {
+    "public/wasm/audio_processor_bg.wasm": "3697758600df3055c9d5be300c35d5ee645e0e83f9ebc9c1a661f8e0bd522612",
+    "public/wasm/audio_processor.js": "58a87d19fbc98eba9e5af0e6132aff287f28e186cc84bad97824f1e478ed3ab3"
+  }
+}
