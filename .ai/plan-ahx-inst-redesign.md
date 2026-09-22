@@ -743,3 +743,22 @@ layout and analyzer-plumbing pass. Do not add a D-number for it.
 
 Each batch's own gate (§5) must be green before the next starts; the full regression sweep (§5) runs once more at
 the end of B3. Stop on the branch — do not push, do not merge (task constraint).
+
+---
+
+## Landed (2026-09-22)
+
+Merged `agent/ahx-inst-redesign-1` (31065df1, 5 commits on a1c72639) into main as
+`a5357596` (no-ff, "merge: AHX instrument page redesign T1"), pushed
+`d094aebe..a5357596` to origin. Post-merge full gate on main green: complete vitest
+suite 229 files / 3670 tests, eslint clean, `vue-tsc --noEmit` exit 0 with zero
+errors (the 11-error `#q-app` baseline no longer reproduces — the path mapping in
+tsconfig.json resolves in the current node_modules, so the run is strictly cleaner
+than baseline; logs `.ai/checks-postmerge-test.txt`, `.ai/checks-postmerge-lint.txt`,
+`.ai/checks-postmerge-vuetsc-raw.txt`). Deployed via `scripts/deploy.sh` to
+avatar@192.168.50.161 (log `.ai/deploy-ahx-inst-red-20260922-140617.log`), script
+checksum `cb7616eab4807fa11bffd174202370ab` plus independent md5 byte-match on
+index.html, wasm/audio_processor_bg.wasm, all 4 worklet js files, and
+demos/index.json — all identical local vs remote. Reviewer adversarial PASS on
+31065df1 remains the branch evidence; minor checks-4-gate6-diffstat.txt closed.
+Branch + worktree left in place; no force-push, no history rewrite.
