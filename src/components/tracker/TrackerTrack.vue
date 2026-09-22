@@ -3,7 +3,7 @@
     <div class="track-header">
       <div class="track-name">{{ track.name }}</div>
       <span
-        v-if="transposeLabel"
+        v-if="transposeLabel && !HIDE_LEGACY_TRANSPOSE_UI"
         class="track-transpose"
         :title="transposeTitle ?? ''"
         data-testid="track-transpose-badge"
@@ -85,6 +85,13 @@ const emit = defineEmits<{
 
 const rowHeightPx = 30;
 const rowGapPx = 6;
+
+// The transpose badge lives on the DOM fallback track list only; the canvas
+// track-header chip is the transpose display now. Morten, 2026-09-22: "The old
+// transpose dom ui doesn't fit where it's at, I think we can just hide this for
+// now." Flip to false to restore the fallback badge; props, emit wiring and
+// styles are kept intact so the path stays one constant away.
+const HIDE_LEGACY_TRANSPOSE_UI = true;
 
 // Only render visible rows (virtual scrolling)
 const visibleRows = computed(() => {
