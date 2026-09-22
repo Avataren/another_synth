@@ -1,24 +1,12 @@
 const esbuild = require('esbuild');
+// Shared with the freshness gate (npm run check:artifacts and
+// src/tests/artifact-freshness.test.ts), which rebuilds with these same options
+// and byte-compares against the committed public/worklets/*.js.
+const { WORKLET_BUILD_OPTIONS } = require('./scripts/artifact-freshness.cjs');
 
 const isWatch = process.argv.includes('--watch');
 
-const buildOptions = {
-  entryPoints: [
-    'src/audio/worklets/synth-worklet.ts',
-    'src/audio/worklets/effects-worklet.ts',
-    'src/audio/worklets/ahx-worklet.ts',
-  ],
-  bundle: true,
-  format: 'esm',
-  target: 'es2020',
-  outdir: 'public/worklets', // Changed from outfile to outdir
-  minify: false,
-  platform: 'browser',
-  logLevel: 'info',
-  loader: {
-    '.ts': 'ts',
-  },
-};
+const buildOptions = WORKLET_BUILD_OPTIONS;
 
 if (isWatch) {
   esbuild

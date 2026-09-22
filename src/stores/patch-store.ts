@@ -749,7 +749,7 @@ export const usePatchStore = defineStore('patchStore', {
         const convolverIds = getConvolverNodeIds(layoutStore.synthLayout);
 
         const extractedAssets = await extractAllAudioAssets(
-          instrumentStore.currentInstrument as InstrumentV2,
+          instrumentStore.currentInstrument,
           samplerIds,
           convolverIds,
           nodeStateStore.convolverStates,
@@ -830,7 +830,7 @@ export const usePatchStore = defineStore('patchStore', {
         }
 
         const extractedAssets = await extractAllAudioAssets(
-          instrumentStore.currentInstrument as InstrumentV2,
+          instrumentStore.currentInstrument,
           samplerIds,
           convolverIds,
           nodeStateStore.convolverStates,
@@ -918,7 +918,7 @@ export const usePatchStore = defineStore('patchStore', {
         }
 
         const extractedAssets = await extractAllAudioAssets(
-          instrumentStore.currentInstrument as InstrumentV2,
+          instrumentStore.currentInstrument,
           samplerIds,
           convolverIds,
           nodeStateStore.convolverStates,
@@ -1228,7 +1228,7 @@ export const usePatchStore = defineStore('patchStore', {
       let extractedAssets = new Map<string, AudioAsset>();
       if (instrumentStore.currentInstrument) {
         extractedAssets = await extractAllAudioAssets(
-          instrumentStore.currentInstrument as InstrumentV2,
+          instrumentStore.currentInstrument,
           samplerIds,
           convolverIds,
           nodeStateStore.convolverStates,

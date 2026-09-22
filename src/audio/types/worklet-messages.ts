@@ -306,6 +306,8 @@ export interface CreateNodeMessage extends BaseMessage {
 export interface DeleteNodeMessage extends BaseMessage {
   type: 'deleteNode';
   nodeId: string;
+  /** Pooled slot to edit; omitted by the legacy single-patch editor. */
+  instrumentId?: string;
 }
 
 export interface NodeCreatedMessage extends BaseMessage {
@@ -359,6 +361,32 @@ export interface ImportImpulseWaveformMessage extends BaseMessage {
   instrumentId?: string;
 }
 
+export interface ExportSampleDataMessage extends BaseMessage {
+  type: 'exportSampleData';
+  samplerId: string;
+  messageId: string;
+  /** Pooled slot to read; omitted by the legacy single-patch editor. */
+  instrumentId?: string;
+}
+
+export interface ExportConvolverDataMessage extends BaseMessage {
+  type: 'exportConvolverData';
+  convolverId: string;
+  messageId: string;
+  /** Pooled slot to read; omitted by the legacy single-patch editor. */
+  instrumentId?: string;
+}
+
+/**
+ * The graph and asset messages that must reach only the owning pooled slot's
+ * engine when they carry an `instrumentId` (arch review 2026-09-22 N1).
+ */
+export type PoolScopedAssetMessage =
+  | DeleteNodeMessage
+  | ImportImpulseWaveformMessage
+  | ExportSampleDataMessage
+  | ExportConvolverDataMessage;
+
 export interface GenerateHallReverbMessage extends BaseMessage {
   type: 'generateHallReverb';
   nodeId: string;
@@ -410,6 +438,31 @@ export interface SetMacroMessage extends BaseMessage {
 // ============================================================================
 // Status Messages (Worklet → Main)
 // ============================================================================
+
+export interface SampleDataMessage extends BaseMessage {
+  type: 'sampleData';
+  samplerId: string;
+  messageId: string;
+  instrumentId?: string;
+  sampleData: {
+    samples: Float32Array;
+    sampleRate: number;
+    channels: number;
+    rootNote: number;
+  };
+}
+
+export interface ConvolverDataMessage extends BaseMessage {
+  type: 'convolverData';
+  convolverId: string;
+  messageId: string;
+  instrumentId?: string;
+  convolverData: {
+    samples: Float32Array;
+    sampleRate: number;
+    channels: number;
+  };
+}
 
 export interface ReadyMessage extends BaseMessage {
   type: 'ready';
@@ -487,6 +540,10 @@ export type WorkletMessage =
   | UploadWavetableMessage
   | ImportWavetableMessage
   | ImportImpulseWaveformMessage
+  | ExportSampleDataMessage
+  | ExportConvolverDataMessage
+  | SampleDataMessage
+  | ConvolverDataMessage
   | GenerateHallReverbMessage
   | GeneratePlateReverbMessage
   // Performance

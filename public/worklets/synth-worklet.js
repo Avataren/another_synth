@@ -3565,10 +3565,35 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     });
   }
   handleDeleteNode(data) {
-    this.getGraphEngines().forEach((engine) => {
-      engine.delete_node(data.nodeId);
+    if (!data.instrumentId) {
+      this.getGraphEngines().forEach((engine) => {
+        engine.delete_node(data.nodeId);
+      });
+      this.handleRequestSync();
+      return;
+    }
+    this.getTargetEngines(data.instrumentId).forEach((engine) => {
+      try {
+        engine.delete_node(data.nodeId);
+      } catch (error) {
+        console.warn(
+          `deleteNode ${data.nodeId} failed for ${data.instrumentId}:`,
+          error
+        );
+      }
     });
-    this.handleRequestSync();
+    const slot = this.instrumentSlots.get(data.instrumentId);
+    if (!slot) {
+      this.handleRequestSync();
+      return;
+    }
+    this.stateVersion++;
+    this.port.postMessage({
+      type: "stateUpdated",
+      version: this.stateVersion,
+      state: slot.engine.get_current_state(),
+      instrumentId: data.instrumentId
+    });
   }
   handleConnectMacro(data) {
     const targetEngines = [];
@@ -3714,7 +3739,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
   }
   handleImportImpulseWaveformData(data) {
-    if (!this.audioEngines[0]) return;
     const effectId = Number(data.nodeId);
     if (!Number.isFinite(effectId)) {
       console.error(
@@ -3724,7 +3748,16 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       return;
     }
     const uint8Data = new Uint8Array(data.data);
-    this.audioEngines[0].import_wave_impulse(effectId, uint8Data);
+    this.getTargetEngines(data.instrumentId).forEach((engine) => {
+      try {
+        engine.import_wave_impulse(effectId, uint8Data);
+      } catch (error) {
+        console.error(
+          `importImpulseWaveform ${data.nodeId} failed for ${data.instrumentId ?? "(legacy)"}:`,
+          error
+        );
+      }
+    });
   }
   handleImportWavetableData(data) {
     const uint8Data = new Uint8Array(data.data);
@@ -4710,15 +4743,15 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
   }
   handleExportSampleData(data) {
-    if (!this.audioEngines[0]) return;
+    const engine = this.getTargetEngines(data.instrumentId)[0];
+    if (!engine) return;
     try {
-      const sampleData = this.audioEngines[0].export_sample_data(
-        data.samplerId
-      );
+      const sampleData = engine.export_sample_data(data.samplerId);
       this.port.postMessage({
         type: "sampleData",
         samplerId: data.samplerId,
         messageId: data.messageId,
+        instrumentId: data.instrumentId,
         sampleData
       });
     } catch (err) {
@@ -4727,20 +4760,21 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         type: "error",
         source: "exportSampleData",
         messageId: data.messageId,
+        instrumentId: data.instrumentId,
         message: "Failed to export sample data"
       });
     }
   }
   handleExportConvolverData(data) {
-    if (!this.audioEngines[0]) return;
+    const engine = this.getTargetEngines(data.instrumentId)[0];
+    if (!engine) return;
     try {
-      const convolverData = this.audioEngines[0].export_convolver_data(
-        data.convolverId
-      );
+      const convolverData = engine.export_convolver_data(data.convolverId);
       this.port.postMessage({
         type: "convolverData",
         convolverId: data.convolverId,
         messageId: data.messageId,
+        instrumentId: data.instrumentId,
         convolverData
       });
     } catch (err) {
@@ -4749,6 +4783,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         type: "error",
         source: "exportConvolverData",
         messageId: data.messageId,
+        instrumentId: data.instrumentId,
         message: "Failed to export convolver data"
       });
     }

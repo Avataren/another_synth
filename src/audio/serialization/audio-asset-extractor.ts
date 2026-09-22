@@ -6,10 +6,20 @@ import type InstrumentV2 from '../instrument-v2';
 import type { SynthLayout, ConvolverState } from '../types/synth-layout';
 
 /**
+ * What asset extraction reads from. Both the editor's `InstrumentV2` and a
+ * live-edited song slot's `PooledInstrument` provide it; the pooled one reads
+ * its own slot's engine (arch review 2026-09-22 N1).
+ */
+export type AudioAssetSource = Pick<
+  InstrumentV2,
+  'exportSamplerData' | 'exportConvolverData'
+>;
+
+/**
  * Extracts all audio assets from sampler nodes
  */
 export async function extractSamplerAudioAssets(
-  instrument: InstrumentV2,
+  instrument: AudioAssetSource,
   samplerNodeIds: string[],
 ): Promise<Map<string, AudioAsset>> {
   const assets = new Map<string, AudioAsset>();
@@ -50,7 +60,7 @@ export async function extractSamplerAudioAssets(
  * as those are reconstructed from parameters
  */
 export async function extractConvolverAudioAssets(
-  instrument: InstrumentV2,
+  instrument: AudioAssetSource,
   convolverNodeIds: string[],
   convolverStates: Map<string, ConvolverState>,
 ): Promise<Map<string, AudioAsset>> {
@@ -102,7 +112,7 @@ export async function extractConvolverAudioAssets(
  * Extracts all audio assets from the current synth state
  */
 export async function extractAllAudioAssets(
-  instrument: InstrumentV2,
+  instrument: AudioAssetSource,
   samplerNodeIds: string[],
   convolverNodeIds: string[],
   convolverStates: Map<string, ConvolverState>,
