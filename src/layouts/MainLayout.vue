@@ -20,29 +20,43 @@
         </q-tabs>
         <q-space />
 
-        <!-- Playback indicator -->
-        <div v-if="isPlaying || isPaused" class="playback-indicator">
+        <!--
+          Playback controls: always visible (Morten, 2026-09-22 — in fullscreen
+          the tracker page hides its own transport, so the top bar is the only
+          one; it used to vanish when stopped). One rule: a button is enabled
+          only when its action has something to act on — stopped ⇒ both
+          disabled, paused ⇒ resume + stop, playing ⇒ pause + stop.
+        -->
+        <div
+          data-testid="playback-indicator"
+          class="playback-indicator"
+          :class="`is-${playbackState}`"
+        >
           <q-btn
+            data-testid="playback-toggle"
             flat
             dense
             round
             size="sm"
             :icon="isPlaying ? 'pause' : 'play_arrow'"
-            :title="isPlaying ? 'Pause' : 'Resume'"
+            :title="toggleTitle"
+            :disable="playbackState === 'stopped'"
             @click="togglePlayPause"
           />
           <q-btn
+            data-testid="playback-stop"
             flat
             dense
             round
             size="sm"
             icon="stop"
             title="Stop"
+            :disable="playbackState === 'stopped'"
             @click="handleStop"
           />
           <span class="playback-status">
             <span class="playback-dot" :class="{ playing: isPlaying, paused: isPaused }"></span>
-            {{ isPlaying ? 'Playing' : 'Paused' }}
+            {{ statusLabel }}
           </span>
         </div>
 
@@ -58,6 +72,7 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
+import { computed } from 'vue';
 import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
 import { useThemeStore } from 'src/stores/theme-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
@@ -88,6 +103,26 @@ function togglePlayPause() {
 function handleStop() {
   playbackStore.stop();
 }
+
+/**
+ * The cluster is always in the top bar (plan-fullscreen-transport.md D-A);
+ * the state only decides labels and which buttons are enabled.
+ */
+const playbackState = computed(() =>
+  isPlaying.value ? 'playing' : isPaused.value ? 'paused' : 'stopped',
+);
+
+const toggleTitle = computed(() =>
+  isPlaying.value
+    ? 'Pause'
+    : isPaused.value
+      ? 'Resume'
+      : 'Start playback from the tracker page',
+);
+
+const statusLabel = computed(() =>
+  isPlaying.value ? 'Playing' : isPaused.value ? 'Paused' : 'Stopped',
+);
 </script>
 <style scoped>
 .cpu {
@@ -108,12 +143,21 @@ function handleStop() {
   margin-right: 12px;
 }
 
+.playback-indicator.is-stopped {
+  opacity: 0.65;
+}
+
 .playback-indicator :deep(.q-btn) {
   color: var(--text-secondary, rgba(255, 255, 255, 0.75));
 }
 
 .playback-indicator :deep(.q-btn:hover) {
   color: var(--text-primary, #ffffff);
+}
+
+.playback-indicator.is-stopped :deep(.q-btn:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .playback-status {
