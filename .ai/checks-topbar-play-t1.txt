@@ -1,0 +1,47 @@
+Gates for agent/topbar-play-t1 (plan-topbar-play.md), run 2026-09-22 ~15:00.
+
+Environment: worktree .ai/worktrees/topbar-play, branch agent/topbar-play-t1, from main 87155305.
+.quasar/ copied from main checkout; node_modules/@quasar symlinked (MEASURED, done at run start).
+
+== Targeted vitest suites (MEASURED, exit 0) ==
+$ npx vitest run src/tests/playback-store-replay.test.ts src/tests/main-layout-playback-indicator.test.ts
+ ✓ src/tests/playback-store-replay.test.ts (6 tests) 13ms
+ ✓ src/tests/main-layout-playback-indicator.test.ts (6 tests) 70ms
+ Test Files  2 passed (2)
+      Tests  12 passed (12)
+   Start at  15:01:02
+   Duration  1.22s (transform 375ms, setup 27ms, collect 365ms, tests 84ms, environment 398ms, prepare 627ms)
+
+== eslint, touched files (MEASURED, exit 0) ==
+$ npx eslint src/stores/tracker-playback-store.ts src/layouts/MainLayout.vue \
+    src/tests/playback-store-replay.test.ts src/tests/main-layout-playback-indicator.test.ts
+(no output, exit 0)
+
+== vue-tsc --noEmit (MEASURED, exit 0) ==
+$ npx vue-tsc --noEmit
+(no output, exit 0)
+History: first pass caught 16 TS errors in the NEW store-level test only
+(1x TS2322 'mod' not a ModuleFormat -> 'native'; 15x TS18048/TS2532 array-index
+narrowing under noUncheckedIndexedAccess -> explicit `if (!x) throw` guards,
+no `!` assertions). Store and layout files were clean from the first pass.
+Re-run clean.
+
+== Constraint checks (MEASURED) ==
+$ git diff main -- src/pages/TrackerPage.vue | wc -l   -> 0   (byte-for-byte unchanged)
+$ git diff main --name-only -- public | wc -l          -> 0   (no demos/public touched)
+$ git status --short (before commit):
+ M src/layouts/MainLayout.vue
+ M src/stores/tracker-playback-store.ts
+ M src/tests/main-layout-playback-indicator.test.ts
+?? src/tests/playback-store-replay.test.ts
+
+== Notes ==
+- 4 pins of plan-fullscreen-transport.md kept intact in
+  main-layout-playback-indicator.test.ts (cluster present in all states,
+  playing/paused routing, paused stop routing); suite grew 4 -> 6 tests.
+- playback-store-replay.test.ts drives the REAL useTrackerPlaybackStore
+  (first suite to do so; all others mock the store) with fake engine /
+  transport / song-bank / tracker-store mocks.
+- vue-tsc exit code captured directly (the earlier "EXIT=0" through a pipe
+  was the pipe's status; verified with the command's own exit code after
+  the error fix round).

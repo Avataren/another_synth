@@ -24,8 +24,10 @@
           Playback controls: always visible (Morten, 2026-09-22 — in fullscreen
           the tracker page hides its own transport, so the top bar is the only
           one; it used to vanish when stopped). One rule: a button is enabled
-          only when its action has something to act on — stopped ⇒ both
-          disabled, paused ⇒ resume + stop, playing ⇒ pause + stop.
+          only when its action has something to act on — stopped ⇒ replay only
+          when a song is retained (`canReplay`; nothing ever loaded stays
+          disabled, plan-topbar-play.md D-C'), paused ⇒ resume + stop,
+          playing ⇒ pause + stop. Replay re-enters the store's real play path.
         -->
         <div
           data-testid="playback-indicator"
@@ -40,7 +42,7 @@
             size="sm"
             :icon="isPlaying ? 'pause' : 'play_arrow'"
             :title="toggleTitle"
-            :disable="playbackState === 'stopped'"
+            :disable="playbackState === 'stopped' && !canReplay"
             @click="togglePlayPause"
           />
           <q-btn
@@ -90,13 +92,17 @@ useThemeStore();
 
 // Playback state for header indicator
 const playbackStore = useTrackerPlaybackStore();
-const { isPlaying, isPaused } = storeToRefs(playbackStore);
+const { isPlaying, isPaused, canReplay } = storeToRefs(playbackStore);
 
 function togglePlayPause() {
   if (isPlaying.value) {
     playbackStore.pause();
   } else if (isPaused.value) {
     void playbackStore.resume();
+  } else if (canReplay.value) {
+    // Stopped with a retained song: replay from the beginning (plan
+    // topbar-play.md D-A'/D-B'). Nothing retained stays disabled above.
+    void playbackStore.playLast();
   }
 }
 
@@ -112,12 +118,19 @@ const playbackState = computed(() =>
   isPlaying.value ? 'playing' : isPaused.value ? 'paused' : 'stopped',
 );
 
+/**
+ * Stopped-state tooltips state what the button will actually do, honestly in
+ * fullscreen too (the old "start playback from the tracker page" was wrong
+ * there — plan-topbar-play.md D-C').
+ */
 const toggleTitle = computed(() =>
   isPlaying.value
     ? 'Pause'
     : isPaused.value
       ? 'Resume'
-      : 'Start playback from the tracker page',
+      : canReplay.value
+        ? 'Play from the beginning'
+        : 'No song loaded yet',
 );
 
 const statusLabel = computed(() =>

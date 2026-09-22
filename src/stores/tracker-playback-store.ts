@@ -149,6 +149,35 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   /** Whether a song has been loaded into the engine */
   const hasSongLoaded = ref(false);
 
+  /**
+   * The last song that went through a successful load, and the mode it was
+   * loaded for. This is the top-bar replay's source of truth (plan
+   * topbar-play D-A'): a song loaded-and-stopped has nothing else in the store
+   * to remember it by — `hasSongLoaded` only says *that* one was loaded, and
+   * the page builds a fresh `PlaybackSong` per start (`useTrackerSongHost.ts`
+   * `buildPlaybackSong`), never handing one back. Retained here, the layout's
+   * stopped-state play can re-enter the real `play()` path with it.
+   *
+   * Set at the two load choke points (`loadSong` / `loadAhxSong`), so every
+   * caller — the tracker page and the jukebox alike — records the same way.
+   * AHX replays stay audibly fresh regardless of this snapshot: `playAhx`
+   * re-flushes and re-reads the current bytes on its own.
+   */
+  const lastPlaybackSong = ref<PlaybackSong | null>(null);
+
+  /** The mode the retained song was last loaded for (`playLast` re-uses it). */
+  const lastPlaybackMode = ref<PlaybackMode>('song');
+
+  function recordLastSong(song: PlaybackSong, mode: PlaybackMode): void {
+    lastPlaybackSong.value = song;
+    lastPlaybackMode.value = mode;
+  }
+
+  /** Whether a stopped-state play has a retained song to restart. */
+  const canReplay = computed(
+    () => !isPlaying.value && !isPaused.value && lastPlaybackSong.value !== null,
+  );
+
   /** Whether the sequence restarts when it runs out. */
   const loopSong = ref(true);
 
@@ -909,6 +938,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       });
     }
     hasSongLoaded.value = true;
+    recordLastSong(song, mode);
     return true;
   }
 
@@ -1084,9 +1114,24 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     console.log('[PlaybackStore] Preparing instruments...');
     await engine.prepareInstruments();
     hasSongLoaded.value = true;
+    recordLastSong(song, mode);
     console.log('[PlaybackStore] Song loaded successfully');
 
     return true;
+  }
+
+  /**
+   * Replay the retained song from the beginning (plan topbar-play D-B'):
+   * stop→play ⇒ top of the song, position 0, row 0. Mid-song resume is the
+   * paused toggle's job (`resume`), so `playLast` only answers the fully
+   * stopped state, and only when a load actually recorded a song — a fresh
+   * tab with nothing ever loaded has nothing to start (topbar-play S1).
+   */
+  async function playLast(): Promise<void> {
+    const song = lastPlaybackSong.value;
+    if (!song) return;
+    if (isPlaying.value || isPaused.value) return;
+    await play(song, lastPlaybackMode.value, 0, 0);
   }
 
   /**
@@ -1456,6 +1501,9 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     soloedTracks,
     autoScroll,
     hasSongLoaded,
+    lastPlaybackSong,
+    lastPlaybackMode,
+    canReplay,
     loopSong,
 
     // Getters
@@ -1466,6 +1514,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // Transport
     loadSong,
     play,
+    playLast,
     pause,
     resume,
     stop,
