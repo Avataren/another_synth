@@ -41,6 +41,7 @@ use wasm_bindgen::prelude::*;
 #[cfg(feature = "wasm")]
 use web_sys::{console, js_sys};
 
+use super::wav_decode::read_wav_samples_f32;
 use hound;
 use std::error::Error;
 const EFFECT_NODE_ID_OFFSET: usize = 10_000;
@@ -62,33 +63,7 @@ fn import_wav_hound_reader<R: std::io::Read>(
     let sample_rate = spec.sample_rate as f32;
 
     // Read samples from the WAV (handling various bit depths/formats).
-    let samples: Vec<f32> = match (spec.bits_per_sample, spec.sample_format) {
-        (32, hound::SampleFormat::Float) => {
-            wav_reader.samples::<f32>().map(|s| s.unwrap()).collect()
-        }
-        (16, hound::SampleFormat::Int) => wav_reader
-            .samples::<i16>()
-            .map(|s| s.unwrap() as f32 / i16::MAX as f32)
-            .collect(),
-        (24, hound::SampleFormat::Int) => {
-            let shift = 32 - 24;
-            wav_reader
-                .samples::<i32>()
-                .map(|s| (s.unwrap() << shift >> shift) as f32 / 8_388_607.0)
-                .collect()
-        }
-        (32, hound::SampleFormat::Int) => wav_reader
-            .samples::<i32>()
-            .map(|s| s.unwrap() as f32 / i32::MAX as f32)
-            .collect(),
-        (bits, format) => {
-            return Err(format!(
-                "Unsupported WAV format: bits_per_sample={} sample_format={:?}",
-                bits, format
-            )
-            .into())
-        }
-    };
+    let samples = read_wav_samples_f32(&mut wav_reader)?;
 
     let total_samples = samples.len();
     if total_samples % base_size != 0 {
@@ -1361,32 +1336,8 @@ impl AudioEngine {
         let num_channels = spec.channels;
 
         // Read the samples in f32 form.
-        let samples: Vec<f32> = match (spec.bits_per_sample, spec.sample_format) {
-            (32, hound::SampleFormat::Float) => {
-                reader.samples::<f32>().map(|s| s.unwrap()).collect()
-            }
-            (16, hound::SampleFormat::Int) => reader
-                .samples::<i16>()
-                .map(|s| s.unwrap() as f32 / i16::MAX as f32)
-                .collect(),
-            (24, hound::SampleFormat::Int) => {
-                let shift = 32 - 24;
-                reader
-                    .samples::<i32>()
-                    .map(|s| (s.unwrap() << shift >> shift) as f32 / 8_388_607.0)
-                    .collect()
-            }
-            (32, hound::SampleFormat::Int) => reader
-                .samples::<i32>()
-                .map(|s| s.unwrap() as f32 / i32::MAX as f32)
-                .collect(),
-            (bits, format) => {
-                return Err(JsValue::from_str(&format!(
-                    "Unsupported WAV format: bits_per_sample={} sample_format={:?}",
-                    bits, format
-                )))
-            }
-        };
+        let samples =
+            read_wav_samples_f32(&mut reader).map_err(|e| JsValue::from_str(&e))?;
 
         log_console(&format!("Read {} samples", samples.len()));
 
@@ -2010,32 +1961,8 @@ impl AudioEngine {
         ));
 
         // Read the samples in f32 form
-        let samples: Vec<f32> = match (spec.bits_per_sample, spec.sample_format) {
-            (32, hound::SampleFormat::Float) => {
-                reader.samples::<f32>().map(|s| s.unwrap()).collect()
-            }
-            (16, hound::SampleFormat::Int) => reader
-                .samples::<i16>()
-                .map(|s| s.unwrap() as f32 / i16::MAX as f32)
-                .collect(),
-            (24, hound::SampleFormat::Int) => {
-                let shift = 32 - 24;
-                reader
-                    .samples::<i32>()
-                    .map(|s| (s.unwrap() << shift >> shift) as f32 / 8_388_607.0)
-                    .collect()
-            }
-            (32, hound::SampleFormat::Int) => reader
-                .samples::<i32>()
-                .map(|s| s.unwrap() as f32 / i32::MAX as f32)
-                .collect(),
-            (bits, format) => {
-                return Err(JsValue::from_str(&format!(
-                    "Unsupported WAV format: bits_per_sample={} sample_format={:?}",
-                    bits, format
-                )))
-            }
-        };
+        let samples =
+            read_wav_samples_f32(&mut reader).map_err(|e| JsValue::from_str(&e))?;
 
         log_console(&format!("Read {} samples", samples.len()));
 

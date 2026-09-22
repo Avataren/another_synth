@@ -1,5 +1,7 @@
 mod patch;
 mod patch_loader;
+#[cfg(any(all(feature = "wasm", target_arch = "wasm32"), test))]
+mod wav_decode;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub mod wasm;
