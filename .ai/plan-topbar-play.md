@@ -142,3 +142,22 @@ not bare `tsc`). `.quasar/` copied + `node_modules/@quasar` symlinked into the w
 
 - Not verified by hand in a browser (headless run): the audible replay is pinned by
   the store-level test's `play` routing assertions, not by ear. No audio-path code changed.
+
+## Landed (2026-09-22)
+
+Merged `agent/topbar-play-t1` tip `abb5ea9d` into main as `9b2fcda1` (no-ff,
+"merge: top-bar play functional from stopped (agent/topbar-play-t1)"), pushed
+`87155305..9b2fcda1` to origin. Tip was unchanged from review (still `abb5ea9d`),
+worktree owner marker absent, main tree clean with no deploy residue. Pre-merge
+preflight: main HEAD == origin/main == `87155305`. Post-merge gates on main green:
+targeted suites 12/12 (main-layout-playback-indicator + playback-store-replay,
+`TARGETED_EXIT=0`), eslint `LINT_EXIT=0`, `vue-tsc --noEmit` `VUETSC_EXIT=0`
+(log `/tmp/topbar-play-gates.log`). Deployed via `scripts/deploy.sh` (checksum of
+script `439f0c032a0119f4573ba08d4cd8e3f8`) to avatar@192.168.50.161, DEPLOY_EXIT=0,
+log `.ai/deploy-topbar-play-20260922.log`; script-verified index.html checksum
+`1a547c7fef16bf5c2711271dac39e455` plus independent md5 byte-match local vs remote:
+index.html (`1a547c7fef16bf5c2711271dac39e455`),
+wasm/audio_processor_bg.wasm (`660f3c70e72d0b87e2ed2dadc65eee42`),
+demos/index.json (`c01cfe00793310fc4bf06f71e252ecab`) — all identical. Reviewer
+PASS on `abb5ea9d` remains the code evidence. Branch + worktree left in place;
+no force-push, no history rewrite.
