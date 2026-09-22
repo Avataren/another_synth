@@ -297,8 +297,9 @@ function withPLists(): Array<{ c: Candidate; instrument: number }> {
 }
 
 describe('plist-row over the real wasm, against a separate PList interpreter', () => {
+  // re-measured 2026-09-22: corpus 62→84 files at c027f2a2
   it('the corpus is what the plan says it is', () => {
-    expect(CORPUS).toHaveLength(69);
+    expect(CORPUS).toHaveLength(84);
   });
 
   it('nyrmodian_cityscape instrument 7: 96 rows with a Jump', () => {

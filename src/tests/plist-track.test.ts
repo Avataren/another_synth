@@ -14,8 +14,8 @@ import { formatEntryCells } from 'src/components/tracker/pattern-canvas/format-e
 
 /**
  * T1: the projection of an instrument's PList onto a one-track pattern is a
- * complete picture of the data. The bar is the whole demo corpus (62 `.ahx` +
- * 7 `.hvl`, 987 instruments): every entry, read back from the text the canvas
+ * complete picture of the data. The bar is the whole demo corpus (77 `.ahx` +
+ * 7 `.hvl`, 1290 instruments): every entry, read back from the text the canvas
  * would draw, is the entry it came from.
  */
 const DEMOS = resolve(__dirname, '../../public/demos/ahx');
@@ -83,12 +83,13 @@ function corpusInstruments(): { name: string; index: number; instrument: AhxInst
 describe('the PList projection over the demo corpus', () => {
   const all = corpusInstruments();
 
-  it('covers all 987 instruments of the 69 demo files', () => {
-    expect(new Set(all.map((i) => i.name)).size).toBe(69);
-    expect(all).toHaveLength(987);
+  // re-measured 2026-09-22: corpus 62→84 files at c027f2a2
+  it('covers all 1290 instruments of the 84 demo files', () => {
+    expect(new Set(all.map((i) => i.name)).size).toBe(84);
+    expect(all).toHaveLength(1290);
   });
 
-  it('is lossless: 987/987 instruments read back to their own entries', () => {
+  it('is lossless: 1290/1290 instruments read back to their own entries', () => {
     const bad: string[] = [];
     let rows = 0;
     for (const { name, index, instrument } of all) {
