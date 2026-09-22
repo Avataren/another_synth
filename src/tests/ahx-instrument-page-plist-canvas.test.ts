@@ -24,9 +24,9 @@ import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import { setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
 
 /**
- * T6/T7 at the page: the canvas sits above the table, the chip strip is still
- * there, and the selection is one shared thing. The canvas is the recording
- * stand-in (pixels are the browser check).
+ * T6/T7 at the page: the canvas sits above the table (behind its toggle), and
+ * the selection is one shared thing. The canvas is the recording stand-in
+ * (pixels are the browser check).
  */
 const karma = (): ArrayBuffer => {
   const b = readFileSync(resolve(__dirname, '../../public/demos/ahx/karma.ahx'));
@@ -63,31 +63,30 @@ describe('AhxInstrumentPage: the PList canvas (B3)', () => {
     document.body.innerHTML = '';
   });
 
-  it('mounts the canvas above the patterns table, and leaves the chip strip where it was', async () => {
+  it('mounts the canvas above the patterns table, and leaves the table behind the toggle by default', async () => {
     const w = await mountEditor(1);
     const canvas = el(w, 'ahx-plist-canvas').element;
     const table = el(w, 'ahx-plist').element;
-    const strip = el(w, 'ahx-plist-strip').element;
     expect(canvas.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(strip.compareDocumentPosition(canvas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(el(w, 'ahx-plist-table-toggle').attributes('aria-expanded')).toBe('false');
     expect(canvas.getAttribute('data-rows')).toBe(String(ins().plist.entries.length));
     w.unmount();
   });
 
-  it('a canvas click selects the step in the table and the strip', async () => {
+  it('a canvas click selects the step in the table', async () => {
     const w = await mountEditor(1);
     w.findComponent(PatternCanvas).vm.$emit('rowSelected', 2);
     await nextTick();
     expect(el(w, 'ahx-plist-row-2').attributes('data-selected')).toBe('true');
     expect(el(w, 'ahx-plist-row-0').attributes('data-selected')).toBe('false');
-    expect(el(w, 'ahx-strip-chip-2').attributes('data-selected')).toBe('true');
     expect(el(w, 'ahx-plist-canvas').attributes('data-selected-row')).toBe('2');
     w.unmount();
   });
 
-  it('a strip click and a focus in a table row select the step on the canvas', async () => {
+  it('a canvas selection and a focus in a table row select the step on the canvas', async () => {
     const w = await mountEditor(1);
-    await el(w, 'ahx-strip-chip-1').trigger('click');
+    w.findComponent(PatternCanvas).vm.$emit('rowSelected', 1);
+    await nextTick();
     expect(el(w, 'ahx-plist-canvas').attributes('data-selected-row')).toBe('1');
     expect(w.findComponent(PatternCanvas).props('selectionRect')).toEqual({ rowStart: 1, rowEnd: 1, trackStart: 0, trackEnd: 0 });
     await el(w, 'ahx-plist-row-2').trigger('focusin');

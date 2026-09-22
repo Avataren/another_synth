@@ -42,6 +42,8 @@ export class AhxPreview {
   private disposed = false;
   /** Kept here, not on a client, so subscribing creates nothing and a client made later (or replaced) gets them. */
   private readonly plistRowListeners = new Set<(r: AhxPListRow) => void>();
+  /** Same reasoning as `plistRowListeners`, for the preview voice's own output `GainNode` (not the song bus). */
+  private readonly outputNodeListeners = new Set<(node: AudioNode | null) => void>();
   private clientUnsubs: Array<() => void> = [];
 
   constructor(
@@ -72,6 +74,17 @@ export class AhxPreview {
   onPListRow(listener: (r: AhxPListRow) => void): () => void {
     this.plistRowListeners.add(listener);
     return () => this.plistRowListeners.delete(listener);
+  }
+
+  /**
+   * The preview voice's own output `GainNode` (`AhxPlayerClient.output`, not
+   * `this.host.output`/the song mix bus), each time a worklet is made, and
+   * `null` when it goes. Lazy, same idiom as `onPListRow`: subscribing does
+   * not create the worklet, and a listener stays through it being replaced.
+   */
+  onOutputNode(listener: (node: AudioNode | null) => void): () => void {
+    this.outputNodeListeners.add(listener);
+    return () => this.outputNodeListeners.delete(listener);
   }
 
   /**
@@ -150,6 +163,7 @@ export class AhxPreview {
     this.wanted = null;
     this.disposeClient();
     this.plistRowListeners.clear();
+    this.outputNodeListeners.clear();
   }
 
   private ready(bytes: Uint8Array): Promise<AhxPlayerClient | null> {
@@ -200,6 +214,9 @@ export class AhxPreview {
           }),
         ];
         this.client = client;
+        // `client.output`: the preview voice's own gain, not `this.host.output`
+        // (the whole song's mix bus) — see D-A in the redesign plan.
+        for (const listener of this.outputNodeListeners) listener(client.output);
         return client;
       })
       .finally(() => {
@@ -213,6 +230,7 @@ export class AhxPreview {
     this.clientUnsubs = [];
     // The worklet that reported a row is gone, and with it the note.
     if (this.client) for (const listener of this.plistRowListeners) listener({ instrument: 0, row: -1 });
+    if (this.client) for (const listener of this.outputNodeListeners) listener(null);
     this.client?.dispose();
     this.client = null;
     this.loadedSource = null;

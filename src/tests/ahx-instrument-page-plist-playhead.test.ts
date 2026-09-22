@@ -185,7 +185,7 @@ describe('AhxInstrumentPage: the PList playhead (B4)', () => {
 
   it('a selection made by hand is not moved by the playhead, and both show at once', async () => {
     const w = await mountEditor(1);
-    await el(w, 'ahx-strip-chip-0').trigger('click');
+    await el(w, 'ahx-plist-row-0').trigger('focusin');
     ahxPListPlayhead.value = { instrument: 1, row: 2 };
     await nextTick();
     expect(el(w, 'ahx-plist-row-0').attributes('data-selected')).toBe('true');

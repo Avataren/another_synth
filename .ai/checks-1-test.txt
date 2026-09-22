@@ -1,0 +1,25 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 test:run
+npm notice run vitest run src/tests/ahx-preview-output.test.ts src/tests/ahx-plist-row-client.test.ts src/tests/ahx-plist-row-core.test.ts src/tests/ahx-player-client.test.ts src/tests/ahx-preview.test.ts
+
+ RUN  v2.1.8 /home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/ahx-inst-red
+
+ ✓ src/tests/ahx-preview-output.test.ts (9 tests) 74ms
+ ✓ src/tests/ahx-plist-row-client.test.ts (20 tests) 78ms
+ ✓ src/tests/ahx-preview.test.ts (19 tests) 156ms
+ ✓ src/tests/ahx-player-client.test.ts (28 tests) 301ms
+ ✓ src/tests/ahx-plist-row-core.test.ts (14 tests) 322ms
+stdout | src/tests/ahx-plist-row-core.test.ts > plist-row message rate > the worst case, a speed-1 loop, posts one message per engine tick: 50, 100, 150 and 200 a second at x1..x4
+plist-row rate, x1 (64k_is_all_you_need.ahx): 50.1 messages/s (max second 51), tick rate 50.0/s
+plist-row rate, x2 (chiprolled.hvl): 100.1 messages/s (max second 101), tick rate 100.0/s
+plist-row rate, x3 (get_to_the_chopper.ahx): 150.1 messages/s (max second 151), tick rate 150.0/s
+
+
+ Test Files  5 passed (5)
+      Tests  90 passed (90)
+   Start at  13:17:03
+   Duration  1.22s (transform 524ms, setup 56ms, collect 1.53s, tests 931ms, environment 1ms, prepare 1.15s)
+
+EXIT:0

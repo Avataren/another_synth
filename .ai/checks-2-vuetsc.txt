@@ -1,0 +1,17 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 npx
+npm notice run 'vue-tsc' --noEmit
+quasar.config.ts(6,30): error TS2307: Cannot find module '#q-app/wrappers' or its corresponding type declarations.
+quasar.config.ts(119,27): error TS7006: Parameter 'ctx' implicitly has an 'any' type.
+quasar.config.ts(139,29): error TS7031: Binding element 'file' implicitly has an 'any' type.
+quasar.config.ts(139,35): error TS7031: Binding element 'server' implicitly has an 'any' type.
+quasar.config.ts(204,22): error TS7006: Parameter 'viteConf' implicitly has an 'any' type.
+src/boot/axios.ts(1,28): error TS2307: Cannot find module '#q-app/wrappers' or its corresponding type declarations.
+src/boot/axios.ts(19,30): error TS7031: Binding element 'app' implicitly has an 'any' type.
+src/boot/pinia-audio-system.ts(1,28): error TS2307: Cannot find module '#q-app/wrappers' or its corresponding type declarations.
+src/boot/playback-diagnostics.ts(1,28): error TS2307: Cannot find module '#q-app/wrappers' or its corresponding type declarations.
+src/router/index.ts(1,30): error TS2307: Cannot find module '#q-app/wrappers' or its corresponding type declarations.
+src/stores/index.ts(1,29): error TS2307: Cannot find module '#q-app/wrappers' or its corresponding type declarations.
+EXIT:2

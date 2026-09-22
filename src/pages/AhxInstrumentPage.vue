@@ -58,243 +58,222 @@
     </div>
 
     <div v-else class="ahx-body">
-      <section class="ahx-card ahx-card--wide ahx-audition-bar" data-testid="ahx-audition">
-        <div class="ahx-audition">
-          <span class="ahx-audition__title">Audition</span>
-          <button
-            v-for="key in AUDITION_KEYS"
-            :key="key.midi"
-            type="button"
-            class="ahx-audition__key"
-            :class="{ 'ahx-audition__key--held': latch && heldKeys.has(key.midi) }"
-            :disabled="!audible"
-            :data-testid="`ahx-audition-${key.midi}`"
-            @pointerdown.prevent="play.pointerDown(key.midi)"
-            @pointerup="play.pointerUp(key.midi)"
-            @pointerleave="play.pointerUp(key.midi)"
-            @pointercancel="play.pointerUp(key.midi)"
-          >
-            {{ key.label }}
-          </button>
-          <AhxPianoStrip
-            :start="stripStart"
-            :held="heldKeys"
-            :disabled="!audible"
-            @down="play.pointerDown"
-            @up="play.pointerUp"
-          />
-          <span
-            class="ahx-octave"
-            title="Shifts the computer keyboard and the on-screen piano by an octave (Shift+PageUp / Shift+PageDown, as in the tracker)."
-          >
-            <button
-              type="button"
-              class="ahx-octave__btn"
-              :disabled="octave <= AHX_MIN_OCTAVE"
-              aria-label="Octave down"
-              data-testid="ahx-octave-down"
-              @click="play.setOctave(octave - 1)"
-            >
-              −
-            </button>
-            <span class="ahx-octave__value" data-testid="ahx-octave">Oct {{ octave }}</span>
-            <button
-              type="button"
-              class="ahx-octave__btn"
-              :disabled="octave >= AHX_MAX_OCTAVE"
-              aria-label="Octave up"
-              data-testid="ahx-octave-up"
-              @click="play.setOctave(octave + 1)"
-            >
-              +
-            </button>
-          </span>
-          <button
-            type="button"
-            class="ahx-midi-chip"
-            :class="`ahx-midi-chip--${play.midiStatus.value.state}`"
-            :title="midiChip.title"
-            data-testid="ahx-midi-chip"
-            @click="play.toggleMidi()"
-          >
-            {{ midiChip.text }}
-          </button>
-          <label
-            class="ahx-check ahx-check--bar"
-            title="A tap holds the note until you tap the key again, so both hands are free to edit."
-          >
-            <input v-model="latch" type="checkbox" :disabled="!audible" data-testid="ahx-audition-latch" />
-            Latch
-          </label>
-          <label
-            class="ahx-check ahx-check--bar"
-            title="Strike the held note again shortly after each edit. Volume, wave length, vibrato and the sweep setup are only read when a note is struck, so this is what makes them audible while you drag."
-          >
-            <input v-model="restrike" type="checkbox" :disabled="!audible" data-testid="ahx-audition-restrike" />
-            Re-strike on edit
-          </label>
-          <span
-            v-if="audible"
-            class="ahx-dim ahx-audition__hint"
-            title="Hold a note to hear this instrument as it is now. The song plays the same edit from its next trigger of this instrument; a note already sounding keeps its volume, vibrato and wave length until it is struck again."
-            >Play with the keyboard (Z-M, Q-P), MIDI or the keys; edits sound at once.</span
-          >
-          <span v-else class="ahx-dim" data-testid="ahx-audition-off"
-            >Unavailable: there is no source file to play this instrument from (keyboard, MIDI and keys are off).</span
-          >
-        </div>
-      </section>
-
-      <section class="ahx-card">
-        <h3>Instrument</h3>
-        <div class="ahx-fields" data-testid="ahx-params">
-          <AhxSliderField
-            label="Volume"
-            :model-value="instrument.volume"
-            :max="AHX_NUMBER_FIELDS.volume"
-            suffix="/ 64"
-            testid="ahx-field-volume"
-            :title="AHX_HELP.volume"
-            @update:model-value="setNumber('volume', $event)"
-          />
-          <div class="ahx-field-row ahx-field-row--wrap">
-            <AhxSegmented
-              label="Wave length"
-              :model-value="instrument.waveLength"
-              :options="WAVE_LENGTH_OPTIONS"
-              testid="ahx-seg-waveLength"
-              :title="AHX_HELP.waveLength"
-              @update:model-value="setNumber('waveLength', $event)"
+      <div class="ahx-left">
+        <fieldset class="ahx-card">
+          <legend>Level &amp; wave</legend>
+          <div class="ahx-fields">
+            <AhxSliderField
+              label="Volume"
+              :model-value="instrument.volume"
+              :max="AHX_NUMBER_FIELDS.volume"
+              suffix="/ 64"
+              testid="ahx-field-volume"
+              :title="AHX_HELP.volume"
+              @update:model-value="setNumber('volume', $event)"
             />
-            <AhxNumberField
-              compact
-              :model-value="instrument.waveLength"
-              :max="AHX_NUMBER_FIELDS.waveLength"
-              :suffix="`(${cycleLength} samples)`"
-              testid="ahx-field-waveLength"
-              :title="AHX_HELP.waveLength"
-              @update:model-value="setNumber('waveLength', $event)"
-            />
-          </div>
-          <AhxSliderField
-            label="Vibrato delay"
-            :model-value="instrument.vibratoDelay"
-            :max="AHX_NUMBER_FIELDS.vibratoDelay"
-            :throttle-ms="AHX_TABLE_THROTTLE_MS"
-            testid="ahx-field-vibratoDelay"
-            :title="AHX_HELP.vibratoDelay"
-            suffix="frames"
-            @update:model-value="setNumber('vibratoDelay', $event)"
-          />
-          <AhxSliderField
-            label="Vibrato speed"
-            :model-value="instrument.vibratoSpeed"
-            :max="AHX_NUMBER_FIELDS.vibratoSpeed"
-            :throttle-ms="AHX_TABLE_THROTTLE_MS"
-            testid="ahx-field-vibratoSpeed"
-            :title="AHX_HELP.vibratoSpeed"
-            @update:model-value="setNumber('vibratoSpeed', $event)"
-          />
-          <AhxSliderField
-            stepper
-            label="Vibrato depth"
-            :model-value="instrument.vibratoDepth"
-            :max="AHX_NUMBER_FIELDS.vibratoDepth"
-            testid="ahx-field-vibratoDepth"
-            :title="AHX_HELP.vibratoDepth"
-            @update:model-value="setNumber('vibratoDepth', $event)"
-          />
-          <AhxSliderField
-            label="Square lower"
-            :model-value="instrument.squareLowerLimit"
-            :max="AHX_NUMBER_FIELDS.squareLowerLimit"
-            :throttle-ms="AHX_TABLE_THROTTLE_MS"
-            testid="ahx-field-squareLowerLimit"
-            :title="AHX_HELP.squareLowerLimit"
-            @update:model-value="setNumber('squareLowerLimit', $event)"
-          />
-          <AhxSliderField
-            label="Square upper"
-            :model-value="instrument.squareUpperLimit"
-            :max="AHX_NUMBER_FIELDS.squareUpperLimit"
-            :throttle-ms="AHX_TABLE_THROTTLE_MS"
-            testid="ahx-field-squareUpperLimit"
-            :title="AHX_HELP.squareUpperLimit"
-            @update:model-value="setNumber('squareUpperLimit', $event)"
-          />
-          <AhxSliderField
-            label="Square speed"
-            :model-value="instrument.squareSpeed"
-            :max="AHX_NUMBER_FIELDS.squareSpeed"
-            :throttle-ms="AHX_TABLE_THROTTLE_MS"
-            testid="ahx-field-squareSpeed"
-            :title="AHX_HELP.squareSpeed"
-            @update:model-value="setNumber('squareSpeed', $event)"
-          />
-          <AhxSliderField
-            label="Filter lower"
-            :model-value="instrument.filterLowerLimit"
-            :max="AHX_NUMBER_FIELDS.filterLowerLimit"
-            :throttle-ms="AHX_TABLE_THROTTLE_MS"
-            :marker="AHX_FILTER_NEUTRAL"
-            marker-title="32 is the neutral position: no filtering"
-            :hint="filterLowerHint"
-            testid="ahx-field-filterLowerLimit"
-            :title="AHX_HELP.filterLowerLimit"
-            @update:model-value="setNumber('filterLowerLimit', $event)"
-          />
-          <AhxSliderField
-            label="Filter upper"
-            :model-value="instrument.filterUpperLimit"
-            :max="AHX_NUMBER_FIELDS.filterUpperLimit"
-            :throttle-ms="AHX_TABLE_THROTTLE_MS"
-            :marker="AHX_FILTER_NEUTRAL"
-            marker-title="32 is the neutral position: no filtering"
-            testid="ahx-field-filterUpperLimit"
-            :title="AHX_HELP.filterUpperLimit"
-            @update:model-value="setNumber('filterUpperLimit', $event)"
-          />
-          <AhxSliderField
-            label="Filter speed"
-            :model-value="instrument.filterSpeed"
-            :max="AHX_NUMBER_FIELDS.filterSpeed"
-            :throttle-ms="AHX_TABLE_THROTTLE_MS"
-            testid="ahx-field-filterSpeed"
-            :title="AHX_HELP.filterSpeed"
-            @update:model-value="setNumber('filterSpeed', $event)"
-          />
-          <div class="ahx-field-row">
-            <label class="ahx-check" :title="AHX_HELP.hardCutRelease">
-              <input
-                type="checkbox"
-                data-testid="ahx-field-hardCutRelease"
-                :checked="instrument.hardCutRelease"
-                @change="setHardCut(($event.target as HTMLInputElement).checked)"
+            <div class="ahx-field-row ahx-field-row--wrap">
+              <AhxSegmented
+                label="Wave length"
+                :model-value="instrument.waveLength"
+                :options="WAVE_LENGTH_OPTIONS"
+                testid="ahx-seg-waveLength"
+                :title="AHX_HELP.waveLength"
+                @update:model-value="setNumber('waveLength', $event)"
               />
-              Hard cut release
-            </label>
+              <AhxNumberField
+                compact
+                :model-value="instrument.waveLength"
+                :max="AHX_NUMBER_FIELDS.waveLength"
+                :suffix="`(${cycleLength} samples)`"
+                testid="ahx-field-waveLength"
+                :title="AHX_HELP.waveLength"
+                @update:model-value="setNumber('waveLength', $event)"
+              />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="ahx-card">
+          <legend>Vibrato</legend>
+          <div class="ahx-fields">
+            <AhxSliderField
+              label="Vibrato delay"
+              :model-value="instrument.vibratoDelay"
+              :max="AHX_NUMBER_FIELDS.vibratoDelay"
+              :throttle-ms="AHX_TABLE_THROTTLE_MS"
+              testid="ahx-field-vibratoDelay"
+              :title="AHX_HELP.vibratoDelay"
+              suffix="frames"
+              @update:model-value="setNumber('vibratoDelay', $event)"
+            />
+            <AhxSliderField
+              label="Vibrato speed"
+              :model-value="instrument.vibratoSpeed"
+              :max="AHX_NUMBER_FIELDS.vibratoSpeed"
+              :throttle-ms="AHX_TABLE_THROTTLE_MS"
+              testid="ahx-field-vibratoSpeed"
+              :title="AHX_HELP.vibratoSpeed"
+              @update:model-value="setNumber('vibratoSpeed', $event)"
+            />
             <AhxSliderField
               stepper
-              :model-value="instrument.hardCutReleaseFrames"
-              :max="AHX_NUMBER_FIELDS.hardCutReleaseFrames"
-              suffix="frames"
-              testid="ahx-field-hardCutReleaseFrames"
-              :title="AHX_HELP.hardCutReleaseFrames"
-              @update:model-value="setNumber('hardCutReleaseFrames', $event)"
+              label="Vibrato depth"
+              :model-value="instrument.vibratoDepth"
+              :max="AHX_NUMBER_FIELDS.vibratoDepth"
+              testid="ahx-field-vibratoDepth"
+              :title="AHX_HELP.vibratoDepth"
+              @update:model-value="setNumber('vibratoDepth', $event)"
             />
           </div>
-          <p
-            v-if="!instrument.hardCutRelease && instrument.hardCutReleaseFrames > 0"
-            class="ahx-warn"
-            data-testid="ahx-hardcut-abrupt"
-          >
-            Hard cut release is off, so the note is muted abruptly {{ instrument.hardCutReleaseFrames }}
-            {{ instrument.hardCutReleaseFrames === 1 ? 'tick' : 'ticks' }} before the next row that sets an instrument (a number above the tempo cuts from the start of the row).
-          </p>
-        </div>
-      </section>
+          <AhxVibratoLane
+            class="ahx-fieldset-lane"
+            :delay="instrument.vibratoDelay"
+            :speed="instrument.vibratoSpeed"
+            :depth="instrument.vibratoDepth"
+          />
+        </fieldset>
 
-      <section class="ahx-card">
+        <fieldset class="ahx-card">
+          <legend>Square</legend>
+          <div class="ahx-fields">
+            <AhxSliderField
+              label="Square lower"
+              :model-value="instrument.squareLowerLimit"
+              :max="AHX_NUMBER_FIELDS.squareLowerLimit"
+              :throttle-ms="AHX_TABLE_THROTTLE_MS"
+              testid="ahx-field-squareLowerLimit"
+              :title="AHX_HELP.squareLowerLimit"
+              @update:model-value="setNumber('squareLowerLimit', $event)"
+            />
+            <AhxSliderField
+              label="Square upper"
+              :model-value="instrument.squareUpperLimit"
+              :max="AHX_NUMBER_FIELDS.squareUpperLimit"
+              :throttle-ms="AHX_TABLE_THROTTLE_MS"
+              testid="ahx-field-squareUpperLimit"
+              :title="AHX_HELP.squareUpperLimit"
+              @update:model-value="setNumber('squareUpperLimit', $event)"
+            />
+            <AhxSliderField
+              label="Square speed"
+              :model-value="instrument.squareSpeed"
+              :max="AHX_NUMBER_FIELDS.squareSpeed"
+              :throttle-ms="AHX_TABLE_THROTTLE_MS"
+              testid="ahx-field-squareSpeed"
+              :title="AHX_HELP.squareSpeed"
+              @update:model-value="setNumber('squareSpeed', $event)"
+            />
+          </div>
+          <AhxSweepLane
+            class="ahx-fieldset-lane"
+            kind="square"
+            :instrument="instrument"
+            :format="songFormat"
+            :version="sourceVersion"
+            @enable="enableSweep('square')"
+          />
+        </fieldset>
+
+        <fieldset class="ahx-card">
+          <legend>Filter</legend>
+          <div class="ahx-fields">
+            <AhxSliderField
+              label="Filter lower"
+              :model-value="instrument.filterLowerLimit"
+              :max="AHX_NUMBER_FIELDS.filterLowerLimit"
+              :throttle-ms="AHX_TABLE_THROTTLE_MS"
+              :marker="AHX_FILTER_NEUTRAL"
+              marker-title="32 is the neutral position: no filtering"
+              :hint="filterLowerHint"
+              testid="ahx-field-filterLowerLimit"
+              :title="AHX_HELP.filterLowerLimit"
+              @update:model-value="setNumber('filterLowerLimit', $event)"
+            />
+            <AhxSliderField
+              label="Filter upper"
+              :model-value="instrument.filterUpperLimit"
+              :max="AHX_NUMBER_FIELDS.filterUpperLimit"
+              :throttle-ms="AHX_TABLE_THROTTLE_MS"
+              :marker="AHX_FILTER_NEUTRAL"
+              marker-title="32 is the neutral position: no filtering"
+              testid="ahx-field-filterUpperLimit"
+              :title="AHX_HELP.filterUpperLimit"
+              @update:model-value="setNumber('filterUpperLimit', $event)"
+            />
+            <AhxSliderField
+              label="Filter speed"
+              :model-value="instrument.filterSpeed"
+              :max="AHX_NUMBER_FIELDS.filterSpeed"
+              :throttle-ms="AHX_TABLE_THROTTLE_MS"
+              testid="ahx-field-filterSpeed"
+              :title="AHX_HELP.filterSpeed"
+              @update:model-value="setNumber('filterSpeed', $event)"
+            />
+            <div class="ahx-field-row">
+              <label class="ahx-check" :title="AHX_HELP.hardCutRelease">
+                <input
+                  type="checkbox"
+                  data-testid="ahx-field-hardCutRelease"
+                  :checked="instrument.hardCutRelease"
+                  @change="setHardCut(($event.target as HTMLInputElement).checked)"
+                />
+                Hard cut release
+              </label>
+              <AhxSliderField
+                stepper
+                :model-value="instrument.hardCutReleaseFrames"
+                :max="AHX_NUMBER_FIELDS.hardCutReleaseFrames"
+                suffix="frames"
+                testid="ahx-field-hardCutReleaseFrames"
+                :title="AHX_HELP.hardCutReleaseFrames"
+                @update:model-value="setNumber('hardCutReleaseFrames', $event)"
+              />
+            </div>
+            <p
+              v-if="!instrument.hardCutRelease && instrument.hardCutReleaseFrames > 0"
+              class="ahx-warn"
+              data-testid="ahx-hardcut-abrupt"
+            >
+              Hard cut release is off, so the note is muted abruptly {{ instrument.hardCutReleaseFrames }}
+              {{ instrument.hardCutReleaseFrames === 1 ? 'tick' : 'ticks' }} before the next row that sets an instrument (a number above the tempo cuts from the start of the row).
+            </p>
+          </div>
+          <AhxSweepLane
+            class="ahx-fieldset-lane"
+            kind="filter"
+            :instrument="instrument"
+            :format="songFormat"
+            :version="sourceVersion"
+            @enable="enableSweep('filter')"
+          />
+        </fieldset>
+      </div>
+
+      <div class="ahx-right">
+        <div class="ahx-right-top">
+          <AhxAuditionBar
+            :audible="audible"
+            :held-keys="heldKeys"
+            v-model:latch="latch"
+            v-model:restrike="restrike"
+            :octave="octave"
+            :strip-start="stripStart"
+            :midi-status="play.midiStatus.value"
+            @pointer-down="play.pointerDown"
+            @pointer-up="play.pointerUp"
+            @set-octave="play.setOctave"
+            @toggle-midi="play.toggleMidi"
+          />
+          <div v-if="audible" class="ahx-analyzer" data-testid="ahx-analyzer-row">
+            <OscilloscopeComponent :node="ahxPreviewOutputNode" data-testid="ahx-analyzer-oscilloscope" />
+            <FrequencyAnalyzerComponent :node="ahxPreviewOutputNode" data-testid="ahx-analyzer-frequency" />
+          </div>
+          <span v-else class="ahx-dim" data-testid="ahx-analyzer-off"
+            >Unavailable: there is no source file to play this instrument from.</span
+          >
+        </div>
+
+        <section class="ahx-card">
         <h3>Volume envelope</h3>
         <AhxEnvelopeEditor
           :envelope="instrument.envelope"
@@ -414,46 +393,9 @@
         </ul>
         <p v-else class="ahx-dim">The PList selects no waveform.</p>
       </section>
+      </div>
 
-      <section class="ahx-card ahx-card--wide" data-testid="ahx-motion">
-        <h3>Sound in motion</h3>
-        <p class="ahx-dim ahx-note">
-          What the vibrato, the square wave and the brightness do over the ticks of a note (one tick is one
-          step of the engine&rsquo;s clock). The sliders above change these pictures.
-        </p>
-        <div class="ahx-lanes">
-          <div class="ahx-lane-block">
-            <h4>Vibrato (pitch wobble)</h4>
-            <AhxVibratoLane
-              :delay="instrument.vibratoDelay"
-              :speed="instrument.vibratoSpeed"
-              :depth="instrument.vibratoDepth"
-            />
-          </div>
-          <div class="ahx-lane-block">
-            <h4>Square wave (pulse width)</h4>
-            <AhxSweepLane
-              kind="square"
-              :instrument="instrument"
-              :format="songFormat"
-              :version="sourceVersion"
-              @enable="enableSweep('square')"
-            />
-          </div>
-          <div class="ahx-lane-block">
-            <h4>Filter (brightness)</h4>
-            <AhxSweepLane
-              kind="filter"
-              :instrument="instrument"
-              :format="songFormat"
-              :version="sourceVersion"
-              @enable="enableSweep('filter')"
-            />
-          </div>
-        </div>
-      </section>
-
-      <section class="ahx-card ahx-card--wide">
+      <section class="ahx-card ahx-plist-full">
         <h3>
           PList
           <span class="ahx-dim" data-testid="ahx-plist-summary"
@@ -502,17 +444,21 @@
             data-testid="ahx-plist-edit-unavailable"
             >Canvas editing needs an editable AHX song; the table edits any.</span
           >
+          <button
+            type="button"
+            class="ahx-btn ahx-plist-table-toggle"
+            :class="{ 'ahx-btn--active': plistTableVisible }"
+            :aria-expanded="plistTableVisible ? 'true' : 'false'"
+            title="Every row's typed fields, for editing without the canvas."
+            data-testid="ahx-plist-table-toggle"
+            @click="plistTableVisible = !plistTableVisible"
+          >
+            {{ plistTableVisible ? 'Hide table' : 'Show table' }}
+          </button>
         </div>
         <div v-if="editNotice" class="ahx-notice ahx-notice--edit" role="status" data-testid="ahx-edit-notice">
           {{ editNotice.message }}
         </div>
-        <AhxPListStrip
-          v-if="instrument.plist.entries.length"
-          :entries="instrument.plist.entries"
-          :selected="selectedRow"
-          :glyphs="WAVE_GLYPH"
-          @select="selectRow"
-        />
         <PListCanvas
           ref="plistCanvasRef"
           :instrument="instrument"
@@ -533,7 +479,7 @@
           @redo="onPListRedo"
           @focus-field="focusField"
         />
-        <div v-if="instrument.plist.entries.length" class="ahx-plist-scroll">
+        <div v-if="instrument.plist.entries.length" v-show="plistTableVisible" class="ahx-plist-scroll">
           <table class="ahx-table" data-testid="ahx-plist">
             <thead>
               <tr>
@@ -637,7 +583,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   AHX_MAX_PLIST_ENTRIES,
@@ -653,13 +599,14 @@ import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import {
   AHX_DEFAULT_OCTAVE,
-  AHX_MAX_OCTAVE,
-  AHX_MIN_OCTAVE,
   useAhxPlayInput,
 } from 'src/composables/useAhxPlayInput';
-import AhxPianoStrip from 'src/components/ahx/AhxPianoStrip.vue';
+import AhxAuditionBar from 'src/components/ahx/AhxAuditionBar.vue';
 import { ahxSourceInfo } from 'src/audio/tracker/ahx-source';
 import { ahxPListPlayhead } from 'src/audio/tracker/ahx-plist-playhead';
+import { ahxPreviewOutputNode } from 'src/audio/tracker/ahx-preview-output';
+import OscilloscopeComponent from 'src/components/OscilloscopeComponent.vue';
+import FrequencyAnalyzerComponent from 'src/components/FrequencyAnalyzerComponent.vue';
 import { ahxNotices, reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
 import AhxSliderField from 'src/components/ahx/AhxSliderField.vue';
@@ -668,24 +615,10 @@ import AhxEnvelopeEditor from 'src/components/ahx/AhxEnvelopeEditor.vue';
 import AhxWaveShape from 'src/components/ahx/AhxWaveShape.vue';
 import AhxVibratoLane from 'src/components/ahx/AhxVibratoLane.vue';
 import AhxSweepLane from 'src/components/ahx/AhxSweepLane.vue';
-import AhxPListStrip from 'src/components/ahx/AhxPListStrip.vue';
 import PListCanvas from 'src/components/ahx/PListCanvas.vue';
 import { ahxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import { isTextEntryTarget } from 'src/composables/keyboard/note-key-map';
-import {
-  commitPListEdit,
-  createPListGesture,
-  type PListEditHost,
-  type PListNibble,
-} from 'src/audio/tracker/plist-edit';
-import {
-  PLIST_MENU_ACTIONS,
-  runPListIntent,
-  type PListColumn,
-  type PListCursor,
-  type PListIntent,
-  type PListMenuAction,
-} from 'src/audio/tracker/plist-edit-input';
+import { useAhxPListEditing } from 'src/composables/useAhxPListEditing';
 import {
   AHX_FX_NAMES,
   AHX_HELP,
@@ -791,7 +724,7 @@ const usesFilter = computed(() =>
   instrument.value ? ahxUsesFilter(instrument.value, sweepContext.value) : false,
 );
 
-/** The PList row the canvas, the strip and the table highlight (a later task edits it). */
+/** The PList row the canvas and the table highlight. */
 const selectedRow = ref<number | null>(null);
 function selectRow(row: number): void {
   selectedRow.value = row;
@@ -944,13 +877,6 @@ const setEnvelope = (field: keyof AhxEnvelope, value: number) =>
 /** A node drag or key press sets a stage's frames and level together: one commit. */
 const setEnvelopeFields = (patch: Partial<AhxEnvelope>) =>
   commit((ins) => setAhxEnvelopeFields(ins, patch));
-/** Double-click on an envelope node: the typed field for the same value. */
-function focusField(testid: string): void {
-  const el = document.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`);
-  el?.focus();
-  // A select (the tone, a command) has no text to select.
-  el?.select?.();
-}
 const setStartWaveform = (value: number) => commit((ins) => setAhxStartWaveform(ins, value));
 const setStartFilter = (value: number) => commit((ins) => setAhxStartFilterPosition(ins, value));
 const setPListSpeed = (value: number) => commit((ins) => setAhxPListSpeed(ins, value));
@@ -961,124 +887,53 @@ const editEntry = (row: number, edit: AhxPListEdit) =>
 // Editing steps: the row buttons, the canvas keys and the row menu are one path
 // ---------------------------------------------------------------------------
 
-/** Off on every load and slot change, never saved: a saved mode would turn the keyboard piano off on the next visit. */
-const plistEdit = reactive<{ mode: boolean; column: PListColumn; nibble: PListNibble }>({ mode: false, column: 0, nibble: 0 });
-const plistCanvasRef = ref<InstanceType<typeof PListCanvas> | null>(null);
 const editNotice = ahxEditNotice;
+/** The full PList table sits behind this toggle (default hidden); a double-click hand-off (`focusField`) opens it too. */
+const plistTableVisible = ref(false);
 
-/** Canvas editing is offered where an edit has an undo: an editable AHX song. */
-const canEditPList = computed(() => trackerStore.isAhxEditable);
-
-const plistCursor = computed(() => ({ column: plistEdit.column, nibble: plistEdit.nibble }));
-const plistContext = computed(() => ({ format: songFormat.value, version: sourceVersion.value }));
-
-const EDIT_TOGGLE_TITLE =
-  'Type into the step under the canvas cursor. While this is on the computer keyboard no longer plays notes (the on-screen keys and MIDI still do). F2 or Esc turns it off.';
-const EDIT_UNAVAILABLE_TITLE =
-  'The canvas edits songs that can be undone: an AHX song opened here with its source. An HVL song, or an AHX song saved without its file, is edited in the table.';
-
-const plistGesture = createPListGesture();
-const plistHost: PListEditHost = {
-  canUndo: () => trackerStore.isAhxEditable,
-  pushHistory: () => trackerStore.pushHistory(),
-  // Only reached if the store refuses a write it had just said yes to; the redo steps `pushHistory` cleared are not brought back.
-  discardHistory: () => void trackerStore.undoStack.pop(),
-  ahxInstrumentRefusal: (slotNo, next) => trackerStore.ahxInstrumentRefusal(slotNo, next),
-  updateAhxInstrument: (slotNo, next) => trackerStore.updateAhxInstrument(slotNo, next),
-};
+const {
+  plistEdit,
+  plistCanvasRef,
+  canEditPList,
+  plistCursor,
+  EDIT_TOGGLE_TITLE,
+  EDIT_UNAVAILABLE_TITLE,
+  setPListEditMode,
+  onPListCursor,
+  onPListSelect,
+  onPListEdit,
+  onPListUndo,
+  onPListRedo,
+  plistMenuReasons,
+  addRow,
+  removeRow,
+} = useAhxPListEditing({
+  instrument,
+  slotNumber,
+  songFormat,
+  sourceVersion,
+  trackerStore,
+  selectedRow,
+  selectRow,
+  releaseKeyboard: () => play.releaseKeyboard(),
+});
 
 /**
- * One edit: the op for `intent`, committed once (undo step per gesture, the size
- * guard, the notice); if it worked the cursor goes where `cursorAfter` says.
+ * Double-click on an envelope node, or the canvas's hand-off to the same table
+ * field: the typed field for the same value. A PList field opens the table
+ * first if it is behind the `v-show` toggle — `display:none` cannot receive
+ * focus, so the ref flip must land in the DOM (`nextTick`) before the
+ * querySelector/focus.
  */
-function runPListEdit(intent: PListIntent, cursorAfter: PListCursor | null, continues: boolean): void {
-  const current = instrument.value;
-  const slotNo = slotNumber.value;
-  if (!current || slotNo === null) return;
-  const outcome = commitPListEdit(plistHost, plistGesture, slotNo, runPListIntent(current, intent, plistContext.value), { continues });
-  if (!outcome.ok || cursorAfter === null) return;
-  plistEdit.column = cursorAfter.column;
-  plistEdit.nibble = cursorAfter.nibble;
-  selectRow(cursorAfter.row);
+async function focusField(testid: string): Promise<void> {
+  if (/^ahx-plist-\d+-/.test(testid)) plistTableVisible.value = true;
+  await nextTick();
+  const el = document.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`);
+  el?.focus();
+  // A select (the tone, a command) has no text to select.
+  el?.select?.();
 }
 
-/** The table's `+` and `×`, and Add row: the same ops as the canvas, each click its own step. */
-function runTableRowOp(intent: PListIntent): void {
-  plistGesture.close();
-  runPListEdit(intent, null, false);
-}
-const addRow = (after?: number) =>
-  runTableRowOp({ kind: 'insert-below', row: after ?? (instrument.value?.plist.entries.length ?? 0) - 1 });
-const removeRow = (row: number) => runTableRowOp({ kind: 'delete', row });
-
-function setPListEditMode(on: boolean): void {
-  if (on === plistEdit.mode) return;
-  if (on && (!canEditPList.value || (instrument.value?.plist.entries.length ?? 0) === 0)) return;
-  plistEdit.mode = on;
-  plistGesture.close();
-  if (!on) return;
-  if (selectedRow.value === null) selectRow(0);
-  // A note the keyboard holds when the mode begins is let go of; its key-up finds nothing more to do.
-  play.releaseKeyboard();
-  plistCanvasRef.value?.focus();
-}
-
-/** A cursor move (a key, a click in Edit mode) ends the run of strokes that was one undo step. */
-function onPListCursor(cursor: PListCursor): void {
-  plistGesture.close();
-  plistEdit.column = cursor.column;
-  plistEdit.nibble = cursor.nibble;
-  selectRow(cursor.row);
-}
-function onPListSelect(row: number): void {
-  plistGesture.close();
-  selectRow(row);
-}
-const onPListEdit = (request: { intent: PListIntent; cursorAfter: PListCursor | null; continues: boolean }) =>
-  runPListEdit(request.intent, request.cursorAfter, request.continues);
-
-/** Undo and redo are the song's (an editable AHX song's snapshots); the song reloads, so the gesture starts over. */
-function onPListUndo(): void {
-  plistGesture.close();
-  trackerStore.undo();
-}
-function onPListRedo(): void {
-  plistGesture.close();
-  trackerStore.redo();
-}
-
-/** Why each row-menu item cannot be done on `row` right now: the op's own refusal, then the store's (the file's size). */
-function plistMenuReasons(row: number): Partial<Record<PListMenuAction, string>> {
-  const current = instrument.value;
-  const slotNo = slotNumber.value;
-  if (!current || slotNo === null) return {};
-  const reasons: Partial<Record<PListMenuAction, string>> = {};
-  for (const action of PLIST_MENU_ACTIONS) {
-    const result = runPListIntent(current, { kind: action, row }, plistContext.value);
-    const reason = !result.ok ? result.reason : result.changed ? trackerStore.ahxInstrumentRefusal(slotNo, result.instrument) : null;
-    if (reason !== null) reasons[action] = reason;
-  }
-  return reasons;
-}
-
-// The mode ends with what it needs: another instrument, a song that cannot be edited, no rows left.
-watch(slotNumber, () => setPListEditMode(false));
-watch(canEditPList, (can) => {
-  if (!can) setPListEditMode(false);
-});
-watch(
-  () => instrument.value?.plist.entries.length ?? 0,
-  (count) => {
-    if (count === 0) setPListEditMode(false);
-  },
-);
-
-/** Middle-of-the-keyboard notes to hold: C-2 .. C-5 as MIDI. */
-const AUDITION_KEYS = [
-  { midi: 48, label: 'C-3' },
-  { midi: 60, label: 'C-4' },
-  { midi: 72, label: 'C-5' },
-];
 const restrike = ref(false);
 
 /**
@@ -1100,30 +955,6 @@ const { heldKeys, latch, octave } = play;
 
 /** The strip's lowest key follows the octave shift, so touch reaches the same range the keyboard does. */
 const stripStart = computed(() => 48 + (octave.value - AHX_DEFAULT_OCTAVE) * 12);
-
-const midiChip = computed(() => {
-  const { state, devices } = play.midiStatus.value;
-  switch (state) {
-    case 'unsupported':
-      return { text: 'MIDI: not supported', title: 'This browser has no Web MIDI.' };
-    case 'requesting':
-      return { text: 'MIDI: asking…', title: 'Waiting for the browser\u2019s permission prompt.' };
-    case 'denied':
-      return {
-        text: 'MIDI: denied',
-        title: 'The browser refused MIDI access. Allow it for this site, then click to try again.',
-      };
-    case 'ready':
-      return devices.length === 0
-        ? { text: 'MIDI: no device', title: 'MIDI is on; plug a controller in and it is picked up. Click to turn it off.' }
-        : {
-            text: devices.length === 1 ? `MIDI: ${devices[0]}` : `MIDI: ${devices[0]} +${devices.length - 1}`,
-            title: `${devices.join(', ')}. Click to turn MIDI off.`,
-          };
-    default:
-      return { text: 'MIDI: off', title: 'Click to play this instrument from a MIDI keyboard.' };
-  }
-});
 
 /**
  * Re-strike on edit: a committed edit strikes the held note again after a short
@@ -1217,24 +1048,39 @@ onUnmounted(() => {
 
 .ahx-body {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: minmax(300px, 380px) 1fr;
   gap: 12px;
   padding: 12px;
 }
 
+.ahx-left {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.ahx-right {
+  display: grid;
+  gap: 12px;
+}
+
+.ahx-plist-full {
+  grid-column: 1 / -1;
+}
+
 .ahx-card {
+  margin: 0;
+  min-width: 0;
   padding: 12px 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.03);
 }
 
-.ahx-card--wide {
-  grid-column: 1 / -1;
-}
-
-.ahx-card h3 {
+.ahx-card h3,
+.ahx-card legend {
   margin: 0 0 8px;
+  padding: 0;
   font-size: 0.95rem;
   font-weight: 600;
 }
@@ -1425,121 +1271,34 @@ onUnmounted(() => {
   font-size: 0.8rem;
 }
 
-.ahx-audition-bar {
-  /* The page (q-page) is its own scroll container, below the app header, so 0 is just under it. */
-  position: sticky;
-  top: 0;
-  z-index: 6;
-  padding: 6px 12px;
-  background: var(--app-background, #0b111a);
-  border-color: var(--tracker-accent-secondary, #3b82a0);
-}
-
-.ahx-audition {
+.ahx-right-top {
   display: flex;
+  align-items: flex-start;
+  gap: 12px;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 10px;
 }
 
-.ahx-audition__title {
-  font-weight: 600;
+.ahx-analyzer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
 }
 
-.ahx-audition__hint {
-  font-size: 0.8rem;
+/* FrequencyAnalyzerComponent inherits height: 100% with no fallback, so an
+   unsized flex slot would collapse its canvas to 0 and it would draw
+   nothing; OscilloscopeComponent has its own fixed 120px canvas that this
+   caps down to match. */
+.ahx-analyzer > * {
+  height: 70px;
 }
 
-.ahx-check--bar {
-  min-width: 0;
-  font-size: 0.85rem;
-  cursor: pointer;
+.ahx-analyzer :deep(canvas) {
+  height: 70px;
 }
 
-.ahx-octave {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.ahx-octave__btn,
-.ahx-midi-chip {
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-  background: var(--button-background, #1a2534);
-  border: 1px solid var(--tracker-accent-secondary, #3b82a0);
-  border-radius: 4px;
-}
-
-.ahx-octave__btn {
-  width: 26px;
-  padding: 2px 0;
-}
-
-.ahx-octave__btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.ahx-octave__value {
-  min-width: 44px;
-  font-size: 0.85rem;
-  text-align: center;
-}
-
-.ahx-midi-chip {
-  padding: 2px 10px;
-  font-size: 0.8rem;
-  border-radius: 999px;
-}
-
-.ahx-midi-chip--ready {
-  border-color: var(--tracker-accent-primary, #f0b25e);
-}
-
-.ahx-midi-chip--denied,
-.ahx-midi-chip--unsupported {
-  opacity: 0.65;
-}
-
-.ahx-audition__key--held {
-  background: var(--tracker-active-bg, #14283d);
-  outline: 2px solid var(--tracker-accent-primary, #f0b25e);
-}
-
-.ahx-audition__key {
-  min-width: 64px;
-  padding: 6px 16px;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-  user-select: none;
-  touch-action: none;
-  background: var(--button-background, #1a2534);
-  border: 1px solid var(--tracker-accent-secondary, #3b82a0);
-  border-radius: 4px;
-}
-
-.ahx-audition__key:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.ahx-audition__key:active {
-  background: var(--tracker-active-bg, #14283d);
-}
-
-.ahx-lanes {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 14px 20px;
-}
-
-.ahx-lane-block h4 {
-  margin: 0 0 6px;
-  font-size: 0.85rem;
-  font-weight: 600;
+.ahx-fieldset-lane {
+  margin-top: 10px;
 }
 
 .ahx-row--selected td {

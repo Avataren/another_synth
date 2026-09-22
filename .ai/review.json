@@ -1,0 +1,15 @@
+{
+  "verdict": "PASS",
+  "reviewed_commits": [
+    "0a90713b",
+    "eb8c6491",
+    "a163b349",
+    "e687ee38"
+  ],
+  "branch": "agent/ahx-inst-redesign-1",
+  "base": "a1c72639",
+  "findings": [
+    "minor: gate §5 item 6 diffstat not separately logged in a checks file (substantively verified clean via review-input-log.txt + git status)"
+  ],
+  "full_text": "review-ahxinstred.md"
+}
