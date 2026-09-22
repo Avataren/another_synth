@@ -824,6 +824,10 @@
             :granular-scroll="userSettings.granularPlaybackScroll"
             :enable-editing="isEditMode"
             :upcoming-pattern="upcomingPattern"
+            :transpose-labels="ahxTransposeLabels.length > 0 ? ahxTransposeLabels : undefined"
+            :transpose-titles="ahxTransposeTitles.length > 0 ? ahxTransposeTitles : undefined"
+            @transpose-chip-click="focusAhxTransposeChannel"
+            @transpose-chip-step="onTransposeChipStep"
             @rowSelected="setActiveRow"
             @cellSelected="setActiveCell"
             @startSelection="onPatternStartSelection"
@@ -1175,6 +1179,20 @@ function onSetPositionTranspose(channel: number, value: number): void {
 function focusAhxTransposeChannel(channel: number): void {
   if (ahxPositionIndex.value < 0) return;
   ahxPositionPanelRef.value?.focusChannel(channel);
+}
+/**
+ * The canvas header chip's wheel step (plan-ahx-transpose-header.md D-C):
+ * the chip only emits; the page reads the current byte from the store doc
+ * and sends the stepped value through `setAhxPositionTranspose` — the model
+ * op's own range check is the clamp, and a refusal reports the transient
+ * notice, exactly like the panel's typed entry. Out-of-bounds channels/
+ * positions cannot reach here (the labels only exist for a real position).
+ */
+function onTransposeChipStep(channel: number, direction: number): void {
+  const index = ahxPositionIndex.value;
+  if (index < 0) return;
+  const current = trackerStore.ahxDoc?.positions[index]?.transpose[channel] ?? 0;
+  trackerStore.setAhxPositionTranspose(index, channel, current + direction);
 }
 const ahxChannelsHint = 'AHX songs have exactly 4 channels';
 const ahxLengthHint = 'All the tracks of an AHX song have the same length';

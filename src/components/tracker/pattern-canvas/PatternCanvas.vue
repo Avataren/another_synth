@@ -20,6 +20,15 @@
         >
           <span class="header-track-index">{{ index + 1 }}</span>
           <span class="header-track-name">{{ track.name }}</span>
+          <span
+            v-if="transposeLabels?.[index]"
+            class="header-track-transpose"
+            :class="{ 'transpose-zero': transposeLabels[index] === 'T0' }"
+            :title="transposeTitles?.[index] ?? ''"
+            data-testid="track-transpose-chip"
+            @click="emit('transposeChipClick', index)"
+            @wheel.stop.prevent="onTransposeChipWheel(index, $event)"
+          >{{ transposeLabels[index] }}</span>
         </div>
       </div>
     </div>
@@ -185,6 +194,18 @@ interface Props {
    * back to the regular static paint when the pre-render is stale or absent.
    */
   upcomingPattern?: { id: string; tracks: TrackerTrackData[]; rows: number } | null;
+  /**
+   * The current position's per-channel transpose labels (`T0`, `T-1`, …, the
+   * shared `ahxTransposeLabel` wording), one entry per channel, rendered as a
+   * trailing segment of the matching header chip. AHX-only: absent for every
+   * mount that is not an editable AHX position, which renders nothing — the
+   * same optional-prop gate the DOM grid's badge uses. Display lives in the
+   * header (not the rows) because the byte shifts notes that only keep
+   * sounding while the position's own slots are empty.
+   */
+  transposeLabels?: readonly string[] | undefined;
+  /** Native tooltips aligned with `transposeLabels`; absent with it is fine. */
+  transposeTitles?: readonly string[] | undefined;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -203,6 +224,10 @@ const emit = defineEmits<{
   (event: 'hoverSelection', payload: { row: number; trackIndex: number }): void;
   (event: 'scroll', payload: { top: number; left: number }): void;
   (event: 'rendererError', error: Error): void;
+  /** Chip hand-off: focus the panel's input for that channel (page owns it). */
+  (event: 'transposeChipClick', channel: number): void;
+  /** Chip wheel: step that channel's transpose by `direction` (±1). */
+  (event: 'transposeChipStep', channel: number, direction: number): void;
 }>();
 
 const scrollerRef = ref<HTMLDivElement | null>(null);
@@ -314,6 +339,30 @@ function headerTrackStyle(index: number) {
     width: `${trackWidthPx(layout.value.trackCount, layout.value.showExtraEffectColumn)}px`,
     '--track-accent': trackAccent(index, { trackAccents: trackAccents.value }),
   };
+}
+
+/**
+ * Wheel-to-step for the transpose chip segment (plan-ahx-transpose-header.md
+ * D-B): trackpads emit many small deltas per physical notch, so vertical
+ * deltas accumulate and one step fires per `WHEEL_STEP_PX` crossed — a raw
+ * sign-per-event would gallop on a trackpad. One channel accumulates at a
+ * time (the pointer can only sit on one chip), so a single counter resets
+ * whenever a different chip is wheeled.
+ */
+const TRANSPOSE_WHEEL_STEP_PX = 100;
+let transposeWheelAccumulator = 0;
+let transposeWheelChannel = -1;
+function onTransposeChipWheel(channel: number, event: WheelEvent): void {
+  if (event.deltaY === 0) return;
+  if (channel !== transposeWheelChannel) {
+    transposeWheelChannel = channel;
+    transposeWheelAccumulator = 0;
+  }
+  transposeWheelAccumulator += event.deltaY;
+  if (Math.abs(transposeWheelAccumulator) < TRANSPOSE_WHEEL_STEP_PX) return;
+  const direction = transposeWheelAccumulator > 0 ? 1 : -1;
+  transposeWheelAccumulator -= direction * TRANSPOSE_WHEEL_STEP_PX;
+  emit('transposeChipStep', channel, direction);
 }
 
 // ---------------------------------------------------------------------
@@ -2026,6 +2075,28 @@ defineExpose({ scrollerRef, hscrollRef });
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * The AHX transpose segment (plan-ahx-transpose-header.md D-A): the same
+ * strip voice, non-zero values in the track accent so a shifted channel
+ * reads at a glance, `T0` muted so silence is not mistaken for a value.
+ * Interactive only via pointer (wheel/click); the strip is aria-hidden and
+ * the panel stays the keyboard-reachable editor.
+ */
+.header-track-transpose {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--track-accent, #5dd6ff) 22%, transparent);
+  color: var(--track-accent, #5dd6ff);
+  cursor: ns-resize;
+  user-select: none;
+}
+
+.header-track-transpose.transpose-zero {
+  background: transparent;
+  color: var(--text-muted, #a7bcd8);
 }
 
 /*

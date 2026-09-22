@@ -9,9 +9,10 @@ export function ahxTransposeLabel(value: number): string {
 }
 
 /**
- * The badge/input tooltip: what the byte does, where it edits. True for every
- * editable AHX position; not rendered anywhere else.
+ * The chip/input tooltip: what the byte does, where it edits. True for every
+ * editable AHX position; not rendered anywhere else. The header chip wheels
+ * the value and hands off on click; the panel takes typed entry.
  */
 export function ahxTransposeTitle(position: number, channel: number, value: number): string {
-  return `Position ${position + 1}, channel ${channel + 1}: notes shift by ${ahxTransposeLabel(value)} semitones when the song plays; edit it in the position panel below the song list.`;
+  return `Position ${position + 1}, channel ${channel + 1}: notes shift by ${ahxTransposeLabel(value)} semitones when the song plays; wheel it on the track header chip, or type it in the position panel below the song list.`;
 }
