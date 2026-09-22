@@ -44,7 +44,13 @@ import {
   WavetableOscillatorStateUpdate,
   type Waveform,
 } from 'app/public/wasm/audio_processor.js';
-import type { LoadPatchMessage } from '../types/worklet-messages';
+import type {
+  DeleteNodeMessage,
+  ExportConvolverDataMessage,
+  ExportSampleDataMessage,
+  ImportImpulseWaveformMessage,
+  LoadPatchMessage,
+} from '../types/worklet-messages';
 import type OscillatorState from '../models/OscillatorState.js';
 interface EnvelopeUpdate {
   config?: EnvelopeConfig;
@@ -469,11 +475,40 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
     });
   }
 
-  private handleDeleteNode(data: { nodeId: string }) {
-    this.getGraphEngines().forEach((engine) => {
-      engine.delete_node(data.nodeId);
+  private handleDeleteNode(data: DeleteNodeMessage) {
+    if (!data.instrumentId) {
+      this.getGraphEngines().forEach((engine) => {
+        engine.delete_node(data.nodeId);
+      });
+      this.handleRequestSync();
+      return;
+    }
+
+    // A pooled slot owns a private engine; deleting anywhere else would leave
+    // the node sounding in the slot while the editor has already dropped it.
+    this.getTargetEngines(data.instrumentId).forEach((engine) => {
+      try {
+        engine.delete_node(data.nodeId);
+      } catch (error) {
+        console.warn(
+          `deleteNode ${data.nodeId} failed for ${data.instrumentId}:`,
+          error,
+        );
+      }
     });
-    this.handleRequestSync();
+
+    const slot = this.instrumentSlots.get(data.instrumentId);
+    if (!slot) {
+      this.handleRequestSync();
+      return;
+    }
+    this.stateVersion++;
+    this.port.postMessage({
+      type: 'stateUpdated',
+      version: this.stateVersion,
+      state: slot.engine.get_current_state(),
+      instrumentId: data.instrumentId,
+    });
   }
 
   private handleConnectMacro(data: {
@@ -646,14 +681,7 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleImportImpulseWaveformData(data: {
-    type: string;
-    // Using wavData.buffer transfers the ArrayBuffer
-    nodeId: string;
-    data: Uint8Array;
-  }) {
-    if (!this.audioEngines[0]) return;
-
+  private handleImportImpulseWaveformData(data: ImportImpulseWaveformMessage) {
     const effectId = Number(data.nodeId);
     if (!Number.isFinite(effectId)) {
       console.error(
@@ -664,7 +692,18 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
     }
 
     const uint8Data = new Uint8Array(data.data);
-    this.audioEngines[0].import_wave_impulse(effectId, uint8Data);
+    // The owning slot's engine for a pooled instrument; every legacy engine
+    // otherwise, since legacy mode loads the patch into each of them.
+    this.getTargetEngines(data.instrumentId).forEach((engine) => {
+      try {
+        engine.import_wave_impulse(effectId, uint8Data);
+      } catch (error) {
+        console.error(
+          `importImpulseWaveform ${data.nodeId} failed for ${data.instrumentId ?? '(legacy)'}:`,
+          error,
+        );
+      }
+    });
   }
 
   private handleImportWavetableData(data: {
@@ -2020,19 +2059,16 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleExportSampleData(data: {
-    samplerId: string;
-    messageId: string;
-  }) {
-    if (!this.audioEngines[0]) return;
+  private handleExportSampleData(data: ExportSampleDataMessage) {
+    const engine = this.getTargetEngines(data.instrumentId)[0];
+    if (!engine) return;
     try {
-      const sampleData = this.audioEngines[0].export_sample_data(
-        data.samplerId,
-      );
+      const sampleData = engine.export_sample_data(data.samplerId);
       this.port.postMessage({
         type: 'sampleData',
         samplerId: data.samplerId,
         messageId: data.messageId,
+        instrumentId: data.instrumentId,
         sampleData,
       });
     } catch (err) {
@@ -2041,24 +2077,22 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
         type: 'error',
         source: 'exportSampleData',
         messageId: data.messageId,
+        instrumentId: data.instrumentId,
         message: 'Failed to export sample data',
       });
     }
   }
 
-  private handleExportConvolverData(data: {
-    convolverId: string;
-    messageId: string;
-  }) {
-    if (!this.audioEngines[0]) return;
+  private handleExportConvolverData(data: ExportConvolverDataMessage) {
+    const engine = this.getTargetEngines(data.instrumentId)[0];
+    if (!engine) return;
     try {
-      const convolverData = this.audioEngines[0].export_convolver_data(
-        data.convolverId,
-      );
+      const convolverData = engine.export_convolver_data(data.convolverId);
       this.port.postMessage({
         type: 'convolverData',
         convolverId: data.convolverId,
         messageId: data.messageId,
+        instrumentId: data.instrumentId,
         convolverData,
       });
     } catch (err) {
@@ -2067,6 +2101,7 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
         type: 'error',
         source: 'exportConvolverData',
         messageId: data.messageId,
+        instrumentId: data.instrumentId,
         message: 'Failed to export convolver data',
       });
     }

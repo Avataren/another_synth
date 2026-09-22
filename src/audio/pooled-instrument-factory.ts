@@ -34,6 +34,12 @@ import type {
 } from './types/synth-layout';
 import type { NodeConnectionUpdate } from './types/synth-layout';
 import type { NoiseState } from './types/noise';
+import type {
+  ConvolverDataMessage,
+  ExportConvolverDataMessage,
+  ExportSampleDataMessage,
+  SampleDataMessage,
+} from './types/worklet-messages';
 import { ENGINES_PER_WORKLET, VOICES_PER_ENGINE } from './worklet-config';
 import { toRaw } from 'vue';
 import {
@@ -52,6 +58,7 @@ export class PooledInstrument {
 
   // Track which shared worklets are already connected to the destination to avoid duplicate connections.
   private static connectedWorklets = new WeakSet<AudioWorkletNode>();
+  private static exportSequence = 0;
 
   private instrumentId: string;
   private allocation: VoiceAllocation;
@@ -1119,8 +1126,14 @@ export class PooledInstrument {
     return creation.promise;
   }
 
-  deleteNode(_nodeId: string): void {
-    // Structural graph editing is not supported for pooled tracker slots yet.
+  deleteNode(nodeId: string): void {
+    // Only this slot's engine deletes it; the worklet replies with the slot's
+    // refreshed layout, as it does for createNode.
+    this.messageHandler.sendFireAndForget({
+      type: 'deleteNode',
+      nodeId,
+      instrumentId: this.instrumentId,
+    });
   }
 
   getEnvelopePreview(
@@ -1429,76 +1442,70 @@ export class PooledInstrument {
     channels: number;
     rootNote: number;
   }> {
-    const messageId = `export-sample:${nodeId}`;
-    const port = this.workletNode.port;
-    return new Promise((resolve) => {
-      const handleMessage = (event: MessageEvent) => {
-        if (event.data?.messageId === messageId) {
-          port.removeEventListener('message', handleMessage);
-          resolve(
-            event.data.sampleData ?? {
-              samples: new Float32Array(),
-              sampleRate: 44100,
-              channels: 1,
-              rootNote: 60,
-            },
-          );
-        }
-      };
-      port.addEventListener('message', handleMessage);
-      port.postMessage({
-        type: 'exportSampleData',
-        samplerId: nodeId,
-        messageId,
-        instrumentId: this.instrumentId,
-      });
-      setTimeout(
-        () =>
-          resolve({
-            samples: new Float32Array(),
-            sampleRate: 44100,
-            channels: 1,
-            rootNote: 60,
-          }),
-        5000,
-      );
-    });
+    const empty = {
+      samples: new Float32Array(),
+      sampleRate: 44100,
+      channels: 1,
+      rootNote: 60,
+    };
+    const messageId = this.nextExportId('sample', nodeId);
+    const reply = await this.requestExport(messageId, {
+      type: 'exportSampleData',
+      samplerId: nodeId,
+      messageId,
+      instrumentId: this.instrumentId,
+    } satisfies ExportSampleDataMessage);
+    return (reply as Partial<SampleDataMessage> | null)?.sampleData ?? empty;
   }
 
   async exportConvolverData(
     nodeId: string,
   ): Promise<{ samples: Float32Array; sampleRate: number; channels: number }> {
-    const messageId = `export-convolver:${nodeId}`;
+    const empty = {
+      samples: new Float32Array(),
+      sampleRate: 44100,
+      channels: 1,
+    };
+    const messageId = this.nextExportId('convolver', nodeId);
+    const reply = await this.requestExport(messageId, {
+      type: 'exportConvolverData',
+      convolverId: nodeId,
+      messageId,
+      instrumentId: this.instrumentId,
+    } satisfies ExportConvolverDataMessage);
+    return (
+      (reply as Partial<ConvolverDataMessage> | null)?.convolverData ?? empty
+    );
+  }
+
+  /**
+   * Every PooledInstrument on a worklet listens on the same port, and slots
+   * can share node ids, so the correlation id names the instrument too.
+   */
+  private nextExportId(kind: string, nodeId: string): string {
+    PooledInstrument.exportSequence += 1;
+    return `export-${kind}:${this.instrumentId}:${nodeId}:${PooledInstrument.exportSequence}`;
+  }
+
+  /** Posts an export request; resolves with the reply, or null on timeout. */
+  private requestExport(
+    messageId: string,
+    message: ExportSampleDataMessage | ExportConvolverDataMessage,
+  ): Promise<unknown> {
     const port = this.workletNode.port;
     return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        port.removeEventListener('message', handleMessage);
+        resolve(null);
+      }, 5000);
       const handleMessage = (event: MessageEvent) => {
-        if (event.data?.messageId === messageId) {
-          port.removeEventListener('message', handleMessage);
-          resolve(
-            event.data.convolverData ?? {
-              samples: new Float32Array(),
-              sampleRate: 44100,
-              channels: 1,
-            },
-          );
-        }
+        if (event.data?.messageId !== messageId) return;
+        port.removeEventListener('message', handleMessage);
+        clearTimeout(timer);
+        resolve(event.data);
       };
       port.addEventListener('message', handleMessage);
-      port.postMessage({
-        type: 'exportConvolverData',
-        convolverId: nodeId,
-        messageId,
-        instrumentId: this.instrumentId,
-      });
-      setTimeout(
-        () =>
-          resolve({
-            samples: new Float32Array(),
-            sampleRate: 44100,
-            channels: 1,
-          }),
-        5000,
-      );
+      port.postMessage(message);
     });
   }
 
