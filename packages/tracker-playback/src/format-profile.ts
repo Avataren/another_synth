@@ -301,6 +301,15 @@ export interface FormatProfile {
   readonly fastVolumeSlides: boolean;
 
   /**
+   * Which engine should voice this song's sample instruments: `'sampler'`
+   * (the app's native Web Audio ModInstrument) or `'worklet'` (the full WASM
+   * synth). Absent means "no per-song preference": the app falls back to its
+   * global `useSimplifiedModInstruments` setting, which is how every song
+   * behaves today -- no importer sets this yet (arch review N8, D4 open).
+   */
+  readonly instrumentEngine?: 'sampler' | 'worklet';
+
+  /**
    * How a module's raw effect-command bytes decode into the format-neutral
    * effect behaviours, for entries that carry them (`TrackerEntryData
    * .effectCommand`/`.effectParam`). The numeric command byte is what the
@@ -985,10 +994,27 @@ export interface ProfileOptions {
    * `FormatProfile.fastVolumeSlides`. Absent means the ordinary ST3 reading.
    */
   fastVolumeSlides?: boolean;
+  /**
+   * Per-song instrument-engine preference, copied onto
+   * `FormatProfile.instrumentEngine`. Absent leaves the profile without one,
+   * so the app's global setting decides (the default for every song today).
+   */
+  instrumentEngine?: 'sampler' | 'worklet';
 }
 
 /** The playback semantics to apply for a given module format. */
 export function profileForFormat(
+  format: ModuleFormat | undefined,
+  options?: ProfileOptions,
+): FormatProfile {
+  const base = formatBaseProfile(format, options);
+  // Like `fastVolumeSlides`, an independent per-song flag applied on top;
+  // absent returns the shared constant unchanged.
+  if (options?.instrumentEngine === undefined) return base;
+  return { ...base, instrumentEngine: options.instrumentEngine };
+}
+
+function formatBaseProfile(
   format: ModuleFormat | undefined,
   options?: ProfileOptions,
 ): FormatProfile {
