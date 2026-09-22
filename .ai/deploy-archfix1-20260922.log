@@ -1,0 +1,15 @@
+# Deploy log — arch-fix1 landing, 2026-09-22
+
+- Command: bash scripts/deploy.sh (as written, default target avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth)
+- Exit code: 0
+- Build: npm run build (quasar v2.17.4, vite 5.4.21, mode spa) — Build succeeded
+- Deploy checksum (script verify, dist/spa/index.html vs remote index.html): 12c00aef8b6a78ea9fe348e5f9dfa1fe
+- Independent md5 byte-match local dist/spa vs remote deployed: all 7 files match:
+  index.html            12c00aef8b6a78ea9fe348e5f9dfa1fe
+  wasm/audio_processor_bg.wasm 660f3c70e72d0b87e2ed2dadc65eee42
+  worklets/ahx-worklet.js       0b1e28a2d692f80a2f9fc3a46d77f1e6
+  worklets/effects-worklet.js   ea0b2d2be2fd5dd6ec9a6a6ccb5c5e71
+  worklets/recording-worklet.js 9c96bf69c35c1b90db4314dd0923147f
+  worklets/synth-worklet.js     d3be4813a900d1db107ac182b425f346
+  demos/index.json              8c509dd895820af982e574204fcde15c
+- Source commit deployed: 7f7f11e7 (merge of agent/arch-fix1-0922a @ e1a4d024)

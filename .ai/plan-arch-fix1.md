@@ -272,3 +272,19 @@ Remains (not attempted, per brief):
     stale. That is correct: the bundle is esbuild's output.
 - **Not touched:** N4 casts outside the save path (`patch-store.ts:368,374,439`),
   and `InstrumentV2` export correlation (already unique per call).
+
+## Landed (2026-09-22)
+
+- Merged agent/arch-fix1-0922a @ e1a4d024 into main via no-ff merge commit 7f7f11e7 (message: "merge: pooled-slot routing fixes + artifact freshness gate (agent/arch-fix1-0922a)"). Diff scope 19 files, as reviewed.
+- Post-merge gates on main (real exit codes): full vitest suite 235 files / 3753 tests passed (exit 0); eslint 0 problems (exit 0); vue-tsc --noEmit (exit 0); npm run check:artifacts standalone ✅ "public/worklets and public/wasm match their sources" (exit 0). The N3 freshness gate ran inside the vitest suite and standalone.
+- Pushed main: range 5e26b7ae..7f7f11e7 -> origin/main (push exit 0).
+- Deployed via scripts/deploy.sh (default target avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth), exit 0; script's own index.html checksum verified: 12c00aef8b6a78ea9fe348e5f9dfa1fe.
+- Independent md5 byte-match (dist/spa vs deployed), all PASS:
+  - index.html 12c00aef8b6a78ea9fe348e5f9dfa1fe
+  - wasm/audio_processor_bg.wasm 660f3c70e72d0b87e2ed2dadc65eee42
+  - worklets/ahx-worklet.js 0b1e28a2d692f80a2f9fc3a46d77f1e6
+  - worklets/effects-worklet.js ea0b2d2be2fd5dd6ec9a6a6ccb5c5e71
+  - worklets/recording-worklet.js 9c96bf69c35c1b90db4314dd0923147f
+  - worklets/synth-worklet.js d3be4813a900d1db107ac182b425f346 (rebuilt on this branch — deployed copy matches)
+  - demos/index.json 8c509dd895820af982e574204fcde15c
+- Landing record: .ai/deploy-archfix1-20260922.log; worktree owner marker cleared; branch agent/arch-fix1-0922a and worktree .ai/worktrees/arch-fix1 left in place.
