@@ -57,6 +57,7 @@ import {
   projectAhxPatterns,
   projectTracks,
   setTrack,
+  setTranspose,
   tracksEqual,
   type AhxDoc,
   type AhxDocTrack,
@@ -1565,6 +1566,37 @@ export const useTrackerStore = defineStore('trackerStore', {
       } catch (error) {
         console.error('[TrackerStore] the AHX song could not be written; the engine keeps the previous version', error);
       }
+    },
+    /**
+     * Sets one position's per-channel transpose byte (the AHX field the engine
+     * applies to every note the position plays, `formats/ahx.ts`'s position
+     * parse and `hvl_replay.h pos_Transpose[]`). The write is `setTranspose`
+     * (the model op, already validated, undo-supported at the op level, and
+     * until now without a UI caller); this action wraps it with the store's
+     * edit conventions: guards first (the refusal reports, nothing else
+     * happens), then the op immutably — a same-value set is a no-op detected
+     * before history — then `pushHistory()` only when the doc actually
+     * changed, then `commitAhxDoc` (no `mapPosition`: a transpose moves no
+     * position), whose byte publish the live reload picks up. Returns whether
+     * the doc changed.
+     */
+    setAhxPositionTranspose(position: number, channel: number, value: number): boolean {
+      if (!this.isAhxEditable) return false;
+      const doc = this.ahxDoc as AhxDoc;
+      const positionAt = doc.positions[position];
+      if (positionAt === undefined || channel < 0 || channel >= AHX_CHANNELS) {
+        reportAhxEditNotice(`Position ${position + 1}, channel ${channel + 1} does not exist in this song.`);
+        return false;
+      }
+      const written = setTranspose(doc, position, channel, value);
+      if (!written.ok) {
+        reportAhxEditNotice(written.reason);
+        return false;
+      }
+      if (written.doc === doc) return false; // Same value: nothing to write, no history entry.
+      this.pushHistory();
+      this.commitAhxDoc(written.doc);
+      return true;
     },
     /**
      * Brings the current bytes up to date with everything the editor holds:

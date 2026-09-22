@@ -56,6 +56,9 @@
             :visible-start-row="visibleRange.startRow"
             :visible-end-row="visibleRange.endRow"
             :show-extra-effect-column="showExtraEffectColumn"
+            :transpose-label="transposeLabels?.[index]"
+            :transpose-title="transposeTitles?.[index]"
+            @transpose-badge-click="onTransposeBadgeClick(index)"
             @rowSelected="selectRow"
             @cellSelected="selectCell"
             @startSelection="startSelection"
@@ -121,6 +124,9 @@
               :visible-start-row="bufferVisibleRange(slotKey).startRow"
               :visible-end-row="bufferVisibleRange(slotKey).endRow"
               :show-extra-effect-column="showExtraEffectColumn"
+              :transpose-label="transposeLabels?.[index]"
+              :transpose-title="transposeTitles?.[index]"
+              @transpose-badge-click="onTransposeBadgeClick(index)"
             />
           </div>
         </div>
@@ -162,6 +168,16 @@ interface Props {
   containerHeight: number;
   isMouseSelecting: boolean;
   showExtraEffectColumn: boolean;
+  /**
+   * The current position's per-channel transpose labels (`T0`, `T-1`, …), one
+   * per channel, doc order. Display only: the byte lives in the position, not
+   * in a track (a track can be shared across positions), so the page computes
+   * it for the pattern it shows and threads it down. `undefined` for every
+   * mount that is not an editable AHX position renders nothing.
+   */
+  transposeLabels?: readonly string[] | undefined;
+  /** Native tooltips for the badges, aligned with `transposeLabels`. */
+  transposeTitles?: readonly string[] | undefined;
   /** Whether the spectrum analyser is on and needs gutters to draw in. */
   reserveSideGutter: boolean;
   /** Pattern coming next in the sequence, or null when unknown/not playing. */
@@ -177,7 +193,13 @@ const emit = defineEmits<{
   (event: 'cellSelected', payload: { row: number; column: number; trackIndex: number; macroNibble?: number }): void;
   (event: 'startSelection', payload: { row: number; trackIndex: number }): void;
   (event: 'hoverSelection', payload: { row: number; trackIndex: number }): void;
+  (event: 'transposeBadgeClick', trackIndex: number): void;
 }>();
+
+/** The badge hand-off: the page focuses the panel's input for that channel. */
+function onTransposeBadgeClick(trackIndex: number): void {
+  emit('transposeBadgeClick', trackIndex);
+}
 
 const rowHeightPx = 30;
 const rowGapPx = 6;

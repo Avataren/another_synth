@@ -2,6 +2,13 @@
   <div class="tracker-track" :style="{ '--track-accent': track.color || fallbackAccent }">
     <div class="track-header">
       <div class="track-name">{{ track.name }}</div>
+      <span
+        v-if="transposeLabel"
+        class="track-transpose"
+        :title="transposeTitle ?? ''"
+        data-testid="track-transpose-badge"
+        @click="emit('transposeBadgeClick', index)"
+      >{{ transposeLabel }}</span>
       <div class="track-id">#{{ trackIndexLabel }}</div>
     </div>
     <div class="track-entries-container" :style="{ height: `${totalEntriesHeight}px` }">
@@ -48,6 +55,17 @@ interface Props {
   visibleEndRow: number;
   showExtraEffectColumn: boolean;
   /**
+   * The current position's per-channel transpose, rendered as a header badge
+   * (`T-1` style). Display only: the byte lives in the position (the doc), not
+   * in the track, so the page computes it per channel and threads it down;
+   * absent for every mount that is not an editable AHX position, which renders
+   * nothing. Present for buffered slots too — the transpose is per position,
+   * not per buffer state.
+   */
+  transposeLabel?: string | undefined;
+  /** Native tooltip for the badge; absent with `transposeLabel` is allowed. */
+  transposeTitle?: string | undefined;
+  /**
    * Which playback ping-pong buffer this track belongs to, when rendered
    * inside one. Static per slot (never changes per tick), threaded down so
    * TrackerEntry can suppress `.row-playing` in the hidden buffer (MINOR-3).
@@ -62,6 +80,7 @@ const emit = defineEmits<{
   (event: 'cellSelected', payload: { row: number; column: number; trackIndex: number }): void;
   (event: 'startSelection', payload: { row: number; trackIndex: number }): void;
   (event: 'hoverSelection', payload: { row: number; trackIndex: number }): void;
+  (event: 'transposeBadgeClick', trackIndex: number): void;
 }>();
 
 const rowHeightPx = 30;
@@ -189,6 +208,17 @@ function onHoverSelection(payload: { row: number; trackIndex: number }) {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.track-transpose {
+  color: rgba(255, 255, 255, 0.66);
+  font-weight: 600;
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
 }
 
 .track-entries-container {

@@ -306,24 +306,41 @@
         class="top-grid"
         :class="{ 'top-grid-sheet': isMobileLayout }"
       >
-        <SequenceEditor
+        <div
           v-show="!isMobileLayout || mobilePanel === 'patterns'"
-          ref="sequenceEditorRef"
           class="top-panel"
-          :sequence="sequence"
-          :patterns="patterns"
-          :current-pattern-id="currentPatternId"
-          :current-sequence-index="currentSequenceIndex"
-          :is-playing="isPlaying"
-          :readonly="isReadOnly || isAhxSong"
-          @select-pattern="handleSelectPattern"
-          @add-pattern-to-sequence="handleAddPatternToSequence"
-          @remove-pattern-from-sequence="handleRemovePatternFromSequence"
-          @create-pattern="handleCreatePattern"
-          @move-sequence-item="handleMoveSequenceItem"
-          @rename-pattern="handleRenamePattern"
-          @request-refocus="refocusTracker"
-        />
+        >
+          <SequenceEditor
+            ref="sequenceEditorRef"
+            :sequence="sequence"
+            :patterns="patterns"
+            :current-pattern-id="currentPatternId"
+            :current-sequence-index="currentSequenceIndex"
+            :is-playing="isPlaying"
+            :readonly="isReadOnly || isAhxSong"
+            @select-pattern="handleSelectPattern"
+            @add-pattern-to-sequence="handleAddPatternToSequence"
+            @remove-pattern-from-sequence="handleRemovePatternFromSequence"
+            @create-pattern="handleCreatePattern"
+            @move-sequence-item="handleMoveSequenceItem"
+            @rename-pattern="handleRenamePattern"
+            @request-refocus="refocusTracker"
+          />
+          <!--
+            The position editor (editable AHX songs): the per-position,
+            per-channel transpose byte, the field the tracker never exposed
+            (plan-pos-transpose.md). Track reassignment stays with Song Edit B4;
+            the panel shows it read-only today.
+          -->
+          <AhxPositionPanel
+            v-if="isAhxEditable && ahxPositionIndex >= 0"
+            ref="ahxPositionPanelRef"
+            data-testid="ahx-position-panel"
+            :position="ahxPositionIndex"
+            :channels="ahxPositionChannels"
+            @set-transpose="onSetPositionTranspose"
+          />
+        </div>
         <div
           v-show="!isMobileLayout || mobilePanel === 'song'"
           class="summary-card top-panel"
@@ -834,6 +851,9 @@
             :show-extra-effect-column="userSettings.showTrackerExtraEffectColumn"
             :reserve-side-gutter="spectrumAnalyzerVisible"
             :upcoming-pattern="upcomingPattern"
+            :transpose-labels="ahxTransposeLabels.length > 0 ? ahxTransposeLabels : undefined"
+            :transpose-titles="ahxTransposeTitles.length > 0 ? ahxTransposeTitles : undefined"
+            @transpose-badge-click="focusAhxTransposeChannel"
             @rowSelected="setActiveRow"
             @cellSelected="setActiveCell"
             @startSelection="onPatternStartSelection"
@@ -926,6 +946,8 @@ import {
 } from 'src/components/tracker/visualizer-alignment';
 import { visiblePageWindow } from 'src/components/tracker/page-window';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
+import AhxPositionPanel from 'src/components/ahx/AhxPositionPanel.vue';
+import { ahxTransposeLabel, ahxTransposeTitle } from 'src/audio/tracker/ahx-position-display';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
@@ -1117,6 +1139,43 @@ const isReadOnly = computed(() => trackerStore.isReadOnly);
  */
 const isAhxSong = computed(() => trackerStore.isAhxSong);
 const readOnlyHint = 'AHX/HVL songs are read-only: the song plays from its file';
+
+/*
+ * Per-position, per-channel transpose (plan-pos-transpose.md): the AHX byte
+ * the engine applies to every note the position plays and the tracker never
+ * exposed. The panel edits it through `setTranspose` (the model op) via the
+ * store action; the grid's track headers show it for the current position —
+ * on the header, not the rows, because it also shifts notes that only keep
+ * sounding while the position's own slots are empty.
+ */
+const isAhxEditable = computed(() => trackerStore.isAhxEditable);
+/** The position the page shows: the projected pattern id `ahx-pos-<n>`, -1 when it is not one. */
+const ahxPositionIndex = computed(() => {
+  if (!isAhxEditable.value) return -1;
+  const match = /^ahx-pos-(\d+)$/.exec(trackerStore.currentPatternId ?? '');
+  return match ? Number(match[1]) : -1;
+});
+/** The current position's channels in doc order (empty when there is none). */
+const ahxPositionChannels = computed(() => {
+  const position = trackerStore.ahxDoc?.positions[ahxPositionIndex.value];
+  if (!position) return [];
+  return position.track.map((track, ch) => ({ track, transpose: position.transpose[ch] ?? 0 }));
+});
+const ahxTransposeLabels = computed(() => ahxPositionChannels.value.map((ch) => ahxTransposeLabel(ch.transpose)));
+const ahxTransposeTitles = computed(() =>
+  ahxPositionChannels.value.map((ch, index) => ahxTransposeTitle(ahxPositionIndex.value, index, ch.transpose)),
+);
+const ahxPositionPanelRef = ref<InstanceType<typeof AhxPositionPanel> | null>(null);
+function onSetPositionTranspose(channel: number, value: number): void {
+  const index = ahxPositionIndex.value;
+  if (index < 0) return;
+  trackerStore.setAhxPositionTranspose(index, channel, value);
+}
+/** The badge hand-off: the grid's badge focuses the panel's input for that channel. */
+function focusAhxTransposeChannel(channel: number): void {
+  if (ahxPositionIndex.value < 0) return;
+  ahxPositionPanelRef.value?.focusChannel(channel);
+}
 const ahxChannelsHint = 'AHX songs have exactly 4 channels';
 const ahxLengthHint = 'All the tracks of an AHX song have the same length';
 const ahxInstrumentsHint = 'AHX instruments are numbered in order and edited in their own editor';
@@ -2983,6 +3042,13 @@ onBeforeUnmount(() => {
   min-height: 220px;
   display: flex;
   flex-direction: column;
+}
+
+/* The patterns card holds the sequence list and (editable AHX songs) the
+   position panel below it; the list keeps filling the card like before. */
+.top-panel > .sequence-editor {
+  flex: 1;
+  min-height: 0;
 }
 
 .pattern-area-wrapper {
