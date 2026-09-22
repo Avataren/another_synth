@@ -36,10 +36,12 @@ const trackProps = (transposeLabel?: string) => ({
 });
 
 // ---------------------------------------------------------------------------
-// AhxPositionPanel (the position editor surface)
+// AhxPositionPanel (the position editor surface; hidden in TrackerPage by
+// HIDE_TRANSPOSE_PANEL — these mount the live component directly, which is
+// why they still pass while the page renders no panel)
 // ---------------------------------------------------------------------------
 
-describe('AhxPositionPanel', () => {
+describe('AhxPositionPanel (live component; page-hidden by HIDE_TRANSPOSE_PANEL)', () => {
   it('renders one transpose input per channel with the doc values', () => {
     const wrapper = mount(AhxPositionPanel, {
       props: { position: 41, channels },
@@ -77,6 +79,9 @@ describe('AhxPositionPanel', () => {
 // The grid badge (TrackerTrack header)
 // ---------------------------------------------------------------------------
 
+// No page-level mounts here: TrackerPage has no test harness, so the hidden
+// state is asserted at the component boundary — the panel component itself
+// stays live and correct, while the page's v-if guard keeps it out of the DOM.
 describe('TrackerTrack transpose badge (hidden legacy fallback UI)', () => {
   it('renders no badge element even when a label is given (HIDE_LEGACY_TRANSPOSE_UI)', () => {
     for (const label of ['T0', 'T-1', 'T+3']) {
