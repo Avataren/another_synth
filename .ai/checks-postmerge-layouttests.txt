@@ -1,0 +1,176 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 npx
+npm notice run 'vitest' run src/tests/main-layout-playback-indicator.test.ts src/tests/ahx-instrument-page-layout.test.ts src/tests/pattern-layout.test.ts
+
+ RUN  v2.1.8 /home/openclaw/.openclaw/workspace/another_synth
+
+ ✓ src/tests/pattern-layout.test.ts (19 tests) 6ms
+Browserslist: browsers data (caniuse-lite) is 10 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ ✓ src/tests/main-layout-playback-indicator.test.ts (4 tests) 65ms
+stderr | src/tests/ahx-instrument-page-layout.test.ts > AhxInstrumentPage layout (B3) > groups the 14 controls into exactly the 4 fieldsets the redesign specifies
+[Vue warn]: Failed to resolve component: q-card-section
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <OscilloscopeComponent node=null mono=true data-testid="ahx-analyzer-oscilloscope" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <OscilloscopeComponent node=null mono=true data-testid="ahx-analyzer-oscilloscope" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card-section
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | src/tests/ahx-instrument-page-layout.test.ts > AhxInstrumentPage layout (B3) > the vibrato/square/filter fieldsets each carry their matching motion lane; Level & wave has none
+[Vue warn]: Failed to resolve component: q-card-section
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <OscilloscopeComponent node=null mono=true data-testid="ahx-analyzer-oscilloscope" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <OscilloscopeComponent node=null mono=true data-testid="ahx-analyzer-oscilloscope" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card-section
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | src/tests/ahx-instrument-page-layout.test.ts > AhxInstrumentPage layout (B3) > AhxAuditionBar receives the page state as props
+[Vue warn]: Failed to resolve component: q-card-section
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <OscilloscopeComponent node=null mono=true data-testid="ahx-analyzer-oscilloscope" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <OscilloscopeComponent node=null mono=true data-testid="ahx-analyzer-oscilloscope" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card-section
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | src/tests/ahx-instrument-page-layout.test.ts > AhxInstrumentPage layout (B3) > AhxAuditionBar’s emits reach the same handlers the inline code used to call: set-octave moves the shown octave
+[Vue warn]: Failed to resolve component: q-card-section
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <OscilloscopeComponent node=null mono=true data-testid="ahx-analyzer-oscilloscope" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <OscilloscopeComponent node=null mono=true data-testid="ahx-analyzer-oscilloscope" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card-section
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | src/tests/ahx-instrument-page-layout.test.ts > AhxInstrumentPage layout (B3) > the PList table toggle (D-E) > starts hidden, and clicking the toggle reveals it
+[Vue warn]: Failed to resolve component: q-card-section
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <OscilloscopeComponent node=null mono=true data-testid="ahx-analyzer-oscilloscope" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <OscilloscopeComponent node=null mono=true data-testid="ahx-analyzer-oscilloscope" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card-section
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | src/tests/ahx-instrument-page-layout.test.ts > AhxInstrumentPage layout (B3) > the PList table toggle (D-E) > a double-click hand-off from the canvas opens the table from hidden, and focuses the field
+[Vue warn]: Failed to resolve component: q-card-section
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <OscilloscopeComponent node=null mono=true data-testid="ahx-analyzer-oscilloscope" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <OscilloscopeComponent node=null mono=true data-testid="ahx-analyzer-oscilloscope" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card-section
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ ✓ src/tests/ahx-instrument-page-layout.test.ts (6 tests) 386ms
+
+ Test Files  3 passed (3)
+      Tests  29 passed (29)
+   Start at  14:51:21
+   Duration  2.23s (transform 1.09s, setup 38ms, collect 1.42s, tests 457ms, environment 627ms, prepare 1.05s)
+

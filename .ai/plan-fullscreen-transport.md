@@ -130,3 +130,26 @@ the worktree (MEASURED done at run start).
 - Nothing outstanding. Not verified by hand in a browser (headless run): the visual states
   (muted `is-stopped` cluster, pill labels) are pinned by the component test, not by eyeball.
   Nothing here relies on playback-audible behavior — no audio path changed.
+
+---
+
+## Landed (2026-09-22)
+
+Merged `agent/fullscreen-transport-0922a` tip `82d3eded` into main as `f79610f8`
+(no-ff, "merge: top-bar transport always visible (agent/fullscreen-transport-0922a)"),
+pushed `c027f2a2..f79610f8` to origin. Tip carried one docs-only commit beyond the
+reviewed fix `8371e7ec` (+8 lines in this plan file, "no code change needed");
+code diff `8371e7ec..82d3eded` outside `.ai` verified empty immediately before merge.
+Pre-merge housekeeping: stray uncommitted ahx-inst landing record committed as
+`bfb4ac38` ("docs: ahx-inst-redesign landing record"). Post-merge gate on main green:
+layout suites 29/29 (main-layout-playback-indicator 4, ahx-instrument-page-layout 6,
+pattern-layout 19), eslint clean exit 0, `vue-tsc --noEmit` exit 0
+(logs `.ai/checks-postmerge-layouttests.txt`, `.ai/checks-postmerge-lint.txt`,
+`.ai/checks-postmerge-vuetsc.txt`). Deployed via `scripts/deploy.sh` to
+avatar@192.168.50.161 (log `.ai/deploy-fullscreen-transport-20260922.log`), script
+checksum `5b4128a606586ed938d83dcdb0647a15` (index.html) plus independent md5
+byte-match on index.html (`5b4128a606586ed938d83dcdb0647a15`),
+wasm/audio_processor_bg.wasm (`fc51b2d0b82a3574baa29c594c7916db`), and
+demos/index.json (`81fd25f10b5375d26cfee8cce689bcea`) — all identical local vs remote.
+Reviewer micro-review PASS on `8371e7ec` remains the code evidence. Branch + worktree
+left in place; worktree owner marker already absent; no force-push, no history rewrite.
