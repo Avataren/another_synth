@@ -333,7 +333,7 @@
             the panel shows it read-only today.
           -->
           <AhxPositionPanel
-            v-if="isAhxEditable && ahxPositionIndex >= 0"
+            v-if="!HIDE_TRANSPOSE_PANEL && isAhxEditable && ahxPositionIndex >= 0"
             ref="ahxPositionPanelRef"
             data-testid="ahx-position-panel"
             :position="ahxPositionIndex"
@@ -1170,12 +1170,21 @@ const ahxTransposeTitles = computed(() =>
   ahxPositionChannels.value.map((ch, index) => ahxTransposeTitle(ahxPositionIndex.value, index, ch.transpose)),
 );
 const ahxPositionPanelRef = ref<InstanceType<typeof AhxPositionPanel> | null>(null);
+
+// The per-position transpose panel is hidden for now (Morten, 2026-09-22 13:54:
+// "The transpose inouts under song tracks is still visible" — this DOM block under
+// the position list was the offender). The canvas chip (wheel-step) stays the edit
+// path. Flip to false to restore the panel; store path, component file and the
+// chip hand-off wiring are kept intact — one constant away.
+const HIDE_TRANSPOSE_PANEL = true;
 function onSetPositionTranspose(channel: number, value: number): void {
   const index = ahxPositionIndex.value;
   if (index < 0) return;
   trackerStore.setAhxPositionTranspose(index, channel, value);
 }
-/** The badge hand-off: the grid's badge focuses the panel's input for that channel. */
+/** The badge hand-off: the grid's badge focuses the panel's input for that
+ * channel. Currently a safe no-op — with the panel hidden (HIDE_TRANSPOSE_PANEL)
+ * the ref stays null and the optional call short-circuits. */
 function focusAhxTransposeChannel(channel: number): void {
   if (ahxPositionIndex.value < 0) return;
   ahxPositionPanelRef.value?.focusChannel(channel);
