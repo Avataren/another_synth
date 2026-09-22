@@ -77,23 +77,21 @@ describe('AhxPositionPanel', () => {
 // The grid badge (TrackerTrack header)
 // ---------------------------------------------------------------------------
 
-describe('TrackerTrack transpose badge', () => {
-  it('renders the transpose label when given (T wording, zero included)', () => {
+describe('TrackerTrack transpose badge (hidden legacy fallback UI)', () => {
+  it('renders no badge element even when a label is given (HIDE_LEGACY_TRANSPOSE_UI)', () => {
     for (const label of ['T0', 'T-1', 'T+3']) {
       const wrapper = mount(TrackerTrack, { props: trackProps(label) });
-      const badge = wrapper.get('[data-testid="track-transpose-badge"]');
-      expect(badge.text()).toBe(label);
+      expect(wrapper.find('[data-testid="track-transpose-badge"]').exists()).toBe(false);
     }
   });
 
-  it('renders nothing (and no badge element) when absent — every non-AHX mount', () => {
+  it('renders nothing when the label is absent (stays true for every non-AHX mount)', () => {
     const wrapper = mount(TrackerTrack, { props: trackProps(undefined) });
     expect(wrapper.find('[data-testid="track-transpose-badge"]').exists()).toBe(false);
   });
 
-  it('emits transposeBadgeClick with the track index on click (the hand-off)', async () => {
+  it('emits no transposeBadgeClick — the badge render is suppressed, so no click target exists', () => {
     const wrapper = mount(TrackerTrack, { props: trackProps('T-1') });
-    await wrapper.get('[data-testid="track-transpose-badge"]').trigger('click');
-    expect(wrapper.emitted('transposeBadgeClick')).toEqual([[2]]);
+    expect(wrapper.emitted('transposeBadgeClick')).toBeUndefined();
   });
 });
