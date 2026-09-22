@@ -47,7 +47,8 @@ describe('the AHX exporter over the demo corpus, through the store', () => {
       checked++;
     }
     expect(differing).toEqual([]);
-    expect(checked).toBe(62);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 .ahx files, 2026-09-22)
+    expect(checked).toBe(77);
   });
 
   it('exports every unedited .hvl song byte-identically to its source', () => {
