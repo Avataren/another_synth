@@ -1,0 +1,83 @@
+=== RED BASELINE 2026-09-22T20:28:52+02:00 — new N1 pins against the UNFIXED committed synth-worklet.js (HEAD 5e26b7ae) ===
+[WorkletConfig] 2 engines × 8 voices = 16 total voices, 129 AudioParams
+   × pooled slot scoping (built synth worklet + real wasm) > deleteNode removes the node from the owning slot only (no phantom node) 221ms
+     → expected [] to have a length of 1 but got +0
+   × pooled slot scoping (built synth worklet + real wasm) > an impulse response import lands on the owning slot, not engine 0 202ms
+     → expected -0.25 to be close to 0.5, received difference is 0.75, but expected 0.0005
+   × pooled slot scoping (built synth worklet + real wasm) > sample export reads the owning slot, so a live-edit save captures its asset 202ms
+     → expected [] to deeply equal [ Array(1) ]
+   × pooled slot scoping (built synth worklet + real wasm) > a pooled export and a same-node export on another slot do not cross-resolve 200ms
+     → expected +0 to be 100 // Object.is equality
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  4 failed | 1 passed (5)
+
+=== RED RE-RUN 2026-09-22T20:32:37+02:00 — final pins (async harness) vs HEAD synth-worklet.js + HEAD pooled-instrument-factory.ts ===
+[WorkletConfig] 2 engines × 8 voices = 16 total voices, 129 AudioParams
+   × pooled slot scoping (built synth worklet + real wasm) > deleteNode removes the node from the owning slot only (no phantom node) 124ms
+     → expected [] to have a length of 1 but got +0
+   × pooled slot scoping (built synth worklet + real wasm) > an impulse response import lands on the owning slot, not engine 0 125ms
+     → expected -0.25 to be close to 0.5, received difference is 0.75, but expected 0.0005
+   × pooled slot scoping (built synth worklet + real wasm) > sample export reads the owning slot, so a live-edit save captures its asset 131ms
+     → expected [] to deeply equal [ Array(1) ]
+   × pooled slot scoping (built synth worklet + real wasm) > concurrent exports of the same node id on two slots do not cross-resolve 120ms
+     → expected -0.25 to be close to 0.5, received difference is 0.75, but expected 0.0005
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  4 failed | 1 passed (5)
+
+=== N3 CATCHES N1 2026-09-22T20:34:06+02:00 — N1 TS sources + HEAD (stale) synth-worklet.js on disk ===
+✗ public/worklets/synth-worklet.js is stale: it differs from an esbuild of its current TypeScript sources. Rebuild and commit it with: npm run build:worklets
+exit: 1
+[WorkletConfig] 2 engines × 8 voices = 16 total voices, 129 AudioParams
+   × committed build artifacts are fresh > public/worklets/*.js are byte-identical to an esbuild of their sources 33ms
+     → expected [ Array(1) ] to deeply equal []
+   × pooled slot scoping (built synth worklet + real wasm) > deleteNode removes the node from the owning slot only (no phantom node) 126ms
+     → expected undefined to be 'song-B' // Object.is equality
+   × pooled slot scoping (built synth worklet + real wasm) > an impulse response import lands on the owning slot, not engine 0 124ms
+     → expected -0.25 to be close to 0.5, received difference is 0.75, but expected 0.0005
+   × pooled slot scoping (built synth worklet + real wasm) > sample export reads the owning slot, so a live-edit save captures its asset 130ms
+     → expected [] to deeply equal [ Array(1) ]
+   × pooled slot scoping (built synth worklet + real wasm) > concurrent exports of the same node id on two slots do not cross-resolve 119ms
+     → expected -0.25 to be close to 0.5, received difference is 0.75, but expected 0.0005
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  2 failed (2)
+      Tests  5 failed | 5 passed (10)
+
+=== GATE: touched suites 2026-09-22T20:35:06+02:00 ===
+$ npx vitest run src/tests/synth-worklet-pooled-scoping.test.ts src/tests/artifact-freshness.test.ts src/tests/worklet-graph-sync.test.ts src/tests/stores/patch-store-dirty-tracking.test.ts src/tests/boot-suspended-context.test.ts src/tests/ahx-worklet-shell.test.ts
+ ✓ src/tests/artifact-freshness.test.ts (5 tests) 59ms
+ ✓ src/tests/ahx-worklet-shell.test.ts (10 tests) 82ms
+    at startTests (file:///home/openclaw/.openclaw/workspace/another_synth/node_modules/@vitest/runner/dist/index.js:1271:3)
+ ✓ src/tests/worklet-graph-sync.test.ts (15 tests) 22ms
+ ✓ src/tests/stores/patch-store-dirty-tracking.test.ts (5 tests) 6ms
+ ✓ src/tests/boot-suspended-context.test.ts (9 tests) 97ms
+ ✓ src/tests/synth-worklet-pooled-scoping.test.ts (5 tests) 737ms
+ Test Files  6 passed (6)
+      Tests  49 passed (49)
+
+=== GATE: FULL vitest suite 2026-09-22T20:37:22+02:00 ===
+$ npx vitest run
+ Test Files  235 passed (235)
+      Tests  3753 passed (3753)
+   Duration  63.17s (transform 33.97s, setup 6.12s, collect 185.59s, tests 392.82s, environment 201.20s, prepare 51.64s)
+exit=0 (0 failed files)
+
+=== GATE: eslint 2026-09-22T20:37:22+02:00 ===
+$ npm run lint
+exit=0
+
+=== GATE: vue-tsc 2026-09-22T20:37:28+02:00 ===
+$ npx vue-tsc --noEmit
+exit=0
+
+=== GATE: gitleaks 2026-09-22T20:37:38+02:00 ===
+$ gitleaks detect --no-git --source .
+8:37PM INF scanned ~213823594 bytes (213.82 MB) in 18.2s
+8:37PM INF no leaks found
+exit=0
+
+=== GATE: npm run check:artifacts 2026-09-22T20:37:56+02:00 ===
+✓ public/worklets and public/wasm match their sources
+exit=0
+
