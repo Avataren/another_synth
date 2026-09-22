@@ -1,0 +1,58 @@
+=== arch-fix2 landing deploy record — 2026-09-22 21:16-21:23 ===
+merge: d20afa82 (no-ff from agent/arch-fix2-0922a @ 8a4f01ec, nit-fix commit included)
+push range: 0b1ab8aa..d20afa82 main -> main
+post-merge gates on main: all exit 0 (vitest 236 files/3758 tests incl. freshness; eslint; vue-tsc; check:artifacts; gitleaks no leaks)
+
+--- scripts/deploy.sh output (exit 0) ---
+ Build succeeded
+
+ Build mode............. spa
+ Pkg quasar............. v2.17.4
+ Pkg @quasar/app-vite... v2.4.0
+ Pkg vite............... v5.4.21
+ Debugging.............. no
+ Publishing............. no
+ Browser target......... es2022|firefox115|chrome115|safari14
+ =======================
+ Output folder.......... /home/openclaw/.openclaw/workspace/another_synth/dist/spa
+
+ Tip: Built files are meant to be served over an HTTP server
+      Opening index.html over file:// won't work
+
+ Tip: You can use "$ quasar serve" command to create a web server,
+      both for testing or production. Type "$ quasar serve -h" for
+      parameters. Also, an npm script (usually named "start") can
+      be added for deployment environments.
+      If you're using Vue Router "history" mode, don't forget to
+      specify the "--history" parameter: "$ quasar serve --history"
+
+Deploying to avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth
+Verifying…
+Deployed and verified (0f3236723062d622f5562c8a10ad0b0d)
+
+--- independent md5 byte-match local dist/spa <-> remote (all 8 MATCH) ---
+MATCH 0f3236723062d622f5562c8a10ad0b0d index.html
+MATCH 7460a7e5ed6202d9425620f82b7c1c2b wasm/audio_processor_bg.wasm
+MATCH b4a1b4ccd50a92959320c9763539ef94 wasm/audio_processor.js
+MATCH d3be4813a900d1db107ac182b425f346 worklets/synth-worklet.js
+MATCH 0b1e28a2d692f80a2f9fc3a46d77f1e6 worklets/ahx-worklet.js
+MATCH ea0b2d2be2fd5dd6ec9a6a6ccb5c5e71 worklets/effects-worklet.js
+MATCH 9c96bf69c35c1b90db4314dd0923147f worklets/recording-worklet.js
+MATCH 1f5310963306c91a9a5b9c85c731dd18 demos/index.json
+
+--- wasm non-determinism check (deployed 314cfb98… vs certified 763c2488…) ---
+same size 1758778 bytes; cmp -l: 73 bytes differ
+wasm-opt --emit-text diff: 28 lines of 925,192 — ordering permutations only (wasm-bindgen type/import/shim declarations), same import names+signatures, no timestamps/paths, no engine code differences
+glue audio_processor.js byte-identical (sha 58a87d19…), provides all three __wbindgen_cast_* import names
+node smoke test: deployed glue instantiates deployed wasm — all imports resolved, exit 0
+SOURCE_HASH.json: sourceHash 32bf6464…/75 files unchanged (certified source state); check:artifacts exit 0 on rebuilt state
+
+--- post-landing residue ---
+ M public/demos/index.json
+ M public/wasm/SOURCE_HASH.json
+ M public/wasm/audio_processor_bg.wasm
+--- stashes (kept) ---
+stash@{0}: On main: arch-fix2 landing: known deploy residue (regenerable)
+stash@{1}: On main: topbar-play postdeploy: deploy residue (index.json timestamp + wasm rebuild)
+stash@{2}: On main: fullscreen-transport postdeploy: deploy residue (index.json timestamp + wasm rebuild)
+stash@{3}: On main: corpus-add15 preflight: deploy residue (index.json timestamp + wasm rebuild)

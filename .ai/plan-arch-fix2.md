@@ -205,3 +205,32 @@ Review: `.ai/arch-review-2026-09-22.md` N5 (:124), N8 (:166), N11 (:187). Fix pa
   plus this docs commit. Gates as in the evidence log (vitest 236/3758,
   lint 0, vue-tsc 0, artifacts fresh; two pre-existing cargo failures
   recorded, none caused here).
+
+## Landed (2026-09-22)
+
+- 21:16-21:23 landing run (authorized per Morten's standing delegation):
+  red-run evidence appended to `.ai/checks-archfix2.txt` (nit fix
+  `8a4f01ec`), no-ff merge `d20afa82` into main, pushed
+  `0b1ab8aa..d20afa82 main -> main`, deployed via `scripts/deploy.sh`
+  (exit 0, self-verified index.html md5 `0f3236723062d622f5562c8a10ad0b0d`).
+- Post-merge gates on main, all exit 0: vitest 236 files / 3758 tests
+  (freshness gate included), eslint, `vue-tsc --noEmit`,
+  `check:artifacts`, gitleaks (no leaks).
+- Independent md5 byte-match local<->remote on index.html, wasm, wasm glue
+  JS, all 4 worklets, `demos/index.json` — all 8 MATCH (full record
+  `.ai/deploy-archfix2-20260922.log`).
+- Wasm non-determinism (checked and accepted as benign per Morten 21:20
+  decision): the deploy script rebuilds the wasm, and the rebuild from the
+  identical certified sources produced sha `314cfb98…` instead of the
+  certified `763c2488…` — same 1758778-byte size, 73 bytes differ. Decompile
+  diff (`wasm-opt --emit-text`): 28 lines of 925,192 — pure ordering
+  permutations of wasm-bindgen-generated type/import/shim declarations; same
+  import names and signatures, no timestamps, no paths, no engine code
+  differences. Glue (sha `58a87d19…`, byte-identical) provides all three
+  `__wbindgen_cast_*` import names covering both builds; node smoke test
+  instantiates the deployed wasm through the deployed glue, exit 0.
+  Certified source state unchanged: `SOURCE_HASH.json` sourceHash
+  `32bf6464…` / 75 files; `check:artifacts` exit 0 on the rebuilt state.
+- Lesson: deploy-script wasm rebuilds are non-byte-identical from identical
+  sources — certification is source-hash-based, and the deployed hash
+  (`314cfb98…`) is recorded separately here and in the deploy log.
