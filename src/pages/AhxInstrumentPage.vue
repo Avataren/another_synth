@@ -59,6 +59,7 @@
 
     <div v-else class="ahx-body">
       <section class="ahx-card ahx-card--wide ahx-audition-bar" data-testid="ahx-audition">
+        <div class="ahx-right-top">
         <div class="ahx-audition">
           <span class="ahx-audition__title">Audition</span>
           <button
@@ -142,6 +143,14 @@
           <span v-else class="ahx-dim" data-testid="ahx-audition-off"
             >Unavailable: there is no source file to play this instrument from (keyboard, MIDI and keys are off).</span
           >
+        </div>
+        <div v-if="audible" class="ahx-analyzer" data-testid="ahx-analyzer-row">
+          <OscilloscopeComponent :node="ahxPreviewOutputNode" data-testid="ahx-analyzer-oscilloscope" />
+          <FrequencyAnalyzerComponent :node="ahxPreviewOutputNode" data-testid="ahx-analyzer-frequency" />
+        </div>
+        <span v-else class="ahx-dim" data-testid="ahx-analyzer-off"
+          >Unavailable: there is no source file to play this instrument from.</span
+        >
         </div>
       </section>
 
@@ -660,6 +669,9 @@ import {
 import AhxPianoStrip from 'src/components/ahx/AhxPianoStrip.vue';
 import { ahxSourceInfo } from 'src/audio/tracker/ahx-source';
 import { ahxPListPlayhead } from 'src/audio/tracker/ahx-plist-playhead';
+import { ahxPreviewOutputNode } from 'src/audio/tracker/ahx-preview-output';
+import OscilloscopeComponent from 'src/components/OscilloscopeComponent.vue';
+import FrequencyAnalyzerComponent from 'src/components/FrequencyAnalyzerComponent.vue';
 import { ahxNotices, reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
 import AhxSliderField from 'src/components/ahx/AhxSliderField.vue';
@@ -1440,6 +1452,33 @@ onUnmounted(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 10px;
+  flex: 1 1 320px;
+}
+
+.ahx-right-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ahx-analyzer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
+}
+
+/* FrequencyAnalyzerComponent inherits height: 100% with no fallback, so an
+   unsized flex slot would collapse its canvas to 0 and it would draw
+   nothing; OscilloscopeComponent has its own fixed 120px canvas that this
+   caps down to match. */
+.ahx-analyzer > * {
+  height: 70px;
+}
+
+.ahx-analyzer :deep(canvas) {
+  height: 70px;
 }
 
 .ahx-audition__title {
