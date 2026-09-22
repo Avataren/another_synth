@@ -1,0 +1,31 @@
+// THROWAWAY measurement for the band-limit pass; not committed.
+use audio_processor::ahx::engine::AhxEngine;
+use audio_processor::ahx::format;
+use std::fs;
+use std::path::Path;
+use std::time::Instant;
+
+const SONGS: &[&str] = &["karma.ahx", "robocop_iii_j_tel.ahx", "wave_stepper.ahx", "sunspots.hvl", "doobrey_gubbins.hvl", "moderate_sellotaping.hvl", "get_to_the_chopper.ahx"];
+
+#[test]
+fn measure() {
+    for &f in SONGS {
+        let bytes = fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx").join(f)).unwrap();
+        let mut times = Vec::new();
+        let mut last = None;
+        for _ in 0..7 {
+            let song = format::parse(&bytes).unwrap();
+            let mut e = AhxEngine::new(song, 44100, 2).unwrap();
+            e.set_continue_phase_on_trigger(true);
+            e.set_hifi(true);
+            let t = Instant::now();
+            let pre = e.prewarm_hifi();
+            times.push(t.elapsed().as_secs_f64() * 1e3);
+            last = Some(pre);
+        }
+        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let pre = last.unwrap();
+        let tb = pre.tables * audio_processor::ahx::hifi::TABLE_SIZE * 2;
+        println!("MEASURE {f}: tables {} sources {} ticks {} table_bytes {} prewarm_ms median {:.2} min {:.2} max {:.2}", pre.tables, pre.sources, pre.ticks, tb, times[3], times[0], times[6]);
+    }
+}

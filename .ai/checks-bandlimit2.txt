@@ -1,0 +1,181 @@
+=== bandlimit2: STOPPED before implementation — 2026-09-22T21:22:49+02:00 ===
+
+--- BEFORE measurement (native-MEASURED, cargo test --release --features native-host, 44.1 kHz, prewarm_hifi median of 7; bytes = tables*4096*2) ---
+MEASURE karma.ahx: tables 345 sources 106 ticks 29184 table_bytes 2826240 prewarm_ms median 15.00 min 14.88 max 17.39
+MEASURE robocop_iii_j_tel.ahx: tables 108 sources 34 ticks 48162 table_bytes 884736 prewarm_ms median 13.34 min 13.21 max 13.61
+MEASURE wave_stepper.ahx: tables 1094 sources 484 ticks 75520 table_bytes 8962048 prewarm_ms median 47.72 min 47.14 max 52.38
+MEASURE sunspots.hvl: tables 320 sources 83 ticks 5371 table_bytes 2621440 prewarm_ms median 7.18 min 7.07 max 7.25
+MEASURE doobrey_gubbins.hvl: tables 82 sources 26 ticks 42624 table_bytes 671744 prewarm_ms median 26.47 min 26.15 max 26.73
+MEASURE moderate_sellotaping.hvl: tables 1914 sources 1113 ticks 26496 table_bytes 15679488 prewarm_ms median 72.45 min 72.14 max 77.58
+MEASURE get_to_the_chopper.ahx: tables 1358 sources 713 ticks 135000 table_bytes 11124736 prewarm_ms median 64.60 min 63.82 max 66.54
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.75s
+
+--- Alias-floor simulation (.ai/bandlimit2-alias-sim.py; bit-faithful numpy port of hifi.rs staircase_spectrum/build_level/sample, 48 kHz, 65536-pt BH4, inharmonic dB) ---
+sq4        bps 0.022 f0 0.0054 H  91 Sad 1024: S4096/F4   -60.0  S4096/F7   -60.0  S4096/float   -60.0 | Sad/F7   -59.2  Sad/float   -59.2
+sq4        bps 0.072 f0 0.0180 H  23 Sad  256: S4096/F4   -74.7  S4096/F7   -76.9  S4096/float   -76.9 | Sad/F7   -60.0  Sad/float   -60.0
+sq4        bps 0.115 f0 0.0289 H  16 Sad  128: S4096/F4   -76.2  S4096/F7   -80.1  S4096/float   -80.2 | Sad/F7   -53.3  Sad/float   -53.3
+sq4        bps 0.192 f0 0.0481 H   8 Sad   64: S4096/F4   -77.5  S4096/F7   -84.0  S4096/float   -84.2 | Sad/F7   -50.2  Sad/float   -50.2
+sq4        bps 0.327 f0 0.0817 H   6 Sad   64: S4096/F4   -78.7  S4096/F7   -96.6  S4096/float  -126.1 | Sad/F7   -54.0  Sad/float   -54.0
+sq4        bps 0.654 f0 0.1635 H   3 Sad   64: S4096/F4   -78.3  S4096/F7   -96.5  S4096/float  -131.0 | Sad/F7   -59.3  Sad/float   -59.3
+sq32_25    bps 0.022 f0 0.0007 H 512 Sad 4096: S4096/F4   -45.7  S4096/F7   -45.7  S4096/float   -45.7 | Sad/F7   -45.7  Sad/float   -45.7
+sq32_25    bps 0.072 f0 0.0023 H 181 Sad 2048: S4096/F4   -64.1  S4096/F7   -64.2  S4096/float   -64.2 | Sad/F7   -63.0  Sad/float   -63.0
+sq32_25    bps 0.115 f0 0.0036 H 128 Sad 1024: S4096/F4   -60.6  S4096/F7   -60.7  S4096/float   -60.7 | Sad/F7   -58.0  Sad/float   -58.0
+sq32_25    bps 0.192 f0 0.0060 H  64 Sad  512: S4096/F4   -70.2  S4096/F7   -71.0  S4096/float   -71.0 | Sad/F7   -57.9  Sad/float   -57.9
+sq32_25    bps 0.327 f0 0.0102 H  45 Sad  512: S4096/F4   -71.4  S4096/F7   -72.6  S4096/float   -72.7 | Sad/F7   -62.3  Sad/float   -62.3
+sq32_25    bps 0.654 f0 0.0204 H  23 Sad  256: S4096/F4   -71.7  S4096/F7   -73.0  S4096/float   -73.0 | Sad/F7   -58.7  Sad/float   -58.7
+saw8       bps 0.022 f0 0.0027 H 181 Sad 2048: S4096/F4   -57.6  S4096/F7   -57.6  S4096/float   -57.6 | Sad/F7   -57.3  Sad/float   -57.3
+saw8       bps 0.072 f0 0.0090 H  45 Sad  512: S4096/F4   -71.1  S4096/F7   -73.2  S4096/float   -73.3 | Sad/F7   -62.2  Sad/float   -62.2
+saw8       bps 0.115 f0 0.0144 H  32 Sad  256: S4096/F4   -73.2  S4096/F7   -76.7  S4096/float   -76.8 | Sad/F7   -55.1  Sad/float   -55.1
+saw8       bps 0.192 f0 0.0241 H  16 Sad  128: S4096/F4   -72.0  S4096/F7   -74.9  S4096/float   -75.0 | Sad/F7   -52.0  Sad/float   -52.0
+saw8       bps 0.327 f0 0.0409 H  11 Sad  128: S4096/F4   -73.5  S4096/F7   -78.8  S4096/float   -78.9 | Sad/F7   -56.3  Sad/float   -56.3
+saw8       bps 0.654 f0 0.0817 H   6 Sad   64: S4096/F4   -74.6  S4096/F7   -92.7  S4096/float  -123.1 | Sad/F7   -50.9  Sad/float   -50.9
+saw128     bps 0.022 f0 0.0002 H 512 Sad 4096: S4096/F4   -46.1  S4096/F7   -46.1  S4096/float   -46.1 | Sad/F7   -46.1  Sad/float   -46.1
+saw128     bps 0.072 f0 0.0006 H 512 Sad 4096: S4096/F4   -54.9  S4096/F7   -54.9  S4096/float   -54.9 | Sad/F7   -54.9  Sad/float   -54.9
+saw128     bps 0.115 f0 0.0009 H 512 Sad 4096: S4096/F4   -53.2  S4096/F7   -53.2  S4096/float   -53.2 | Sad/F7   -53.2  Sad/float   -53.2
+saw128     bps 0.192 f0 0.0015 H 256 Sad 2048: S4096/F4   -50.2  S4096/F7   -50.2  S4096/float   -50.2 | Sad/F7   -50.0  Sad/float   -50.0
+saw128     bps 0.327 f0 0.0026 H 181 Sad 2048: S4096/F4   -55.0  S4096/F7   -55.1  S4096/float   -55.1 | Sad/F7   -54.9  Sad/float   -54.9
+saw128     bps 0.654 f0 0.0051 H  91 Sad 1024: S4096/F4   -64.5  S4096/F7   -65.0  S4096/float   -65.0 | Sad/F7   -62.0  Sad/float   -62.0
+tri16      bps 0.022 f0 0.0013 H 362 Sad 4096: S4096/F4   -54.2  S4096/F7   -54.3  S4096/float   -54.3 | Sad/F7   -54.3  Sad/float   -54.3
+tri16      bps 0.072 f0 0.0045 H  91 Sad 1024: S4096/F4   -74.3  S4096/F7   -87.4  S4096/float   -89.2 | Sad/F7   -71.6  Sad/float   -71.6
+tri16      bps 0.115 f0 0.0072 H  64 Sad  512: S4096/F4   -73.3  S4096/F7   -78.4  S4096/float   -78.6 | Sad/F7   -63.7  Sad/float   -63.7
+tri16      bps 0.192 f0 0.0120 H  32 Sad  256: S4096/F4   -70.6  S4096/F7   -73.1  S4096/float   -73.2 | Sad/F7   -60.3  Sad/float   -60.3
+tri16      bps 0.327 f0 0.0204 H  23 Sad  256: S4096/F4   -72.0  S4096/F7   -76.5  S4096/float   -76.6 | Sad/F7   -64.7  Sad/float   -64.7
+tri16      bps 0.654 f0 0.0409 H  11 Sad  128: S4096/F4   -73.6  S4096/F7   -85.0  S4096/float   -85.9 | Sad/F7   -68.9  Sad/float   -68.9
+
+=== multiplier sweep (FRAC 7, Sad = clamp(next_pow2(M*H),64,4096) max n) ===
+sq4      f0 0.0180 H  23: now(4096/F4)  -74.7 | M8:256: -60.0  M16:512: -70.9  M32:1024: -76.1  M64:2048: -76.8
+sq4      f0 0.0289 H  16: now(4096/F4)  -76.2 | M8:128: -53.3  M16:256: -65.4  M32:512: -76.8  M64:1024: -79.6
+sq4      f0 0.0481 H   8: now(4096/F4)  -77.5 | M8:64: -50.2  M16:128: -62.3  M32:256: -74.0  M64:512: -82.0
+sq4      f0 0.0817 H   6: now(4096/F4)  -78.7 | M8:64: -54.0  M16:128: -66.1  M32:256: -78.1  M64:512: -89.2
+sq4      f0 0.1635 H   3: now(4096/F4)  -78.3 | M8:64: -59.3  M16:64: -59.3  M32:128: -71.4  M64:256: -83.2
+sq32_25  f0 0.0023 H 181: now(4096/F4)  -64.1 | M8:2048: -63.0  M16:4096: -64.2  M32:4096: -64.2  M64:4096: -64.2
+sq32_25  f0 0.0036 H 128: now(4096/F4)  -60.6 | M8:1024: -58.0  M16:2048: -60.6  M32:4096: -60.7  M64:4096: -60.7
+sq32_25  f0 0.0060 H  64: now(4096/F4)  -70.2 | M8:512: -57.9  M16:1024: -67.6  M32:2048: -70.7  M64:4096: -71.0
+sq32_25  f0 0.0102 H  45: now(4096/F4)  -71.4 | M8:512: -62.3  M16:1024: -70.6  M32:2048: -72.5  M64:4096: -72.6
+sq32_25  f0 0.0204 H  23: now(4096/F4)  -71.7 | M8:256: -58.7  M16:512: -68.9  M32:1024: -72.6  M64:2048: -73.0
+saw8     f0 0.0090 H  45: now(4096/F4)  -71.1 | M8:512: -62.2  M16:1024: -70.9  M32:2048: -73.1  M64:4096: -73.2
+saw8     f0 0.0144 H  32: now(4096/F4)  -73.2 | M8:256: -55.1  M16:512: -69.8  M32:1024: -75.4  M64:2048: -76.5
+saw8     f0 0.0241 H  16: now(4096/F4)  -72.0 | M8:128: -52.0  M16:256: -63.8  M32:512: -72.5  M64:1024: -74.7
+saw8     f0 0.0409 H  11: now(4096/F4)  -73.5 | M8:128: -56.3  M16:256: -68.0  M32:512: -76.5  M64:1024: -78.6
+saw8     f0 0.0817 H   6: now(4096/F4)  -74.6 | M8:64: -50.9  M16:128: -63.0  M32:256: -75.0  M64:512: -86.1
+tri16    f0 0.0045 H  91: now(4096/F4)  -74.3 | M8:1024: -71.6  M16:2048: -82.4  M32:4096: -87.4  M64:4096: -87.4
+tri16    f0 0.0072 H  64: now(4096/F4)  -73.3 | M8:512: -63.7  M16:1024: -76.0  M32:2048: -78.2  M64:4096: -78.4
+tri16    f0 0.0120 H  32: now(4096/F4)  -70.6 | M8:256: -60.3  M16:512: -69.9  M32:1024: -72.9  M64:2048: -73.1
+tri16    f0 0.0204 H  23: now(4096/F4)  -72.0 | M8:256: -64.7  M16:512: -73.8  M32:1024: -76.3  M64:2048: -76.5
+tri16    f0 0.0409 H  11: now(4096/F4)  -73.6 | M8:128: -68.9  M16:256: -79.7  M32:512: -84.4  M64:1024: -85.0
+
+=== bandlimit2 continuation (D1' 64·H + FRAC 7) — GUARDRAIL (plan §9.4) — 2026-09-22T21:29:50+02:00 ===
+--- python3 .ai/bandlimit2-alias-sim.py 64 nosweep (sim parametrised: MULT=argv[1], default 64; adaptive column = max(clamp(next_pow2(64*H),64,4096),n), F7; d = Sad/F7 - S4096/F4, REGRESS if > +0.5 dB) ---
+=== adaptive column: Sad = max(clamp(next_pow2(64*H),64,4096), n); REGRESS = Sad/F7 more than 0.5 dB above S4096/F4 ===
+sq4        bps 0.022 f0 0.0054 H  91 Sad 4096: S4096/F4   -60.0  S4096/F7   -60.0  S4096/float   -60.0 | Sad/F7   -60.0  Sad/float   -60.0 | d(Sad/F7-now)   -0.1 ok
+sq4        bps 0.072 f0 0.0180 H  23 Sad 2048: S4096/F4   -74.7  S4096/F7   -76.9  S4096/float   -76.9 | Sad/F7   -76.8  Sad/float   -76.9 | d(Sad/F7-now)   -2.1 ok
+sq4        bps 0.115 f0 0.0289 H  16 Sad 1024: S4096/F4   -76.2  S4096/F7   -80.1  S4096/float   -80.2 | Sad/F7   -79.6  Sad/float   -79.7 | d(Sad/F7-now)   -3.4 ok
+sq4        bps 0.192 f0 0.0481 H   8 Sad  512: S4096/F4   -77.5  S4096/F7   -84.0  S4096/float   -84.2 | Sad/F7   -82.0  Sad/float   -82.2 | d(Sad/F7-now)   -4.5 ok
+sq4        bps 0.327 f0 0.0817 H   6 Sad  512: S4096/F4   -78.7  S4096/F7   -96.6  S4096/float  -126.1 | Sad/F7   -89.2  Sad/float   -90.2 | d(Sad/F7-now)  -10.5 ok
+sq4        bps 0.654 f0 0.1635 H   3 Sad  256: S4096/F4   -78.3  S4096/F7   -96.5  S4096/float  -131.0 | Sad/F7   -83.2  Sad/float   -83.4 | d(Sad/F7-now)   -5.0 ok
+sq32_25    bps 0.022 f0 0.0007 H 512 Sad 4096: S4096/F4   -45.7  S4096/F7   -45.7  S4096/float   -45.7 | Sad/F7   -45.7  Sad/float   -45.7 | d(Sad/F7-now)   -0.0 ok
+sq32_25    bps 0.072 f0 0.0023 H 181 Sad 4096: S4096/F4   -64.1  S4096/F7   -64.2  S4096/float   -64.2 | Sad/F7   -64.2  Sad/float   -64.2 | d(Sad/F7-now)   -0.2 ok
+sq32_25    bps 0.115 f0 0.0036 H 128 Sad 4096: S4096/F4   -60.6  S4096/F7   -60.7  S4096/float   -60.7 | Sad/F7   -60.7  Sad/float   -60.7 | d(Sad/F7-now)   -0.1 ok
+sq32_25    bps 0.192 f0 0.0060 H  64 Sad 4096: S4096/F4   -70.2  S4096/F7   -71.0  S4096/float   -71.0 | Sad/F7   -71.0  Sad/float   -71.0 | d(Sad/F7-now)   -0.8 ok
+sq32_25    bps 0.327 f0 0.0102 H  45 Sad 4096: S4096/F4   -71.4  S4096/F7   -72.6  S4096/float   -72.7 | Sad/F7   -72.6  Sad/float   -72.7 | d(Sad/F7-now)   -1.2 ok
+sq32_25    bps 0.654 f0 0.0204 H  23 Sad 2048: S4096/F4   -71.7  S4096/F7   -73.0  S4096/float   -73.0 | Sad/F7   -73.0  Sad/float   -73.0 | d(Sad/F7-now)   -1.3 ok
+saw8       bps 0.022 f0 0.0027 H 181 Sad 4096: S4096/F4   -57.6  S4096/F7   -57.6  S4096/float   -57.6 | Sad/F7   -57.6  Sad/float   -57.6 | d(Sad/F7-now)   -0.1 ok
+saw8       bps 0.072 f0 0.0090 H  45 Sad 4096: S4096/F4   -71.1  S4096/F7   -73.2  S4096/float   -73.3 | Sad/F7   -73.2  Sad/float   -73.3 | d(Sad/F7-now)   -2.1 ok
+saw8       bps 0.115 f0 0.0144 H  32 Sad 2048: S4096/F4   -73.2  S4096/F7   -76.7  S4096/float   -76.8 | Sad/F7   -76.5  Sad/float   -76.6 | d(Sad/F7-now)   -3.4 ok
+saw8       bps 0.192 f0 0.0241 H  16 Sad 1024: S4096/F4   -72.0  S4096/F7   -74.9  S4096/float   -75.0 | Sad/F7   -74.7  Sad/float   -74.8 | d(Sad/F7-now)   -2.7 ok
+saw8       bps 0.327 f0 0.0409 H  11 Sad 1024: S4096/F4   -73.5  S4096/F7   -78.8  S4096/float   -78.9 | Sad/F7   -78.6  Sad/float   -78.7 | d(Sad/F7-now)   -5.1 ok
+saw8       bps 0.654 f0 0.0817 H   6 Sad  512: S4096/F4   -74.6  S4096/F7   -92.7  S4096/float  -123.1 | Sad/F7   -86.1  Sad/float   -87.1 | d(Sad/F7-now)  -11.5 ok
+saw128     bps 0.022 f0 0.0002 H 512 Sad 4096: S4096/F4   -46.1  S4096/F7   -46.1  S4096/float   -46.1 | Sad/F7   -46.1  Sad/float   -46.1 | d(Sad/F7-now)   -0.0 ok
+saw128     bps 0.072 f0 0.0006 H 512 Sad 4096: S4096/F4   -54.9  S4096/F7   -54.9  S4096/float   -54.9 | Sad/F7   -54.9  Sad/float   -54.9 | d(Sad/F7-now)   -0.0 ok
+saw128     bps 0.115 f0 0.0009 H 512 Sad 4096: S4096/F4   -53.2  S4096/F7   -53.2  S4096/float   -53.2 | Sad/F7   -53.2  Sad/float   -53.2 | d(Sad/F7-now)   -0.0 ok
+saw128     bps 0.192 f0 0.0015 H 256 Sad 4096: S4096/F4   -50.2  S4096/F7   -50.2  S4096/float   -50.2 | Sad/F7   -50.2  Sad/float   -50.2 | d(Sad/F7-now)   -0.0 ok
+saw128     bps 0.327 f0 0.0026 H 181 Sad 4096: S4096/F4   -55.0  S4096/F7   -55.1  S4096/float   -55.1 | Sad/F7   -55.1  Sad/float   -55.1 | d(Sad/F7-now)   -0.0 ok
+saw128     bps 0.654 f0 0.0051 H  91 Sad 4096: S4096/F4   -64.5  S4096/F7   -65.0  S4096/float   -65.0 | Sad/F7   -65.0  Sad/float   -65.0 | d(Sad/F7-now)   -0.5 ok
+tri16      bps 0.022 f0 0.0013 H 362 Sad 4096: S4096/F4   -54.2  S4096/F7   -54.3  S4096/float   -54.3 | Sad/F7   -54.3  Sad/float   -54.3 | d(Sad/F7-now)   -0.0 ok
+tri16      bps 0.072 f0 0.0045 H  91 Sad 4096: S4096/F4   -74.3  S4096/F7   -87.4  S4096/float   -89.2 | Sad/F7   -87.4  Sad/float   -89.2 | d(Sad/F7-now)  -13.2 ok
+tri16      bps 0.115 f0 0.0072 H  64 Sad 4096: S4096/F4   -73.3  S4096/F7   -78.4  S4096/float   -78.6 | Sad/F7   -78.4  Sad/float   -78.6 | d(Sad/F7-now)   -5.1 ok
+tri16      bps 0.192 f0 0.0120 H  32 Sad 2048: S4096/F4   -70.6  S4096/F7   -73.1  S4096/float   -73.2 | Sad/F7   -73.1  Sad/float   -73.2 | d(Sad/F7-now)   -2.5 ok
+tri16      bps 0.327 f0 0.0204 H  23 Sad 2048: S4096/F4   -72.0  S4096/F7   -76.5  S4096/float   -76.6 | Sad/F7   -76.5  Sad/float   -76.6 | d(Sad/F7-now)   -4.5 ok
+tri16      bps 0.654 f0 0.0409 H  11 Sad 1024: S4096/F4   -73.6  S4096/F7   -85.0  S4096/float   -85.9 | Sad/F7   -85.0  Sad/float   -85.9 | d(Sad/F7-now)  -11.3 ok
+
+SUMMARY M64: 30 cases, worst d -0.0 dB, best d -13.2 dB, regressions 0
+GUARDRAIL VERDICT: PASS — no tested pitch regresses vs current (S4096/F4); proceeding to implementation.
+
+=== MEASURE AFTER (64·H + FRAC 7) — 2026-09-22T21:32:35+02:00 ===
+--- native-MEASURED, cargo test --release --features native-host, 44.1 kHz, prewarm_hifi median of 7; table_bytes = ACTUAL (HifiBank::table_bytes via AhxEngine::hifi_table_bytes: sum of each table's own size x 2; the BEFORE lines used tables*4096*2, which equals the actual sum before this change) ---
+MEASURE karma.ahx: tables 345 sources 106 ticks 29184 table_bytes 2433024 prewarm_ms median 14.79 min 14.66 max 16.47
+MEASURE robocop_iii_j_tel.ahx: tables 108 sources 34 ticks 48162 table_bytes 638976 prewarm_ms median 13.07 min 13.03 max 13.19
+MEASURE wave_stepper.ahx: tables 1094 sources 484 ticks 75520 table_bytes 8202240 prewarm_ms median 46.12 min 45.78 max 49.12
+MEASURE sunspots.hvl: tables 320 sources 83 ticks 5371 table_bytes 2273280 prewarm_ms median 6.67 min 6.64 max 6.77
+MEASURE doobrey_gubbins.hvl: tables 82 sources 26 ticks 42624 table_bytes 600064 prewarm_ms median 26.96 min 26.85 max 27.11
+MEASURE moderate_sellotaping.hvl: tables 1914 sources 1113 ticks 26496 table_bytes 15486976 prewarm_ms median 71.98 min 70.90 max 77.31
+MEASURE get_to_the_chopper.ahx: tables 1358 sources 713 ticks 135000 table_bytes 10862592 prewarm_ms median 65.40 min 65.04 max 65.57
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.73s
+--- BEFORE vs AFTER (counts must be identical; bytes = actual) ---
+DELTA karma.ahx                  tables 345->345 sources 106->106 ticks 29184->29184 counts_identical=True table_bytes 2826240->2433024 (-13.9%) prewarm_ms 15.00->14.79 (-1.4%)
+DELTA robocop_iii_j_tel.ahx      tables 108->108 sources 34->34 ticks 48162->48162 counts_identical=True table_bytes 884736->638976 (-27.8%) prewarm_ms 13.34->13.07 (-2.0%)
+DELTA wave_stepper.ahx           tables 1094->1094 sources 484->484 ticks 75520->75520 counts_identical=True table_bytes 8962048->8202240 (-8.5%) prewarm_ms 47.72->46.12 (-3.4%)
+DELTA sunspots.hvl               tables 320->320 sources 83->83 ticks 5371->5371 counts_identical=True table_bytes 2621440->2273280 (-13.3%) prewarm_ms 7.18->6.67 (-7.1%)
+DELTA doobrey_gubbins.hvl        tables 82->82 sources 26->26 ticks 42624->42624 counts_identical=True table_bytes 671744->600064 (-10.7%) prewarm_ms 26.47->26.96 (+1.9%)
+DELTA moderate_sellotaping.hvl   tables 1914->1914 sources 1113->1113 ticks 26496->26496 counts_identical=True table_bytes 15679488->15486976 (-1.2%) prewarm_ms 72.45->71.98 (-0.6%)
+DELTA get_to_the_chopper.ahx     tables 1358->1358 sources 713->713 ticks 135000->135000 counts_identical=True table_bytes 11124736->10862592 (-2.4%) prewarm_ms 64.60->65.40 (+1.2%)
+DELTA total table_bytes 42770432->40497152 (-5.3%); per-source ceiling (all 18 levels) 73728 -> 40640 points (-44.9%)
+
+=== cargo test --features native-host --no-fail-fast (rust-wasm/) — 2026-09-22T21:41:38+02:00 ===
+     Running unittests src/lib.rs (target/debug/build/audio_processor/c2aa128425eb2c43/out/audio_processor-c2aa128425eb2c43)
+test result: ok. 120 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 39.52s
+     Running tests/ahx_capture.rs (target/debug/build/audio_processor/aa65724cc43642ad/out/ahx_capture-aa65724cc43642ad)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+     Running tests/ahx_format.rs (target/debug/build/audio_processor/ff2825a6e3e63d66/out/ahx_format-ff2825a6e3e63d66)
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/ahx_hifi.rs (target/debug/build/audio_processor/09da1b0e64adf623/out/ahx_hifi-09da1b0e64adf623)
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 90.67s
+     Running tests/ahx_hifi_baseline.rs (target/debug/build/audio_processor/ad5939dc8c493e01/out/ahx_hifi_baseline-ad5939dc8c493e01)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.46s
+     Running tests/ahx_live.rs (target/debug/build/audio_processor/63e0bab36fc1579f/out/ahx_live-63e0bab36fc1579f)
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.61s
+     Running tests/ahx_mix_lanes.rs (target/debug/build/audio_processor/0f439d3fac8bcb22/out/ahx_mix_lanes-0f439d3fac8bcb22)
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 44.25s
+     Running tests/ahx_mute_solo.rs (target/debug/build/audio_processor/18fad155281832fc/out/ahx_mute_solo-18fad155281832fc)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+     Running tests/ahx_phase_continue.rs (target/debug/build/audio_processor/9e311472811c6c0a/out/ahx_phase_continue-9e311472811c6c0a)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.04s
+     Running tests/ahx_player.rs (target/debug/build/audio_processor/039b183a18d30b33/out/ahx_player-039b183a18d30b33)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+     Running tests/ahx_render_golden.rs (target/debug/build/audio_processor/4bdf283080227990/out/ahx_render_golden-4bdf283080227990)
+test manifest_covers_every_fixture ... FAILED
+thread 'manifest_covers_every_fixture' (558338) panicked at tests/ahx_render_golden.rs:424:5:
+test result: FAILED. 38 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.21s
+     Running tests/ahx_replace.rs (target/debug/build/audio_processor/f8bae96923ff75df/out/ahx_replace-f8bae96923ff75df)
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.27s
+     Running tests/ahx_seek.rs (target/debug/build/audio_processor/cf1edb803df5a95b/out/ahx_seek-cf1edb803df5a95b)
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 99.44s
+     Running tests/automation_frame.rs (target/debug/build/audio_processor/0af83d049ad9c23e/out/automation_frame-0af83d049ad9c23e)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/engine_node_integration.rs (target/debug/build/audio_processor/96c3934ff37f1e4a/out/engine_node_integration-96c3934ff37f1e4a)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running tests/envelope_preview.rs (target/debug/build/audio_processor/d011c8bc3c0a569e/out/envelope_preview-d011c8bc3c0a569e)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+TOTAL: 268 passed, 1 failed. The 1 failure is ahx_render_golden::manifest_covers_every_fixture — PRE-EXISTING (pins 24 fixtures, corpus has 84; .ai/plan-arch-fix2.md:196). All 38 render-golden fixture checks pass; git status tests/golden clean. ahx_hifi_baseline passes with the regenerated pin (old -> new: karma 0x7d46aa5df8231792->0x6353cfd9a5feb989, robocop 0xa086f482742a43dc->0x8b1c0f39abb933a4, wave_stepper 0xedc175f5f23b5c98->0x5a506591c96c07fe, sunspots 0x8ae5e8c96fc2a3c3->0x821db970d41cae37, doobrey 0x9922a05684c7b037->0x60691afc3591b94f); old pin FAILED before regen (karma moved) as expected.
+
+=== FRONTEND GATES (after npm run build:wasm; artifact rebuilt: wasm + SOURCE_HASH changed, audio_processor.js glue unchanged) ===
+--- npm run test:run (FULL) — start 2026-09-22T21:42:08+02:00 end 2026-09-22T21:43:17+02:00 ---
+    at startTests (file:///home/openclaw/.openclaw/workspace/another_synth/node_modules/@vitest/runner/dist/index.js:1271:3)
+ ✓ src/tests/artifact-freshness.test.ts (5 tests) 533ms
+ Test Files  236 passed (236)
+      Tests  3758 passed (3758)
+   Duration  68.38s (transform 34.62s, setup 5.35s, collect 195.32s, tests 458.03s, environment 204.31s, prepare 53.10s)
+EXIT=0
+--- npm run lint (eslint --ext .js,.ts,.vue ./) — start 2026-09-22T21:42:09+02:00 ---
+EXIT=0
+2026-09-22T21:42:20+02:00
+--- npx vue-tsc --noEmit — start 2026-09-22T21:42:23+02:00 ---
+EXIT=0
+2026-09-22T21:42:37+02:00
+--- gitleaks detect --no-git --source . — start 2026-09-22T21:42:37+02:00 ---
+    ░    gitleaks
+9:43PM INF scanned ~351342739 bytes (351.34 MB) in 22.8s
+9:43PM INF no leaks found
+EXIT=0
+GATES: all PASS

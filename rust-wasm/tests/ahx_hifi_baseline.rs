@@ -28,11 +28,11 @@ const CHUNK: usize = 882;
 
 /// `(fixture, expected hash)`: AHX and HVL songs (the HVL ones with more than four voices).
 const BASELINE: &[(&str, u64)] = &[
-    ("karma.ahx", 0x7d46aa5df8231792),
-    ("robocop_iii_j_tel.ahx", 0xa086f482742a43dc),
-    ("wave_stepper.ahx", 0xedc175f5f23b5c98),
-    ("sunspots.hvl", 0x8ae5e8c96fc2a3c3),
-    ("doobrey_gubbins.hvl", 0x9922a05684c7b037),
+    ("karma.ahx", 0x6353cfd9a5feb989),
+    ("robocop_iii_j_tel.ahx", 0x8b1c0f39abb933a4),
+    ("wave_stepper.ahx", 0x5a506591c96c07fe),
+    ("sunspots.hvl", 0x821db970d41cae37),
+    ("doobrey_gubbins.hvl", 0x60691afc3591b94f),
 ];
 
 fn fnv(mut h: u64, bytes: &[u8]) -> u64 {

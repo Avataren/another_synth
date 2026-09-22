@@ -718,6 +718,12 @@ impl AhxEngine {
         self.hifi.as_ref().map_or(0, HifiBank::table_count)
     }
 
+    /// Bytes of samples in the bank's tables (0 while hi-fi is off); tables
+    /// differ in size by level, so this is not `hifi_table_count` times a constant.
+    pub fn hifi_table_bytes(&self) -> usize {
+        self.hifi.as_ref().map_or(0, HifiBank::table_bytes)
+    }
+
     /// Whether the bank is locked (prewarmed) rather than building lazily.
     pub fn hifi_locked(&self) -> bool {
         self.hifi.as_ref().is_some_and(|b| b.mode() == BankMode::Locked)
