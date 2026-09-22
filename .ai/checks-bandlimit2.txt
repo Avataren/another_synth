@@ -1,0 +1,65 @@
+=== bandlimit2: STOPPED before implementation — 2026-09-22T21:22:49+02:00 ===
+
+--- BEFORE measurement (native-MEASURED, cargo test --release --features native-host, 44.1 kHz, prewarm_hifi median of 7; bytes = tables*4096*2) ---
+MEASURE karma.ahx: tables 345 sources 106 ticks 29184 table_bytes 2826240 prewarm_ms median 15.00 min 14.88 max 17.39
+MEASURE robocop_iii_j_tel.ahx: tables 108 sources 34 ticks 48162 table_bytes 884736 prewarm_ms median 13.34 min 13.21 max 13.61
+MEASURE wave_stepper.ahx: tables 1094 sources 484 ticks 75520 table_bytes 8962048 prewarm_ms median 47.72 min 47.14 max 52.38
+MEASURE sunspots.hvl: tables 320 sources 83 ticks 5371 table_bytes 2621440 prewarm_ms median 7.18 min 7.07 max 7.25
+MEASURE doobrey_gubbins.hvl: tables 82 sources 26 ticks 42624 table_bytes 671744 prewarm_ms median 26.47 min 26.15 max 26.73
+MEASURE moderate_sellotaping.hvl: tables 1914 sources 1113 ticks 26496 table_bytes 15679488 prewarm_ms median 72.45 min 72.14 max 77.58
+MEASURE get_to_the_chopper.ahx: tables 1358 sources 713 ticks 135000 table_bytes 11124736 prewarm_ms median 64.60 min 63.82 max 66.54
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.75s
+
+--- Alias-floor simulation (.ai/bandlimit2-alias-sim.py; bit-faithful numpy port of hifi.rs staircase_spectrum/build_level/sample, 48 kHz, 65536-pt BH4, inharmonic dB) ---
+sq4        bps 0.022 f0 0.0054 H  91 Sad 1024: S4096/F4   -60.0  S4096/F7   -60.0  S4096/float   -60.0 | Sad/F7   -59.2  Sad/float   -59.2
+sq4        bps 0.072 f0 0.0180 H  23 Sad  256: S4096/F4   -74.7  S4096/F7   -76.9  S4096/float   -76.9 | Sad/F7   -60.0  Sad/float   -60.0
+sq4        bps 0.115 f0 0.0289 H  16 Sad  128: S4096/F4   -76.2  S4096/F7   -80.1  S4096/float   -80.2 | Sad/F7   -53.3  Sad/float   -53.3
+sq4        bps 0.192 f0 0.0481 H   8 Sad   64: S4096/F4   -77.5  S4096/F7   -84.0  S4096/float   -84.2 | Sad/F7   -50.2  Sad/float   -50.2
+sq4        bps 0.327 f0 0.0817 H   6 Sad   64: S4096/F4   -78.7  S4096/F7   -96.6  S4096/float  -126.1 | Sad/F7   -54.0  Sad/float   -54.0
+sq4        bps 0.654 f0 0.1635 H   3 Sad   64: S4096/F4   -78.3  S4096/F7   -96.5  S4096/float  -131.0 | Sad/F7   -59.3  Sad/float   -59.3
+sq32_25    bps 0.022 f0 0.0007 H 512 Sad 4096: S4096/F4   -45.7  S4096/F7   -45.7  S4096/float   -45.7 | Sad/F7   -45.7  Sad/float   -45.7
+sq32_25    bps 0.072 f0 0.0023 H 181 Sad 2048: S4096/F4   -64.1  S4096/F7   -64.2  S4096/float   -64.2 | Sad/F7   -63.0  Sad/float   -63.0
+sq32_25    bps 0.115 f0 0.0036 H 128 Sad 1024: S4096/F4   -60.6  S4096/F7   -60.7  S4096/float   -60.7 | Sad/F7   -58.0  Sad/float   -58.0
+sq32_25    bps 0.192 f0 0.0060 H  64 Sad  512: S4096/F4   -70.2  S4096/F7   -71.0  S4096/float   -71.0 | Sad/F7   -57.9  Sad/float   -57.9
+sq32_25    bps 0.327 f0 0.0102 H  45 Sad  512: S4096/F4   -71.4  S4096/F7   -72.6  S4096/float   -72.7 | Sad/F7   -62.3  Sad/float   -62.3
+sq32_25    bps 0.654 f0 0.0204 H  23 Sad  256: S4096/F4   -71.7  S4096/F7   -73.0  S4096/float   -73.0 | Sad/F7   -58.7  Sad/float   -58.7
+saw8       bps 0.022 f0 0.0027 H 181 Sad 2048: S4096/F4   -57.6  S4096/F7   -57.6  S4096/float   -57.6 | Sad/F7   -57.3  Sad/float   -57.3
+saw8       bps 0.072 f0 0.0090 H  45 Sad  512: S4096/F4   -71.1  S4096/F7   -73.2  S4096/float   -73.3 | Sad/F7   -62.2  Sad/float   -62.2
+saw8       bps 0.115 f0 0.0144 H  32 Sad  256: S4096/F4   -73.2  S4096/F7   -76.7  S4096/float   -76.8 | Sad/F7   -55.1  Sad/float   -55.1
+saw8       bps 0.192 f0 0.0241 H  16 Sad  128: S4096/F4   -72.0  S4096/F7   -74.9  S4096/float   -75.0 | Sad/F7   -52.0  Sad/float   -52.0
+saw8       bps 0.327 f0 0.0409 H  11 Sad  128: S4096/F4   -73.5  S4096/F7   -78.8  S4096/float   -78.9 | Sad/F7   -56.3  Sad/float   -56.3
+saw8       bps 0.654 f0 0.0817 H   6 Sad   64: S4096/F4   -74.6  S4096/F7   -92.7  S4096/float  -123.1 | Sad/F7   -50.9  Sad/float   -50.9
+saw128     bps 0.022 f0 0.0002 H 512 Sad 4096: S4096/F4   -46.1  S4096/F7   -46.1  S4096/float   -46.1 | Sad/F7   -46.1  Sad/float   -46.1
+saw128     bps 0.072 f0 0.0006 H 512 Sad 4096: S4096/F4   -54.9  S4096/F7   -54.9  S4096/float   -54.9 | Sad/F7   -54.9  Sad/float   -54.9
+saw128     bps 0.115 f0 0.0009 H 512 Sad 4096: S4096/F4   -53.2  S4096/F7   -53.2  S4096/float   -53.2 | Sad/F7   -53.2  Sad/float   -53.2
+saw128     bps 0.192 f0 0.0015 H 256 Sad 2048: S4096/F4   -50.2  S4096/F7   -50.2  S4096/float   -50.2 | Sad/F7   -50.0  Sad/float   -50.0
+saw128     bps 0.327 f0 0.0026 H 181 Sad 2048: S4096/F4   -55.0  S4096/F7   -55.1  S4096/float   -55.1 | Sad/F7   -54.9  Sad/float   -54.9
+saw128     bps 0.654 f0 0.0051 H  91 Sad 1024: S4096/F4   -64.5  S4096/F7   -65.0  S4096/float   -65.0 | Sad/F7   -62.0  Sad/float   -62.0
+tri16      bps 0.022 f0 0.0013 H 362 Sad 4096: S4096/F4   -54.2  S4096/F7   -54.3  S4096/float   -54.3 | Sad/F7   -54.3  Sad/float   -54.3
+tri16      bps 0.072 f0 0.0045 H  91 Sad 1024: S4096/F4   -74.3  S4096/F7   -87.4  S4096/float   -89.2 | Sad/F7   -71.6  Sad/float   -71.6
+tri16      bps 0.115 f0 0.0072 H  64 Sad  512: S4096/F4   -73.3  S4096/F7   -78.4  S4096/float   -78.6 | Sad/F7   -63.7  Sad/float   -63.7
+tri16      bps 0.192 f0 0.0120 H  32 Sad  256: S4096/F4   -70.6  S4096/F7   -73.1  S4096/float   -73.2 | Sad/F7   -60.3  Sad/float   -60.3
+tri16      bps 0.327 f0 0.0204 H  23 Sad  256: S4096/F4   -72.0  S4096/F7   -76.5  S4096/float   -76.6 | Sad/F7   -64.7  Sad/float   -64.7
+tri16      bps 0.654 f0 0.0409 H  11 Sad  128: S4096/F4   -73.6  S4096/F7   -85.0  S4096/float   -85.9 | Sad/F7   -68.9  Sad/float   -68.9
+
+=== multiplier sweep (FRAC 7, Sad = clamp(next_pow2(M*H),64,4096) max n) ===
+sq4      f0 0.0180 H  23: now(4096/F4)  -74.7 | M8:256: -60.0  M16:512: -70.9  M32:1024: -76.1  M64:2048: -76.8
+sq4      f0 0.0289 H  16: now(4096/F4)  -76.2 | M8:128: -53.3  M16:256: -65.4  M32:512: -76.8  M64:1024: -79.6
+sq4      f0 0.0481 H   8: now(4096/F4)  -77.5 | M8:64: -50.2  M16:128: -62.3  M32:256: -74.0  M64:512: -82.0
+sq4      f0 0.0817 H   6: now(4096/F4)  -78.7 | M8:64: -54.0  M16:128: -66.1  M32:256: -78.1  M64:512: -89.2
+sq4      f0 0.1635 H   3: now(4096/F4)  -78.3 | M8:64: -59.3  M16:64: -59.3  M32:128: -71.4  M64:256: -83.2
+sq32_25  f0 0.0023 H 181: now(4096/F4)  -64.1 | M8:2048: -63.0  M16:4096: -64.2  M32:4096: -64.2  M64:4096: -64.2
+sq32_25  f0 0.0036 H 128: now(4096/F4)  -60.6 | M8:1024: -58.0  M16:2048: -60.6  M32:4096: -60.7  M64:4096: -60.7
+sq32_25  f0 0.0060 H  64: now(4096/F4)  -70.2 | M8:512: -57.9  M16:1024: -67.6  M32:2048: -70.7  M64:4096: -71.0
+sq32_25  f0 0.0102 H  45: now(4096/F4)  -71.4 | M8:512: -62.3  M16:1024: -70.6  M32:2048: -72.5  M64:4096: -72.6
+sq32_25  f0 0.0204 H  23: now(4096/F4)  -71.7 | M8:256: -58.7  M16:512: -68.9  M32:1024: -72.6  M64:2048: -73.0
+saw8     f0 0.0090 H  45: now(4096/F4)  -71.1 | M8:512: -62.2  M16:1024: -70.9  M32:2048: -73.1  M64:4096: -73.2
+saw8     f0 0.0144 H  32: now(4096/F4)  -73.2 | M8:256: -55.1  M16:512: -69.8  M32:1024: -75.4  M64:2048: -76.5
+saw8     f0 0.0241 H  16: now(4096/F4)  -72.0 | M8:128: -52.0  M16:256: -63.8  M32:512: -72.5  M64:1024: -74.7
+saw8     f0 0.0409 H  11: now(4096/F4)  -73.5 | M8:128: -56.3  M16:256: -68.0  M32:512: -76.5  M64:1024: -78.6
+saw8     f0 0.0817 H   6: now(4096/F4)  -74.6 | M8:64: -50.9  M16:128: -63.0  M32:256: -75.0  M64:512: -86.1
+tri16    f0 0.0045 H  91: now(4096/F4)  -74.3 | M8:1024: -71.6  M16:2048: -82.4  M32:4096: -87.4  M64:4096: -87.4
+tri16    f0 0.0072 H  64: now(4096/F4)  -73.3 | M8:512: -63.7  M16:1024: -76.0  M32:2048: -78.2  M64:4096: -78.4
+tri16    f0 0.0120 H  32: now(4096/F4)  -70.6 | M8:256: -60.3  M16:512: -69.9  M32:1024: -72.9  M64:2048: -73.1
+tri16    f0 0.0204 H  23: now(4096/F4)  -72.0 | M8:256: -64.7  M16:512: -73.8  M32:1024: -76.3  M64:2048: -76.5
+tri16    f0 0.0409 H  11: now(4096/F4)  -73.6 | M8:128: -68.9  M16:256: -79.7  M32:512: -84.4  M64:1024: -85.0
