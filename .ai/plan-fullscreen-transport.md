@@ -4,6 +4,14 @@ Origin (Morten, 2026-09-22 14:35, verbatim): "In 'fullscreen mode' the controls 
 pause are gone. We have these controls in the top bar, but only while playing. They should always
 be visible in the top bar I think."
 
+Clarification (Morten, relayed 14:36, verbatim): "By fullscreen I mean the mode where the tracker ui
+is minimized, not browser f11 fullscreen." — Confirmed: this plan targets the app's OWN fullscreen
+mode, the `isFullscreen` ref in `TrackerPage.vue` toggled by the ⛶ "Full screen pattern" toolbar
+button and the keyboard "Toggle fullscreen" command (`keyboard/commands/utility.ts:17-20`). It was
+never the browser Fullscreen API (no `requestFullscreen` anywhere in src — MEASURED grep). The
+mode: pattern canvas dominates, the page's top grid (song/patterns/instruments panels) is hidden,
+and the app's own top bar — `MainLayout.vue`'s header — remains. That is the top bar in scope.
+
 Worktree `fullscreen-trans-0922a`, branch `agent/fullscreen-transport-0922a`, from main `c027f2a2`
 (the corpus commit had just landed on main; it touches only `public/demos/*` + corpus test
 constants and is left alone). **Engine (rust-wasm) untouched. Audio graph untouched.** Scope:
