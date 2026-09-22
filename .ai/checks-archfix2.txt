@@ -89,3 +89,13 @@ exit 101
 npm notice run node scripts/check-artifacts.cjs
 ✓ public/worklets and public/wasm match their sources
 exit 0
+
+=== 6 regression-test red-run evidence (old binary) — recorded 2026-09-22, measured ~21:02 ===
+Red against the old artifact (MEASURED): with base's audio_processor_bg.wasm
+swapped in temporarily, both tests in src/tests/synth-worklet-truncated-wav.test.ts
+fail — the caught value is an object (RuntimeError: unreachable), and the
+subsequent valid sample import exports [] (engine dead, wasm-bindgen borrow
+never released). With the new wasm: caught value is the string
+"Failed to read enough bytes.", the re-import round-trips exactly, the IR
+re-import exports, and both slots render (RMS > 1e-3). New wasm restored
+(sha 763c2488… re-verified).
