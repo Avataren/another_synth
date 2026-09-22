@@ -24,6 +24,7 @@ import {
   pushAhxPListReport,
   setAhxPListTimingSource,
 } from 'src/audio/tracker/ahx-plist-playhead';
+import { setAhxPreviewOutputNode } from 'src/audio/tracker/ahx-preview-output';
 import { playheadLatencyMs, playheadTiming } from 'src/audio/tracker/plist-playhead-clock';
 import type { AhxPosition, AhxWaveforms } from 'src/audio/tracker/ahx-player';
 import {
@@ -537,6 +538,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // Lazy: this creates no worklet, it only says where to send the rows the
     // preview's worklet reports once there is one.
     preview.onPListRow(pushAhxPListReport);
+    preview.onOutputNode(setAhxPreviewOutputNode);
     setAhxPListTimingSource(ahxPlayheadTiming);
     return preview;
   }
@@ -546,6 +548,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     ahxPreviewInstance = null;
     // The row belonged to that preview's note.
     clearAhxPListPlayhead();
+    setAhxPreviewOutputNode(null);
   }
 
   // A new song (AHX or not) makes the preview voice stale: drop it at once,
