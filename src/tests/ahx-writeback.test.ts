@@ -794,8 +794,16 @@ describe('capability split and stale docs', () => {
 
     // chiprolled.hvl was removed from the corpus 2026-09-23 (byte-identical
     // dupe); illuminated.hvl takes over as the generic HVL fixture here.
-    const hvl = fs.readFileSync(path.resolve(__dirname, '../../public/demos/ahx/illuminated.hvl'));
-    store.loadSongFile(importAhxToTrackerSong(toBuffer(new Uint8Array(hvl))));
+    // An HVL song with its bytes is editable since plan-hvl-editing.md P2 (its
+    // doc is in `ahxDoc`), and its format's own limits apply; without its bytes
+    // it is read-only, like the AHX song above.
+    const hvl = new Uint8Array(fs.readFileSync(path.resolve(__dirname, '../../public/demos/ahx/illuminated.hvl')));
+    store.loadSongFile(importAhxToTrackerSong(toBuffer(hvl)));
+    expect([store.isAhxSong, store.isAhxEditable, store.isReadOnly]).toEqual([true, true, false]);
+    expect(store.ahxDoc?.format).toBe('hvl');
+    expect(store.ahxRefusal({ kind: 'noteOff' })).toBe('HVL has no note-off: use the envelope release.');
+    const hvlNoBytes = JSON.parse(JSON.stringify(importAhxToTrackerSong(toBuffer(hvl)))) as TrackerSongFile;
+    store.loadSongFile(hvlNoBytes);
     expect([store.isAhxSong, store.isAhxEditable, store.isReadOnly]).toEqual([true, false, true]);
     expect(store.ahxDoc).toBeNull();
     expect(store.ahxRefusal({ kind: 'noteOff' })).toBeNull();

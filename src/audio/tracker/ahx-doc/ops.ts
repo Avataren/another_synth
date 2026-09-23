@@ -1,11 +1,12 @@
-import { BLANK_STEP, blankTrack, isBlankStep, isBlankTrack, makeAhxDoc, stepsEqual, tracksEqual } from './doc';
+import { BLANK_STEP, blankTrack, docChannels, isBlankStep, isBlankTrack, makeAhxDoc, stepsEqual, tracksEqual } from './doc';
 import { toLatin1 } from './latin1';
 import { sizeRefusal } from './size-budget';
 import {
-  AHX_CHANNELS,
   AHX_MAX_POSITIONS,
   AHX_MAX_TRACKS,
   AHX_MAX_TRACK_LENGTH,
+  HVL_BLANK_NOTE,
+  HVL_NOTE_63_REASON,
   type AhxDoc,
   type AhxDocPosition,
   type AhxDocStep,
@@ -34,17 +35,30 @@ const isInt = (value: unknown, min: number, max: number): value is number =>
 
 function positionAt(doc: AhxDoc, position: number, channel?: number): string | null {
   if (!isInt(position, 0, doc.positions.length - 1)) return `There is no position ${position} (the song has ${doc.positions.length}).`;
-  if (channel !== undefined && !isInt(channel, 0, AHX_CHANNELS - 1)) return `AHX has channels 0 to ${AHX_CHANNELS - 1}, not ${channel}.`;
+  const channels = docChannels(doc);
+  if (channel !== undefined && !isInt(channel, 0, channels - 1)) {
+    return `${doc.format === 'hvl' ? 'This song has' : 'AHX has'} channels 0 to ${channels - 1}, not ${channel}.`;
+  }
   return null;
 }
 
-/** A step the file can hold: a note 0..63, an instrument 0..63, an effect nibble, one effect column. */
-function stepProblem(step: AhxDocStep): string | null {
+/**
+ * A step the file can hold: a note 0..63, an instrument 0..63, an effect
+ * nibble, one effect column. An HVL step has a second effect column, and no
+ * note 63: `0x3f` is the byte that marks a blank step (the writer refuses it).
+ */
+function stepProblem(step: AhxDocStep, format: AhxDoc['format']): string | null {
   if (typeof step !== 'object' || step === null) return 'That is not a step.';
   if (!isInt(step.note, 0, 63)) return `A note is 0 to 63 (got ${String(step.note)}).`;
   if (!isInt(step.instrument, 0, 63)) return `AHX instruments go up to 63 (got ${String(step.instrument)}).`;
   if (!isInt(step.fx, 0, 15)) return `An effect command is one hex digit (got ${String(step.fx)}).`;
   if (!isInt(step.fxParam, 0, 255)) return `An effect parameter is 0 to 255 (got ${String(step.fxParam)}).`;
+  if (format === 'hvl') {
+    if (step.note === HVL_BLANK_NOTE) return HVL_NOTE_63_REASON;
+    if (!isInt(step.fxb, 0, 15)) return `An effect command is one hex digit (got ${String(step.fxb)}).`;
+    if (!isInt(step.fxbParam, 0, 255)) return `An effect parameter is 0 to 255 (got ${String(step.fxbParam)}).`;
+    return null;
+  }
   if (step.fxb !== 0 || step.fxbParam !== 0) return 'AHX steps have one effect column.';
   return null;
 }
@@ -85,7 +99,7 @@ function replaceTrack(doc: AhxDoc, track: number, next: AhxDocTrack): AhxOpResul
 export function setStep(doc: AhxDoc, track: number, row: number, step: AhxDocStep): AhxOpResult {
   if (!isInt(track, 0, doc.tracks.length - 1)) return refuse(`There is no track ${track} (the song has ${doc.tracks.length}).`);
   if (!isInt(row, 0, doc.trackLength - 1)) return refuse(`Row ${row} is outside this song's tracks (${doc.trackLength} rows).`);
-  const problem = stepProblem(step);
+  const problem = stepProblem(step, doc.format);
   if (problem !== null) return refuse(problem);
   const current = doc.tracks[track] as AhxDocTrack;
   if (stepsEqual(current[row] as AhxDocStep, step)) return { ok: true, doc };
@@ -101,7 +115,7 @@ export function setTrack(doc: AhxDoc, track: number, steps: AhxDocTrack): AhxOpR
     return refuse(`A track has ${doc.trackLength} steps (got ${Array.isArray(steps) ? steps.length : 'none'}).`);
   }
   for (let row = 0; row < steps.length; row++) {
-    const problem = stepProblem(steps[row] as AhxDocStep);
+    const problem = stepProblem(steps[row] as AhxDocStep, doc.format);
     if (problem !== null) return refuse(`Row ${row}: ${problem}`);
   }
   return replaceTrack(doc, track, steps.map((step) => (isBlankStep(step) ? BLANK_STEP : { ...step })));
@@ -233,11 +247,12 @@ export function insertPosition(
 
   // Insert the entry first, then give channels tracks of their own one at a
   // time: a track is only "unreferenced" (and so reusable) until it is assigned.
-  const blankRefs = new Array<number>(AHX_CHANNELS).fill(0);
+  const channels = docChannels(doc);
+  const blankRefs = new Array<number>(channels).fill(0);
   const source = what.kind === 'blank' ? undefined : (doc.positions[what.of] as AhxDocPosition);
   const entry: AhxDocPosition = source
     ? { track: source.track.slice(), transpose: source.transpose.slice() }
-    : { track: blankRefs, transpose: new Array<number>(AHX_CHANNELS).fill(0) };
+    : { track: blankRefs, transpose: new Array<number>(channels).fill(0) };
   const positions = doc.positions.slice();
   positions.splice(at, 0, entry);
   const map = insertMap(at);
@@ -246,10 +261,10 @@ export function insertPosition(
   const own: { channel: number; copyOf?: number }[] = [];
   if (what.kind === 'blank') {
     // Track 0 is the blank track, unless it holds content.
-    if (!isBlankTrack(working.tracks[0] as AhxDocTrack)) for (let ch = 0; ch < AHX_CHANNELS; ch++) own.push({ channel: ch });
+    if (!isBlankTrack(working.tracks[0] as AhxDocTrack)) for (let ch = 0; ch < channels; ch++) own.push({ channel: ch });
   } else if (what.kind === 'duplicateUnique') {
     const track0Blank = isBlankTrack(working.tracks[0] as AhxDocTrack);
-    for (let ch = 0; ch < AHX_CHANNELS; ch++) {
+    for (let ch = 0; ch < channels; ch++) {
       const t = entry.track[ch] as number;
       // A copy of the shared blank track 0 would only waste a track.
       if (!(t === 0 && track0Blank)) own.push({ channel: ch, copyOf: t });
