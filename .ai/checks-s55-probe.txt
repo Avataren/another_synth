@@ -1,0 +1,24 @@
+aeuk/metal_warrior_4_streets.sng: {'set_rows': 63, 'arp_note': 13, 'arp_nonote': 211, 'arp_bit7': 224, 'cmd6': 1, 'cmd7_f': 6}
+aeuk/metal_warrior_4_unused_jingle.sng: {'set_rows': 2, 'arp_note': 11, 'arp_nonote': 69, 'arp_bit7': 80}
+ansgaros/metal_warrior_4_forest_encounter.sng: {'set_rows': 63, 'cmd7_f': 4}
+barfington/barfington_s_nintendometal.sng: {'set_rows': 63, 'cmd7_f': 17}
+barfington/metal_warrior_4_research_facility.sng: {'set_rows': 61, 'arp_note': 22, 'arp_nonote': 98, 'arp_bit7': 120, 'cmd7_f': 39}
+cadaver/covert_ops_in_2d_funktempo.sng: {'set_rows': 2, 'arp_note': 40, 'arp_nonote': 344, 'arp_bit7': 384, 'cmd7_f': 1, 'cmd7_e': 1, 'pulse_start0_speed': 2}
+cadaver/dojo.sng: {'set_rows': 3, 'arp_note': 5, 'arp_nonote': 29, 'cmd7_f': 10, 'pulse_start0_speed': 1}
+cadaver/galwaytest.sng: {'set_rows': 63, 'pulse_bit0': 2}
+cadaver/goattracker_classical_example.sng: {'cmd7_f': 5}
+cadaver/goattracker_drum_example.sng: {}
+cadaver/goattracker_example_mw1_title.sng: {'arp_note': 45, 'arp_nonote': 200, 'arp_bit7': 240, 'cmd7_f': 3, 'filterptr_no_table': 1, 'inst_filter_no_table': 2}
+cadaver/maximum_rastertime_test.sng: {'cmd7_f': 1, 'pulse_speed_gt7f': 1}
+cadaver/metal_warrior_4_covert_ops_in_2d.sng: {'set_rows': 2, 'arp_note': 40, 'arp_nonote': 344, 'arp_bit7': 384, 'cmd7_f': 2, 'pulse_start0_speed': 2}
+cadaver/metal_warrior_4_investigations.sng: {'set_rows': 61, 'arp_note': 19, 'arp_nonote': 205, 'arp_bit7': 224, 'cmd7_f': 11}
+cadaver/metal_warrior_4_the_chosen_path.sng: {'set_rows': 61, 'cmd7_f': 24}
+cadaver/mw_title_remix.sng: {'set_rows': 2, 'arp_note': 45, 'arp_nonote': 200, 'arp_bit7': 240, 'cmd7_f': 1}
+cadaver/mw_title_remix_2x_speed.sng: {'set_rows': 2, 'arp_note': 45, 'arp_nonote': 200, 'arp_bit7': 240, 'cmd7_f': 1}
+cadaver/nintendo_style.sng: {'set_rows': 1}
+cadaver/tarantula.sng: {'set_rows': 63, 'cmd6': 1, 'cmd7_f': 2, 'pulse_start0_speed': 1}
+cadaver/warlord.sng: {'set_rows': 61, 'arp_note': 75, 'arp_nonote': 133, 'cmd7_f': 2}
+shinobi/wod.sng: {'set_rows': 56, 'arp_note': 74, 'arp_nonote': 36, 'arp_bit7': 3, 'cmd7_f': 362, 'cmd7_d': 10, 'cmd7_e': 10, 'pulse_bit0': 5, 'pulse_start0_speed': 1, 'pulse_speed_gt7f': 1}
+yehar/b_o_f_h_ingame_death_victory.sng: {'arp_note': 22, 'arp_nonote': 80, 'cmd7_f': 14, 'pulse_bit0': 9, 'filterptr_no_table': 25, 'inst_filter_no_table': 6, 'pulse_start0_speed': 5, 'pulse_speed_gt7f': 3}
+TOTALS: {'allzero_filter_rows': 0, 'arp_bit7': 2139, 'arp_nonote': 2149, 'arp_note': 456, 'cmd6': 2, 'cmd7_d': 10, 'cmd7_e': 11, 'cmd7_f': 505, 'filter_rows_ref': 0, 'filterptr_no_table': 26, 'inst_filter_no_table': 8, 'note_5d': 0, 'pulse_bit0': 16, 'pulse_speed_gt7f': 5, 'pulse_start0_speed': 12, 'set_rows': 629}
+wave_08_0f rows: 0
