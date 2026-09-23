@@ -1,0 +1,6 @@
+=== gate re-verification at tip d7893041, run by main ===
+test:run exit 0
+lint exit 0
+vue-tsc exit 0
+gitleaks exit 0
+check:artifacts exit 0
