@@ -55,7 +55,7 @@ describe('the exporter registry', () => {
 
   it('pins the row descriptions: one short plain sentence, nothing about Author, BPM or the format', () => {
     expect(ahxExporter.description).toBe('Saves the song as an .ahx file, with your instrument and title changes.');
-    expect(hvlExporter.description).toBe('Saves the song as an .hvl file, with your title change.');
+    expect(hvlExporter.description).toBe('Saves the song as an .hvl file, with your pattern, transpose and title changes.');
     for (const e of SONG_EXPORTERS) expect(e.description, e.id).not.toMatch(/author|bpm|speed multiplier|tempo|no place/i);
   });
 

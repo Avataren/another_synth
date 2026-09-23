@@ -5,7 +5,6 @@ import {
   type AhxSong,
 } from '@another-synth/tracker-playback';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
-import type { AhxSource } from 'src/audio/tracker/ahx-source';
 import { decodeAhxFile } from 'src/audio/tracker/ahx-doc';
 import {
   authorOrBpmChanged,
@@ -37,8 +36,10 @@ import { SongExportError, type SongExportCheck, type SongExporter } from './type
  * model have no AHX home and are never written.
  *
  * An HVL song is exported as AHX only when it fits (`convertHvlToAhx`); it has
- * no instrument slots in the store, so only its title is overlaid. It never
- * embeds a file, so it always takes the overlay path.
+ * no instrument slots in the store, so only its title is overlaid. Its
+ * embedded file (an HVL song with a doc saves one, plan-hvl-editing.md P3) is
+ * an HVL file: it is never handed out as it is, only converted from like a
+ * source record, so the edits in it are converted too.
  */
 
 /** What the exporter works from: the parsed source, and the AHX song it becomes. */
@@ -47,8 +48,8 @@ type Plan =
       ok: true;
       /** The song's own embedded file (`data.ahxFile`), when it carries one. */
       file?: Uint8Array;
-      /** The song the file was imported from, when there is one (`ahx-source`). */
-      source?: AhxSource;
+      /** The bytes `base` was parsed from, for the overlay: the source record's (`ahx-source`), or an embedded HVL file's. */
+      baseBytes?: Uint8Array;
       base: AhxSong;
       ahx: AhxSong;
       converted: boolean;
@@ -63,7 +64,11 @@ function plan(song: TrackerSongFile): Plan {
     if (decoded.ok) {
       // `decodeAhxFile` has already parsed these bytes successfully.
       const base = parseAhx(decoded.bytes);
-      return { ok: true, file: decoded.bytes, base, ahx: base, converted: false };
+      // Only an AHX file is the export as it is. An HVL one never is: it is
+      // converted when it fits, like an HVL source.
+      if (base.format === 'ahx') return { ok: true, file: decoded.bytes, base, ahx: base, converted: false };
+      const converted = convertHvlToAhx(base);
+      return converted.ok ? { ok: true, baseBytes: decoded.bytes, base, ahx: converted.song, converted: true } : converted;
     }
     // A file that will not decode falls through to the source record or the
     // refusal below, matching load's warn-and-read-only behaviour.
@@ -77,9 +82,9 @@ function plan(song: TrackerSongFile): Plan {
   } catch (error) {
     return { ok: false, reason: `The original file can't be read: ${(error as Error).message}` };
   }
-  if (source.format === 'ahx') return { ok: true, source, base, ahx: base, converted: false };
+  if (source.format === 'ahx') return { ok: true, baseBytes: source.bytes, base, ahx: base, converted: false };
   const converted = convertHvlToAhx(base);
-  return converted.ok ? { ok: true, source, base, ahx: converted.song, converted: true } : converted;
+  return converted.ok ? { ok: true, baseBytes: source.bytes, base, ahx: converted.song, converted: true } : converted;
 }
 
 /**
@@ -127,11 +132,11 @@ function serialize(song: TrackerSongFile): Uint8Array {
   const planned = plan(song);
   if (!planned.ok) throw new SongExportError(planned.reason);
   if (planned.file) return planned.file.slice();
-  if (!planned.source) throw new SongExportError('This song has no original file to export from.');
+  if (!planned.baseBytes) throw new SongExportError('This song has no original file to export from.');
   const merged = withStoreEdits(planned.ahx, planned.base, song, !planned.converted);
   try {
     // A converted song has no AHX base to copy from; the writer works from the model alone.
-    return serializeAhx(merged, planned.converted ? {} : { base: planned.source.bytes });
+    return serializeAhx(merged, planned.converted ? {} : { base: planned.baseBytes });
   } catch (error) {
     if (error instanceof AhxEncodeError) throw new SongExportError(error.message);
     throw error;

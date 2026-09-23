@@ -98,7 +98,7 @@ describe('SongExportDialog: what each row says', () => {
     expect(byId(w, 'song-export-description-ahx').text()).toBe(
       'Saves the song as an .ahx file, with your instrument and title changes.',
     );
-    expect(byId(w, 'song-export-description-hvl').text()).toBe('Saves the song as an .hvl file, with your title change.');
+    expect(byId(w, 'song-export-description-hvl').text()).toBe('Saves the song as an .hvl file, with your pattern, transpose and title changes.');
     expect(w.text()).not.toMatch(/author|bpm|speed multiplier|tempo|no place/i);
   });
 

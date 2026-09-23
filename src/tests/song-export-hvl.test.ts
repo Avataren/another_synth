@@ -59,9 +59,10 @@ const CHANNELS_USED: Record<string, number> = {
 
 /**
  * meltwater_10ch.hvl's string table omits the final (empty) instrument name's
- * NUL terminator, so the writer canonically emits it: the export is the source
- * plus exactly one trailing NUL byte, and the parse is the same song
- * (measured 2026-09-23, curated HVL batch).
+ * NUL terminator, so the writer canonically emits it (source plus one trailing
+ * NUL, `ahx-writer-corpus.test.ts`). Since plan-hvl-editing.md P3 an unedited
+ * song is not rewritten at all, so its export is the source exactly; the pin
+ * below proves the rebuild would still differ, so the equality is not free.
  */
 const TRAILING_NAME_NUL = ['meltwater_10ch.hvl'];
 
@@ -74,13 +75,9 @@ describe('the HVL exporter on the demo .hvl files', () => {
     const song = songOf(name);
     expect(describeSongExporter(hvlExporter, song)).toEqual({ state: 'enabled' });
     const out = hvlExporter.serialize(song);
+    expect(out).toEqual(demo(name));
     if (TRAILING_NAME_NUL.includes(name)) {
-      const bytes = demo(name);
-      expect(out.length).toBe(bytes.length + 1);
-      expect(out.subarray(0, bytes.length)).toEqual(bytes);
-      expect(out[out.length - 1]).toBe(0);
-    } else {
-      expect(out).toEqual(demo(name));
+      expect(serializeAhx(parseAhx(demo(name)), { base: demo(name) }).length).toBe(demo(name).length + 1);
     }
     expect(hvlExporter.warnings!(song)).toEqual([]);
   });
