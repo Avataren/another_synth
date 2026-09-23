@@ -138,6 +138,11 @@ describe('createAhxPlayer / AhxPlayerClient', () => {
 
     const info = await loadAhxSongFromUrl(player, ahxDemoUrl('karma.ahx'));
     expect(fetchMock).toHaveBeenCalledWith('demos/ahx/karma.ahx');
+    // The wasm is revalidated, so a deploy's new build is not shadowed by a cached one.
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/wasm\/audio_processor_bg\.wasm$/),
+      { cache: 'no-cache' },
+    );
     expect(info).toMatchObject({ channels: 4, droppedChannels: 0 });
     expect(player.song).toEqual(info);
 

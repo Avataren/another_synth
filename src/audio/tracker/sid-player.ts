@@ -249,7 +249,7 @@ export async function createSidPlayer(audioContext: BaseAudioContext): Promise<S
       const data = event.data as SidEvent | { type: 'ready' | 'wasm-ready' };
       if (data.type === 'ready') {
         try {
-          const response = await fetch(`${import.meta.env.BASE_URL}wasm/audio_processor_bg.wasm`);
+          const response = await fetch(`${import.meta.env.BASE_URL}wasm/audio_processor_bg.wasm`, { cache: 'no-cache' });
           if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
           const wasmBytes = await response.arrayBuffer();
           node.port.postMessage({ type: 'wasm-binary', wasmBytes }, [wasmBytes]);

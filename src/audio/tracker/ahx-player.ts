@@ -503,6 +503,7 @@ export async function createAhxPlayer(
         try {
           const response = await fetch(
             `${import.meta.env.BASE_URL}wasm/audio_processor_bg.wasm`,
+            { cache: 'no-cache' },
           );
           if (!response.ok) {
             throw new Error(`${response.status} ${response.statusText}`);
