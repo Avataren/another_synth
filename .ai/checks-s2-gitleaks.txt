@@ -1,0 +1,23 @@
+$ (cd rust-wasm) gitleaks detect --no-git --source .
+
+    ○
+    │╲
+    │ ○
+    ○ ░
+    ░    gitleaks
+
+[90m4:04PM[0m [32mINF[0m [1mscanned ~145313339 bytes (145.31 MB) in 2.64s[0m
+[90m4:04PM[0m [32mINF[0m [1mno leaks found[0m
+EXIT=0
+
+$ (cd worktree root) gitleaks detect --no-git --source .   # also covers .ai/ verdict + checks files
+
+    ○
+    │╲
+    │ ○
+    ○ ░
+    ░    gitleaks
+
+[90m4:04PM[0m [32mINF[0m [1mscanned ~356945564 bytes (356.95 MB) in 19.8s[0m
+[90m4:04PM[0m [32mINF[0m [1mno leaks found[0m
+EXIT=0

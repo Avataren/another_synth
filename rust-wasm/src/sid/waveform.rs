@@ -39,11 +39,40 @@
 //!   residual is NOT modelled, because no GPL-free measured data for it was
 //!   available. Treat it as an ears-gate item. Noise in a combination
 //!   also writes zeros back into the LFSR (see `noise.rs`).
+//! - Combined waveforms, 6581 (S2). Public knowledge: the 6581's combined
+//!   waveforms come out far weaker than the ideal AND. Saw+tri is mostly
+//!   silent, and pulse+saw keeps only the upper part of the ramp. The
+//!   public explanation is the same shared-bit-line picture, with stronger
+//!   coupling on the 6581: a line held low by one waveform also drags its
+//!   neighbours low, and the effect falls off with distance. Modelled as a
+//!   pass over the ideal AND `a`:
+//!     pull(i) = sum over bits j != i with a_j = 0 of 2^(11 - |i - j|)
+//!     out bit i = a_i AND pull(i) < 1536
+//!   The weight halves per bit of distance (a zero next door pulls 1024, one
+//!   two bits away 512, ...), and the threshold 1536 = 0.75 * 2048. So an
+//!   isolated one-bit inside the word always vanishes (a zero on each side
+//!   = 2048). An edge bit (11 or 0) has only one neighbour. It vanishes
+//!   when a long enough run of zeros follows it (e.g. 0x800 alone: 2047),
+//!   but survives sparse zeros (bit 0 of 0x555: 1365). The bottom bit of a
+//!   run that sits on a long run of zeros is eaten ("run-down"). Long runs
+//!   of ones survive.
+//!   All ones and all zeros are fixed points. The pass is not iterated, and
+//!   it uses only the AND, not which waveforms made it.
+//!   INFERRED: the neighbour-pull rule, its 2^-d weights and the 0.75
+//!   threshold are my own tuning to match the qualitative description. No
+//!   measured 6581 combined-waveform table was used: the published ones sit
+//!   inside GPL emulators. It applies only when two or more waveforms are
+//!   selected, so a single waveform is untouched. Precomputed into a
+//!   4096-entry table (`COMBINED_6581`) because it runs every chip cycle.
+//!   Ears-gate.
 //! - No waveform selected ("waveform 0"): the DAC input floats and keeps
-//!   the last output. INFERRED from public hardware notes. The real chip
-//!   leaks the held value away over a long time; that fade is not
-//!   modelled. `waveform_output` returns `None` and the voice keeps its
-//!   previous value.
+//!   the last output. INFERRED from public hardware notes. `waveform_output`
+//!   returns `None` and the voice keeps its previous value. On the 8580 the
+//!   slow leak of the held value is not modelled. On the 6581 (S2) the held
+//!   value fades to 0 after a fixed time; see `voice.rs`. The TEST bit
+//!   does not drive the DAC when no waveform is selected, so TEST with
+//!   waveform 0 changes nothing here: the held value stays, and on the 6581
+//!   its fade keeps running.
 
 use super::SidModel;
 
@@ -134,12 +163,48 @@ pub fn waveform_output(
     match model {
         // Wired-AND is the whole 8580 combined-waveform model (see header).
         SidModel::Sid8580 => Some(out),
-        // A 6581 chip cannot be constructed (Chip::new refuses it until S2),
-        // so this arm is unreachable through the public API. It returns the
-        // same AND rather than panicking so the pure function stays total.
+        SidModel::Sid6581 if sel.count_ones() >= 2 => Some(COMBINED_6581[out as usize]),
         SidModel::Sid6581 => Some(out),
     }
 }
+
+/// Threshold of the 6581 neighbour pull, 0.75 in units of 2048.
+pub const PULL_THRESHOLD_6581: u32 = 1536;
+
+/// The 6581 neighbour-pull pass over one ideal wired-AND value (header).
+pub const fn combined_6581(and: u16) -> u16 {
+    let mut out = 0u16;
+    let mut i = 0;
+    while i < 12 {
+        if (and >> i) & 1 != 0 {
+            let mut pull = 0u32;
+            let mut j = 0;
+            while j < 12 {
+                if j != i && (and >> j) & 1 == 0 {
+                    let d = if i > j { i - j } else { j - i };
+                    pull += 1 << (11 - d);
+                }
+                j += 1;
+            }
+            if pull < PULL_THRESHOLD_6581 {
+                out |= 1 << i;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// `combined_6581` for every 12-bit AND value.
+pub static COMBINED_6581: [u16; 4096] = {
+    let mut t = [0u16; 4096];
+    let mut a = 0;
+    while a < 4096 {
+        t[a] = combined_6581(a as u16);
+        a += 1;
+    }
+    t
+};
 
 #[cfg(test)]
 mod tests {
@@ -264,6 +329,54 @@ mod tests {
         assert_eq!(waveform_output(M, PULSE, 0, 0, 0xFFF, 0), Some(0));
         assert_eq!(waveform_output(M, PULSE | TEST, 0, 0, 0xFFF, 0), Some(0xFFF));
         assert_eq!(waveform_output(M, SAW | TEST, 0x60_0000, 0, 0, 0), Some(0x600));
+    }
+
+    #[test]
+    fn combined_6581_pull_down_hand_values() {
+        // Weights: a zero at distance d pulls 2^(11 - d); keep if < 1536.
+        //  0xFFF: no zeros -> kept. 0x000: nothing to keep.
+        //  0x400 (bit 10 alone): zeros at 11 and 9 (1024 each) -> gone.
+        //  0x800 (bit 11 alone): zeros 10..0, d 1..11: 2047 -> gone.
+        //  0xC00: bit 11 sees zeros 9..0 at d 2..11: 1023 -> kept;
+        //         bit 10 sees zeros 9..0 at d 1..10: 2046 -> gone. -> 0x800
+        //  0xE00: bit 9: 2044 gone; bit 10: 1022 kept; bit 11: 511 kept -> 0xC00
+        //  0xFF0: bit 4: zeros 3..0 at d 1..4 = 1920 gone; bit 5: d 2..5 =
+        //         960 kept; higher bits smaller -> 0xFE0
+        //  0x7FE: bit 1: zero 0 (1024) + zero 11 (d 10, 2) = 1026 kept;
+        //         bit 10 symmetric -> 0x7FE unchanged
+        //  0x555: bits 2..10 have zeros on both sides (2048) -> gone; bit 0
+        //         is an edge bit: zero 1 (1024) + zeros 3,5,7,9,11 (256 + 64
+        //         + 16 + 4 + 1) = 1365 -> kept. -> 0x001
+        //         (first derivation said 0 and missed the edge; the test
+        //         caught it)
+        //  0x600: bit 10: zero 11 (1024) + zeros 8..0 at d 2..10 (1022) =
+        //         2046 gone; bit 9: zeros 8..0 at d 1..9 (2044) gone -> 0
+        for (a, want) in [(0xFFFu16, 0xFFFu16), (0, 0), (0x400, 0), (0x800, 0),
+            (0xC00, 0x800), (0xE00, 0xC00), (0xFF0, 0xFE0), (0x7FE, 0x7FE),
+            (0x555, 0x001), (0x600, 0)] {
+            assert_eq!(combined_6581(a), want, "{a:#05x}");
+            assert_eq!(COMBINED_6581[a as usize], want);
+        }
+    }
+
+    #[test]
+    fn combined_6581_only_removes_bits_and_only_for_combinations() {
+        for a in 0..4096u16 {
+            assert_eq!(COMBINED_6581[a as usize] & !a, 0, "{a:#05x} gained bits");
+        }
+        // Single waveforms are identical on both models at every phase.
+        let m6 = SidModel::Sid6581;
+        for acc in (0..0x100_0000u32).step_by(0x1_0001) {
+            for c in [TRI, SAW, PULSE, NOISE, TRI | RING, PULSE | TEST] {
+                assert_eq!(
+                    waveform_output(m6, c, acc, 0x80_0000, 0x800, 0xA50),
+                    waveform_output(M, c, acc, 0x80_0000, 0x800, 0xA50)
+                );
+            }
+        }
+        // Saw+tri at acc 0x600000: 8580 AND 0x400, 6581 0 (hand: 0x400 row).
+        assert_eq!(waveform_output(m6, SAW | TRI, 0x60_0000, 0, 0, 0), Some(0));
+        assert_eq!(waveform_output(M, SAW | TRI, 0x60_0000, 0, 0, 0), Some(0x400));
     }
 
     #[test]

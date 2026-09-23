@@ -7,7 +7,11 @@
 //! 44.1 kHz (or another output rate). This is the plan §1.1 approximation, not
 //! cycle-exact audio. See `chip.rs` for the sample-rate caveats.
 //!
-//! Only the 8580 is implemented. The 6581 is S2 (`SidModel::Sid6581`).
+//! Both revisions are implemented, chosen per `Chip` instance. The 8580 is
+//! S1. The 6581 is S2's character pass over the same skeleton: every 6581
+//! behaviour is gated on the model, so the 8580 paths are unchanged
+//! (pinned bit-exactly by `tests_s2::pin_8580_render_is_bit_identical_to_s1`).
+//! S2's record is `.ai/sid-6581-verdict.md`.
 //!
 //! Sources: the MOS 6581/8580 datasheet, Bob Yannes' published interview,
 //! and public C64 community hardware measurements and notes. No GPL
@@ -25,6 +29,8 @@ pub mod waveform;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_s2;
 
 pub use chip::Chip;
 
@@ -40,25 +46,23 @@ pub const ACC_MASK: u32 = 0x00FF_FFFF;
 /// Which SID revision a chip models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SidModel {
-    /// MOS 8580: implemented (S1).
+    /// MOS 8580 (S1).
     Sid8580,
-    /// MOS 6581: STUB. Its defining traits are the nonlinear, input-dependent
-    /// filter, the attenuated combined waveforms, the attack-curve shape and
-    /// the large DAC/DC offsets. Those are the whole S2 batch. A 6581 built
-    /// from 8580 parts would be a half-model that sounds like neither chip,
-    /// so `Chip::new` refuses it instead.
+    /// MOS 6581 (S2): the 8580 skeleton plus the 6581's nonlinear cutoff
+    /// map and saturating resonance (`filter.rs`), pulled-down combined
+    /// waveforms and the waveform-0 fade (`waveform.rs`, `voice.rs`), the
+    /// attack-shape lag (`voice.rs`), and the DAC/mixer DC offsets with
+    /// their gain calibration (`voice.rs`, `chip.rs`). An approximation of
+    /// one representative chip; real 6581s vary widely (plan §1.1).
     Sid6581,
 }
 
 impl SidModel {
-    /// Why this model cannot be instantiated yet, or `None` if it can.
+    /// Why this model cannot be instantiated, or `None` if it can. Both
+    /// models construct since S2; kept so callers can keep asking.
     pub fn unimplemented_reason(self) -> Option<&'static str> {
         match self {
-            SidModel::Sid8580 => None,
-            SidModel::Sid6581 => Some(concat!(
-                "6581 not implemented yet: its filter, combined waveforms, ",
-                "attack curve and DC offsets are the S2 batch"
-            )),
+            SidModel::Sid8580 | SidModel::Sid6581 => None,
         }
     }
 }

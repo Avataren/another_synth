@@ -22,7 +22,9 @@
 //!     6:    68 ->   265.6 ->   267     14:  5000 -> 19531.3 -> 19532
 //!     7:    80 ->   312.5 ->   313     15:  8000 -> 31250.0 -> 31251
 //!   The 8580 and 6581 share the envelope circuit, so this one table serves
-//!   the 8580. The 6581 attack-curve nonlinearity is S2's job (plan §1.2).
+//!   both models, and this counter is identical on both (ENV3 reads it).
+//!   The 6581's attack-curve shape (S2, plan §1.2) lives after the counter,
+//!   in the amplitude the voice applies: see `voice.rs`.
 //! - Rate counter: 15 bits, +1 per cycle, free-running across gate changes.
 //!   The step fires when it EQUALS the selected period, and the counter
 //!   then resets to 0. INFERRED from public descriptions: an equality
