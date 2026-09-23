@@ -1,0 +1,188 @@
+# S5 red controls — 2026-09-23T20:33:56+02:00 — branch agent/sid-import-0923a
+
+## RC1 (brief-mandated): desync one byte of a valid corpus fixture on disk
+fixture: src/tests/fixtures/gt-songs/mch/alien_funk.sng sha256 before: f5a6b844bd148190
+flipped: first pattern's length byte +1 (one row too long: desyncs everything after it); sha256 now: fb740b56738bfa23
+$ npx vitest run src/tests/sid-sng-corpus.test.ts   (RED expected)
+EXIT 1
+   × the GoatTracker corpus (fixtures/gt-songs) > every file imports, as the variant its magic names 5ms
+   × the GoatTracker corpus (fixtures/gt-songs) > GTS5: every row, instrument, table byte and orderlist pattern is where the doc says 2662ms
+   × the GoatTracker corpus (fixtures/gt-songs) > every file round-trips: import -> export (GTS5) -> import is the same doc, and the writer is at a fixed point 1572ms
+   × the GoatTracker corpus (fixtures/gt-songs) > the deviations the import reports, per kind and per file (the D-log list; MEASURED 2026-09-23) 1ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
++   "mch/alien_funk.sng: pattern 0 does not end with the pattern-end row",
+     90|     expect(refused).toEqual([]);
+      Tests  4 failed | 5 passed (9)
+restored: sha256 f5a6b844bd148190
+$ npx vitest run src/tests/sid-sng-corpus.test.ts   (GREEN expected)
+EXIT 0
+      Tests  9 passed (9)
+
+## RC2: GT1 vibrato depth conversion (readme §3.4.4: $34 -> 03 40) off by one shift
+mutation in src/audio/tracker/sid-doc/gt-sng-gt1.ts:
+  - out = speedRow(param >> 4, (param & 0x0f) << 4);
+  + out = speedRow(param >> 4, (param & 0x0f) << 3);
+$ npx vitest run src/tests/sid-sng-import.test.ts   (RED expected)
+EXIT 1
+   × GoatTracker 1 (GTS!), converted > keeps notes and instruments, converts the commands (readme §3.4.4 for vibrato and portamento), trims unused instruments 7ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 23 passed (24)
+restored (byte-identical to the pre-mutation copy)
+$ npx vitest run src/tests/sid-sng-import.test.ts   (GREEN expected)
+EXIT 0
+      Tests  24 passed (24)
+
+## RC3: writer stops restating the transpose at the loop's restart entry
+mutation in src/audio/tracker/sid-doc/gt-sng-write.ts:
+  - if (e.transpose !== transpose || (i === list.restart && e.transpose !== last)) {
+  + if (e.transpose !== transpose) {
+$ npx vitest run src/tests/sid-sng-export.test.ts   (RED expected)
+EXIT 1
+   × the GTS5 writer > restates the transpose at the restart entry when the loop would carry the end's into it 5ms
+   × the GTS5 writer > refuses a transpose outside GT's $E0-$FE range, and an orderlist over 254 bytes 1ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  2 failed | 10 passed (12)
+restored (byte-identical to the pre-mutation copy)
+$ npx vitest run src/tests/sid-sng-export.test.ts   (GREEN expected)
+EXIT 0
+      Tests  12 passed (12)
+
+## RC4: GT1 trailing filtertable made mandatory (what GT2's own loader assumes)
+mutation in src/audio/tracker/sid-doc/gt-sng-gt1.ts:
+  - if (r.left === GT1_FILTER_TABLE_BYTES) filterTable = r.take(GT1_FILTER_TABLE_BYTES, 'the filter table');
+  + filterTable = r.take(GT1_FILTER_TABLE_BYTES, 'the filter table');
+$ npx vitest run src/tests/sid-sng-corpus.test.ts   (RED expected)
+EXIT 1
+      Tests  no tests
+restored (byte-identical to the pre-mutation copy)
+$ npx vitest run src/tests/sid-sng-corpus.test.ts   (GREEN expected)
+EXIT 0
+      Tests  9 passed (9)
+
+## RC5: the .sng dispatch removed from parseSongBuffer (proves the chain test goes through the real load path)
+mutation in src/composables/useTrackerFileIO.ts:
+  -     if (looksLikeGtSongFile(buffer)) {
+  +     if (looksLikeGtSongFile(buffer) && name === 'never') {
+$ npx vitest run src/tests/sid-sng-load-chain.test.ts   (RED expected)
+EXIT 1
+restored (byte-identical to the pre-mutation copy)
+$ npx vitest run src/tests/sid-sng-load-chain.test.ts   (GREEN expected)
+EXIT 0
+      Tests  5 passed (5)
+
+## RC6: GTS5 gate-timer $40 (no gate-off) no longer special-cased
+mutation in src/audio/tracker/sid-doc/gt-sng-read.ts:
+  -       gateTimer: noGateOff ? 0 : gate & 0x3f,
+  +       gateTimer: gate & 0x3f,
+$ npx vitest run src/tests/sid-sng-corpus.test.ts   (RED expected)
+EXIT 0
+      Tests  9 passed (9)
+restored (byte-identical to the pre-mutation copy)
+$ npx vitest run src/tests/sid-sng-corpus.test.ts   (GREEN expected)
+EXIT 0
+      Tests  9 passed (9)
+
+## Follow-ups to the runs above (recorded as they happened, not rewritten)
+- RC4 as run above was an INVALID control: removing the `if (...)` left the next line's
+  `else if` dangling, a syntax error, so vitest collected no tests ("no tests", EXIT 1).
+  Redone below as RC4b with a mutation that compiles.
+- RC5's red run printed no `×` lines to the grep (vitest reports the failures in its FAIL
+  block); rerun below as RC5b with the FAIL lines captured.
+- RC6 stayed GREEN against the corpus test: a real gap. The corpus test skipped the gate
+  timer of an instrument with bit $40 set, so dropping the special case went unseen there
+  (the import unit test pins it, but the corpus is where the one real instrument lives,
+  stinsen/upsandowns.sng). Fixed: the corpus test now asserts timer 0 for a $40 instrument.
+  Rerun below as RC6b.
+
+## RC4b: GT1 trailing filtertable made mandatory (what GT2's own loader assumes)
+mutation in src/audio/tracker/sid-doc/gt-sng-gt1.ts:
+  - if (r.left === GT1_FILTER_TABLE_BYTES) filterTable
+  + if (r.left >= 0) filterTable
+$ npx vitest run src/tests/sid-sng-corpus.test.ts   (RED expected)
+EXIT 1
+   × the GoatTracker corpus (fixtures/gt-songs) > every file imports, as the variant its magic names 6ms
+   × the GoatTracker corpus (fixtures/gt-songs) > GTS!: every row keeps its note and instrument; every pattern its length; every orderlist its patterns 231ms
+   × the GoatTracker corpus (fixtures/gt-songs) > every file round-trips: import -> export (GTS5) -> import is the same doc, and the writer is at a fixed point 1705ms
+   × the GoatTracker corpus (fixtures/gt-songs) > the deviations the import reports, per kind and per file (the D-log list; MEASURED 2026-09-23) 1ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/tests/sid-sng-corpus.test.ts > the GoatTracker corpus (fixtures/gt-songs) > every file imports, as the variant its magic names
+AssertionError: expected [ …(5) ] to deeply equal []
+ FAIL  src/tests/sid-sng-corpus.test.ts > the GoatTracker corpus (fixtures/gt-songs) > GTS!: every row keeps its note and instrument; every pattern its length; every orderlist its patterns
+AssertionError: expected 17 to be 22 // Object.is equality
+ FAIL  src/tests/sid-sng-corpus.test.ts > the GoatTracker corpus (fixtures/gt-songs) > every file round-trips: import -> export (GTS5) -> import is the same doc, and the writer is at a fixed point
+restored (byte-identical to the pre-mutation copy)
+$ npx vitest run src/tests/sid-sng-corpus.test.ts   (GREEN expected)
+EXIT 0
+      Tests  9 passed (9)
+
+## RC5b: the .sng dispatch removed from parseSongBuffer
+mutation in src/composables/useTrackerFileIO.ts:
+  -     if (looksLikeGtSongFile(buffer)) {
+  +     if (looksLikeGtSongFile(buffer) && name === 'never') {
+$ npx vitest run src/tests/sid-sng-load-chain.test.ts   (RED expected)
+EXIT 1
+restored (byte-identical to the pre-mutation copy)
+$ npx vitest run src/tests/sid-sng-load-chain.test.ts   (GREEN expected)
+EXIT 0
+      Tests  5 passed (5)
+
+## RC6b: GTS5 gate-timer $40 no longer special-cased (after the corpus test fix)
+mutation in src/audio/tracker/sid-doc/gt-sng-read.ts:
+  -       gateTimer: noGateOff ? 0 : gate & 0x3f,
+  +       gateTimer: gate & 0x3f,
+$ npx vitest run src/tests/sid-sng-corpus.test.ts   (RED expected)
+EXIT 1
+   × the GoatTracker corpus (fixtures/gt-songs) > GTS5: every row, instrument, table byte and orderlist pattern is where the doc says 2752ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/tests/sid-sng-corpus.test.ts > the GoatTracker corpus (fixtures/gt-songs) > GTS5: every row, instrument, table byte and orderlist pattern is where the doc says
+AssertionError: stinsen/upsandowns.sng instrument 2: expected 2 to be +0 // Object.is equality
+      Tests  1 failed | 8 passed (9)
+restored (byte-identical to the pre-mutation copy)
+$ npx vitest run src/tests/sid-sng-corpus.test.ts   (GREEN expected)
+EXIT 0
+      Tests  9 passed (9)
+
+## RC5c: RC5b rerun by hand with the output kept (same mutation, same restore)
+EXIT 1
+(the .sng bytes fell through to the JSON branch: all 5 chain tests fail; restored byte-identical, GREEN 5/5 as RC5b shows)
+
+## RC7: the S5 player pin (3 00 = tie-note) reverted
+mutation in rust-wasm/src/sid/player.rs:
+  -                 if row.param == 0 {
+  +                 if row.param == 0 && false {
+$ (cd rust-wasm && cargo test --features native-host --lib sid::tests_s5)   (RED expected)
+EXIT 101
+test sid::tests_s5::tone_portamento_zero_is_gt_tie_note_the_pitch_jumps_without_a_trigger ... FAILED
+test sid::tests_s5::tone_portamento_with_a_speed_still_glides ... ok
+thread 'sid::tests_s5::tone_portamento_zero_is_gt_tie_note_the_pitch_jumps_without_a_trigger' (1892675) panicked at src/sid/tests_s5.rs:64:5:
+  left: 4455
+ right: 5613
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 229 filtered out; finished in 0.04s
+restored (byte-identical to the pre-mutation copy)
+$ (cd rust-wasm && cargo test --features native-host --lib sid::tests_s5)   (GREEN expected)
+EXIT 0
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 229 filtered out; finished in 0.04s
+
+## Note on timing
+RC1-RC7 ran before one later change: the GT1 pulse-speed rule went from x2 (readme §1.1
+note 9's pre-2.4 doubling, which clamped 43 instruments) to x1 (no clamp for any corpus
+speed below $80; see the D-log). None of the controls targets that rule; the pins it moved
+(gt1-convert 93 -> 55, the GT1 quiet-file list, the unit test's sweep rows) were
+re-measured and the four S5 test files re-run green (50/50) before the final gates.
+
+## RC8: the S5 wave-delay pin's timing reverted to S3's (row lasts left frames, not left + 1)
+mutation in rust-wasm/src/sid/player.rs:
+  -                         ch.wave_wait = row.left + 1;
+  +                         ch.wave_wait = row.left;
+$ (cd rust-wasm && cargo test --features native-host --lib sid::tests_s5)   (RED expected)
+EXIT 101
+test sid::tests_s5::tone_portamento_zero_is_gt_tie_note_the_pitch_jumps_without_a_trigger ... ok
+test sid::tests_s5::tone_portamento_with_a_speed_still_glides ... ok
+test sid::tests_s5::a_delayed_wave_step_waits_then_sets_its_note_the_readme_minor_chord ... FAILED
+  left: [4455, 4455, 5298, 5298, 6675, 6675, 4455, 4455, 5298, 5298, 6675, 6675, 4455, 4455, 5298, 5298]
+ right: [4455, 4455, 4455, 5298, 5298, 5298, 6675, 6675, 6675, 4455, 4455, 4455, 5298, 5298, 5298, 6675]
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 229 filtered out; finished in 0.14s
+restored (byte-identical to the pre-mutation copy)
+$ (cd rust-wasm && cargo test --features native-host --lib sid::tests_s5)   (GREEN expected)
+EXIT 0
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 229 filtered out; finished in 0.13s

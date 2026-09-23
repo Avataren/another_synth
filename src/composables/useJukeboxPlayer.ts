@@ -178,7 +178,7 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
       const data = await fetchModuleBytes(entry.url);
       prefetchedSong = {
         file: entry.file,
-        songFile: await host.parseSongBuffer(data),
+        songFile: await host.parseSongBuffer(data, entry.file),
         bytes: data,
       };
     } catch (error) {
@@ -241,7 +241,7 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
           }
           throw error;
         }
-        songFile = await host.parseSongBuffer(bytes);
+        songFile = await host.parseSongBuffer(bytes, entry.file);
       }
 
       host.isLoadingSong.value = true;

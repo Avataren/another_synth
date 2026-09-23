@@ -37,11 +37,14 @@
 //!   `param`; B resonance/routing ($17) = param; C cutoff high byte = param;
 //!   D master volume = param & 15; E funktempo: not modelled (ignored);
 //!   F tempo = param & 0x7F when it is at least 1. A row with command 3 and
-//!   a note glides to it instead of triggering.
+//!   a note glides to it instead of triggering; with parameter 0 (GT's
+//!   tie-note, readme §3.2) the pitch moves to it at once, still without a
+//!   trigger (pinned in S5 against the `.sng` corpus).
 //!
 //! Tables (1-based rows; left 0xFF = jump to row `right`, 0 = stop; one
 //! jump per frame):
-//!   wave: left 0x01..=0x0F waits that many frames on the row; 0x10..=0xDF
+//!   wave: left 0x01..=0x0F waits that many frames, then sets the row's note
+//!     (the row lasts left + 1 frames; pinned in S5); 0x10..=0xDF
 //!     sets the waveform, 0xE0..=0xEF the waveform `left & 0x0F`, 0x00 keeps
 //!     it, 0xF0..=0xFE (GT's table commands) is not modelled and only
 //!     advances. right: 0x00..=0x5F note up from the triggered note,
@@ -511,8 +514,18 @@ impl SidSongPlayer {
         if (NOTE_FIRST..=NOTE_LAST).contains(&row.note) {
             let note = note_index(row.note, self.channels[c].transpose);
             if tone_porta {
-                self.channels[c].target = Some(gt_note_freq_reg(note));
-                self.channels[c].base_note = note;
+                let target = gt_note_freq_reg(note);
+                let ch = &mut self.channels[c];
+                ch.base_note = note;
+                if row.param == 0 {
+                    // Tie-note: "$00 ... move pitch instantly to target note"
+                    // (GT readme §3.2 3XY). Pinned in S5: 4791 rows of 56 of
+                    // the 61 GTS5 corpus songs are `3 00` legato notes.
+                    ch.freq = target;
+                    ch.target = None;
+                } else {
+                    ch.target = Some(target);
+                }
             } else {
                 self.trigger(c, note);
             }
@@ -676,11 +689,18 @@ impl SidSongPlayer {
                     continue;
                 }
                 0x01..=0x0F => {
+                    // A delayed step (pinned in S5): `left` frames of waiting,
+                    // then the step's note on the next, so the row lasts
+                    // left + 1 frames (GT readme §3.4.1's "02 03 ... Each step
+                    // takes 3 ticks"). Note after the wait, not before:
+                    // INFERRED from §1.1 note 5 (a delay as a program's first
+                    // step "may result in missing notes").
                     if ch.wave_wait == 0 {
-                        ch.wave_wait = row.left;
+                        ch.wave_wait = row.left + 1;
                     }
                     ch.wave_wait -= 1;
                     if ch.wave_wait == 0 {
+                        Self::wave_note(ch, row.right);
                         ch.wave_ptr = ch.wave_ptr.wrapping_add(1);
                     }
                 }
@@ -690,16 +710,7 @@ impl SidSongPlayer {
                         0xE0..=0xEF => ch.waveform = l & 0x0E,
                         _ => {}
                     }
-                    let note = match row.right {
-                        0x80 => None,
-                        r @ 0x00..=0x5F => Some(ch.base_note as i32 + r as i32),
-                        r @ 0x60..=0x7F => Some(ch.base_note as i32 + r as i32 - 0x80),
-                        r => Some((r & 0x7F) as i32),
-                    };
-                    let porta = matches!(ch.cmd, 0x1..=0x3);
-                    if let (Some(n), false) = (note, porta) {
-                        ch.freq = gt_note_freq_reg(n.clamp(0, GT_NOTE_COUNT as i32 - 1) as u8);
-                    }
+                    Self::wave_note(ch, row.right);
                     ch.wave_ptr = ch.wave_ptr.wrapping_add(1);
                 }
             }
@@ -707,6 +718,20 @@ impl SidSongPlayer {
         }
         if ch.wave_ptr as usize > table.len() {
             ch.wave_ptr = 0;
+        }
+    }
+
+    /// A wave-table row's right column: the note it sets, unless a portamento runs.
+    fn wave_note(ch: &mut Channel, right: u8) {
+        let note = match right {
+            0x80 => None,
+            r @ 0x00..=0x5F => Some(ch.base_note as i32 + r as i32),
+            r @ 0x60..=0x7F => Some(ch.base_note as i32 + r as i32 - 0x80),
+            r => Some((r & 0x7F) as i32),
+        };
+        let porta = matches!(ch.cmd, 0x1..=0x3);
+        if let (Some(n), false) = (note, porta) {
+            ch.freq = gt_note_freq_reg(n.clamp(0, GT_NOTE_COUNT as i32 - 1) as u8);
         }
     }
 

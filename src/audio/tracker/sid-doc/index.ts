@@ -37,3 +37,13 @@ export {
   type SidGridCell,
   type SidGridLayout,
 } from './grid';
+export {
+  GT_MAGIC_GT1,
+  GT_MAGIC_GTS5,
+  gtSongHintsFromName,
+  type GtImportNote,
+  type GtImportNoteKind,
+  type GtSongHints,
+} from './gt-sng-common';
+export { importGtSong, looksLikeGtSong, type GtSongImport, type GtSongVariant } from './gt-sng-read';
+export { exportGtSong, gtSongExportProblem, type GtSongExport } from './gt-sng-write';
