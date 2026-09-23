@@ -326,20 +326,6 @@
             @rename-pattern="handleRenamePattern"
             @request-refocus="refocusTracker"
           />
-          <!--
-            The position editor (editable AHX songs): the per-position,
-            per-channel transpose byte, the field the tracker never exposed
-            (plan-pos-transpose.md). Track reassignment stays with Song Edit B4;
-            the panel shows it read-only today.
-          -->
-          <AhxPositionPanel
-            v-if="!HIDE_TRANSPOSE_PANEL && isAhxEditable && ahxPositionIndex >= 0"
-            ref="ahxPositionPanelRef"
-            data-testid="ahx-position-panel"
-            :position="ahxPositionIndex"
-            :channels="ahxPositionChannels"
-            @set-transpose="onSetPositionTranspose"
-          />
         </div>
         <div
           v-show="!isMobileLayout || mobilePanel === 'song'"
@@ -826,7 +812,6 @@
             :upcoming-pattern="upcomingPattern"
             :transpose-labels="ahxTransposeLabels.length > 0 ? ahxTransposeLabels : undefined"
             :transpose-titles="ahxTransposeTitles.length > 0 ? ahxTransposeTitles : undefined"
-            @transpose-chip-click="focusAhxTransposeChannel"
             @transpose-chip-step="onTransposeChipStep"
             @rowSelected="setActiveRow"
             @cellSelected="setActiveCell"
@@ -857,7 +842,6 @@
             :upcoming-pattern="upcomingPattern"
             :transpose-labels="ahxTransposeLabels.length > 0 ? ahxTransposeLabels : undefined"
             :transpose-titles="ahxTransposeTitles.length > 0 ? ahxTransposeTitles : undefined"
-            @transpose-badge-click="focusAhxTransposeChannel"
             @rowSelected="setActiveRow"
             @cellSelected="setActiveCell"
             @startSelection="onPatternStartSelection"
@@ -950,7 +934,6 @@ import {
 } from 'src/components/tracker/visualizer-alignment';
 import { visiblePageWindow } from 'src/components/tracker/page-window';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
-import AhxPositionPanel from 'src/components/ahx/AhxPositionPanel.vue';
 import { ahxTransposeLabel, ahxTransposeTitle } from 'src/audio/tracker/ahx-position-display';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
@@ -1169,32 +1152,12 @@ const ahxTransposeLabels = computed(() => ahxPositionChannels.value.map((ch) => 
 const ahxTransposeTitles = computed(() =>
   ahxPositionChannels.value.map((ch, index) => ahxTransposeTitle(ahxPositionIndex.value, index, ch.transpose)),
 );
-const ahxPositionPanelRef = ref<InstanceType<typeof AhxPositionPanel> | null>(null);
-
-// The per-position transpose panel is hidden for now (Morten, 2026-09-22 13:54:
-// "The transpose inouts under song tracks is still visible" — this DOM block under
-// the position list was the offender). The canvas chip (wheel-step) stays the edit
-// path. Flip to false to restore the panel; store path, component file and the
-// chip hand-off wiring are kept intact — one constant away.
-const HIDE_TRANSPOSE_PANEL = true;
-function onSetPositionTranspose(channel: number, value: number): void {
-  const index = ahxPositionIndex.value;
-  if (index < 0) return;
-  trackerStore.setAhxPositionTranspose(index, channel, value);
-}
-/** The badge hand-off: the grid's badge focuses the panel's input for that
- * channel. Currently a safe no-op — with the panel hidden (HIDE_TRANSPOSE_PANEL)
- * the ref stays null and the optional call short-circuits. */
-function focusAhxTransposeChannel(channel: number): void {
-  if (ahxPositionIndex.value < 0) return;
-  ahxPositionPanelRef.value?.focusChannel(channel);
-}
 /**
  * The canvas header chip's wheel step (plan-ahx-transpose-header.md D-C):
  * the chip only emits; the page reads the current byte from the store doc
  * and sends the stepped value through `setAhxPositionTranspose` — the model
  * op's own range check is the clamp, and a refusal reports the transient
- * notice, exactly like the panel's typed entry. Out-of-bounds channels/
+ * notice. Out-of-bounds channels/
  * positions cannot reach here (the labels only exist for a real position).
  */
 function onTransposeChipStep(channel: number, direction: number): void {
