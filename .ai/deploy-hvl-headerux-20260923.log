@@ -1,0 +1,33 @@
+# deploy-hvl-headerux-20260923.log
+Run: main-agent landing session agent:main:subagent:b94c7f91-f80e-49bd-b652-9b5e8f9b6b81, 2026-09-23 08:38+02:00
+Merge: 209f564e (no-ff 4dfab082 -> main); push 2bd5963e..209f564e
+
+Deploy command: scripts/deploy.sh (defaults avatar@192.168.50.161 ~/repos/docker-info-ws-server/html/synth)
+Build: quasar spa build succeeded (Build succeeded, mode=spa)
+Refusal guard: dist/spa/demos/index.json present
+rsync -az --delete dist/spa/ avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth/
+Script verification: Deployed and verified (289b0e3ce9751f4a3bfe37b9928682a3) (index.html md5)
+deploy.sh exit code: 0
+
+Post-deploy gate evidence (fresh in this run):
+  vitest: 235 files / 3841 tests passed, exit 0
+  eslint: exit 0
+  vue-tsc --noEmit: exit 0
+  npm run check:artifacts: 'public/worklets and public/wasm match their sources', exit 0
+  gitleaks detect --no-git: no leaks, exit 0
+
+Independent byte-match (md5, local dist/spa <-> remote): 8/8 identical
+  index.html                     289b0e3ce9751f4a3bfe37b9928682a3
+  wasm/audio_processor_bg.wasm   acf69b52abc38d941d30e3a493eb270e
+  wasm/audio_processor.js        b4a1b4ccd50a92959320c9763539ef94
+  worklets/recording-worklet.js  9c96bf69c35c1b90db4314dd0923147f
+  worklets/ahx-worklet.js        0b1e28a2d692f80a2f9fc3a46d77f1e6
+  worklets/synth-worklet.js      d3be4813a900d1db107ac182b425f346
+  worklets/effects-worklet.js    ea0b2d2be2fd5dd6ec9a6a6ccb5c5e71
+  demos/index.json               197bcd24e7a9b2770299d2b530bfda59
+
+wasm unchanged evidence: no rust-wasm/ or public/wasm/ paths in merge range
+(git diff --stat 2bd5963e..209f564e on those paths: empty); SOURCE_HASH.json
+sourceHash 5c9e359d... unchanged; deployed wasm md5 acf69b52... byte-identical
+to the 07:33 HVL-corpus deploy's wasm (residue stash stash@{0} of 07:34 hashes
+equal) — the rebuild reproduced the previous deploy's bytes.
