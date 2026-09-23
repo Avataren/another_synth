@@ -211,3 +211,43 @@ line changed.
 | `npx vue-tsc --noEmit` | 0 | `.ai/checks-p5-tsc.txt` |
 | `gitleaks detect --no-git --source .` | 0 | no leaks — `.ai/checks-p5-gitleaks.txt` |
 | `npm run check:artifacts` | 0 | worklets/wasm match — `.ai/checks-p5-artifacts.txt` |
+## Landing record (2026-09-23, landed by run 57070f14)
+
+Merged `agent/p5-engine-split-0923a` into main with `git merge --no-ff` from the main tree.
+Merge sha: **b11b90d5** (`2d14da32..b11b90d5 main -> main`, pushed, no force).
+Preflight: main == origin/main == 2d14da32 (the review base, nothing pushed since), branch tip still
+7ae6c38a, merge-base == 2d14da32 (rebase verified), worktree `.ai/worktrees/p5-engine` clean, no
+owner marker, no foreign writer. Merge was conflict-free.
+
+Review PASS reference: PASS on 7ae6c38a — verbatim line-multiset proof, `scheduleRow` body
+byte-identical, extraction map exact (engine.ts 2354 → 1731 + row-scheduler.ts 709 +
+playback-rate.ts 35; sampler-instrument.ts 2168 → 2154), acyclic import graph, zero consumer churn,
+gates 241/3922 re-run independently.
+
+### Gates (merged main b11b90d5; logs /tmp/p5-gates-*.txt)
+
+| Gate | Command | Exit |
+|---|---|---|
+| tests | `npm run test:run` | 0 (241 files / 3922 tests passed = baseline) |
+| lint | `npm run lint` | 0 |
+| types | `npx vue-tsc --noEmit` | 0 |
+| secrets | `gitleaks detect --no-git` | 0 (no leaks) |
+| artifacts | `npm run check:artifacts` | 0 |
+
+### Deploy proof
+
+`bash scripts/deploy.sh` → avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth, exit 0,
+script self-verified ("Deployed and verified (d9d3d166b38fafca9cf66886318054f8)" — index.html md5).
+Independent md5 spot-check local (dist/spa) ↔ remote, all identical:
+- index.html d9d3d166b38fafca9cf66886318054f8
+- demos/index.json d08a6e9929f15c780b70f748385f55a9
+- wasm/audio_processor_bg.wasm 0b9548f882892c38b7574b9d106ca8ad
+- worklets/synth-worklet.js d3be4813a900d1db107ac182b425f346
+
+Deployed `wasm/SOURCE_HASH.json` sourceHash matches the rebuilt artifact exactly
+(5c9e359d…, 75 files, unchanged — this branch touches no rust-wasm/). Byte drift note: the deploy-time
+wasm rebuild again produced different output bytes than the committed artifact (output sha256
+61a0c69e… → efa22cf3…, wasm md5 62ad8309… → 0b9548f8…) — same known wasm-bindgen nondeterminism
+documented at the P4 landing; benign, source-unchanged, deployed wasm byte-identical to the rebuilt
+artifact. Rebuilt artifacts (demos/index.json timestamp, SOURCE_HASH.json, wasm bytes) were stashed,
+not committed: `git stash list` → "post-land-p5: deploy-time wasm rebuild artifacts".
