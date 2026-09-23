@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-23T05:12:51.111Z",
+  "generated": "2026-09-23T06:52:17.334Z",
   "collections": [
     {
       "id": "ahx",
@@ -167,15 +167,6 @@
           "instruments": 7,
           "file": "ahx/cats_on_the_catwalk.ahx",
           "bytes": 15140
-        },
-        {
-          "title": "never gonna give you up",
-          "format": "HVL",
-          "channels": 6,
-          "patterns": 196,
-          "instruments": 11,
-          "file": "ahx/chiprolled.hvl",
-          "bytes": 5812
         },
         {
           "title": "Classic Cracktro",

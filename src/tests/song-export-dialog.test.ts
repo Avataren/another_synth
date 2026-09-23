@@ -103,9 +103,11 @@ describe('SongExportDialog: what each row says', () => {
   });
 
   it('enables the HVL row and disables the AHX row for a song with more than 4 tracks, with the reason shown', () => {
-    const w = mountDialog(() => importAhxToTrackerSong(demo('chiprolled.hvl')));
+    // chiprolled.hvl left the corpus 2026-09-23 (byte-identical dupe);
+    // illuminated.hvl is the replacement wide-HVL fixture (also reaches track 6).
+    const w = mountDialog(() => importAhxToTrackerSong(demo('illuminated.hvl')));
     expect(button(w, 'song-export-download-hvl').disabled).toBe(false);
-    expect(byId(w, 'song-export-filename-hvl').text()).toBe('Saves as: never_gonna_give_you_up.hvl');
+    expect(byId(w, 'song-export-filename-hvl').text()).toBe('Saves as: illuminated.hvl');
     expect(button(w, 'song-export-download-ahx').disabled).toBe(true);
     expect(byId(w, 'song-export-reason-ahx').text()).toBe(
       'AHX files have 4 tracks; this song reaches track 6. Export it as HVL instead.',
@@ -133,12 +135,12 @@ describe('SongExportDialog: what each row says', () => {
   });
 
   it('downloads the HVL file byte for byte for an HVL song', async () => {
-    const w = mountDialog(() => importAhxToTrackerSong(demo('chiprolled.hvl')));
+    const w = mountDialog(() => importAhxToTrackerSong(demo('illuminated.hvl')));
     await byId(w, 'song-export-download-hvl').trigger('click');
     expect(download.calls).toHaveLength(1);
-    expect(download.calls[0]![0]).toEqual(new Uint8Array(demo('chiprolled.hvl')));
-    expect(download.calls[0]![1]).toBe('never_gonna_give_you_up.hvl');
-    expect(byId(w, 'song-export-status').text()).toBe('Download started: never_gonna_give_you_up.hvl');
+    expect(download.calls[0]![0]).toEqual(new Uint8Array(demo('illuminated.hvl')));
+    expect(download.calls[0]![1]).toBe('illuminated.hvl');
+    expect(byId(w, 'song-export-status').text()).toBe('Download started: illuminated.hvl');
   });
 
   it('is a modal dialog labelled by its heading, with the heading text "Export song file"', () => {
@@ -157,7 +159,7 @@ describe('SongExportDialog: what each row says', () => {
     ],
     [
       'an HVL song with more than 4 tracks',
-      () => importAhxToTrackerSong(demo('chiprolled.hvl')),
+      () => importAhxToTrackerSong(demo('illuminated.hvl')),
       'AHX files have 4 tracks; this song reaches track 6. Export it as HVL instead.',
     ],
     [

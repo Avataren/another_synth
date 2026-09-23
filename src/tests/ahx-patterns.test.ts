@@ -112,16 +112,19 @@ describe('buildAhxTrackerPatterns: karma.ahx', () => {
   });
 });
 
-describe('buildAhxTrackerPatterns: chiprolled.hvl second effect column (fxb/fxbParam)', () => {
-  const song = parseAhx(readFixture('chiprolled.hvl'));
+describe('buildAhxTrackerPatterns: sliding_away.hvl second effect column (fxb/fxbParam)', () => {
+  // chiprolled.hvl was the original fxb fixture but was removed from the corpus
+  // 2026-09-23 (byte-identical dupe, user decision); re-measured on
+  // sliding_away.hvl, which also uses both effect columns.
+  const song = parseAhx(readFixture('sliding_away.hvl'));
   const patterns = buildAhxTrackerPatterns(song);
 
   it('stamps macro2 from fxb/fxbParam alongside a first-column command', () => {
-    // Track 1, row 0: note 28, instrument 1, fx=7/fxParam=0 *and*
+    // Track 1, row 0: note 13, instrument 1, fx=7/fxParam=0 *and*
     // fxb=15/fxbParam=7 -- both columns populated on the same row.
     const step = song.tracks[1]![0]!;
     expect(step).toEqual({
-      note: 28,
+      note: 13,
       instrument: 1,
       fx: 7,
       fxParam: 0,
@@ -139,29 +142,30 @@ describe('buildAhxTrackerPatterns: chiprolled.hvl second effect column (fxb/fxbP
   });
 
   it('keeps a row that carries only a second-column command (previously dropped)', () => {
-    // Track 75, row 2: no note, no instrument, fx/fxParam both zero, only
-    // fxb=12/fxbParam=142 -- the exact "column-2-only" row the MAJOR finding
-    // flagged as silently dropped.
-    const step = song.tracks[75]![2]!;
+    // Track 4, row 2: no note, no instrument, fx/fxParam both zero, only
+    // fxb=10/fxbParam=1 -- a "column-2-only" row, the class the MAJOR finding
+    // flagged as silently dropped (re-measured on sliding_away.hvl after
+    // chiprolled.hvl left the corpus 2026-09-23).
+    const step = song.tracks[4]![2]!;
     expect(step).toEqual({
       note: 0,
       instrument: 0,
       fx: 0,
       fxParam: 0,
-      fxb: 12,
-      fxbParam: 142,
+      fxb: 10,
+      fxbParam: 1,
     });
 
-    // Position 184, channel 1 addresses track 75.
-    const position = patterns[184]!;
-    expect(song.positions[184]!.track[1]).toBe(75);
-    const entry = position.tracks[1]!.entries.find((e) => e.row === 2);
+    // Position 7, channel 3 addresses track 4.
+    const position = patterns[7]!;
+    expect(song.positions[7]!.track[3]).toBe(4);
+    const entry = position.tracks[3]!.entries.find((e) => e.row === 2);
     expect(entry).toBeDefined();
     expect(entry!.note).toBeUndefined();
     expect(entry!.effectCommand).toBeUndefined();
     expect(entry!.effectParam).toBeUndefined();
     expect(entry!.macro).toBeUndefined();
-    expect(entry!.macro2).toBe('C8E');
+    expect(entry!.macro2).toBe('A01');
   });
 
   it('never sets macro2 for karma.ahx, which has no second effect column', () => {

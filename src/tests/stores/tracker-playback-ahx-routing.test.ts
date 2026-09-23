@@ -210,7 +210,9 @@ import {
 import { parseAhx, type Song } from '@another-synth/tracker-playback';
 
 const karmaBytes = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/ahx/karma.ahx'));
-const hvlBytes = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/ahx/chiprolled.hvl'));
+// chiprolled.hvl was removed from the corpus 2026-09-23 (byte-identical dupe);
+// illuminated.hvl is the replacement read-only-HVL fixture.
+const hvlBytes = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/ahx/illuminated.hvl'));
 
 /** The wiring `useTrackerSongHost` gives the file IO, over the real stores. */
 function setupHost() {

@@ -792,7 +792,9 @@ describe('capability split and stale docs', () => {
     expect([store.isAhxSong, store.isAhxEditable, store.isReadOnly]).toEqual([true, false, true]);
     expect(store.ahxDoc).toBeNull();
 
-    const hvl = fs.readFileSync(path.resolve(__dirname, '../../public/demos/ahx/chiprolled.hvl'));
+    // chiprolled.hvl was removed from the corpus 2026-09-23 (byte-identical
+    // dupe); illuminated.hvl takes over as the generic HVL fixture here.
+    const hvl = fs.readFileSync(path.resolve(__dirname, '../../public/demos/ahx/illuminated.hvl'));
     store.loadSongFile(importAhxToTrackerSong(toBuffer(new Uint8Array(hvl))));
     expect([store.isAhxSong, store.isAhxEditable, store.isReadOnly]).toEqual([true, false, true]);
     expect(store.ahxDoc).toBeNull();

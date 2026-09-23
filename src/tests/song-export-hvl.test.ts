@@ -35,7 +35,6 @@ const songOf = (name: string) => importAhxToTrackerSong(demo(name).slice().buffe
 const CHANNELS_USED: Record<string, number> = {
   'a_little_cyberfunk.hvl': 8,
   'afterstorm.hvl': 12,
-  'chiprolled.hvl': 6,
   'doobrey_gubbins.hvl': 11,
   'drainage_proble.hvl': 7,
   'drop_table.hvl': 12,
@@ -155,7 +154,9 @@ describe('HVL songs and the editor store', () => {
   });
 
   it('an HVL song has no instrument slots, so no instrument edit can exist to be exported or lost', () => {
-    const bytes = demo('chiprolled.hvl');
+    // chiprolled.hvl left the corpus 2026-09-23 (byte-identical dupe);
+    // illuminated.hvl is the replacement generic-HVL fixture.
+    const bytes = demo('illuminated.hvl');
     const store = useTrackerStore();
     store.loadSongFile(importAhxToTrackerSong(bytes.slice().buffer));
     setCurrentAhxSource(bytes.slice(), ahxSourceInfoOf(bytes));
@@ -168,7 +169,7 @@ describe('HVL songs and the editor store', () => {
   });
 
   it('an HVL song read back from the store keeps author and BPM at their import values, so no warning shows', () => {
-    const bytes = demo('chiprolled.hvl');
+    const bytes = demo('illuminated.hvl');
     const store = useTrackerStore();
     store.loadSongFile(importAhxToTrackerSong(bytes.slice().buffer));
     setCurrentAhxSource(bytes.slice(), ahxSourceInfoOf(bytes));

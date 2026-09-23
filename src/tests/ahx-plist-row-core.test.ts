@@ -297,9 +297,10 @@ function withPLists(): Array<{ c: Candidate; instrument: number }> {
 }
 
 describe('plist-row over the real wasm, against a separate PList interpreter', () => {
-  // re-measured 2026-09-23: corpus 84→100 files (curated HVL batch, corpus commit 2344594e)
+  // re-measured 2026-09-23: corpus 84→100 files (curated HVL batch, corpus commit 2344594e),
+  // then 100→99 (chiprolled.hvl removed — byte-identical dupe, user decision)
   it('the corpus is what the plan says it is', () => {
-    expect(CORPUS).toHaveLength(100);
+    expect(CORPUS).toHaveLength(99);
   });
 
   it('nyrmodian_cityscape instrument 7: 96 rows with a Jump', () => {

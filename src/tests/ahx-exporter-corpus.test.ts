@@ -12,9 +12,10 @@ import { ahxExporter, hvlExporter } from 'src/audio/tracker/song-export';
  * exported from its own record must be its source file, byte for byte: the
  * overlay (slots + title) adds nothing and loses nothing. Covers the two
  * corpus names with edge whitespace (the title is only the trimmed name).
- * The 23 `.hvl` files go through the HVL exporter the same way. 22 reach past
+ * The 22 `.hvl` files go through the HVL exporter the same way. 21 reach past
  * track 4, so the AHX exporter refuses them; ring_modulation_test_song fits 4
  * tracks but uses the second effect column, which AHX has no room for.
+ * (chiprolled.hvl was removed 2026-09-23 — byte-identical dupe, user decision.)
  */
 const DEMOS = resolve(__dirname, '../../public/demos/ahx');
 const corpus = readdirSync(DEMOS)
@@ -75,10 +76,10 @@ describe('the AHX exporter over the demo corpus, through the store', () => {
       }
       checked++;
     }
-    expect(checked).toBe(23);
+    expect(checked).toBe(22);
   });
 
-  it('refuses all 23 .hvl songs as AHX, pointing at HVL', () => {
+  it('refuses all 22 .hvl songs as AHX, pointing at HVL', () => {
     let checked = 0;
     for (const { name, bytes } of corpus.filter((f) => !name_isAhx(f.name))) {
       const song = snapshotEditorSong(openInEditor(bytes));
@@ -95,7 +96,7 @@ describe('the AHX exporter over the demo corpus, through the store', () => {
       expect(() => ahxExporter.serialize(song), name).toThrow(/Export it as HVL instead/);
       checked++;
     }
-    expect(checked).toBe(23);
+    expect(checked).toBe(22);
   });
 
   it('keeps a song name with edge whitespace verbatim when the title is untouched', () => {

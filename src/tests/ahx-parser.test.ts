@@ -22,7 +22,8 @@ import { looksLikeAhx, parseAhx } from '@another-synth/tracker-playback';
 const CORPUS_DIR = path.resolve(__dirname, '../../public/demos/ahx');
 
 const HVL_FIXTURES = [
-  'chiprolled.hvl',
+  // chiprolled.hvl removed 2026-09-23: byte-identical to Xeron's "never gonna
+  // give you up.hvl" (md5 0af72bfe); discarded by user decision.
   'doobrey_gubbins.hvl',
   'drainage_proble.hvl',
   'illuminated.hvl',
@@ -158,75 +159,13 @@ describe('parseAhx: karma.ahx', () => {
   });
 });
 
-describe('parseAhx: chiprolled.hvl', () => {
-  const song = parseAhx(readFixture('chiprolled.hvl'));
-
-  it('decodes the header', () => {
-    expect(song.format).toBe('hvl');
-    expect(song.version).toBe(0);
-    expect(song.name).toBe('never gonna give you up');
-    // HVL packs a channel count into the header and it is not always 4 --
-    // this fixture alone contradicts the "AHX is always 4 channels" framing
-    // for the HVL half of the format family. See .ai/p0-report.md.
-    expect(song.channels).toBe(6);
-    expect(song.positionNr).toBe(196);
-    expect(song.restart).toBe(0);
-    expect(song.speedMultiplier).toBe(2);
-    expect(song.trackLength).toBe(16);
-    expect(song.trackNr).toBe(84);
-    expect(song.instrumentNr).toBe(11);
-    expect(song.subsongNr).toBe(0);
-    expect(song.mixgainRaw).toBe(86);
-    expect(song.defstereo).toBe(2);
-
-    const pos0 = song.positions[0]!;
-    expect(pos0.track).toEqual([1, 3, 0, 0, 6, 45]);
-    expect(pos0.transpose).toEqual([0, 0, 0, 0, 0, 0]);
-  });
-
-  it('decodes instrument 1', () => {
-    const ins = song.instruments[1]!;
-    expect(ins.name).toBe('i think i just');
-    expect(ins.volume).toBe(64);
-    expect(ins.waveLength).toBe(5);
-    expect(ins.envelope).toEqual({
-      aFrames: 1,
-      aVolume: 64,
-      dFrames: 1,
-      dVolume: 64,
-      sFrames: 1,
-      rFrames: 12,
-      rVolume: 0,
-    });
-    expect(ins.filterLowerLimit).toBe(1);
-    expect(ins.filterUpperLimit).toBe(31);
-    expect(ins.squareLowerLimit).toBe(32);
-    expect(ins.squareUpperLimit).toBe(63);
-    expect(ins.squareSpeed).toBe(3);
-
-    expect(ins.plist.speed).toBe(1);
-    expect(ins.plist.entries).toHaveLength(2);
-    expect(ins.plist.entries[0]).toEqual({
-      note: 1,
-      waveform: 3,
-      fixed: false,
-      fx: [4, 0],
-      fxParam: [0, 17],
-    });
-    expect(ins.plist.entries[1]).toEqual({
-      note: 0,
-      waveform: 0,
-      fixed: false,
-      fx: [3, 0],
-      fxParam: [32, 0],
-    });
-  });
-});
+// The chiprolled.hvl golden block was removed 2026-09-23 together with the
+// fixture: the file was byte-identical to Xeron's "never gonna give you up.hvl"
+// (md5 0af72bfe) and was discarded from the corpus by user decision.
 
 describe('parseAhx: .hvl corpus sweep', () => {
   it('decodes every fixture with a matching name, channel count and consistent structure', () => {
     const expected: Array<[string, string, number]> = [
-      ['chiprolled.hvl', 'never gonna give you up', 6],
       ['doobrey_gubbins.hvl', 'doobrey gubbins', 11],
       ['drainage_proble.hvl', 'drainage problem', 7],
       ['illuminated.hvl', 'illuminated', 6],
