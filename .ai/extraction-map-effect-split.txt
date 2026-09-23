@@ -1,0 +1,34 @@
+Extraction map: effect-processor.ts split (arch-review §3c), branch agent/effect-split-0923a, base 63fbb1ca
+All paths under packages/tracker-playback/src/. Line numbers refer to the ORIGINAL effect-processor.ts (2454 lines).
+
+wc -l before:
+  2454 effect-processor.ts
+wc -l after:
+  1896 effect-processor.ts
+   413 effect-state.ts
+   170 waveforms.ts
+
+effect-state.ts  <- orig :198-525  TrackEffectState (+doc), createTrackEffectState (+doc)
+                 <- orig :938-994  ProcessorCommand (type; needed by TrackEffectState.effectCommandBuffer/volumeCommandBuffer)
+                 <- orig :2436-2454 resetEffectStateForNote (+doc)
+                 <- orig :7        import { type FormatProfile, PROTRACKER_PROFILE } from './format-profile' (moved; no longer needed in effect-processor.ts)
+waveforms.ts     <- orig :18-26    doc + VIBRATO_TABLE_PEAK, VIBRATO_DEPTH_DIVISOR, TREMOLO_DEPTH_DIVISOR
+                 <- orig :614-670  REFERENCE_SINE_TABLE, getWaveformValue (+docs)
+                 <- orig :87-181   vibratoFrequency, advanceVibrato (+docs)
+effect-processor.ts keeps everything else, in original order.
+
+Only non-verbatim edits (checked by line-multiset diff of original vs union of three files):
+  - `export` added to VIBRATO_TABLE_PEAK, TREMOLO_DEPTH_DIVISOR, getWaveformValue, vibratoFrequency, advanceVibrato in waveforms.ts
+    (VIBRATO_DEPTH_DIVISOR, REFERENCE_SINE_TABLE stay module-private)
+  - new 4-line file header comments on effect-state.ts and waveforms.ts
+  - effect-processor.ts imports: `import type { ProcessorCommand, TrackEffectState } from './effect-state'`,
+    `import { TREMOLO_DEPTH_DIVISOR, VIBRATO_TABLE_PEAK, advanceVibrato, getWaveformValue, vibratoFrequency } from './waveforms'`
+  - effect-processor.ts re-exports: `export type { ProcessorCommand, TrackEffectState }` and
+    `export { createTrackEffectState, resetEffectStateForNote }` from './effect-state'
+
+Import graph (acyclic):
+  effect-state.ts     -> format-profile
+  waveforms.ts        -> effect-state (type only)
+  effect-processor.ts -> types (type), effect-state (type + re-export), waveforms
+Public API: index.ts:43 `export * from './effect-processor'` exposes the same export names as before; waveforms.ts
+exports are not added to index.ts (they were module-private before).
