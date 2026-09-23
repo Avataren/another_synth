@@ -4,8 +4,8 @@ import { usePatchStore } from './patch-store';
 import type AudioSystem from 'src/audio/AudioSystem';
 import { getSharedAudioSystem } from 'src/audio/shared-audio-system';
 import InstrumentV2 from 'src/audio/instrument-v2';
-import type { PooledInstrument } from 'src/audio/pooled-instrument-factory';
 import { AudioSyncManager } from 'src/audio/sync-manager';
+import type { EditableInstrument } from 'src/audio/tracker/bank-instrument';
 import type { PortId } from 'app/public/wasm/audio_processor';
 import type {
   ModulationTransformation,
@@ -15,9 +15,9 @@ import type {
 interface InstrumentStoreState {
   audioSystem: AudioSystem | null;
   destinationNode: AudioNode | null;
-  currentInstrument: InstrumentV2 | PooledInstrument | null;
+  currentInstrument: EditableInstrument | null;
   /** The original/default instrument for standalone patch editing */
-  defaultInstrument: InstrumentV2 | PooledInstrument | null;
+  defaultInstrument: EditableInstrument | null;
   /** Whether we're currently using an external instrument (from song bank) */
   usingExternalInstrument: boolean;
   syncManager: AudioSyncManager | null;
@@ -43,7 +43,7 @@ interface InstrumentStoreActions {
   setMacros(values: number[]): void;
   setInstrumentGain(gain: number): void;
   /** Swap currentInstrument to an external instrument (e.g., from song bank for live editing) */
-  useExternalInstrument(instrument: InstrumentV2 | PooledInstrument): void;
+  useExternalInstrument(instrument: EditableInstrument): void;
   /** Restore the default instrument after live editing */
   restoreDefaultInstrument(): void;
 }
@@ -99,7 +99,7 @@ export const useInstrumentStore = defineStore<
       if (!this.syncManager) {
         this.syncManager = markRaw(
           new AudioSyncManager(
-            () => this.currentInstrument as InstrumentV2 | null,
+            () => this.currentInstrument,
           ),
         );
         try {
@@ -198,7 +198,7 @@ export const useInstrumentStore = defineStore<
       }
     },
 
-    useExternalInstrument(instrument: InstrumentV2 | PooledInstrument) {
+    useExternalInstrument(instrument: EditableInstrument) {
       // Store the current instrument as default if we haven't already
       if (!this.usingExternalInstrument && this.currentInstrument) {
         this.defaultInstrument = this.currentInstrument;

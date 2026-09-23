@@ -15,6 +15,16 @@
 // there, which is what the bank's per-note param probe relies on -- it
 // guards on worklet truthiness).
 import type { Patch } from 'src/audio/types/preset-types';
+import type {
+  VoiceNodeType,
+  NodeConnectionUpdate,
+  EnvelopeConfig,
+} from 'src/audio/types/synth-layout';
+import type {
+  WasmModulationType,
+  ModulationTransformation,
+  PortId,
+} from 'app/public/wasm/audio_processor';
 
 /** The note-on options the bank passes through from scheduled events. */
 export interface BankNoteOnOptions {
@@ -99,4 +109,92 @@ export interface BankInstrument {
     tick: number,
     time: number,
   ): void;
+}
+
+/**
+ * The editor-facing instrument surface: what instrument-store, patch-store,
+ * the asset store and AudioSyncManager call on `currentInstrument`.
+ *
+ * N4 step 2 (arch-review-2026-09-22): the stores used to cast through
+ * `as InstrumentV2` even though `currentInstrument` can hold a
+ * `PooledInstrument` at runtime (live editing swaps the bank's instrument
+ * in). PooledInstrument carries the same editor surface (node-state updates,
+ * asset import, reverb generation, arpeggiator), so both classes implement
+ * this interface and the casts are gone. Editor calls type through here
+ * instead of a lie about the concrete class.
+ */
+export interface EditableInstrument extends BankInstrument {
+  connectMacroRoute(payload: {
+    macroIndex: number;
+    targetId: string;
+    targetPort: PortId;
+    amount: number;
+    modulationType: WasmModulationType;
+    modulationTransformation: ModulationTransformation;
+  }): void;
+  createNode(node: VoiceNodeType): Promise<string>;
+  deleteNode(nodeId: string): void;
+  updateConnection(connection: NodeConnectionUpdate): void;
+  getWasmNodeConnections(): Promise<string>;
+  generateHallReverb(
+    nodeId: string,
+    decayTime: number,
+    roomSize: number,
+  ): Promise<void>;
+  generatePlateReverb(
+    nodeId: string,
+    decayTime: number,
+    diffusion: number,
+  ): Promise<void>;
+  getFilterResponse(nodeId: string, length: number): Promise<Float32Array>;
+  getLfoWaveform(
+    waveform: number,
+    phaseOffset: number,
+    frequency: number,
+    bufferSize: number,
+    useAbsolute: boolean,
+    useNormalized: boolean,
+  ): Promise<Float32Array>;
+  updateArpeggiatorPattern(nodeId: string, pattern: unknown): void;
+  updateArpeggiatorStepDuration(nodeId: string, duration: number): void;
+
+  updateOscillatorState(nodeId: string, state: unknown): void;
+  updateWavetableOscillatorState(nodeId: string, state: unknown): void;
+  updateEnvelopeState(nodeId: string, state: unknown): void | Promise<void>;
+  updateLfoState(nodeId: string, state: unknown): void;
+  updateFilterState(nodeId: string, state: unknown): void;
+  updateGlideState(nodeId: string, state: unknown): void;
+  updateConvolverState(nodeId: string, state: unknown): void;
+  updateDelayState(nodeId: string, state: unknown): void;
+  updateChorusState(nodeId: string, state: unknown): void;
+  updateReverbState(nodeId: string, state: unknown): void;
+  updateCompressorState(nodeId: string, state: unknown): void;
+  updateSaturationState(nodeId: string, state: unknown): void;
+  updateBitcrusherState(nodeId: string, state: unknown): void;
+  updateNoiseState(nodeId: string, state: unknown): void;
+  updateVelocityState(nodeId: string, state: unknown): void;
+  updateSamplerState(nodeId: string, state: unknown): void;
+
+  importSampleData(nodeId: string, bytes: Uint8Array): void | Promise<void>;
+  importImpulseWaveformData(nodeId: string, bytes: Uint8Array): void;
+  importWavetableData(nodeId: string, bytes: Uint8Array): void;
+
+  /** Export surface; keeps EditableInstrument assignable to AudioAssetSource. */
+  exportSamplerData(nodeId: string): Promise<{
+    samples: Float32Array;
+    sampleRate: number;
+    channels: number;
+    rootNote: number;
+  }>;
+  exportConvolverData(nodeId: string): Promise<{
+    samples: Float32Array;
+    sampleRate: number;
+    channels: number;
+  }>;
+
+  getEnvelopePreview(
+    config: EnvelopeConfig,
+    previewDuration: number,
+  ): Promise<Float32Array>;
+  getSamplerWaveform(nodeId: string, maxLength?: number): Promise<Float32Array>;
 }

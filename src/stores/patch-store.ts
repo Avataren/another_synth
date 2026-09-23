@@ -41,7 +41,7 @@ import type {
   WasmModulationType,
   ModulationTransformation,
 } from 'app/public/wasm/audio_processor';
-import type InstrumentV2 from 'src/audio/instrument-v2';
+import type { EditableInstrument } from 'src/audio/tracker/bank-instrument';
 import { VOICES_PER_ENGINE } from 'src/audio/worklet-config';
 import {
   VoiceNodeType,
@@ -365,13 +365,13 @@ export const usePatchStore = defineStore('patchStore', {
         // to push node states so the UI and engine agree on current values.
         if (!options?.skipLoadPatch) {
           await assetStore.restoreAudioAssets(
-            instrumentStore.currentInstrument as InstrumentV2 | null,
+            instrumentStore.currentInstrument,
           );
 
           // Regenerate convolvers with procedural generator params
           await this.restoreGeneratedConvolvers(
             deserialized.convolvers,
-            instrumentStore.currentInstrument as InstrumentV2 | null,
+            instrumentStore.currentInstrument,
           );
 
           // Ensure all node states (including LFO trigger modes) are pushed into WASM after load
@@ -436,7 +436,7 @@ export const usePatchStore = defineStore('patchStore', {
           await nextTick(() => {
             nodeStateStore.applyPreservedStatesToWasm();
             void useAssetStore().restoreAudioAssets(
-              instrumentStore.currentInstrument as InstrumentV2 | null,
+              instrumentStore.currentInstrument,
             );
           });
           return true;
@@ -1132,7 +1132,7 @@ export const usePatchStore = defineStore('patchStore', {
     },
     async restoreGeneratedConvolvers(
       convolvers: Map<string, ConvolverState>,
-      instrument: InstrumentV2 | null,
+      instrument: EditableInstrument | null,
     ): Promise<void> {
       if (!instrument) return;
 
