@@ -38,8 +38,13 @@
 //!   D master volume = param & 15; E funktempo: not modelled (ignored);
 //!   F tempo = param & 0x7F when it is at least 1. A row with command 3 and
 //!   a note glides to it instead of triggering; with parameter 0 (GT's
-//!   tie-note, readme §3.2) the pitch moves to it at once, still without a
-//!   trigger (pinned in S5 against the `.sng` corpus).
+//!   tie-note, readme §3.2) the pitch jumps to it on the row's second frame
+//!   (tick 1; GT's realtime optimisation skips tick 0, goattrk2.c:55,
+//!   gplay.c:728) and is re-asserted every tick the command stands
+//!   (gplay.c:807-811), still without a trigger; wave-table note rows pass
+//!   through under it and win their frame (gplay.c:714-722, 722). Pinned in
+//!   S5, phase and passthrough aligned in S5.6 against the `.sng` corpus and
+//!   the GT2 source.
 //!
 //! Tables (1-based rows; left 0xFF = jump to row `right`, 0 = stop; one
 //! jump per frame):
@@ -514,20 +519,20 @@ impl SidSongPlayer {
         if (NOTE_FIRST..=NOTE_LAST).contains(&row.note) {
             let note = note_index(row.note, self.channels[c].transpose);
             if tone_porta {
-                let target = gt_note_freq_reg(note);
+                // Tie-note and glide rows: no trigger, and no tick-0 pitch
+                // write. GT's realtime optimisation (goattrk2.c:55
+                // optimizerealtime = 1) skips the tick-N effects on tick 0
+                // (gplay.c:728), so the `3 00` instant jump ("$00 ... move
+                // pitch instantly to target note", readme §3.2; gplay.c:807-811,
+                // "ST = 00 slides instantly", commands PDF p.1) lands on tick 1
+                // and is re-asserted every tick the command stands (see
+                // continuous, command 3). Pinned in S5: 4791 raw pattern rows
+                // (not orderlist-expanded) in 56 of the 61 GTS5 corpus songs
+                // are `3 00` with a real note (4930 with key-offs). Phase
+                // aligned in S5.6 (.ai/sid-crosscheck-verdict.md (a), 1).
                 let ch = &mut self.channels[c];
                 ch.base_note = note;
-                if row.param == 0 {
-                    // Tie-note: "$00 ... move pitch instantly to target note"
-                    // (GT readme §3.2 3XY; GT2 gplay.c:354,922 no retrigger,
-                    // :807-811 instant pitch). Pinned in S5: 4791 raw pattern
-                    // rows (not orderlist-expanded) in 56 of the 61 GTS5 corpus
-                    // songs are `3 00` with a real note (4930 with key-offs).
-                    ch.freq = target;
-                    ch.target = None;
-                } else {
-                    ch.target = Some(target);
-                }
+                ch.target = Some(gt_note_freq_reg(note));
             } else {
                 self.trigger(c, note);
             }
@@ -644,7 +649,22 @@ impl SidSongPlayer {
             }
             0x3 => {
                 let ch = &mut self.channels[c];
-                if let (Some(t), Some(s)) = (ch.target, speed) {
+                if ch.param == 0 {
+                    // Tie-note pitch, GT phase (S5.6): the tick effects run
+                    // from tick 1 (tick 0 is skipped by the realtime
+                    // optimisation, goattrk2.c:55 + gplay.c:728) and re-assert
+                    // the last note's table frequency every tick command 3
+                    // stands (gplay.c:802-811: cmddata == 0 → freq =
+                    // freqtbl[cptr->note], vibtime = 0; cptr->note is the
+                    // persistent last note, gplay.c:350 — a `3 00` on a rest
+                    // or key-off row snaps back to it too). A wave-table note
+                    // row wins its own frame (gplay.c:714-722 jumps past the
+                    // effects); the wave step runs after this and overwrites
+                    // the same way.
+                    if self.tick != 0 {
+                        ch.freq = gt_note_freq_reg(ch.base_note);
+                    }
+                } else if let (Some(t), Some(s)) = (ch.target, speed) {
                     ch.freq = if ch.freq < t { ch.freq.saturating_add(s).min(t) } else { ch.freq.saturating_sub(s).max(t) };
                     if ch.freq == t {
                         ch.target = None;
@@ -724,7 +744,11 @@ impl SidSongPlayer {
         }
     }
 
-    /// A wave-table row's right column: the note it sets, unless a portamento runs.
+    /// A wave-table row's right column: the note it sets, under any command.
+    /// GT's wave-note path has no command check (gplay.c:714-722): the note
+    /// applies while a portamento stands too, and that frame skips the tick
+    /// effects (gplay.c:722), so the wave note wins it. S5.6: the S3-era
+    /// suppression under commands 1-3 is removed.
     fn wave_note(ch: &mut Channel, right: u8) {
         let note = match right {
             0x80 => None,
@@ -732,8 +756,7 @@ impl SidSongPlayer {
             r @ 0x60..=0x7F => Some(ch.base_note as i32 + r as i32 - 0x80),
             r => Some((r & 0x7F) as i32),
         };
-        let porta = matches!(ch.cmd, 0x1..=0x3);
-        if let (Some(n), false) = (note, porta) {
+        if let Some(n) = note {
             ch.freq = gt_note_freq_reg(n.clamp(0, GT_NOTE_COUNT as i32 - 1) as u8);
         }
     }
