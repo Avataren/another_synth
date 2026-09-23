@@ -23,10 +23,10 @@
           <span
             v-if="transposeLabels?.[index]"
             class="header-track-transpose"
-            :class="{ 'transpose-zero': transposeLabels[index] === 'T0' }"
+            :class="{ 'transpose-zero': transposeLabels[index] === 'T0', 'transpose-readonly': !transposeEditable }"
             :title="transposeTitles?.[index] ?? ''"
             data-testid="track-transpose-chip"
-            @click="emit('transposeChipClick', index)"
+            @click="transposeEditable && emit('transposeChipClick', index)"
             @wheel.stop.prevent="onTransposeChipWheel(index, $event)"
           >{{ transposeLabels[index] }}</span>
         </div>
@@ -206,6 +206,13 @@ interface Props {
   transposeLabels?: readonly string[] | undefined;
   /** Native tooltips aligned with `transposeLabels`; absent with it is fine. */
   transposeTitles?: readonly string[] | undefined;
+  /**
+   * Whether the labels are editable (an editable AHX doc) or display-only (an
+   * HVL or a doc-less AHX import): read-only chips lose the wheel/click
+   * hand-off and the resize cursor, so the chip never promises an edit the
+   * read-only song cannot take.
+   */
+  transposeEditable?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -215,6 +222,7 @@ const props = withDefaults(defineProps<Props>(), {
   upcomingPattern: null,
   granularScroll: true,
   showTrail: true,
+  transposeEditable: true,
 });
 
 const emit = defineEmits<{
@@ -353,6 +361,7 @@ const TRANSPOSE_WHEEL_STEP_PX = 100;
 let transposeWheelAccumulator = 0;
 let transposeWheelChannel = -1;
 function onTransposeChipWheel(channel: number, event: WheelEvent): void {
+  if (!props.transposeEditable) return;
   if (event.deltaY === 0) return;
   if (channel !== transposeWheelChannel) {
     transposeWheelChannel = channel;
@@ -2097,6 +2106,15 @@ defineExpose({ scrollerRef, hscrollRef });
 .header-track-transpose.transpose-zero {
   background: transparent;
   color: var(--text-muted, #a7bcd8);
+}
+
+/*
+ * Read-only display (plan-hvl-header-ux-0923.md BUG 1): an HVL or doc-less
+ * AHX import shows the byte the engine plays but takes no edit, so the chip
+ * must not wear the resize cursor an editable AHX chip earns.
+ */
+.header-track-transpose.transpose-readonly {
+  cursor: default;
 }
 
 /*

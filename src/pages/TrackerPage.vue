@@ -812,6 +812,7 @@
             :upcoming-pattern="upcomingPattern"
             :transpose-labels="ahxTransposeLabels.length > 0 ? ahxTransposeLabels : undefined"
             :transpose-titles="ahxTransposeTitles.length > 0 ? ahxTransposeTitles : undefined"
+            :transpose-editable="isAhxEditable"
             @transpose-chip-step="onTransposeChipStep"
             @rowSelected="setActiveRow"
             @cellSelected="setActiveCell"
@@ -842,6 +843,7 @@
             :upcoming-pattern="upcomingPattern"
             :transpose-labels="ahxTransposeLabels.length > 0 ? ahxTransposeLabels : undefined"
             :transpose-titles="ahxTransposeTitles.length > 0 ? ahxTransposeTitles : undefined"
+            :transpose-editable="isAhxEditable"
             @rowSelected="setActiveRow"
             @cellSelected="setActiveCell"
             @startSelection="onPatternStartSelection"
@@ -1148,9 +1150,43 @@ const ahxPositionChannels = computed(() => {
   if (!position) return [];
   return position.track.map((track, ch) => ({ track, transpose: position.transpose[ch] ?? 0 }));
 });
-const ahxTransposeLabels = computed(() => ahxPositionChannels.value.map((ch) => ahxTransposeLabel(ch.transpose)));
+/*
+ * The read-only sibling (plan-hvl-header-ux-0923.md BUG 1): an HVL song, or an
+ * AHX saved without its bytes, never gets a doc — `adoptAhxDoc` early-returns
+ * for a non-'ahx' source record (`tracker-store.ts`'s format guard) — but the
+ * format still carries the per-position transpose and the engine still
+ * applies it (`formats/ahx.ts`'s position parse, `engine.rs`'s per-step
+ * `v.transpose`). The import keeps those bytes on each pattern
+ * (`positionTranspose`), so the header shows them read-only: same labels, a
+ * title that does not promise a wheel edit, and a chip without the resize
+ * cursor. Patterns are one per position in sequence order, so the position
+ * index is the current pattern's sequence slot.
+ */
+const ahxReadOnlyTranspose = computed<number[] | undefined>(() => {
+  if (isAhxEditable.value || !isAhxSong.value) return undefined;
+  return trackerStore.currentPattern?.positionTranspose ?? undefined;
+});
+const ahxReadOnlyPositionIndex = computed(() =>
+  trackerStore.sequence.indexOf(trackerStore.currentPatternId ?? ''),
+);
+const ahxReadOnlyLabels = computed(() =>
+  (ahxReadOnlyTranspose.value ?? []).map((value) => ahxTransposeLabel(value)),
+);
+const ahxReadOnlyTitles = computed(() =>
+  (ahxReadOnlyTranspose.value ?? []).map(
+    (value, index) =>
+      `Position ${ahxReadOnlyPositionIndex.value + 1}, channel ${index + 1}: notes shift by ${ahxTransposeLabel(value)} semitones when the song plays (read-only).`,
+  ),
+);
+const ahxTransposeLabels = computed(() =>
+  ahxReadOnlyLabels.value.length > 0
+    ? ahxReadOnlyLabels.value
+    : ahxPositionChannels.value.map((ch) => ahxTransposeLabel(ch.transpose)),
+);
 const ahxTransposeTitles = computed(() =>
-  ahxPositionChannels.value.map((ch, index) => ahxTransposeTitle(ahxPositionIndex.value, index, ch.transpose)),
+  ahxReadOnlyTitles.value.length > 0
+    ? ahxReadOnlyTitles.value
+    : ahxPositionChannels.value.map((ch, index) => ahxTransposeTitle(ahxPositionIndex.value, index, ch.transpose)),
 );
 /**
  * The canvas header chip's wheel step (plan-ahx-transpose-header.md D-C):

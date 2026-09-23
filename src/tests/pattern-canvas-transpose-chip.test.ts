@@ -4,6 +4,7 @@ import PatternCanvas from 'src/components/tracker/pattern-canvas/PatternCanvas.v
 import { setCache } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import { buildTrackAccents } from 'src/components/tracker/pattern-canvas/track-accents';
+import { trackAccent } from 'src/components/tracker/pattern-canvas/pattern-draw';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 
 /**
@@ -267,5 +268,98 @@ describe('PatternCanvas header transpose chip', () => {
     await found[0]!.trigger('wheel', { deltaY: -60 });
     await found[1]!.trigger('wheel', { deltaY: -60 });
     expect(wrapper.emitted('transposeChipStep')).toBeUndefined();
+  });
+
+  // plan-hvl-header-ux-0923.md BUG 1: an HVL or doc-less AHX import shows the
+  // byte the engine plays but takes no edit — labels render, nothing emits,
+  // and the chip drops the resize cursor so it never promises an edit.
+  it('renders read-only chips that emit nothing and lose the resize cursor', async () => {
+    const wrapper = mount(PatternCanvas, {
+      props: {
+        tracks: [makeTrack('t0'), makeTrack('t1'), makeTrack('t2'), makeTrack('t3')],
+        rows: 32,
+        selectedRow: 0,
+        playbackRow: 0,
+        activeTrack: -1,
+        activeColumn: -1,
+        autoScroll: false,
+        isPlaying: false,
+        playbackMode: 'pattern',
+        activeMacroNibble: 0,
+        selectionRect: null,
+        scrollTop: 0,
+        scrollLeft: 0,
+        containerWidth: 500,
+        containerHeight: 400,
+        isMouseSelecting: false,
+        showExtraEffectColumn: false,
+        reserveSideGutter: false,
+        transposeLabels: ['T0', 'T-1', 'T+3', 'T0'],
+        transposeTitles: ['read-only zero', 'read-only shift', 'read-only plus', 'read-only zero'],
+        transposeEditable: false,
+      },
+    });
+    const found = chips(wrapper);
+    expect(found.length).toBe(4);
+    expect(found.map((chip) => chip.text())).toEqual(['T0', 'T-1', 'T+3', 'T0']);
+    for (const chip of found) expect(chip.classes()).toContain('transpose-readonly');
+    await found[2]!.trigger('click');
+    await found[0]!.trigger('wheel', { deltaY: 120 });
+    await found[0]!.trigger('wheel', { deltaY: -150 });
+    expect(wrapper.emitted('transposeChipClick')).toBeUndefined();
+    expect(wrapper.emitted('transposeChipStep')).toBeUndefined();
+  });
+
+  it('stays interactive when transposeEditable is left at its default', async () => {
+    const wrapper = mountCanvas({ transposeLabels: ['T0', 'T0', 'T0', 'T0'] });
+    const found = chips(wrapper);
+    for (const chip of found) expect(chip.classes()).not.toContain('transpose-readonly');
+    await found[1]!.trigger('wheel', { deltaY: 120 });
+    expect(wrapper.emitted('transposeChipStep')).toEqual([[1, 1]]);
+  });
+});
+
+/*
+ * The header strip's per-track accent beyond 8 tracks
+ * (plan-hvl-header-ux-0923.md BUG 2): the chips are DOM styled through
+ * `headerTrackStyle`, so a 12-track mount exercises the real renderer path
+ * — the same `trackAccent` call the paint loop makes — and must show the
+ * smooth continuation, not the modulo restart.
+ */
+describe('PatternCanvas header accents for wide songs', () => {
+  it('continues the shading smoothly across 12 tracks', () => {
+    const wrapper = mount(PatternCanvas, {
+      props: {
+        tracks: Array.from({ length: 12 }, (_, i) => makeTrack(`t${i}`)),
+        rows: 32,
+        selectedRow: 0,
+        playbackRow: 0,
+        activeTrack: -1,
+        activeColumn: -1,
+        autoScroll: false,
+        isPlaying: false,
+        playbackMode: 'pattern',
+        activeMacroNibble: 0,
+        selectionRect: null,
+        scrollTop: 0,
+        scrollLeft: 0,
+        containerWidth: 500,
+        containerHeight: 400,
+        isMouseSelecting: false,
+        showExtraEffectColumn: false,
+        reserveSideGutter: false,
+      },
+    });
+    const headers = wrapper.findAll('.header-track');
+    expect(headers.length).toBe(12);
+    const accents = headers.map((header) => {
+      const match = /--track-accent:\s*([^;]+)/.exec(header.attributes('style') ?? '');
+      expect(match, header.attributes('style')).not.toBeNull();
+      return match![1]!.trim();
+    });
+    const expected = Array.from({ length: 12 }, (_, i) => trackAccent(i, theme));
+    expect(accents).toEqual(expected);
+    // Track 9 must not be the ramp restart the modulo wrap produced.
+    expect(accents[8]).not.toBe(accents[0]);
   });
 });

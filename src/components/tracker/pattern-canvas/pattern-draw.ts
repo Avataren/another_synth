@@ -48,6 +48,14 @@ export function rowType(row: number): RowType {
  * Per-track accent for track `index`, taken from the theme's ramp (see
  * track-accents.ts) so the track chips and cursor follow the selected theme.
  * The track's own decorative `color` is only a fallback for a themeless call.
+ *
+ * The ramp is built for 8 tracks (TRACK_ACCENT_COUNT), but HVL songs grow to
+ * 16 (`AHX_MAX_CHANNELS`), and a plain modulo restarts the ramp at track 9 —
+ * an abrupt jump from the ramp's lightest end back to its darkest. Beyond the
+ * ramp the accent ping-pongs instead (period `(n-1)*2`, endpoints skipped):
+ * track 9 lands one step inside the ramp end and walks back toward the start,
+ * so every adjacent pair differs by exactly one ramp step while tracks 1-8
+ * keep the exact colors they always had.
  */
 export function trackAccent(
   index: number,
@@ -55,7 +63,11 @@ export function trackAccent(
   track?: TrackerTrackData,
 ): string {
   const accents = theme.trackAccents;
-  return accents[index % accents.length] ?? track?.color ?? '#5dd6ff';
+  if (index < accents.length) return accents[index] ?? track?.color ?? '#5dd6ff';
+  const period = Math.max(1, (accents.length - 1) * 2);
+  const phase = index % period;
+  const reflected = phase < accents.length ? phase : period - phase;
+  return accents[reflected] ?? track?.color ?? '#5dd6ff';
 }
 
 /** Row → interpolation tint map, TrackerTrack.vue's `interpolatedRows`. */

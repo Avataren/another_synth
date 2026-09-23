@@ -27,7 +27,13 @@ const DEFAULT_BPM = 125;
 export function importAhxToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
   const bytes = new Uint8Array(buffer);
   const song = parseAhx(bytes);
-  const patterns = buildAhxTrackerPatterns(song);
+  const patterns = buildAhxTrackerPatterns(song).map((pattern, index) => {
+    // Per-channel position transpose for the read-only header chip: the row
+    // model drops it (the builder's display-only concern), but the format
+    // carries it and the engine applies it, so keep it beside the rows.
+    const transpose = song.positions[index]?.transpose;
+    return transpose === undefined ? pattern : { ...pattern, positionTranspose: transpose.slice() };
+  });
   // One row-model pattern per position, played in order: the engine's
   // position index is therefore also the sequence index.
   const sequenceIds = patterns.map((pattern) => pattern.id);

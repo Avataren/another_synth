@@ -5,9 +5,10 @@
       <span
         v-if="transposeLabel && !HIDE_LEGACY_TRANSPOSE_UI"
         class="track-transpose"
+        :class="{ 'transpose-readonly': !transposeEditable }"
         :title="transposeTitle ?? ''"
         data-testid="track-transpose-badge"
-        @click="emit('transposeBadgeClick', index)"
+        @click="transposeEditable && emit('transposeBadgeClick', index)"
       >{{ transposeLabel }}</span>
       <div class="track-id">#{{ trackIndexLabel }}</div>
     </div>
@@ -65,6 +66,13 @@ interface Props {
   transposeLabel?: string | undefined;
   /** Native tooltip for the badge; absent with `transposeLabel` is allowed. */
   transposeTitle?: string | undefined;
+  /**
+   * Whether the label is editable (an editable AHX doc) or display-only (an
+   * HVL or a doc-less AHX import): a read-only badge loses the click hand-off
+   * and the pointer cursor, so it never promises an edit the read-only song
+   * cannot take.
+   */
+  transposeEditable?: boolean | undefined;
   /**
    * Which playback ping-pong buffer this track belongs to, when rendered
    * inside one. Static per slot (never changes per tick), threaded down so
@@ -226,6 +234,11 @@ function onHoverSelection(payload: { row: number; trackIndex: number }) {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
   cursor: pointer;
+}
+
+/* Read-only display: the byte is shown but takes no edit. */
+.track-transpose.transpose-readonly {
+  cursor: default;
 }
 
 .track-entries-container {

@@ -58,6 +58,7 @@
             :show-extra-effect-column="showExtraEffectColumn"
             :transpose-label="transposeLabels?.[index]"
             :transpose-title="transposeTitles?.[index]"
+            :transpose-editable="transposeEditable"
             @transpose-badge-click="onTransposeBadgeClick(index)"
             @rowSelected="selectRow"
             @cellSelected="selectCell"
@@ -126,6 +127,7 @@
               :show-extra-effect-column="showExtraEffectColumn"
               :transpose-label="transposeLabels?.[index]"
               :transpose-title="transposeTitles?.[index]"
+              :transpose-editable="transposeEditable"
               @transpose-badge-click="onTransposeBadgeClick(index)"
             />
           </div>
@@ -178,6 +180,13 @@ interface Props {
   transposeLabels?: readonly string[] | undefined;
   /** Native tooltips for the badges, aligned with `transposeLabels`. */
   transposeTitles?: readonly string[] | undefined;
+  /**
+   * Whether the labels are editable (an editable AHX doc) or display-only (an
+   * HVL or a doc-less AHX import): read-only badges lose the click hand-off
+   * and the pointer cursor, so the badge never promises an edit the read-only
+   * song cannot take.
+   */
+  transposeEditable?: boolean;
   /** Whether the spectrum analyser is on and needs gutters to draw in. */
   reserveSideGutter: boolean;
   /** Pattern coming next in the sequence, or null when unknown/not playing. */
@@ -185,7 +194,8 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  upcomingPattern: null
+  upcomingPattern: null,
+  transposeEditable: true
 });
 
 const emit = defineEmits<{
@@ -198,6 +208,7 @@ const emit = defineEmits<{
 
 /** The badge hand-off: the page focuses the panel's input for that channel. */
 function onTransposeBadgeClick(trackIndex: number): void {
+  if (!props.transposeEditable) return;
   emit('transposeBadgeClick', trackIndex);
 }
 
