@@ -197,3 +197,39 @@ changes (`useTrackerSongHost.ts`, `TrackerSpectrumAnalyzer.vue`,
 `ahx-import.ts`), so the later merge is expected clean.
 
 Stopped on the branch: no push, no merge, no deploy.
+
+---
+
+## Landing record (2026-09-23, main-session lander)
+
+- Branch `agent/jkb-spectrum-0923a` @ `a2b83a71` merged into `main` with
+  `git merge --no-ff` → merge commit **`510c6fba`** (base at merge time:
+  `4a3b59fc` = origin/main, P6 record). No conflicts.
+- Review: PASS (as delegated; review PASS recorded pre-landing).
+- Pre-land verification: branch tip unchanged, worktree clean, no owner
+  marker / foreign writer; `main == origin/main` at `4a3b59fc` before merge.
+
+**Gates (merged main @ 510c6fba, real exit codes):**
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| tests | `npm run test:run` | 0 — 242 files / 3928 tests passed |
+| lint | `npm run lint` | 0 |
+| types | `npx vue-tsc --noEmit` | 0 |
+| secrets | `gitleaks detect --no-git` | 0 (no leaks, ~4.86 GB scanned) |
+| artifacts | `npm run check:artifacts` | 0 |
+
+Raw outputs: `.ai/checks-land-jkb-{test,lint,tsc,gitleaks,artifacts}.txt`.
+
+**Deploy:** `bash scripts/deploy.sh` → exit 0, "Deployed and verified"
+(`545418825b6552e6eb81ec8cbc584ee2`). Log: `.ai/deploy-jkb-spectrum-20260923.log`.
+MD5 spot-check local(dist/spa) ↔ remote avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth —
+all matched: index.html `54541882…`, demos/index.json `b7e90519…`,
+wasm/audio_processor_bg.wasm `0b9548f8…`, worklets/ahx-worklet.js
+`0b1e2828…`, effects-worklet.js `ea0b2d2b…`, recording-worklet.js
+`9c96bf69…`, synth-worklet.js `d3be4813…`.
+
+**Wasm drift (known/benign):** deploy build regenerated
+`public/wasm/audio_processor_bg.wasm`, `public/wasm/SOURCE_HASH.json`,
+`public/demos/index.json` (wasm-bindgen permutations, P4/P6 precedent).
+Stashed, not committed: stash `wasm-rebuild-drift-post-jkb-land-20260923`.
