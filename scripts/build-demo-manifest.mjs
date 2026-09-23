@@ -15,7 +15,9 @@
  *
  *   node scripts/build-demo-manifest.mjs <source-root> <output-dir>
  *
- * <source-root> holds one directory per collection, e.g. amiga/ and ft2/.
+ * <source-root> holds one directory per collection, e.g. amiga/ and ft2/. A
+ * collection may group its songs one directory deeper (goattracker/<artist>/);
+ * those keep their subdirectory in the manifest's `file` path.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,9 +27,10 @@ const COLLECTION_LABELS = {
   ft2: 'FastTracker 2',
   s3m: 'Scream Tracker 3',
   ahx: 'AHX / HivelyTracker',
+  goattracker: 'GoatTracker',
 };
 
-const EXTENSIONS = new Set(['.mod', '.xm', '.s3m', '.ahx', '.hvl']);
+const EXTENSIONS = new Set(['.mod', '.xm', '.s3m', '.ahx', '.hvl', '.sng']);
 
 /** Read a fixed-length, NUL-terminated ASCII string. */
 function readAscii(buf, offset, length) {
@@ -81,11 +84,31 @@ function describeAhx(buf, format) {
   };
 }
 
+/**
+ * GoatTracker .sng header (GoatTracker v2.72 readme, 6.1.1): a 4-byte magic,
+ * then the song name as 32 NUL-padded bytes at 4. Only the two magics the
+ * app's importer reads are listed (`GTS5`, GoatTracker 2; `GTS!`, GoatTracker
+ * 1); a beta `GTS2`..`GTS4` would be published unloadable, so it is skipped.
+ * The chip has three voices, which is also how the tracker lays a SID song
+ * out: three tracks per pattern.
+ */
+function describeSng(buf) {
+  if (buf.length < 101) return null;
+  const magic = readAscii(buf, 0, 4);
+  if (magic !== 'GTS5' && magic !== 'GTS!') return null;
+  return {
+    title: readAscii(buf, 4, 32),
+    format: magic === 'GTS5' ? 'GT2' : 'GT1',
+    channels: 3,
+  };
+}
+
 function describeModule(buf, file) {
   const ext = path.extname(file).toLowerCase();
 
   if (ext === '.ahx') return describeAhx(buf, 'AHX');
   if (ext === '.hvl') return describeAhx(buf, 'HVL');
+  if (ext === '.sng') return describeSng(buf);
 
   if (ext === '.xm') {
     if (readAscii(buf, 0, 17) !== 'Extended Module:' || buf[37] !== 0x1a) {
@@ -126,6 +149,27 @@ function describeModule(buf, file) {
   };
 }
 
+/**
+ * The song files of a collection, as paths relative to it: its own files and
+ * those one subdirectory down, sorted by path.
+ */
+function listSongFiles(dirPath) {
+  const files = [];
+  for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      const subPath = path.join(dirPath, entry.name);
+      for (const sub of fs.readdirSync(subPath, { withFileTypes: true })) {
+        if (sub.isFile()) files.push(`${entry.name}/${sub.name}`);
+      }
+    } else if (entry.isFile()) {
+      files.push(entry.name);
+    }
+  }
+  return files
+    .filter((file) => EXTENSIONS.has(path.extname(file).toLowerCase()))
+    .sort();
+}
+
 function main() {
   const [sourceRoot, outputDir] = process.argv.slice(2);
   if (!sourceRoot || !outputDir) {
@@ -152,9 +196,7 @@ function main() {
     const targetDir = path.join(outputDir, dir);
     fs.mkdirSync(targetDir, { recursive: true });
 
-    for (const file of fs.readdirSync(dirPath).sort()) {
-      if (!EXTENSIONS.has(path.extname(file).toLowerCase())) continue;
-
+    for (const file of listSongFiles(dirPath)) {
       const buf = fs.readFileSync(path.join(dirPath, file));
       let described;
       try {
@@ -170,6 +212,7 @@ function main() {
       }
 
       if (!inPlace) {
+        fs.mkdirSync(path.dirname(path.join(targetDir, file)), { recursive: true });
         fs.copyFileSync(path.join(dirPath, file), path.join(targetDir, file));
       }
       copied++;

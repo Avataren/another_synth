@@ -30,7 +30,7 @@ export async function loadWasmModule(
   path: string,
   memory: WebAssembly.Memory,
 ): Promise<WasmExports> {
-  const response = await fetch(path);
+  const response = await fetch(path, { cache: 'no-cache' });
 
   if (!response.ok) {
     throw new Error(`Failed to fetch WASM module: ${response.statusText}`);
@@ -71,7 +71,7 @@ export async function loadWasmModule(
 // }
 
 export async function loadWasmBinary(path: string): Promise<ArrayBuffer> {
-  const response = await fetch(path);
+  const response = await fetch(path, { cache: 'no-cache' });
   if (!response.ok) {
     throw new Error(`Failed to fetch WASM binary: ${response.statusText}`);
   }

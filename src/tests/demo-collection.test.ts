@@ -5,6 +5,7 @@ import { parseMod } from '@another-synth/tracker-playback';
 import { parseXm } from '@another-synth/tracker-playback';
 import { parseS3m } from '@another-synth/tracker-playback';
 import { parseAhx } from '@another-synth/tracker-playback';
+import { importGtSong } from 'src/audio/tracker/sid-doc';
 import { TOTAL_SLOTS } from 'src/stores/tracker-store';
 
 /**
@@ -23,7 +24,13 @@ const DEMOS = path.resolve(__dirname, '../../public/demos');
 interface Manifest {
   collections: Array<{
     id: string;
-    songs: Array<{ file: string; title: string; format: string; bytes: number }>;
+    songs: Array<{
+      file: string;
+      title: string;
+      format: string;
+      channels: number;
+      bytes: number;
+    }>;
   }>;
 }
 
@@ -82,10 +89,18 @@ describe('the published demo collection', () => {
     const listed = new Set(songs.map((s) => s.file));
     const onDisk = new Set<string>();
     for (const collection of manifest.collections) {
-      for (const file of fs.readdirSync(path.join(DEMOS, collection.id))) {
+      const dir = path.join(DEMOS, collection.id);
+      // A collection's own files and those one directory down
+      // (goattracker/<artist>/), as the manifest builder walks it.
+      const files = fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+        entry.isDirectory()
+          ? fs.readdirSync(path.join(dir, entry.name)).map((f) => `${entry.name}/${f}`)
+          : [entry.name],
+      );
+      for (const file of files) {
         // Only the formats the importer reads. Anything else is deliberately
         // left out of the manifest rather than published unreachable.
-        if (!/\.(mod|xm|s3m|ahx|hvl)$/i.test(file)) continue;
+        if (!/\.(mod|xm|s3m|ahx|hvl|sng)$/i.test(file)) continue;
         onDisk.add(`${collection.id}/${file}`);
       }
     }
@@ -133,6 +148,14 @@ describe('the published demo collection', () => {
         expect(ahx.positions.length).toBeGreaterThan(0);
         expect(ahx.channels).toBeGreaterThan(0);
         expect(ahx.instruments.length).toBeGreaterThan(1);
+      } else if (song.format === 'GT2' || song.format === 'GT1') {
+        // The manifest reads only the header; a song corrupt past it (Spock's
+        // sleepwalk.sng) would be listed and then refused on click.
+        const imported = importGtSong(new Uint8Array(bytes));
+        if (!imported.ok) throw new Error(imported.reason);
+        expect(imported.variant).toBe(song.format === 'GT2' ? 'GTS5' : 'GTS!');
+        expect(imported.doc.channels).toBe(song.channels);
+        expect(imported.doc.patterns.length).toBeGreaterThan(0);
       } else {
         const mod = parseMod(new Uint8Array(bytes));
         expect(mod.patterns.length).toBeGreaterThan(0);

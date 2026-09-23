@@ -479,6 +479,11 @@ describe('createStandardAudioWorklet handshake window', () => {
     expect(node.port.sent.some((m) => m.type === 'wasm-binary')).toBe(
       true,
     );
+    // Revalidated, so a deploy's new wasm is not shadowed by a cached one.
+    expect(fetchStub).toHaveBeenCalledWith(
+      expect.stringMatching(/wasm\/audio_processor_bg\.wasm$/),
+      { cache: 'no-cache' },
+    );
   });
 
   it('running context with a dead handshake rejects at 5 s and abandons the node', async () => {

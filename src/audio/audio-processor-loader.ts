@@ -48,7 +48,7 @@ export async function createStandardAudioWorklet(
         console.log('AudioWorkletProcessor is ready, sending WASM...');
         try {
           const wasmUrl = `${import.meta.env.BASE_URL}wasm/audio_processor_bg.wasm`;
-          const response = await fetch(wasmUrl);
+          const response = await fetch(wasmUrl, { cache: 'no-cache' });
           const wasmBytes = await response.arrayBuffer();
           workletNode.port.postMessage(
             { type: 'wasm-binary', wasmBytes },
