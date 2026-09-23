@@ -346,3 +346,59 @@ Jukebox 0, TrackerPage 25). One doc comment was worded to avoid a spurious hit.
   the file. No corpus HVL has an empty name (test passes); fix in P3.
 - The ops (`ops.ts`) and `edit-guard.ts` still use `AHX_CHANNELS`; nothing
   hands them an HVL doc in P1.
+
+## Landing record (2026-09-23, agent/hvl-doc-0923a P1)
+
+Merge: `eeb6055d` (`git merge --no-ff`, parents `b8815689` + `22668ae9`, message:
+"Merge agent/hvl-doc-0923a: HVL doc model (review PASS on 22668ae9)") on LOCAL main,
+not pushed at merge time. The branch was based on `6123b5f4`, which still had
+`chiprolled.hvl` (removed on main by `6d02f6d2`), so the branch's new
+`src/tests/hvl-doc-corpus.test.ts` carried stale corpus pins `toBe(23)` and the vitest
+gate failed on main after merge.
+
+### Re-measure commit (documented, no amend)
+
+First re-measured, then fixed: `public/demos/ahx/` has **22 .hvl** + 77 .ahx = 99 total;
+`chiprolled.hvl` confirmed absent. Pin-fix commit `6cb62fcf`
+("test(hvl-doc): re-measure corpus pin 23→22 after chiprolled.hvl removal (documented
+re-measure)"), a follow-up commit on main — NO amend, no history rewrite.
+
+**Scope note (delegated decision):** the task brief listed the two `toBe(23)` pins plus
+the names "reads the 23 HVL files"/"all 23", but `all 23` appears in 6 test names and a
+`last updated at 23 .hvl files` re-measure comment. Updating only some would leave the
+file self-contradictory, so every corpus-size reference was updated (2 pins + 6 test
+names + 1 comment) — 9 lines, nothing else.
+
+### Review reference
+
+Delta re-review **PASS** on branch tip `22668ae9` (per merge commit message; the branch
+carried its own `.ai/checks-P1-*.txt` gate outputs and P1 status section above).
+
+### Post-merge gates on main after `6cb62fcf` (real exit codes, this run)
+
+| Gate | Result | Exit |
+|---|---|---|
+| npm run test:run (vitest full) | 237 files / 3851 tests passed (62.45s) | 0 |
+| npm run lint (eslint .js,.ts,.vue) | no findings | 0 |
+| npx vue-tsc --noEmit | clean | 0 |
+| gitleaks detect --no-git | no leaks (3.44 GB scanned, 1m24s) | 0 |
+| npm run check:artifacts | worklets + wasm match sources | 0 |
+
+### Push
+
+`git push origin main`: `b8815689..6cb62fcf main -> main`, exit 0, no force.
+
+### Deploy
+
+`scripts/deploy.sh` → `avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth`.
+Build succeeded (spa mode, 37 JS files); wasm rebuilt per script design (freshness via
+`SOURCE_HASH.json`); script self-verification `Deployed and verified
+(3d2af47ed5258f81684b971fbcd14c7a)` (index.html md5); deploy exit 0.
+
+**Fresh md5 spot-check (local `dist/spa` ↔ remote, all identical): 3/3**
+
+| File | md5 |
+|---|---|
+| index.html | `3d2af47ed5258f81684b971fbcd14c7a` |
+| demos/index.json | `5ce336fd304f097e036523b53ed45f62` |
+| wasm/audio_processor_bg.wasm | `0b9548f882892c38b7574b9d106ca8ad` |
