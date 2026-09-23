@@ -41,7 +41,7 @@ fn snapshot(e: &AhxEngine, voice: usize) -> Vec<i16> {
     s
 }
 
-const SONGS: [&str; 3] = ["karma.ahx", "sunspots.hvl", "chiprolled.hvl"];
+const SONGS: [&str; 2] = ["karma.ahx", "sunspots.hvl"];
 
 #[test]
 fn nothing_muted_or_soloed_is_bit_identical() {

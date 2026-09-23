@@ -299,11 +299,6 @@ fn karma_ahx_matches_reference_across_rates_and_stereo_modes() {
 }
 
 #[test]
-fn chiprolled_matches_reference() {
-    check_fixture("chiprolled.hvl");
-}
-
-#[test]
 fn doobrey_gubbins_matches_reference() {
     check_fixture("doobrey_gubbins.hvl");
 }
@@ -471,12 +466,13 @@ fn manifest_and_goldens_agree() {
 
 #[test]
 fn hvl_ignores_the_defstereo_argument() {
-    // chiprolled at 48000 has three goldens differing only in defstereo
-    // (0, 2, 4). The C reference produces identical audio for all three, and
-    // the engine must too.
+    // Retargeted 2026-09-23 from chiprolled.hvl (removed from the corpus as a
+    // byte-identical dupe, user decision): sunspots at 48000 now carries three
+    // goldens differing only in defstereo (0, 2, 4). The C reference produces
+    // identical audio for all three, and the engine must too.
     let mut hashes = Vec::new();
     for st in [0u8, 2, 4] {
-        let g = load_golden(&format!("chiprolled.48000.s{st}.cap4.txt"));
+        let g = load_golden(&format!("sunspots.48000.s{st}.cap4.txt"));
         hashes.push(g.chunks);
     }
     assert_eq!(hashes[0], hashes[1]);
@@ -536,10 +532,9 @@ fn drainage_proble_plays_all_seven_channels() {
 
 #[test]
 fn every_hvl_fixture_plays_its_native_channels_by_default() {
-    // Native channel counts of the corpus (6/11/7/6/8/6/6): the default engine
+    // Native channel counts of the corpus (11/7/6/8/6/6): the default engine
     // plays every one and drops none.
     for (f, native) in [
-        ("chiprolled.hvl", 6),
         ("doobrey_gubbins.hvl", 11),
         ("drainage_proble.hvl", 7),
         ("illuminated.hvl", 6),

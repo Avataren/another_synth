@@ -94,7 +94,7 @@ fn targets(name: &str) -> Vec<RowTop> {
     (0..6).map(|i| tops[i * step]).chain([tops[tops.len() - 1]]).collect()
 }
 
-const SONGS: [&str; 5] = ["karma.ahx", "robocop_iii_j_tel.ahx", "sunspots.hvl", "chiprolled.hvl", "blondie.ahx"];
+const SONGS: [&str; 4] = ["karma.ahx", "robocop_iii_j_tel.ahx", "sunspots.hvl", "blondie.ahx"];
 
 fn setup(e: &mut AhxEngine, hifi: bool, capture: bool) {
     if hifi {
