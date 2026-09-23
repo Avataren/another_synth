@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-23T06:52:17.334Z",
+  "generated": "2026-09-23T19:38:39.117Z",
   "collections": [
     {
       "id": "ahx",
@@ -1698,6 +1698,593 @@
           "instruments": 11,
           "file": "ft2/xyce-dans_la_rue.xm",
           "bytes": 87100
+        }
+      ]
+    },
+    {
+      "id": "goattracker",
+      "name": "GoatTracker",
+      "songs": [
+        {
+          "title": "Streets",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/aeuk/metal_warrior_4_streets.sng",
+          "bytes": 8598
+        },
+        {
+          "title": "metal_warrior_4_unused_jingle",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/aeuk/metal_warrior_4_unused_jingle.sng",
+          "bytes": 2039
+        },
+        {
+          "title": "metal_warrior_4_forest_encounter",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/ansgaros/metal_warrior_4_forest_encounter.sng",
+          "bytes": 6857
+        },
+        {
+          "title": "Barfington's nintendometal",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/barfington/barfington_s_nintendometal.sng",
+          "bytes": 6702
+        },
+        {
+          "title": "metal_warrior_4_research_facility",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/barfington/metal_warrior_4_research_facility.sng",
+          "bytes": 5584
+        },
+        {
+          "title": "Covert Ops in 2D (funktempo)",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/covert_ops_in_2d_funktempo.sng",
+          "bytes": 5697
+        },
+        {
+          "title": "Dojo",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/dojo.sng",
+          "bytes": 7641
+        },
+        {
+          "title": "galwaytest",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/galwaytest.sng",
+          "bytes": 2025
+        },
+        {
+          "title": "GoatTracker classical example",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/goattracker_classical_example.sng",
+          "bytes": 2522
+        },
+        {
+          "title": "GoatTracker drum example",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/goattracker_drum_example.sng",
+          "bytes": 1538
+        },
+        {
+          "title": "GoatTracker example (MW1 title)",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/goattracker_example_mw1_title.sng",
+          "bytes": 3226
+        },
+        {
+          "title": "Maximum rastertime test",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/maximum_rastertime_test.sng",
+          "bytes": 1226
+        },
+        {
+          "title": "Covert Ops in 2D",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/metal_warrior_4_covert_ops_in_2d.sng",
+          "bytes": 5697
+        },
+        {
+          "title": "Investigations",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/metal_warrior_4_investigations.sng",
+          "bytes": 8611
+        },
+        {
+          "title": "The Chosen Path",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/metal_warrior_4_the_chosen_path.sng",
+          "bytes": 6556
+        },
+        {
+          "title": "MW Title Remix",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/mw_title_remix.sng",
+          "bytes": 3482
+        },
+        {
+          "title": "MW Title Remix, 2x-speed",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/mw_title_remix_2x_speed.sng",
+          "bytes": 3482
+        },
+        {
+          "title": "Nintendo-style",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/nintendo_style.sng",
+          "bytes": 3201
+        },
+        {
+          "title": "tarantula",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/tarantula.sng",
+          "bytes": 6818
+        },
+        {
+          "title": "warlord",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/cadaver/warlord.sng",
+          "bytes": 7174
+        },
+        {
+          "title": "Alien Funk",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/alien_funk.sng",
+          "bytes": 19083
+        },
+        {
+          "title": "Attitude #14",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/attitude_14.sng",
+          "bytes": 9536
+        },
+        {
+          "title": "balcony princess",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/balcony_princess.sng",
+          "bytes": 28497
+        },
+        {
+          "title": "Golden Moments",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/golden_moments.sng",
+          "bytes": 22932
+        },
+        {
+          "title": "Graffiti Intro",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/graffiti_intro.sng",
+          "bytes": 6460
+        },
+        {
+          "title": "Groove Machine",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/groove_machine.sng",
+          "bytes": 13620
+        },
+        {
+          "title": "Gubbdata 2016 Invitation",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/gubbdata_2016_invitation.sng",
+          "bytes": 6714
+        },
+        {
+          "title": "Homunculi (Tune 1)",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/homunculi_tune_1.sng",
+          "bytes": 12566
+        },
+        {
+          "title": "Homunculi (Tune 2)",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/homunculi_tune_2.sng",
+          "bytes": 40675
+        },
+        {
+          "title": "Hybrid song (Funky Stars)",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/hybrid_song.sng",
+          "bytes": 23106
+        },
+        {
+          "title": "In A Rush",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/in_a_rush.sng",
+          "bytes": 14968
+        },
+        {
+          "title": "Midnight Dream",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/midnight_dream.sng",
+          "bytes": 10402
+        },
+        {
+          "title": "On the Road Once Again",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/on_the_road_once_again.sng",
+          "bytes": 24470
+        },
+        {
+          "title": "Pagan's Mind",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/pagans_mind.sng",
+          "bytes": 18286
+        },
+        {
+          "title": "Plasma Intro",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/plasma_intro.sng",
+          "bytes": 10451
+        },
+        {
+          "title": "Pocket Tomb",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/pocket_tomb.sng",
+          "bytes": 9026
+        },
+        {
+          "title": "Sky Captain",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/sky_captain.sng",
+          "bytes": 11171
+        },
+        {
+          "title": "Two years in G*P",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/mch/two_years_in_gp.sng",
+          "bytes": 5210
+        },
+        {
+          "title": "Wings of Death -level 2",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/shinobi/wod.sng",
+          "bytes": 12328
+        },
+        {
+          "title": "Alcorythm",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/alcorythm_ffff.sng",
+          "bytes": 14366
+        },
+        {
+          "title": "Archaic Groove",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/archaic_groove.sng",
+          "bytes": 37452
+        },
+        {
+          "title": "The Ugly Arpling",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/arpling.sng",
+          "bytes": 18240
+        },
+        {
+          "title": "Bait & Switch",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/bait.sng",
+          "bytes": 37993
+        },
+        {
+          "title": "ballad",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/ballad.sng",
+          "bytes": 39446
+        },
+        {
+          "title": "Christmas Boogie (wip)",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/christmas_boogie.sng",
+          "bytes": 5547
+        },
+        {
+          "title": "classical",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/classical.sng",
+          "bytes": 2558
+        },
+        {
+          "title": "Coconut Conundrum",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/coconut_conundrum.sng",
+          "bytes": 10760
+        },
+        {
+          "title": "Defunkt",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/defunkt_final_fv_po_ro_6581_ffff.sng",
+          "bytes": 21783
+        },
+        {
+          "title": "Diminishing Returns (wip)",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/diminishing_returns.sng",
+          "bytes": 18760
+        },
+        {
+          "title": "Double Rainbow",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/double_rainbow_2x.sng",
+          "bytes": 21633
+        },
+        {
+          "title": "Endless summer (wip)",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/endless_summer.sng",
+          "bytes": 11667
+        },
+        {
+          "title": "failedfunk",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/failedfunk.sng",
+          "bytes": 2014
+        },
+        {
+          "title": "feeling_pink",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/feeling_pink.sng",
+          "bytes": 55268
+        },
+        {
+          "title": "flumbos_keps",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/flumbos_keps.sng",
+          "bytes": 55062
+        },
+        {
+          "title": "Forced Entry (wip)",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/forced_entry.sng",
+          "bytes": 50043
+        },
+        {
+          "title": "Game tune",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/game_tune.sng",
+          "bytes": 9045
+        },
+        {
+          "title": "Gremlinfunk",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/gremlinfunk.sng",
+          "bytes": 6179
+        },
+        {
+          "title": "Iguana",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/iguana.sng",
+          "bytes": 14502
+        },
+        {
+          "title": "Jeroenimo (wip)",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/jeroenimo.sng",
+          "bytes": 16011
+        },
+        {
+          "title": "jogeir",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/jogeir.sng",
+          "bytes": 36595
+        },
+        {
+          "title": "Lethargic",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/lethargic.sng",
+          "bytes": 22996
+        },
+        {
+          "title": "Lolo",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/lolo_sawtooth_only.sng",
+          "bytes": 8439
+        },
+        {
+          "title": "Nordic Scene Review",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/nordic_scene_review.sng",
+          "bytes": 20543
+        },
+        {
+          "title": "pirate",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/pirate.sng",
+          "bytes": 11415
+        },
+        {
+          "title": "Premonition",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/premonition_fv_po_ro_ffff.sng",
+          "bytes": 31118
+        },
+        {
+          "title": "Quaralline",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/quaralline_2x.sng",
+          "bytes": 18504
+        },
+        {
+          "title": "Relapse",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/relapse.sng",
+          "bytes": 9134
+        },
+        {
+          "title": "reverb",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/reverb.sng",
+          "bytes": 1888
+        },
+        {
+          "title": "Running on empty",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/running_on_empty_ffff.sng",
+          "bytes": 16812
+        },
+        {
+          "title": "safari",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/safari.sng",
+          "bytes": 4645
+        },
+        {
+          "title": "Scarabaeus",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/scarabaeus_0f00_fv_po_ro.sng",
+          "bytes": 19964
+        },
+        {
+          "title": "Shadow Introq",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/shadow.sng",
+          "bytes": 11467
+        },
+        {
+          "title": "Sidetracked",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/sidetracked.sng",
+          "bytes": 19479
+        },
+        {
+          "title": "sniff",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/sniff.sng",
+          "bytes": 5344
+        },
+        {
+          "title": "Space Cheddar",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/space_2x.sng",
+          "bytes": 26919
+        },
+        {
+          "title": "Sunset Shuffle (wip)",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/sunset_shuffle_po_ro_ffff.sng",
+          "bytes": 14126
+        },
+        {
+          "title": "Trainwreck",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/trainwreck.sng",
+          "bytes": 44960
+        },
+        {
+          "title": "tribal",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/tribal.sng",
+          "bytes": 1432
+        },
+        {
+          "title": "tribal18",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/tribal18.sng",
+          "bytes": 26525
+        },
+        {
+          "title": "Tribal Tribunal",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/tribal_tribunal.sng",
+          "bytes": 16243
+        },
+        {
+          "title": "Unleash the cheese",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/unleash_the_cheese.sng",
+          "bytes": 20101
+        },
+        {
+          "title": "upsandowns",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/stinsen/upsandowns.sng",
+          "bytes": 51104
+        },
+        {
+          "title": "B.O.F.H. Ingame, Death, Victory",
+          "format": "GT1",
+          "channels": 3,
+          "file": "goattracker/yehar/b_o_f_h_ingame_death_victory.sng",
+          "bytes": 7403
         }
       ]
     },
