@@ -526,3 +526,49 @@ The instrument source is the P3 slot decision (§3, §4-P3); P2 needs it first.
   missing instruments (edit, undo/redo, snapshot at 4 and 10 channels).
 - Exporter gap (unchanged, P3): HVL export is still title-only from the source bytes.
 - Do not merge before the instrument-source decision (stop notes, option 1 recommended).
+
+## Landing record (2026-09-23, agent/hvl-edit-p2-0923a P2)
+
+Merge: `b275799c` (`git merge --no-ff`, parents `9367d23c` + `fefc1066`, message:
+"Merge branch 'agent/hvl-edit-p2-0923a': HVL editing P2 (review PASS on fefc1066)")
+on main at `9367d23c` == `origin/main`, no conflicts, no main movement since review.
+Branch worktree `.ai/worktrees/hvl-edit-p2` clean at tip `fefc1066`, no owner marker /
+foreign writer at land time.
+
+### Review reference
+
+**PASS on branch tip `fefc1066`.** Reviewer's verified highlights: 10-channel
+write-back red-at-parent proof (`hvl-writeback-10ch.test.ts` 0/4 → 4/4, file bytes
+unchanged), edit-matrix 18/18, Option-1 instrument carry corpus byte-exact (22 .hvl),
+AHX paths unchanged (77 .ahx). Branch carried its own `.ai/checks-p2-*.txt` outputs
+and `.ai/p2-stop-notes.md` decision record (Option 1, Morten via main).
+
+### Post-merge gates on merged main `b275799c` (real exit codes, this run)
+
+| Gate | Result | Exit |
+|---|---|---|
+| npm run test:run | 240 files / 3880 tests passed (65.00s) | 0 |
+| npm run lint (eslint .js,.ts,.vue) | no findings | 0 |
+| npx vue-tsc --noEmit | clean | 0 |
+| gitleaks detect --no-git | no leaks (3.63 GB scanned, 1m31s) | 0 |
+| npm run check:artifacts | worklets + wasm match sources | 0 |
+
+### Push
+
+`git push origin main`: `9367d23c..b275799c main -> main`, exit 0, no force.
+
+### Deploy
+
+`scripts/deploy.sh` → `avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth`.
+Build succeeded (spa mode, 37 JS files / 12 CSS); wasm rebuilt per script design. This
+branch touches no rust-wasm/ and `SOURCE_HASH.json`'s `sourceHash` (rust sources) is
+unchanged; the rebuild's output hash drift vs the committed wasm is the known local
+rebuild non-determinism, self-consistent with the local `SOURCE_HASH.json` and green
+`check:artifacts` (pre-existing since the P1 deploy, not introduced by this branch).
+Script self-verification `Deployed and verified (68a95542c35f3b5eff45a564120b4705)`
+(index.html md5); deploy exit 0.
+
+**Fresh md5 spot-check (local `dist/spa` ↔ remote, all identical): 4/4**
+`index.html`, `demos/index.json`, `wasm/audio_processor_bg.wasm`, `worklets/ahx-worklet.js`.
+
+Worktree: owner marker absent/cleared; worktree left in place for P3.
