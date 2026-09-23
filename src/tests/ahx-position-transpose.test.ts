@@ -76,6 +76,26 @@ describe('the per-position per-channel transpose (plan-pos-transpose.md)', () =>
     ]);
   });
 
+  // plan-hvl-header-ux-0923.md BUG 1: an HVL never gets a doc (adoptAhxDoc
+  // early-returns for its 'hvl' source record), so its read-only header chip
+  // rides the pattern's own `positionTranspose` — which the real load path
+  // must keep intact, not sanitize away with unknown fields.
+  it('an HVL load keeps the per-pattern transpose the read-only chip reads', () => {
+    const buf = fs.readFileSync(path.resolve(__dirname, '../../public/demos/ahx/doobrey_gubbins.hvl'));
+    const raw = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+    const song = parseAhx(raw);
+    const store = useTrackerStore();
+    store.loadSongFile(importAhxToTrackerSong(
+      raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer,
+    ));
+    // No doc, read-only display: exactly the branch the HVL chip lives on.
+    expect(store.isAhxEditable).toBe(false);
+    expect(store.currentPattern?.positionTranspose).not.toBeUndefined();
+    expect(store.currentPattern?.positionTranspose).toEqual(song.positions[0]!.transpose);
+    // The current pattern's slot is its position, so the chip can title it.
+    expect(store.sequence.indexOf(store.currentPatternId ?? '')).toBe(0);
+  });
+
   describe('setAhxPositionTranspose', () => {
     it('writes the byte, republishes bytes the engine can parse, and keeps neighbours', () => {
       const store = loadBytes(holyDazeBytes());

@@ -95,4 +95,12 @@ export interface TrackerPattern {
    */
   rows: number;
   tracks: TrackerTrackData[];
+  /**
+   * Per-channel position transpose (AHX/HVL only): the bytes the engine adds
+   * to every note this position plays (`formats/ahx.ts`'s position parse,
+   * `hvl_replay.h pos_Transpose[]`). Read-only display data for songs without
+   * an editable doc (an HVL, or an AHX saved without its bytes); an editable
+   * AHX song's chips read the doc instead, which is the writable source.
+   */
+  positionTranspose?: number[];
 }

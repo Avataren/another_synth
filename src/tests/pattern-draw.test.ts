@@ -355,13 +355,16 @@ describe('drawEntryBox', () => {
     expect(dual).toEqual(expect.arrayContaining(['A', 'B', 'C', 'D', 'E', 'F']));
   });
 
-  it('takes the per-track accent from the theme ramp, cycling past its length', () => {
+  it('takes the per-track accent from the theme ramp, reflecting past its length', () => {
     const track = makeTrack([], '#ff0000');
     expect(trackAccent(0, theme, track)).toBe(theme.trackAccents[0]);
     expect(trackAccent(3, theme, track)).toBe(theme.trackAccents[3]);
-    // Past the ramp's length the accents repeat, and the track's own
-    // decorative color never wins over the theme.
-    expect(trackAccent(theme.trackAccents.length, theme, track)).toBe(theme.trackAccents[0]);
+    // Past the ramp's length the accents reflect (plan-hvl-header-ux-0923.md
+    // BUG 2): HVL songs grow to 16 tracks, the old modulo restart made track
+    // 9 jump from the ramp's lightest end back to its darkest, so track 9 now
+    // lands one step inside the end instead. The track's own decorative
+    // color never wins over the theme.
+    expect(trackAccent(theme.trackAccents.length, theme, track)).toBe(theme.trackAccents[6]);
     expect(trackAccent(0, { trackAccents: [] }, track)).toBe('#ff0000');
   });
 });

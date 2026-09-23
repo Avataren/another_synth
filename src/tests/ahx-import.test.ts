@@ -150,6 +150,31 @@ describe('importAhxToTrackerSong', () => {
     expect(file.data.patterns[0]!.tracks).toHaveLength(11);
   });
 
+  // plan-hvl-header-ux-0923.md BUG 1: the format carries a per-channel
+  // position transpose (`formats/ahx.ts`'s parse, the engine's per-step
+  // `v.transpose`), the row model drops it, and the read-only header chip
+  // needs it — so the import keeps it beside the rows, one entry per channel.
+  it('keeps each position transpose per channel on the pattern (AHX and HVL)', () => {
+    for (const file of ['ahx/karma.ahx', 'ahx/doobrey_gubbins.hvl']) {
+      const raw = bytes(file);
+      const imported = importAhxToTrackerSong(
+        raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer,
+      );
+      const song = parseAhx(raw);
+      imported.data.patterns.forEach((pattern, index) => {
+        expect(pattern.positionTranspose, `${file} position ${index}`).toEqual(
+          song.positions[index]!.transpose,
+        );
+      });
+    }
+  });
+
+  it('copies the transpose bytes, so the import cannot alias the parse', () => {
+    const imported = importAhxToTrackerSong(buffer);
+    imported.data.patterns[0]!.positionTranspose![0] = 99;
+    expect(song.positions[0]!.transpose[0]).not.toBe(99);
+  });
+
   it('rejects a file that is not AHX/HVL rather than producing a silent song', () => {
     const bad = raw.slice();
     bad[0] = 0x58; // 'X' for 'T': no longer a THX header
