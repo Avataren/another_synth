@@ -1,0 +1,47 @@
+Extraction map: P5 engine split (arch-review §5 + §2c relocation), branch agent/p5-engine-split-0923a, base 0373ad1f
+All paths under packages/tracker-playback/src/. Line numbers refer to the ORIGINAL files.
+
+wc -l before:
+  2354 engine.ts
+  2168 sampler-instrument.ts
+wc -l after:
+  1731 engine.ts
+  2154 sampler-instrument.ts
+   709 row-scheduler.ts (new)
+    35 playback-rate.ts (new)
+
+row-scheduler.ts <- engine.ts :55-108    shouldRetriggerLastNote (verbatim, already exported)
+                 <- engine.ts :1322-1874 scheduleRow body (byte-verbatim, class indentation kept)
+                    (method is :1321-1875; :1876 is the blank separator before dispatchCommands,
+                    so the plan's ":1321-1876" includes that blank line)
+                 <- engine.ts :2340-2342 type PlaybackPatternStep (`export` added)
+                 <- engine.ts :2344-2350 hasVolumeCommand (+doc; only caller was scheduleRow; stays module-private)
+                 <- engine.ts :2352-2354 clamp (`export` added; still used by engine.ts, imported back)
+playback-rate.ts <- sampler-instrument.ts :1164-1182 calculatePlaybackRate body (byte-verbatim, class indentation kept)
+
+engine.ts: :1321-1875 becomes a 3-line delegate that calls scheduleRow.call(this as unknown as ScheduleRowHost, row, time).
+  Call site `this.scheduleRow(actualRow, scheduledRowTime)` unchanged.
+  Imports removed (only used by the moved body): ScheduledNoteEvent, Step, processEffectTick0, processEffectTickN,
+  processVolumeColumnTick0, processVolumeColumnTickN, volumeCommandIsTickBased, resetEffectStateForNote.
+  Added: import { type PlaybackPatternStep, type ScheduleRowHost, clamp, scheduleRow } from './row-scheduler';
+         export { shouldRetriggerLastNote } from './row-scheduler';
+sampler-instrument.ts: :1163-1183 becomes a delegate that calls calculatePlaybackRate.call(this as unknown as PlaybackRateHost, frequency).
+  Four call sites unchanged. Added: import { type PlaybackRateHost, calculatePlaybackRate } from './playback-rate';
+
+Verbatim check (line multiset, exact bytes, no whitespace normalisation):
+  sort(orig engine.ts) vs sort(new engine.ts + row-scheduler.ts):
+    lines only in original: `type PlaybackPatternStep = ...`, `function clamp(...)` (both reappear with `export ` prefixed)
+    lines only in new: import/export lines, file header comment, ScheduleRowHost interface, the scheduleRow
+    function signature + closing brace, the delegate call line, blank lines
+    (the check ran before the 8 unused imports were removed; removing them only drops lines from the "orig" side)
+  sort(orig sampler-instrument.ts) vs sort(new sampler-instrument.ts + playback-rate.ts):
+    lines only in original: none
+    lines only in new: import lines, file header comment, PlaybackRateHost interface, function signature, delegate call
+  => no body line changed.
+
+Import graph (runtime edges, acyclic):
+  engine.ts -> row-scheduler.ts -> effect-processor, (types/timing-system/format-profile type-only)
+  sampler-instrument.ts -> playback-rate.ts -> (tracker-sample type-only)
+Public API: index.ts untouched; engine.ts still exports shouldRetriggerLastNote (re-export) and PlaybackEngine.
+row-scheduler.ts / playback-rate.ts are not in index.ts, so ScheduleRowHost, PlaybackPatternStep, clamp,
+PlaybackRateHost and calculatePlaybackRate are not newly public.

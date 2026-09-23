@@ -34,6 +34,7 @@ import {
 import { getSampleQuality } from './sample-quality';
 import { createLinearPitchModel } from './pitch-model';
 import type { PitchModel } from './pitch-model';
+import { type PlaybackRateHost, calculatePlaybackRate } from './playback-rate';
 
 /**
  * Fallback tick duration when a caller does not supply one: 2.5 / 125 BPM,
@@ -1161,25 +1162,10 @@ export class TrackerSamplerInstrument {
   }
 
   private calculatePlaybackRate(frequency: number): number {
-    if (!this.samplerState) {
-      return 1.0;
-    }
-
-    // Calculate playback rate based on frequency relative to root note
-    // frequency = root_frequency * 2^(semitones/12)
-    // playbackRate = frequency / root_frequency
-
-    const rootNote = this.samplerState.rootNote;
-    const rootFrequency = 440 * Math.pow(2, (rootNote - 69) / 12);
-
-    // Apply detune
-    const detuneCents = this.samplerState.detune ?? 0;
-    const detuneRatio = Math.pow(2, detuneCents / 1200);
-
-    // Scaled for oversampling: the buffer holds `oversampleFactor` frames per
-    // original frame at an unchanged declared rate, so it must be read that
-    // much faster to sound at the written pitch.
-    return (frequency / rootFrequency) * detuneRatio * this.oversampleFactor;
+    return calculatePlaybackRate.call(
+      this as unknown as PlaybackRateHost,
+      frequency,
+    );
   }
 
   // Stub methods for compatibility with InstrumentV2 interface

@@ -140,4 +140,74 @@ Baseline: main @ b6acbc0a all green (P4 addendum: 241 files / 3922 tests).
 
 ## 7. Addendum (post-implementation — filled by implementer)
 
-Deviations, extraction map with before/after sizes, gate table with real exit codes.
+### ADDENDUM (implementer, 2026-09-23, base 0373ad1f)
+
+#### Deviations
+
+- **D1 — delegates + casts (as planned).** `PlaybackEngine.scheduleRow` and
+  `TrackerSamplerInstrument.calculatePlaybackRate` are now delegates of 3 and 6
+  lines. They call the moved functions with `.call(this as unknown as ScheduleRowHost, ...)`
+  and `.call(this as unknown as PlaybackRateHost, ...)`. The casts are needed
+  because private class members do not satisfy the interfaces structurally. They
+  are compile-time only and have no runtime effect. Each call adds one `.call()`
+  frame per scheduled row or rate calculation. The engine delegate keeps the
+  original header `private scheduleRow(row: number, time: number) {` without the
+  `: void` the plan wrote.
+- **D2 — two module helpers the plan did not list.** The scheduleRow body also
+  calls `hasVolumeCommand` (engine.ts:2344) and `clamp` (:2352), and its host
+  interface needs `PlaybackPatternStep` (:2340).
+  - `hasVolumeCommand`'s only caller was scheduleRow, so it moved verbatim and
+    stays module-private.
+  - `clamp` is also used at engine.ts:2300. It moved to row-scheduler.ts with
+    `export`, and engine.ts imports it back.
+  - `PlaybackPatternStep` moved with `export`, and engine.ts imports the type.
+  - Both edges run engine.ts → row-scheduler.ts, so there is no cycle. index.ts
+    is untouched, so none of these names becomes public.
+- **D3 — module imports for the moved body.** The effect-processor functions
+  (`processEffectTick0/N`, `processVolumeColumnTick0/N`,
+  `volumeCommandIsTickBased`, `resetEffectStateForNote`) and the types
+  `ScheduledNoteEvent` and `Step` are now imported by row-scheduler.ts. Their
+  imports in engine.ts became unused, which gave 8 lint warnings against a
+  baseline of 0, so they were removed. This only drops import lines.
+- **D4 — indentation kept byte-verbatim.** Both bodies keep their original
+  4-space class-method indentation inside module-level functions, so
+  `prettier --check` flags row-scheduler.ts and playback-rate.ts.
+  - No prettier pass was run, per the no-reformatting rule.
+  - Prettier is not a gate: HEAD engine.ts and sampler-instrument.ts already
+    fail `prettier --check`.
+  - Running prettier later would re-indent those bodies by −2 spaces and change
+    no tokens.
+- **D5 — range and naming.** The scheduleRow method is :1321–1875; :1876 is the
+  blank line before `dispatchCommands`. The class holding `calculatePlaybackRate`
+  is `TrackerSamplerInstrument` (the plan says `ModInstrument`), and the moved
+  range is :1163–1183, including the closing brace.
+- **D6 — file header comments.** Each new file has a short header comment, the
+  same as P4.
+
+#### Extraction map (full detail: `.ai/extraction-map-p5.txt`)
+
+| file | before | after |
+|---|---|---|
+| engine.ts | 2354 | 1731 |
+| sampler-instrument.ts | 2168 | 2154 |
+| row-scheduler.ts (new) | — | 709 |
+| playback-rate.ts (new) | — | 35 |
+
+row-scheduler.ts ← engine.ts :55–108 (shouldRetriggerLastNote), :1322–1874
+(scheduleRow body), :2340–2342, :2344–2350, :2352–2354. playback-rate.ts ←
+sampler-instrument.ts :1164–1182.
+
+The line-multiset diff compared exact bytes with no whitespace normalisation.
+The only original lines absent from the output are `type PlaybackPatternStep ...`
+and `function clamp ...`, and each reappears with `export ` prefixed. No body
+line changed.
+
+#### Gates (tree = commit tip)
+
+| gate | exit | output |
+|---|---|---|
+| `npm run test:run` | 0 | 241 files / 3922 tests passed (= baseline) — `.ai/checks-p5-test.txt` |
+| `npm run lint` | 0 | 0 errors, 0 warnings — `.ai/checks-p5-lint.txt` |
+| `npx vue-tsc --noEmit` | 0 | `.ai/checks-p5-tsc.txt` |
+| `gitleaks detect --no-git --source .` | 0 | no leaks — `.ai/checks-p5-gitleaks.txt` |
+| `npm run check:artifacts` | 0 | worklets/wasm match — `.ai/checks-p5-artifacts.txt` |
