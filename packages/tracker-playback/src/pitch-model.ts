@@ -678,3 +678,99 @@ export function createXmAmigaPitchModel(): PitchModel {
       amigaVibratoDepthCents(rawPeriodFromFrequency, baseFrequency, depthUnits),
   };
 }
+
+/**
+ * The C64 PAL system clock (phi2) in Hz, which the SID's oscillators divide:
+ * `Fout = Fn * SID_PAL_CLOCK / 2^24` (MOS 6581/8580 datasheet). The same
+ * constant as the Rust chip's `PAL_CLOCK_HZ` (`rust-wasm/src/sid/mod.rs`).
+ */
+export const SID_PAL_CLOCK = 985248;
+
+/**
+ * Notes in a SID song's note table: C-0 (index 0) to G#7 (index 92), the
+ * GoatTracker range. A-7 and up would still fit the 16-bit register, but
+ * B-7 does not (67 277 > 65 535), so the table stops where GT's does.
+ */
+export const SID_NOTE_COUNT = 93;
+
+/** Period units per semitone in the SID pitch model (XM's linear grain). */
+const SID_UNITS_PER_SEMITONE = 64;
+/** The period of C-0, the lowest note; G#7, the highest, is period 0. */
+const SID_MAX_PERIOD = (SID_NOTE_COUNT - 1) * SID_UNITS_PER_SEMITONE;
+
+/**
+ * The 16-bit frequency register for note `index` (0 = C-0 ... 92 = G#7):
+ * equal temperament with A-4 (index 57) at 440 Hz, rounded to the nearest
+ * register value at the PAL clock. Derived here from the datasheet formula,
+ * not copied from any tracker's table (plan-sid-tracking.md §8.3); the Rust
+ * player computes the same values (`sid::gt_note_freq_reg`), and both sides
+ * pin C-0 = 278, A-4 = 7493 and G#7 = 56576. A-4 therefore sounds at
+ * 7493 * 985248 / 2^24 = 440.029 Hz: the table is register-quantized, which
+ * is the SID's pitch, not an error.
+ */
+export function sidNoteFreqReg(index: number): number {
+  const i = Math.max(0, Math.min(SID_NOTE_COUNT - 1, Math.round(index)));
+  const hz = 440 * Math.pow(2, (i - 57) / 12);
+  return Math.min(0xffff, Math.round((hz * 16777216) / SID_PAL_CLOCK));
+}
+
+/** The frequency in Hz a SID frequency register sounds at (PAL). */
+export function sidFreqRegToHz(reg: number): number {
+  return (reg * SID_PAL_CLOCK) / 16777216;
+}
+
+/**
+ * SID pitch: the note table above, as GoatTracker plays it.
+ *
+ * A note is its table register, so a note's frequency is exactly the
+ * register-quantized pitch the chip sounds (A-4 = 440.029 Hz), never the
+ * ideal equal-tempered one. The period is linear in semitones, 64 units to
+ * one (XM's grain), with G#7 at 0 and C-0 at 92 * 64, so a larger period is
+ * a lower pitch. Between two notes the frequency follows the register in a
+ * straight line, which is how a SID portamento moves: it adds a fixed amount
+ * to the register every frame. `rawPeriodFromFrequency` inverts that
+ * piecewise-linear map exactly, so the conversions round-trip.
+ *
+ * The SID song itself plays in the Rust player (`rust-wasm/src/sid/player.rs`),
+ * which reads the same table; this model is what the TS engine, the grid and
+ * previews hear for a `'sid'` song.
+ */
+export function createSidPitchModel(): PitchModel {
+  const regs = Array.from({ length: SID_NOTE_COUNT }, (_, i) => sidNoteFreqReg(i));
+  const clampPeriod = (period: number): number => {
+    if (!Number.isFinite(period)) return period;
+    return Math.max(0, Math.min(SID_MAX_PERIOD, period));
+  };
+  /** The register at fractional note `n` (0 = C-0): the table, straight between entries, extended past both ends. */
+  const regAtNote = (n: number): number => {
+    const i = Math.max(0, Math.min(SID_NOTE_COUNT - 2, Math.floor(n)));
+    const lo = regs[i] as number;
+    const hi = regs[i + 1] as number;
+    return lo + (hi - lo) * (n - i);
+  };
+  const noteAtReg = (reg: number): number => {
+    let i = 0;
+    while (i < SID_NOTE_COUNT - 2 && reg > (regs[i + 1] as number)) i += 1;
+    const lo = regs[i] as number;
+    const hi = regs[i + 1] as number;
+    return i + (reg - lo) / (hi - lo);
+  };
+  const frequencyFromPeriod = (period: number): number =>
+    sidFreqRegToHz(regAtNote((SID_MAX_PERIOD - period) / SID_UNITS_PER_SEMITONE));
+  const rawPeriodFromFrequency = (frequency: number): number =>
+    SID_MAX_PERIOD - noteAtReg((frequency * 16777216) / SID_PAL_CLOCK) * SID_UNITS_PER_SEMITONE;
+  return {
+    kind: 'linear',
+    clampPeriod,
+    frequencyFromPeriod,
+    rawPeriodFromFrequency,
+    periodFromFrequency: (frequency) => clampPeriod(rawPeriodFromFrequency(frequency)),
+    // Arpeggio steps through the table's own notes, and stops at its ends.
+    arpeggioPeriod: (basePeriod, semitoneOffset) =>
+      clampPeriod(basePeriod - semitoneOffset * SID_UNITS_PER_SEMITONE),
+    snapPeriod: (period) =>
+      clampPeriod(Math.round(period / SID_UNITS_PER_SEMITONE) * SID_UNITS_PER_SEMITONE),
+    // Uniform in semitones, like the linear table.
+    vibratoDepthCents: (_baseFrequency, depthUnits) => depthUnits * (100 / SID_UNITS_PER_SEMITONE),
+  };
+}

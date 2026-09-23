@@ -1,0 +1,31 @@
+=== NC1: fixture chip-model byte flipped 6581->8580 (python patch of byte 5); expect Rust chain + TS chain RED
+test the_song_plays_on_a_chip_of_its_own_model_frame_by_frame ... FAILED
+test the_apps_file_round_trips_byte_exact_in_rust ... FAILED
+test subsong_one_plays_its_own_orderlists ... ok
+test both_chip_models_play_it_and_they_differ ... ok
+test result: FAILED. 2 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.47s
+[WorkletConfig] 2 engines × 8 voices = 16 total voices, 129 AudioParams
+   × a SID song through the store, the .cmod and the playback chain > the file the chain saves is the Rust fixture, byte for byte (the chip plays exactly this) 121ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 8 passed (9)
+=== NC2: player ignores the wave table's note column (arpeggio); expect RED
+test the_apps_file_round_trips_byte_exact_in_rust ... ok
+test subsong_one_plays_its_own_orderlists ... ok
+test the_song_plays_on_a_chip_of_its_own_model_frame_by_frame ... FAILED
+test both_chip_models_play_it_and_they_differ ... ok
+---- the_song_plays_on_a_chip_of_its_own_model_frame_by_frame stdout ----
+thread 'the_song_plays_on_a_chip_of_its_own_model_frame_by_frame' (1632738) panicked at tests/sid_song_chain.rs:104:17:
+assertion `left == right` failed: frame 49
+    the_song_plays_on_a_chip_of_its_own_model_frame_by_frame
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.40s
+test sid::tests_s3::wave_table_is_waveform_and_arpeggio ... FAILED
+test result: FAILED. 13 passed; 1 failed; 0 ignored; 0 measured; 205 filtered out; finished in 0.43s
+=== NC3: the app song edited (A-4 -> A#4) without regenerating the fixture; expect TS chain RED (fixture mismatch)
+[WorkletConfig] 2 engines × 8 voices = 16 total voices, 129 AudioParams
+   × a SID song through the store, the .cmod and the playback chain > save -> load: the doc, grid, tempo and slots come back, and the engine plays it as SID 133ms
+   × a SID song through the store, the .cmod and the playback chain > the file the chain saves is the Rust fixture, byte for byte (the chip plays exactly this) 118ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  2 failed | 7 passed (9)
+=== restored; control rerun GREEN
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.46s
+      Tests  9 passed (9)

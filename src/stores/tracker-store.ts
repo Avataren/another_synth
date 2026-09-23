@@ -67,6 +67,14 @@ import {
   type AhxPositionMap,
 } from 'src/audio/tracker/ahx-doc';
 import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
+import {
+  decodeSidFile,
+  encodeSidFile,
+  projectSidPatterns,
+  sidDocTiming,
+  sidPositionPatternId,
+  type SidDoc,
+} from 'src/audio/tracker/sid-doc';
 
 export type {
   ModuleFormat,
@@ -272,6 +280,16 @@ interface TrackerStoreState {
   ahxDoc: AhxDoc | null;
   /** Counts every change of `ahxDoc`, including the one that clears it. */
   ahxRevision: number;
+  /**
+   * The model of a SID song (`sid-doc`, plan-sid-tracking.md S3); `null` for
+   * every other song, and for a SID song saved without a readable doc. The doc
+   * is the song: the grid is its projection (`projectSidPatterns`), a save
+   * embeds it (`data.sidFile`) and the Rust player plays it. Always a
+   * `markRaw` object, replaced (never mutated) by an edit (`commitSidDoc`).
+   * The grid does not write back to it yet (S4), so a SID song's grid is
+   * read-only.
+   */
+  sidDoc: SidDoc | null;
 }
 
 const DEFAULT_TRACK_COLORS = [
@@ -439,6 +457,13 @@ export interface TrackerSongFile {
      * for an AHX song with no editable doc (HVL, or bytes the parser rejects).
      */
     ahxFile?: string;
+    /**
+     * SID songs only (plan-sid-tracking.md S3): the song's doc as a SID song
+     * file (`encodeSidFile`, base64). The authority on load, as `ahxFile` is:
+     * the doc, the grid, the slots' names and the tempo are rebuilt from it.
+     * Additive to v5 (an older build ignores it, and shows the grid).
+     */
+    sidFile?: string;
   };
 }
 
@@ -508,10 +533,15 @@ export const useTrackerStore = defineStore('trackerStore', {
       undoStack: [],
       redoStack: [],
       ahxDoc: null,
-      ahxRevision: 0
+      ahxRevision: 0,
+      sidDoc: null
     };
   },
   getters: {
+    /** The song is a SID song (plan-sid-tracking.md S3): three voices, played from `sidDoc`. */
+    isSidSong(): boolean {
+      return this.moduleFormat === 'sid';
+    },
     /** The song is an AHX song (editable or not): what the scope and waveform code means. */
     isAhxSong(): boolean {
       return this.moduleFormat === 'ahx';
@@ -529,6 +559,9 @@ export const useTrackerStore = defineStore('trackerStore', {
      * editable: `isAhxSong` is the question "is it AHX", this is "may I write".
      */
     isReadOnly(): boolean {
+      // A SID song's grid is the doc's projection, with no write-back until S4
+      // (plan-sid-tracking.md): an edit there would never reach the song.
+      if (this.moduleFormat === 'sid') return true;
       return this.moduleFormat === 'ahx' && this.ahxDoc === null;
     },
     /**
@@ -713,6 +746,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.undoStack = [];
       this.redoStack = [];
       this.ahxDoc = null;
+      this.sidDoc = null;
       this.ahxRevision += 1;
       ahxSyncCacheOf(this).cells = [];
       ahxSyncCacheOf(this).published = null;
@@ -740,8 +774,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.baseOctave = clamped;
     },
     addTrack(): boolean {
-      // AHX has exactly four channels, editable or not.
-      if (this.isAhxSong) return false;
+      // AHX has exactly four channels, editable or not; a SID song its chip's three.
+      if (this.isAhxSong || this.isSidSong) return false;
       const maxTracks = 32;
       if (!this.patterns.length) return false;
       const currentCount = this.patterns[0]?.tracks.length ?? 0;
@@ -762,7 +796,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       return true;
     },
     removeTrack(_trackIndex: number): boolean {
-      if (this.isAhxSong) return false;
+      if (this.isAhxSong || this.isSidSong) return false;
       const minTracks = 1;
       if (!this.patterns.length) return false;
       const currentCount = this.patterns[0]?.tracks.length ?? 0;
@@ -1185,6 +1219,9 @@ export const useTrackerStore = defineStore('trackerStore', {
         const bytes = this.savedAhxBytes();
         if (bytes !== null) data.ahxFile = encodeAhxFile(bytes);
       }
+      // A SID song's doc is the song: saved as its file, byte for byte what
+      // the Rust player reads (`sid-file-codec.ts`).
+      if (this.moduleFormat === 'sid' && this.sidDoc !== null) data.sidFile = encodeSidFile(this.sidDoc);
       return { version: CURRENT_SONG_FILE_VERSION, data };
     },
     /**
@@ -1220,6 +1257,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       // The doc belongs to the song that is being replaced: whichever song this
       // is, it starts without one (an editable AHX or HVL song's is set below).
       this.ahxDoc = null;
+      this.sidDoc = null;
       this.ahxRevision += 1;
       clearAhxEditNotice();
 
@@ -1337,6 +1375,68 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.editingSlot = null;
 
       if (this.moduleFormat === 'ahx') this.adoptAhxDoc(file, data);
+      if (this.moduleFormat === 'sid') this.adoptSidFile(data);
+    },
+
+    // ------------------------------------------------------------------
+    // SID songs: the doc is the song (see `sid-doc`, plan-sid-tracking.md S3)
+    // ------------------------------------------------------------------
+
+    /**
+     * Gives the SID song just loaded its doc, from its embedded file
+     * (`data.sidFile`). A song without a readable file keeps the grid it was
+     * saved with, as a display: there is nothing the player could play.
+     */
+    adoptSidFile(data: TrackerSongFile['data']) {
+      if (data.sidFile === undefined) {
+        console.warn('[TrackerStore] SID song has no embedded song file: shown, not playable');
+        return;
+      }
+      const decoded = decodeSidFile(data.sidFile);
+      if (!decoded.ok) {
+        console.warn(`[TrackerStore] SID song kept as a display: its embedded file is unusable (${decoded.reason})`);
+        return;
+      }
+      const oldIndex = (data.patterns ?? []).findIndex((pattern) => pattern.id === data.currentPatternId);
+      this.showSidDoc(decoded.doc, oldIndex);
+    },
+    /**
+     * Makes `doc` the current song, as a load does (history and every other
+     * song's state cleared): the entry point for a SID song that comes from no
+     * `.cmod` (the S5 importer, a new SID song). The title is the doc's name.
+     */
+    adoptSidDoc(doc: SidDoc) {
+      this.resetToNewSong();
+      this.moduleFormat = 'sid';
+      this.currentSong = { title: doc.songName.trim() || 'Untitled SID song', author: doc.author.trim() || 'Unknown', bpm: 125 };
+      this.showSidDoc(doc, 0);
+    },
+    /**
+     * Replaces the song's doc with an edited one (an op's result): the grid,
+     * slot names and tempo follow it, and the position shown stays where it
+     * was. No undo step yet: SID editing, and its history, is S4.
+     */
+    commitSidDoc(doc: SidDoc) {
+      if (this.moduleFormat !== 'sid') return;
+      const index = this.patterns.findIndex((pattern) => pattern.id === this.currentPatternId);
+      this.showSidDoc(doc, index);
+    },
+    /** Sets the doc and everything projected from it; `index` is the grid position to show. */
+    showSidDoc(doc: SidDoc, index: number) {
+      this.sidDoc = doc;
+      this.patterns = projectSidPatterns(doc);
+      this.sequence = this.patterns.map((pattern) => pattern.id);
+      this.currentPatternId = sidPositionPatternId(Math.max(0, Math.min(this.patterns.length - 1, index)));
+      const timing = sidDocTiming(doc);
+      this.currentSong = { ...this.currentSong, bpm: timing.bpm };
+      this.initialSpeed = timing.initialSpeed;
+      this.defaultPatternRows = clampPatternRows(doc.patterns[0]?.rows.length ?? DEFAULT_PATTERN_ROWS);
+      // The slots list the doc's instruments by name. They hold no patch: a SID
+      // instrument is the doc's, and its page is S4.
+      this.instrumentSlots = createDefaultInstrumentSlots().map((slot, i) => {
+        const ins = doc.instruments[i];
+        return ins === undefined ? slot : { ...slot, instrumentName: ins.name, instrumentFormat: 'sid' as const };
+      });
     },
 
     // ------------------------------------------------------------------

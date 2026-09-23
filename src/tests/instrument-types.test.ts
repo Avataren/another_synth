@@ -118,7 +118,12 @@ describe('editor routing table', () => {
       xm: 'sampler-patch',
       s3m: 'sampler-patch',
       ahx: 'ahx-display',
+      // plan-sid-tracking.md S3: a SID instrument's page is S4, so no editor yet.
+      sid: null,
     });
+    expect(resolveInstrumentEditor({ instrumentFormat: 'sid' })).toBeNull();
+    expect(canEditSlot({ instrumentFormat: 'sid' })).toBe(false);
+    expect(instrumentBadgeLabel({ instrumentFormat: 'sid' })).toBe('SID');
   });
 
   it('resolves a slot to its editor', () => {

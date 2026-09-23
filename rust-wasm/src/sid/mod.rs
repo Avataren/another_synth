@@ -19,11 +19,17 @@
 //! module's header lists its sources and marks every INFERRED choice.
 //! Grown from the accepted S0 spike (`.ai/sid-spike-verdict.md`). S1's record
 //! is `.ai/sid-voice-core-verdict.md`.
+//!
+//! S3 adds the song: `song.rs` reads and writes the SID song file the app's
+//! `SidDoc` saves, and `player.rs` plays it on a chip of the song's model.
+//! S3's record is `.ai/sid-song-model-verdict.md`.
 
 pub mod chip;
 pub mod envelope;
 pub mod filter;
 pub mod noise;
+pub mod player;
+pub mod song;
 pub mod voice;
 pub mod waveform;
 
@@ -31,8 +37,12 @@ pub mod waveform;
 mod tests;
 #[cfg(test)]
 mod tests_s2;
+#[cfg(test)]
+mod tests_s3;
 
 pub use chip::Chip;
+pub use player::SidSongPlayer;
+pub use song::SidSong;
 
 use std::fmt;
 
@@ -100,4 +110,18 @@ pub fn hz_to_freq_reg(hz: f64) -> u16 {
 /// Register value for a MIDI note (69 = A-4 = 440 Hz, equal temperament).
 pub fn note_to_freq_reg(midi: i32) -> u16 {
     hz_to_freq_reg(440.0 * 2f64.powf((midi - 69) as f64 / 12.0))
+}
+
+/// Notes in a SID song's note table: C-0 (index 0) to G#7 (index 92). B-7
+/// would need register 67 277, past 16 bits, so the table stops at G#7, as
+/// GoatTracker's range does.
+pub const GT_NOTE_COUNT: u8 = 93;
+
+/// The frequency register of note table index `index` (0 = C-0, 57 = A-4,
+/// clamped to 92 = G#7): equal temperament from A-4 = 440 Hz at the PAL
+/// clock, rounded, i.e. `note_to_freq_reg` with C-0 at MIDI 12. The app's
+/// `sidNoteFreqReg` computes the same numbers; both sides pin 278, 7493 and
+/// 56576 for C-0, A-4 and G#7.
+pub fn gt_note_freq_reg(index: u8) -> u16 {
+    note_to_freq_reg(index.min(GT_NOTE_COUNT - 1) as i32 + 12)
 }
