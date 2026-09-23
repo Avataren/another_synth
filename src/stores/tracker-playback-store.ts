@@ -10,42 +10,11 @@ import { useTrackerStore } from './tracker-store';
 import { usePostFxStore } from 'src/stores/post-fx-store';
 import { defaultLookaheadSeconds } from 'src/audio/device-profile';
 import {
-  AHX_RECOVERY_NOTICE_ID,
-  AHX_RELOAD_FAILED_NOTICE_ID,
-  AhxTransport,
-  type AhxReloadOutcome,
-} from 'src/audio/tracker/ahx-transport';
-import type { AhxPositionMap } from 'src/audio/tracker/ahx-doc';
-import { composeAhxPositionMaps, mapAhxPlace, AhxReloadScheduler } from 'src/audio/tracker/ahx-reload';
-import { reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
-import { AhxPreview } from 'src/audio/tracker/ahx-preview';
-import {
-  clearAhxPListPlayhead,
-  pushAhxPListReport,
-  setAhxPListTimingSource,
-} from 'src/audio/tracker/ahx-plist-playhead';
-import { setAhxPreviewOutputNode } from 'src/audio/tracker/ahx-preview-output';
-import { playheadLatencyMs, playheadTiming } from 'src/audio/tracker/plist-playhead-clock';
-import type { AhxPosition, AhxWaveforms } from 'src/audio/tracker/ahx-player';
-import {
-  currentAhxSource,
-  currentAhxPreviewSource,
-  ahxSpeedMultiplierOf,
-  onAhxInstrumentEdit,
-  onAhxStructureChange,
-  onCurrentAhxSourceChange,
-  type AhxInstrumentEdit,
-  type AhxStructureChange,
-} from 'src/audio/tracker/ahx-source';
-import { AhxInstrumentSync } from 'src/audio/tracker/ahx-instrument-sync';
-import {
-  clearAhxNotice,
-  clearAhxNotices,
-  reportAhxNotice,
-  reportRejectedAhxInstruments,
-} from 'src/audio/tracker/ahx-notices';
+  AhxSongTransport,
+  type PlaybackMode,
+} from 'src/audio/tracker/ahx-song-transport';
 
-export type PlaybackMode = 'pattern' | 'song';
+export type { PlaybackMode };
 
 /**
  * Position listener callback type
@@ -72,26 +41,6 @@ let playbackEngineInstance: PlaybackEngine | null = null;
 let positionUnsubscribe: (() => void) | null = null;
 let stateUnsubscribe: (() => void) | null = null;
 let songEndUnsubscribe: (() => void) | null = null;
-
-// The AHX/HVL transport. Unlike the engine above it is created only when an
-// AHX or HVL song is first played, so the other formats never touch it.
-let ahxTransportInstance: AhxTransport | null = null;
-let ahxUnsubscribes: Array<() => void> = [];
-/** The keyboard-preview voice: its own worklet, apart from the song's (`AhxTransport`). */
-let ahxPreviewInstance: AhxPreview | null = null;
-let ahxSourceUnsubscribe: (() => void) | null = null;
-let ahxStructureUnsubscribe: (() => void) | null = null;
-/** The debounce in front of a live reload of a playing AHX song (`AhxReloadScheduler`). */
-let ahxReloadScheduler: AhxReloadScheduler | null = null;
-/** Carries instrument edits to the live worklets (song player and preview) once a burst of them is over. */
-let ahxEditSync: AhxInstrumentSync | null = null;
-let ahxEditUnsubscribe: (() => void) | null = null;
-// Per-voice scope data from the AHX worklet: whether the tracker page wants it
-// (the worklet records nothing otherwise), and the newest snapshot as one view
-// per voice. Module-local and non-reactive on purpose: the scopes read it from
-// their animation callback, and 25 Hz of reactive triggers would buy nothing.
-let ahxScopesWanted = false;
-let ahxScopeViews: Int16Array[] | null = null;
 
 // Position event listeners (for UI components)
 const positionListeners = new Set<PositionListener>();
@@ -184,53 +133,6 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   /** Flag to suppress position updates during seek/stop operations */
   let suppressPositionUpdates = false;
 
-  /**
-   * Whether the song last loaded is an AHX/HVL one, and so owned by the
-   * worklet's Rust engine rather than `PlaybackEngine`. Transport calls
-   * (`stop`, `pause`, `resume`, ...) branch on it; the two engines are never
-   * live at once.
-   */
-  let ahxSongActive = false;
-
-  /**
-   * Bumped whenever an AHX load or start in flight stops being wanted: the
-   * transport is stopped, or handed back to `PlaybackEngine`. A load that
-   * comes back from its `await` to a different value than it left with does
-   * not go on to mark the song loaded (or start it).
-   */
-  let ahxEpoch = 0;
-
-  /**
-   * Where the AHX engine is, as last reported by the worklet or set by a seek.
-   * Kept apart from `currentSequenceIndex` / `playbackRow` because those are
-   * also the UI's selection: choosing another position while the song is
-   * paused moves them, and a resume must compare against where the *engine*
-   * is, not where the user is pointing.
-   */
-  let ahxPlace: { position: number; row: number } | null = null;
-
-  /**
-   * Where the worklet's song and the editor's song part ways: `map(i)` is the
-   * editor's index of the worklet song's position `i` (`null`: it is gone,
-   * `undefined`: nothing moved). Position ops change the editor's song at
-   * once and the worklet's only when the reload runs, so until then (and after
-   * a reload the engine refused) the positions the worklet reports are in the
-   * old song's terms. It composes the maps of the reloads already sent; the
-   * edits still waiting in the scheduler come on top (`ahxHighlightMap`).
-   */
-  let ahxSpaceMap: AhxPositionMap | undefined;
-
-  /** A reload burst has been sent and its `song-loaded` has not come back: the reports are still the old song's. */
-  let ahxReloadInFlight = false;
-
-  /** Which burst the outcome that comes back belongs to; a newer one, a stop or a song change orphans it. */
-  let ahxReloadBurst = 0;
-
-  /** The epoch a scheduled reload was scheduled in (see `ahxEpoch`). */
-  let ahxReloadEpoch = 0;
-
-  /** A reload's `seek` has been sent and its answer (the kind) is still to come. */
-  let ahxAwaitingSeekKind = false;
 
   // ============================================
   // Selection helpers
@@ -475,386 +377,6 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     broadcastPosition(row, pos.patternId);
   }
 
-  // ============================================
-  // AHX / HVL transport
-  // ============================================
-  //
-  // The Rust engine in the AHX worklet owns the transport (ticks, rows, jumps,
-  // speed), so none of `PlaybackEngine`'s scheduling applies: these functions
-  // only start, pause and stop it, and mirror where it reports being. The
-  // song's row model in the tracker store is display only.
-
-  function ensureAhxTransport(): AhxTransport {
-    if (!ahxTransportInstance) {
-      ahxTransportInstance = new AhxTransport(getSongBank());
-      ahxTransportInstance.setStopAtEnd(!loopSong.value);
-      if (ahxScopesWanted) ahxTransportInstance.setCapture(true);
-      syncAhxMuteSolo();
-      ahxUnsubscribes = [
-        ahxTransportInstance.onPosition(handleAhxPosition),
-        ahxTransportInstance.onSongEnd(handleAhxSongEnd),
-        ahxTransportInstance.onWaveforms(handleAhxWaveforms),
-        ahxTransportInstance.onSeekKind(handleAhxSeekKind),
-      ];
-    }
-    return ahxTransportInstance;
-  }
-
-  /** Free the worklet node and its wasm instance; the next AHX song makes a new one. */
-  function disposeAhxTransport(): void {
-    for (const unsubscribe of ahxUnsubscribes) unsubscribe();
-    ahxUnsubscribes = [];
-    ahxTransportInstance?.dispose();
-    ahxTransportInstance = null;
-  }
-
-  /**
-   * Play an AHX instrument from the keyboard: `instrument` (1-based, the
-   * file's numbering, which is also the slot number) at `midi`. Sounded by a
-   * preview voice of its own that the song's transport knows nothing about, so
-   * it works with the song stopped, paused or playing and never disturbs it.
-   * `false` when no AHX song is loaded.
-   */
-  async function previewAhxNoteOn(instrument: number, midi: number, velocity = 127): Promise<boolean> {
-    const bytes = currentAhxPreviewSource();
-    if (!bytes) {
-      // Not (or no longer) an AHX song: nothing left for a preview to sound.
-      disposeAhxPreview();
-      return false;
-    }
-    ahxPreviewInstance ??= newAhxPreview();
-    await ahxPreviewInstance.noteOn(bytes, instrument, midi, velocity);
-    return true;
-  }
-
-  /**
-   * Have the keyboard preview voice ready before the first key: called when
-   * an AHX slot is selected and when an AHX song loads. It then stays until the
-   * song changes or is unloaded (no idle drop). `false` when no AHX song is
-   * loaded.
-   */
-  async function prepareAhxPreview(): Promise<boolean> {
-    const bytes = currentAhxPreviewSource();
-    if (!bytes) return false;
-    ahxPreviewInstance ??= newAhxPreview();
-    await ahxPreviewInstance.preload(bytes);
-    return true;
-  }
-
-  function previewAhxNoteOff(midi: number): void {
-    ahxPreviewInstance?.noteOff(midi);
-  }
-
-  /**
-   * What the playhead's clock holds a row back by, and how often the engine
-   * can step: the preview's context latency (seconds; 0 where the browser does
-   * not report it) and the song's speed multiplier at the context's rate.
-   */
-  function ahxPlayheadTiming() {
-    const context = getSongBank().audioContext as AudioContext & { outputLatency?: number };
-    const bytes = currentAhxPreviewSource();
-    return playheadTiming(
-      context.sampleRate,
-      bytes ? ahxSpeedMultiplierOf(bytes) : 1,
-      playheadLatencyMs(context.baseLatency, context.outputLatency),
-    );
-  }
-
-  function newAhxPreview(): AhxPreview {
-    const preview = new AhxPreview(getSongBank(), undefined, undefined, (instruments) =>
-      reportRejectedAhxInstruments(instruments, 'keyboard preview'),
-    );
-    // Lazy: this creates no worklet, it only says where to send the rows the
-    // preview's worklet reports once there is one.
-    preview.onPListRow(pushAhxPListReport);
-    preview.onOutputNode(setAhxPreviewOutputNode);
-    setAhxPListTimingSource(ahxPlayheadTiming);
-    return preview;
-  }
-
-  function disposeAhxPreview(): void {
-    ahxPreviewInstance?.dispose();
-    ahxPreviewInstance = null;
-    // The row belonged to that preview's note.
-    clearAhxPListPlayhead();
-    setAhxPreviewOutputNode(null);
-  }
-
-  // A new song (AHX or not) makes the preview voice stale: drop it at once,
-  // with any held note; an AHX song gets its replacement made straight away.
-  ahxSourceUnsubscribe?.();
-  ahxSourceUnsubscribe = onCurrentAhxSourceChange(() => {
-    // Edits waiting to be sent belong to the song that is gone, and so does a reload.
-    ahxEditSync?.discard();
-    resetAhxReload();
-    // What was said of the old song's edits is not the new one's to carry.
-    clearAhxNotices();
-    disposeAhxPreview();
-    if (currentAhxPreviewSource()) void prepareAhxPreview().catch(() => undefined);
-  });
-
-  // ------------------------------------------------------------------
-  // Live reload of a playing AHX song
-  // ------------------------------------------------------------------
-  //
-  // A structural edit (a cell, a position, an added instrument, an undo) makes
-  // the store swap in new bytes (`replaceCurrentAhxBytes`), which lands here.
-  // Stopped or paused nothing is sent: the next Play loads what the editor
-  // holds. Playing, the song is reloaded once the edits stop coming
-  // (`AhxReloadScheduler`): one burst of `load-song`, `seek(place)`, `play`
-  // (`AhxTransport.reloadInPlace`), at a place that has been through every
-  // position op the burst coalesced. A reload costs an audible dropout (the
-  // worklet prewarms the hi-fi tables on the audio thread).
-
-  /** Forget a scheduled or running reload: the song changed, or playback stopped or left the AHX engine. */
-  function resetAhxReload(): void {
-    ahxReloadScheduler?.cancel();
-    ahxReloadBurst++;
-    ahxReloadInFlight = false;
-    ahxAwaitingSeekKind = false;
-    ahxSpaceMap = undefined;
-  }
-
-  ahxReloadScheduler?.cancel();
-  ahxReloadScheduler = new AhxReloadScheduler((map) => runAhxReload(map));
-  ahxStructureUnsubscribe?.();
-  ahxStructureUnsubscribe = onAhxStructureChange(handleAhxStructureChange);
-
-  function handleAhxStructureChange(change: AhxStructureChange): void {
-    // An undo starts the song's instruments over: edits waiting to be sent are older than that.
-    if (change.resetEdits) ahxEditSync?.discard();
-    // The preview needs the instrument list, never the patterns: its bytes moved
-    // only when the instruments did. Not created just for this (its first key loads).
-    if ((change.instrumentsChanged || change.resetEdits) && ahxPreviewInstance) {
-      void prepareAhxPreview().catch(() => undefined);
-    }
-    if (ahxSongActive && isPlaying.value) {
-      if (!ahxReloadScheduler?.pending) ahxReloadEpoch = ahxEpoch;
-      ahxReloadScheduler?.schedule(change.mapPosition);
-      return;
-    }
-    // Paused: the worklet keeps the old song until a resume or a Play, so the
-    // map is kept for the place. Stopped: the next Play seeks from the selection.
-    if (ahxSongActive && isPaused.value) {
-      ahxSpaceMap = composeAhxPositionMaps(ahxSpaceMap, change.mapPosition);
-    }
-    if (change.mapPosition) remapAhxSelection(change.mapPosition);
-  }
-
-  /** Not playing, so nothing else moves the selection: a deleted position lands on the one now at its index. */
-  function remapAhxSelection(map: AhxPositionMap): void {
-    const count = trackerStore.ahxDoc?.positions.length ?? trackerStore.sequence.length;
-    const last = Math.max(0, count - 1);
-    const through = (index: number): number => Math.min(last, map(index) ?? index);
-    currentSequenceIndex.value = through(currentSequenceIndex.value);
-    if (selectedSequenceIndex.value !== null) selectedSequenceIndex.value = through(selectedSequenceIndex.value);
-  }
-
-  /** The debounce ran out: reload the playing song, if it still needs it. */
-  function runAhxReload(map: AhxPositionMap | undefined): void {
-    // Stopped, or another format took over, while the edits were coming in.
-    if (ahxReloadEpoch !== ahxEpoch || !ahxSongActive) return;
-    ahxSpaceMap = composeAhxPositionMaps(ahxSpaceMap, map);
-    // Paused meanwhile: the next Play (or a resume) loads the bytes.
-    if (!isPlaying.value) return;
-    sendAhxReload();
-  }
-
-  /** The reload burst. `false` when there was nothing to send (the worklet already holds the current bytes). */
-  function sendAhxReload(): boolean {
-    const transport = ahxTransportInstance;
-    if (!transport) return false;
-    // What the editor holds (an un-flushed cell edit, an instrument or title
-    // change) goes into the bytes first; swaps them only when the content differs.
-    trackerStore.flushAhxBytes();
-    const bytes = currentAhxSource();
-    if (!bytes || (transport.isLoaded(bytes) && !ahxReloadInFlight)) return false;
-    const from = ahxPlace ?? { position: currentSequenceIndex.value, row: playbackRow.value };
-    const count = trackerStore.ahxDoc?.positions.length ?? trackerStore.sequence.length;
-    const place = mapAhxPlace(from, ahxSpaceMap, count);
-    const rows = trackerStore.rowsForPattern(trackerStore.sequence[place.position]);
-    place.row = Math.max(0, Math.min(place.row, rows - 1));
-    ahxPlace = place;
-    ahxReloadInFlight = true;
-    ahxAwaitingSeekKind = true;
-    const burst = ++ahxReloadBurst;
-    void transport.reloadInPlace(bytes, place, true, from).then((outcome) => {
-      if (burst === ahxReloadBurst) onAhxReloaded(outcome, from);
-    });
-    return true;
-  }
-
-  function onAhxReloaded(outcome: AhxReloadOutcome, from: { position: number; row: number }): void {
-    ahxReloadInFlight = false;
-    switch (outcome.outcome) {
-      case 'superseded':
-        break;
-      case 'loaded':
-        // The worklet's song is the editor's again: reports need no map now, and
-        // what an earlier refusal said no longer holds.
-        ahxSpaceMap = undefined;
-        clearAhxNotice(AHX_RECOVERY_NOTICE_ID);
-        clearAhxNotice(AHX_RELOAD_FAILED_NOTICE_ID);
-        reportRejectedAhxInstruments(outcome.info.rejectedInstruments, 'song player');
-        break;
-      case 'recovered':
-        // The worklet plays the last version it accepted (the transport said so),
-        // from where it was: its positions are still the old song's, and
-        // `ahxSpaceMap` keeps mapping them to the editor's.
-        ahxPlace = from;
-        break;
-      case 'failed':
-        // The worklet holds no song (the transport said so): nothing plays.
-        ahxSpaceMap = undefined;
-        ahxAwaitingSeekKind = false;
-        ahxPlace = { position: 0, row: 0 };
-        setAhxTransportState('stopped');
-        playbackRow.value = 0;
-        break;
-    }
-  }
-
-  /** The `seek` of a reload was answered: kind 2 means the row starts cold. */
-  function handleAhxSeekKind(kind: 1 | 2): void {
-    if (!ahxAwaitingSeekKind) return;
-    ahxAwaitingSeekKind = false;
-    if (kind === 2) {
-      reportAhxEditNotice(
-        "The edit changed the song's flow so that it no longer reaches the row that was playing: playback continues from that row with no notes carried over.",
-      );
-    }
-  }
-
-  /**
-   * Instrument edits. The store commits an edit to the song at once (the slot's
-   * `ahxData` and `ahx-source`'s recorded edit); this hands it to the worklets
-   * that already hold the song: the song player, so the song plays the new
-   * instrument from its next trigger, and the preview voice, so the next key
-   * sounds it. Both are the same instrument replaced in the same song data,
-   * not a preview-only copy; a worklet made later starts from all the recorded
-   * edits.
-   *
-   * The two are not sent alike. The preview swap is a data write (the note-on
-   * prewarms what the new instrument needs, when a key is pressed), so it goes
-   * at once and a key pressed right after an edit sounds it. The song player
-   * may have to walk the whole song to build the hi-fi tables the new
-   * instrument reaches, on the audio thread, so its edits are coalesced
-   * (`AhxInstrumentSync`): a burst of edits (typing a number) costs one walk,
-   * and none for volume or envelope edits, which reach no table.
-   */
-  function replaceInPreview(edit: AhxInstrumentEdit): void {
-    ahxPreviewInstance?.replaceInstrument(edit.instrument, edit.bytes).catch((error) => {
-      // The engine kept the old instrument: the keyboard sounds one thing and
-      // the editor shows another until the next load. Say so, not just the log.
-      reportAhxNotice(
-        `Instrument #${edit.instrument}: the keyboard preview did not accept the edit (${errorText(error)}), so it sounds as before.`,
-      );
-    });
-  }
-  function sendAhxInstrumentEdits(edits: AhxInstrumentEdit[]): void {
-    const transport = ahxTransportInstance;
-    if (!transport) return;
-    transport.replaceInstruments(edits).forEach((applied, index) => {
-      applied.catch((error) => {
-        reportAhxNotice(
-          `Instrument #${edits[index]?.instrument}: the song did not accept the edit (${errorText(error)}), so it plays as before.`,
-        );
-      });
-    });
-  }
-  const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
-  ahxEditSync?.discard();
-  ahxEditSync = new AhxInstrumentSync(sendAhxInstrumentEdits);
-  ahxEditUnsubscribe?.();
-  ahxEditUnsubscribe = onAhxInstrumentEdit((edit) => {
-    replaceInPreview(edit);
-    ahxEditSync?.push(edit);
-  });
-
-  /** Send the song player the edits still waiting, now (a play must hear the edits made a moment ago). */
-  function flushAhxInstrumentEdits(): void {
-    ahxEditSync?.flush();
-  }
-
-  /** The worklet's position index is the sequence index: one pattern per position. */
-  function handleAhxPosition(p: AhxPosition): void {
-    // While a reload is on its way the reports are the old song's: the place the
-    // burst was sent with is the truth until the new song answers.
-    if (ahxSongActive && !ahxReloadInFlight) ahxPlace = { position: p.position, row: p.row };
-    // A report that was already in flight when the song was stopped.
-    if (!ahxSongActive || !isPlaying.value) return;
-    // The editor's song may already be another one than the worklet plays (an
-    // edit is waiting for its reload): its sequence is the new order, the report
-    // is in the old one. Through the map, or no highlight rather than a wrong one.
-    const map = ahxHighlightMap();
-    const index = map ? map(p.position) : p.position;
-    if (index === null) return;
-    applyPosition({
-      row: p.row,
-      patternId: trackerStore.sequence[index],
-      sequenceIndex: index,
-    });
-  }
-
-  /** Old-song index to editor index for a report: what was sent already, then what is still waiting. */
-  function ahxHighlightMap(): AhxPositionMap | undefined {
-    return composeAhxPositionMaps(ahxSpaceMap, ahxReloadScheduler?.pendingMap);
-  }
-
-  /** One view per voice into the snapshot; a report from a song no longer playing is dropped. */
-  function handleAhxWaveforms(w: AhxWaveforms): void {
-    if (!ahxSongActive || !isPlaying.value) return;
-    ahxScopeViews = Array.from({ length: w.channels }, (_, voice) =>
-      w.data.subarray(voice * w.points, (voice + 1) * w.points),
-    );
-  }
-
-  /**
-   * Ask the AHX worklet to record and report each voice's waveform, or stop
-   * doing so. The tracker page turns it on while its per-track visualizers
-   * are showing an AHX/HVL song; with it off the engine does no capture work.
-   */
-  function setAhxScopesEnabled(enabled: boolean): void {
-    ahxScopesWanted = enabled;
-    ahxTransportInstance?.setCapture(enabled);
-    if (!enabled) ahxScopeViews = null;
-  }
-
-  /**
-   * The newest waveform of one AHX/HVL voice (`i16`, oldest first, full scale
-   * `AHX_SCOPE_FULL_SCALE`), or `null` when nothing is playing or no snapshot
-   * has arrived yet. The array is a view into the latest snapshot: read it,
-   * do not keep it. Not reactive; call it from a draw loop.
-   */
-  function getAhxChannelWaveform(channel: number): Int16Array | null {
-    if (!ahxSongActive || !isPlaying.value) return null;
-    return ahxScopeViews?.[channel] ?? null;
-  }
-
-  /**
-   * The worklet keeps looping after the song's end; a non-looping song (the
-   * jukebox) stops it here and tells the listeners, as the engine does for
-   * the other formats.
-   */
-  function handleAhxSongEnd(): void {
-    if (!ahxSongActive || loopSong.value) return;
-    ahxTransportInstance?.stop();
-    ahxPlace = { position: 0, row: 0 };
-    setAhxTransportState('stopped');
-    playbackRow.value = 0;
-    for (const listener of songEndListeners) {
-      listener();
-    }
-  }
-
-  function setAhxTransportState(state: 'playing' | 'paused' | 'stopped'): void {
-    // Not playing: the scopes go flat rather than freezing on the last snapshot.
-    if (state !== 'playing') ahxScopeViews = null;
-    isPlaying.value = state === 'playing';
-    isPaused.value = state === 'paused';
-    audioStore.setPlaybackState(state === 'playing');
-  }
-
   /** Silence `PlaybackEngine` before the AHX engine takes over. */
   function stopSampleEngine(): void {
     if (!playbackEngineInstance) return;
@@ -863,166 +385,58 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     suppressPositionUpdates = false;
   }
 
-  /** Hand the transport back to `PlaybackEngine`: a non-AHX song is being loaded. */
-  function leaveAhx(): void {
-    ahxEpoch++;
-    resetAhxReload();
-    disposeAhxPreview();
-    if (!ahxSongActive) return;
-    ahxSongActive = false;
-    ahxPlace = null;
-    ahxScopeViews = null;
-    // Not just stopped: with no AHX song left to play, the worklet node would
-    // sit idle (and connected to the mix bus) for the life of the app.
-    disposeAhxTransport();
+  // ============================================
+  // AHX / HVL transport
+  // ============================================
+  //
+  // The AHX worklet's transport lives in `AhxSongTransport`; the store lends it
+  // its reactive state and the helpers the AHX path calls, and its verbs
+  // hand the AHX branch over to it.
+
+  const ahx = new AhxSongTransport({
+    isPlaying,
+    isPaused,
+    playbackMode,
+    playbackRow,
+    currentSequenceIndex,
+    selectedSequenceIndex,
+    mutedTracks,
+    soloedTracks,
+    hasSongLoaded,
+    loopSong,
+    songEndListeners,
+    trackerStore,
+    getSongBank,
+    setPlaybackState: (playing) => audioStore.setPlaybackState(playing),
+    applyPosition,
+    resolveStartSequenceIndex,
+    recordLastSong,
+    sanitizeMuteSoloState,
+    stopSampleEngine,
+  });
+
+  async function previewAhxNoteOn(instrument: number, midi: number, velocity = 127): Promise<boolean> {
+    return ahx.previewAhxNoteOn(instrument, midi, velocity);
   }
 
-  /**
-   * Load an AHX/HVL song into the worklet: the bytes were kept at import
-   * (`ahx-source`), the song passed in is only the display model.
-   *
-   * Throws if the worklet cannot read the file, so a caller loading a
-   * playlist entry can move past it.
-   */
-  async function loadAhxSong(song: PlaybackSong, mode: PlaybackMode): Promise<boolean> {
-    const bytes = currentAhxSource();
-    if (!bytes) {
-      console.warn(
-        '[PlaybackStore] AHX song has no source bytes (a .cmod saved before AHX songs could be saved cannot carry them); cannot play',
-      );
-      return false;
-    }
-    if (!song.sequence.length) {
-      console.warn('No patterns available to play.');
-      return false;
-    }
-    stopSampleEngine();
-    playbackMode.value = mode;
-    // A mute/solo left over from a wider song must not outlive its track: a
-    // solo on a voice this song lacks would silence every voice it has.
-    const voices = song.patterns[0]?.tracks.length;
-    if (voices) sanitizeMuteSoloState(voices);
-    getSongBank().setModuleFormat(song.moduleFormat, song.linearFrequency, song.amigaLimits);
-    const transport = ensureAhxTransport();
-    // Claimed before the await, not after: a stop or a MOD load that lands
-    // while the worklet is loading must see an AHX song and take the AHX
-    // branch (`leaveAhx` / the transport stop), not the engine's.
-    const wasActive = ahxSongActive;
-    ahxSongActive = true;
-    const epoch = ahxEpoch;
-    const loading = transport.load(bytes).then((info) => {
-      // An edit the engine refused at the load: the song plays the file's
-      // instrument while the editor shows the edited one.
-      reportRejectedAhxInstruments(info?.rejectedInstruments, 'song player');
-      // A load that took the current bytes: what a refused reload said is over.
-      clearAhxNotice(AHX_RECOVERY_NOTICE_ID);
-      clearAhxNotice(AHX_RELOAD_FAILED_NOTICE_ID);
-      return info;
-    });
-    if (getSongBank().audioContext.state === 'running') {
-      try {
-        await loading;
-      } catch (error) {
-        if (epoch === ahxEpoch) ahxSongActive = wasActive;
-        throw error;
-      }
-      // Stopped, or another format took over, while the worklet was loading.
-      if (epoch !== ahxEpoch) return false;
-    } else {
-      // A suspended context does not run the worklet's render thread, so its
-      // handshake cannot finish until a user gesture resumes it; awaiting it
-      // here would hang a fresh-tab deep-link load. The load carries on, and
-      // `play` (which resumes the context first) joins it.
-      loading.catch((error) => {
-        console.warn('[PlaybackStore] AHX load failed while the context was suspended', error);
-      });
-    }
-    hasSongLoaded.value = true;
-    recordLastSong(song, mode);
-    return true;
+  async function prepareAhxPreview(): Promise<boolean> {
+    return ahx.prepareAhxPreview();
   }
 
-  /**
-   * Start an AHX/HVL song from `startRow` of order position `startSequenceIndex`
-   * ("play from here"), looping that position when `mode` is `'pattern'`.
-   *
-   * Nothing here restarts the song to get anywhere. The Rust engine owns the
-   * transport, so every case is one of two commands to it:
-   *  - a paused song asked to play from where it is paused **resumes**: the
-   *    engine was only stopped from rendering, so the clock, the wave phases,
-   *    envelopes, filter sweeps and the rest pick up on the next sample;
-   *  - anywhere else is a **seek** (`AhxPlayer.seek`): the engine replays the
-   *    song's flow up to that row without mixing, so the row starts with the
-   *    voices it would have had if the song had played to there.
-   * Whether the song loops that position is a flag on the same engine, so it
-   * can be flipped while running without touching the clock.
-   */
-  async function playAhx(
-    song: PlaybackSong,
-    mode: PlaybackMode,
-    startRow: number,
-    startSequenceIndex: number | null,
-  ): Promise<void> {
-    const songBank = getSongBank();
-    const position = Math.max(
-      0,
-      Math.min(startSequenceIndex ?? resolveStartSequenceIndex(song), song.sequence.length - 1),
-    );
-    const rows = trackerStore.rowsForPattern(song.sequence[position]);
-    const row = Math.max(0, Math.min(Math.round(startRow), rows - 1));
-    // What the editor holds (an edit the store has not flushed yet, an
-    // instrument or title change) is in the bytes before they are compared or
-    // loaded: the next Play plays what the grid shows. Swaps the bytes only
-    // when their content changed, so a resume in place is not lost by asking.
-    trackerStore.flushAhxBytes();
-    // Decided before anything awaits or loads, from where the song is now: a
-    // load of other bytes (the jukebox moving on) is never a resume.
-    const bytes = currentAhxSource();
-    const resuming =
-      ahxSongActive &&
-      isPaused.value &&
-      ahxTransportInstance !== null &&
-      bytes !== null &&
-      ahxTransportInstance.isLoaded(bytes) &&
-      ahxPlace?.position === position &&
-      ahxPlace.row === row;
-    const epoch = ahxEpoch;
-    // A song that is already in the worklet plays the edits made a moment ago.
-    flushAhxInstrumentEdits();
+  function previewAhxNoteOff(midi: number): void {
+    ahx.previewAhxNoteOff(midi);
+  }
 
-    stopSampleEngine();
-    songBank.cancelAllScheduled();
-    songBank.allNotesOff();
+  function flushAhxInstrumentEdits(): void {
+    ahx.flushAhxInstrumentEdits();
+  }
 
-    const contextRunning = await songBank.ensureAudioContextRunning();
-    if (!contextRunning || songBank.audioContext.state !== 'running') {
-      console.warn(
-        `[PlaybackStore] AudioContext not running; skipping AHX playback start (state=${songBank.audioContext.state})`,
-      );
-      return;
-    }
-    // Stopped while the context was being resumed.
-    if (epoch !== ahxEpoch) return;
+  function setAhxScopesEnabled(enabled: boolean): void {
+    ahx.setAhxScopesEnabled(enabled);
+  }
 
-    if (!(await loadAhxSong(song, mode))) return;
-    const transport = ensureAhxTransport();
-    // The worklet holds the editor's song now: what was waiting for a reload is
-    // done (an edit that landed while it loaded is not, and stays scheduled).
-    const loadedBytes = currentAhxSource();
-    if (loadedBytes && transport.isLoaded(loadedBytes)) resetAhxReload();
-    transport.setLoopPosition(mode === 'pattern');
-    if (!resuming) {
-      transport.seek(position, row);
-      ahxPlace = { position, row };
-      ahxScopeViews = null;
-      currentSequenceIndex.value = position;
-      selectedSequenceIndex.value = position;
-      playbackRow.value = row;
-    }
-    transport.play();
-    setAhxTransportState('playing');
-    // An edit landed between the load and here: what plays is one edit behind.
-    if (loadedBytes && !transport.isLoaded(loadedBytes)) sendAhxReload();
+  function getAhxChannelWaveform(channel: number): Int16Array | null {
+    return ahx.getAhxChannelWaveform(channel);
   }
 
   /**
@@ -1085,8 +499,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       return true;
     }
 
-    if (song.moduleFormat === 'ahx') return loadAhxSong(song, mode);
-    leaveAhx();
+    if (song.moduleFormat === 'ahx') return ahx.loadAhxSong(song, mode);
+    ahx.leaveAhx();
 
     const engine = ensureEngine();
 
@@ -1146,8 +560,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     console.log(
       `[PlaybackStore] play() called: mode=${mode}, startRow=${startRow}, startSequenceIndex=${startSequenceIndex ?? 'auto'}`,
     );
-    if (song.moduleFormat === 'ahx') return playAhx(song, mode, startRow, startSequenceIndex);
-    leaveAhx();
+    if (song.moduleFormat === 'ahx') return ahx.playAhx(song, mode, startRow, startSequenceIndex);
+    ahx.leaveAhx();
     const songBank = getSongBank();
 
     // Resolve and persist the starting sequence index up front so UI selection stays in sync
@@ -1198,9 +612,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * Pause playback (keep position)
    */
   function pause(): void {
-    if (ahxSongActive) {
-      ahxTransportInstance?.pause();
-      setAhxTransportState('paused');
+    if (ahx.isActive) {
+      ahx.pause();
       return;
     }
     if (!playbackEngineInstance) return;
@@ -1214,14 +627,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * Continue a paused song where it stopped.
    */
   async function resume(): Promise<void> {
-    if (ahxSongActive) {
-      ahxTransportInstance?.play();
-      setAhxTransportState('playing');
-      // Edits made while it was paused: the worklet still holds the old song, and
-      // a resume (unlike a Play) loads nothing. Reload it now, at the place it
-      // was paused at.
-      ahxReloadScheduler?.flush();
-      if (!ahxReloadInFlight) sendAhxReload();
+    if (ahx.isActive) {
+      ahx.resume();
       return;
     }
     await playbackEngineInstance?.play();
@@ -1231,13 +638,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * Stop playback and reset to beginning of current pattern
    */
   function stop(): void {
-    if (ahxSongActive) {
-      ahxEpoch++;
-      resetAhxReload();
-      ahxTransportInstance?.stop();
-      ahxPlace = { position: 0, row: 0 };
-      setAhxTransportState('stopped');
-      playbackRow.value = 0;
+    if (ahx.isActive) {
+      ahx.stop();
       return;
     }
     if (!playbackEngineInstance) return;
@@ -1258,13 +660,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * Seek to a specific row
    */
   function seek(row: number): void {
-    if (ahxSongActive) {
-      // The engine replays to the row on its own clock; play/pause is kept.
-      const rows = trackerStore.rowsForPattern(trackerStore.sequence[currentSequenceIndex.value]);
-      const target = Math.max(0, Math.min(Math.round(row), rows - 1));
-      ahxTransportInstance?.seek(currentSequenceIndex.value, target);
-      ahxPlace = { position: currentSequenceIndex.value, row: target };
-      playbackRow.value = target;
+    if (ahx.isActive) {
+      ahx.seek(row);
       return;
     }
     if (!playbackEngineInstance) return;
@@ -1276,7 +673,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    */
   function setBpm(bpm: number): void {
     // The AHX engine's tempo comes from the song's own speed commands.
-    if (ahxSongActive || !playbackEngineInstance) return;
+    if (ahx.isActive || !playbackEngineInstance) return;
     playbackEngineInstance.setBpm(bpm);
   }
 
@@ -1285,7 +682,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * takes effect without restarting playback.
    */
   function setPatternLength(patternId: string | null, rows: number): void {
-    if (ahxSongActive || !playbackEngineInstance || !patternId) return;
+    if (ahx.isActive || !playbackEngineInstance || !patternId) return;
     playbackEngineInstance.setPatternLength(patternId, rows);
   }
 
@@ -1299,26 +696,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * per-track sampler nodes.
    */
   function applyAudibilityChange(before: boolean[], trackCount: number): void {
-    if (ahxSongActive) {
-      syncAhxMuteSolo();
+    if (ahx.isActive) {
+      ahx.syncAhxMuteSolo();
       return;
     }
     muteInaudibleTracks(before, getAudibilitySnapshot(trackCount));
-  }
-
-  /**
-   * The store's mute and solo sets as the bit masks the AHX worklet takes.
-   * The worklet keeps them across song loads; a transport made later gets
-   * them when it is created (`ensureAhxTransport`).
-   */
-  function syncAhxMuteSolo(): void {
-    if (!ahxTransportInstance) return;
-    const mask = (tracks: Set<number>) => {
-      let bits = 0;
-      for (const i of tracks) if (i >= 0 && i < 32) bits |= 1 << i;
-      return bits >>> 0;
-    };
-    ahxTransportInstance.setMuteSolo(mask(mutedTracks.value), mask(soloedTracks.value));
   }
 
   /**
@@ -1374,7 +756,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
     mutedTracks.value = newMuted;
     soloedTracks.value = newSoloed;
-    syncAhxMuteSolo();
+    ahx.syncAhxMuteSolo();
   }
 
   // ============================================
@@ -1425,7 +807,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   function setLoopSong(loop: boolean): void {
     loopSong.value = loop;
     playbackEngineInstance?.setLoopSong(loop);
-    ahxTransportInstance?.setStopAtEnd(!loop);
+    ahx.setLoopSong(loop);
   }
 
   /**
@@ -1447,21 +829,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       playbackEngineInstance.stop();
     }
 
-    disposeAhxTransport();
-    disposeAhxPreview();
-    ahxSourceUnsubscribe?.();
-    ahxSourceUnsubscribe = null;
-    ahxStructureUnsubscribe?.();
-    ahxStructureUnsubscribe = null;
-    ahxReloadScheduler?.cancel();
-    ahxReloadBurst++;
-    ahxEditUnsubscribe?.();
-    ahxEditUnsubscribe = null;
-    ahxEditSync?.discard();
-    ahxEditSync = null;
-    ahxSongActive = false;
-    ahxScopeViews = null;
-    ahxEpoch++;
+    ahx.dispose();
 
     if (positionUnsubscribe) {
       positionUnsubscribe();
