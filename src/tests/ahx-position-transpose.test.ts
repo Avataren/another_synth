@@ -76,19 +76,26 @@ describe('the per-position per-channel transpose (plan-pos-transpose.md)', () =>
     ]);
   });
 
-  // plan-hvl-header-ux-0923.md BUG 1: an HVL never gets an editable doc (its
-  // `hvlDoc` is display-only, plan-hvl-editing.md P1), so its read-only header
-  // chip rides the pattern's own `positionTranspose` — which the real load path
-  // (the doc's display projection since P1) must keep intact.
-  it('an HVL load keeps the per-pattern transpose the read-only chip reads', () => {
+  // plan-hvl-header-ux-0923.md BUG 1 put a read-only chip on HVL songs, which
+  // then had no editable doc. Since plan-hvl-editing.md P2 an HVL song with its
+  // bytes has one (`ahxDoc`) and its chips are the editable ones, read from the
+  // doc; the read-only chip, riding the pattern's own `positionTranspose`, is
+  // what an HVL song without its bytes (a saved song file) still gets.
+  it('an HVL load puts the transposes in the doc; without its bytes the pattern keeps them for the read-only chip', () => {
     const buf = fs.readFileSync(path.resolve(__dirname, '../../public/demos/ahx/doobrey_gubbins.hvl'));
     const raw = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
     const song = parseAhx(raw);
     const store = useTrackerStore();
-    store.loadSongFile(importAhxToTrackerSong(
+    const imported = importAhxToTrackerSong(
       raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer,
-    ));
-    // No doc, read-only display: exactly the branch the HVL chip lives on.
+    );
+    store.loadSongFile(imported);
+    expect(store.isAhxEditable).toBe(true);
+    expect(store.ahxDoc?.positions.map((p) => p.transpose)).toEqual(song.positions.map((p) => p.transpose));
+    expect(store.currentPatternId).toBe('ahx-pos-0');
+
+    // No bytes, no doc: read-only display, exactly the branch the read-only chip lives on.
+    store.loadSongFile(JSON.parse(JSON.stringify(imported)) as typeof imported);
     expect(store.isAhxEditable).toBe(false);
     expect(store.currentPattern?.positionTranspose).not.toBeUndefined();
     expect(store.currentPattern?.positionTranspose).toEqual(song.positions[0]!.transpose);

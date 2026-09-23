@@ -14,6 +14,39 @@ import {
   type AhxDocTrack,
 } from './types';
 
+/**
+ * Instrument 0 of the writer's list: what `parseAhx` puts there (its
+ * `defaultInstrument`). The file has no instrument 0; the writer never reads it.
+ */
+export const PLACEHOLDER_INSTRUMENT: Readonly<AhxInstrument> = Object.freeze({
+  name: '',
+  volume: 0,
+  waveLength: 0,
+  filterLowerLimit: 0,
+  filterUpperLimit: 0,
+  filterSpeed: 0,
+  squareLowerLimit: 0,
+  squareUpperLimit: 0,
+  squareSpeed: 0,
+  vibratoDelay: 0,
+  vibratoSpeed: 0,
+  vibratoDepth: 0,
+  hardCutRelease: false,
+  hardCutReleaseFrames: 0,
+  envelope: { aFrames: 0, aVolume: 0, dFrames: 0, dVolume: 0, sFrames: 0, rFrames: 0, rVolume: 0 },
+  plist: { speed: 0, entries: [] },
+});
+
+/** A copy that shares nothing with `ins` (the doc never holds the parse's objects, as with its steps). */
+const copyInstrument = (ins: AhxInstrument): AhxInstrument => ({
+  ...ins,
+  envelope: { ...ins.envelope },
+  plist: {
+    speed: ins.plist.speed,
+    entries: ins.plist.entries.map((entry) => ({ ...entry, fx: [...entry.fx], fxParam: [...entry.fxParam] })),
+  },
+});
+
 /** The one all-zero step. Shared by every blank cell of every track. */
 export const BLANK_STEP: AhxDocStep = Object.freeze({
   note: 0,
@@ -53,7 +86,8 @@ export const docChannels = (doc: AhxDoc): number => (doc.format === 'hvl' ? doc.
 
 /**
  * The doc of a parsed AHX or HVL song. `base`, when given, must be the bytes
- * `song` was parsed from. Throws for an HVL song wider than the engine plays
+ * `song` was parsed from. An HVL doc keeps the song's instruments (it has no
+ * slots to hold them); an AHX doc leaves them to the slots. Throws for an HVL song wider than the engine plays
  * (`HVL_MAX_CHANNELS`): a doc would hold channels nobody hears.
  */
 export function docFromSong(song: AhxSong, base?: Uint8Array): AhxDoc {
@@ -77,6 +111,7 @@ export function docFromSong(song: AhxSong, base?: Uint8Array): AhxDoc {
     channels: song.channels,
     mixgainRaw: song.mixgainRaw ?? 0,
     defstereo: song.defstereo ?? 0,
+    instruments: song.instruments.slice(1).map(copyInstrument),
     ...fields,
   });
 }
@@ -88,10 +123,12 @@ export function docFromBytes(bytes: Uint8Array): AhxDoc {
 
 /**
  * The doc as the `AhxSong` the writer and the library's row builder take.
- * `instruments` is the writer's list, index 0 the unused placeholder. The
- * readonly structure is handed over as mutable: both consumers only read it.
+ * `instruments` is the writer's list, index 0 the unused placeholder; left
+ * out, it is the doc's own (an HVL doc's instruments, none for AHX), so for an
+ * HVL doc `docToSong(docFromSong(song))` is `song`. The readonly structure is
+ * handed over as mutable: both consumers only read it.
  */
-export function docToSong(doc: AhxDoc, instruments: readonly AhxInstrument[]): AhxSong {
+export function docToSong(doc: AhxDoc, instruments: readonly AhxInstrument[] = ownInstruments(doc)): AhxSong {
   return {
     format: doc.format,
     version: doc.version,
@@ -111,6 +148,11 @@ export function docToSong(doc: AhxDoc, instruments: readonly AhxInstrument[]): A
     // AHX has no room for these: the key is left out, as `parseAhx` leaves it.
     ...(doc.format === 'hvl' ? { mixgainRaw: doc.mixgainRaw, defstereo: doc.defstereo } : {}),
   };
+}
+
+/** The writer's list of the doc's own instruments: an HVL doc's, behind the placeholder; none for AHX (they are in the slots). */
+function ownInstruments(doc: AhxDoc): readonly AhxInstrument[] {
+  return doc.format === 'hvl' ? [PLACEHOLDER_INSTRUMENT, ...doc.instruments] : [];
 }
 
 /**

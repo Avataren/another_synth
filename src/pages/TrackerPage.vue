@@ -1127,7 +1127,7 @@ const isReadOnly = computed(() => trackerStore.isReadOnly);
  * the scopes and the playback cursor follow the file, not the row model.
  */
 const isAhxSong = computed(() => trackerStore.isAhxSong);
-const readOnlyHint = 'AHX/HVL songs are read-only: the song plays from its file';
+const readOnlyHint = 'This song is read-only: it plays from its file';
 
 /*
  * Per-position, per-channel transpose (plan-pos-transpose.md): the AHX byte
@@ -1202,9 +1202,21 @@ function onTransposeChipStep(channel: number, direction: number): void {
   const current = trackerStore.ahxDoc?.positions[index]?.transpose[channel] ?? 0;
   trackerStore.setAhxPositionTranspose(index, channel, current + direction);
 }
-const ahxChannelsHint = 'AHX songs have exactly 4 channels';
-const ahxLengthHint = 'All the tracks of an AHX song have the same length';
-const ahxInstrumentsHint = 'AHX instruments are numbered in order and edited in their own editor';
+/** An editable HVL doc's width (its file sets it), or `null` for AHX and a song without a doc. */
+const hvlDocChannels = computed(() => {
+  const doc = trackerStore.ahxDoc;
+  return doc?.format === 'hvl' ? doc.channels : null;
+});
+const ahxChannelsHint = computed(() =>
+  hvlDocChannels.value === null ? 'AHX songs have exactly 4 channels' : `This HVL song has ${hvlDocChannels.value} channels, set by its file`
+);
+const ahxLengthHint = 'All the tracks of an AHX or HVL song have the same length';
+// HVL instruments stay in the song's file until plan-hvl-editing.md P3 decides on HVL slots.
+const ahxInstrumentsHint = computed(() =>
+  hvlDocChannels.value === null
+    ? 'AHX instruments are numbered in order and edited in their own editor'
+    : 'HVL instruments come from the song\'s file and cannot be edited yet'
+);
 /** What the edit composables ask before an edit an AHX step has no home for (see `AhxEditGate`). */
 const ahxEditGate: AhxEditGate = {
   active: () => trackerStore.isAhxEditable,

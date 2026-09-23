@@ -6,7 +6,7 @@ import { parseAhx, type AhxSong, type AhxStep } from '@another-synth/tracker-pla
 import { serializeAhx } from 'src/audio/tracker/song-export';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import { currentAhxSource, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
-import { docFromBytes, docFromSong, docToSong, HVL_MAX_CHANNELS, type AhxDoc, type HvlDoc } from 'src/audio/tracker/ahx-doc';
+import { docFromBytes, docFromSong, docToSong, HVL_MAX_CHANNELS, projectAhxPatterns, type AhxDoc, type HvlDoc } from 'src/audio/tracker/ahx-doc';
 import { useTrackerStore } from 'src/stores/tracker-store';
 
 /**
@@ -132,7 +132,12 @@ describe('HVL docs keep every channel (10 and 16)', () => {
   });
 });
 
-describe('the store attaches the HVL doc at load, read-only', () => {
+// P1 attached this doc display-only (`hvlDoc`); P2 (plan-hvl-editing.md §8
+// deviation 1) moves it into the edit slot `ahxDoc`, so the same load now opens
+// the song for editing. What stays guarded is the structure: every channel in
+// the doc, the grid one track per channel, the engine's bytes the file's own
+// until an edit, and no rebuilt HVL file embedded in a `.cmod` (P3).
+describe('the store attaches the HVL doc at load, editable (P2)', () => {
   beforeEach(() => setActivePinia(createPinia()));
   afterEach(() => setCurrentAhxSource(null));
 
@@ -140,54 +145,56 @@ describe('the store attaches the HVL doc at load, read-only', () => {
     ['meltwater_10ch.hvl', demo('meltwater_10ch.hvl'), 10],
     ['16 channels', serializeAhx(wideSong(16)), 16],
   ] as const) {
-    it(`${label}: hvlDoc holds all ${channels} channels, the grid is its projection, nothing opens for editing`, () => {
+    it(`${label}: ahxDoc holds all ${channels} channels, the grid is its editable projection, history works`, () => {
       const store = useTrackerStore();
       const song = parseAhx(bytes);
       setCurrentAhxSource(bytes);
       store.loadSongFile(importAhxToTrackerSong(toBuffer(bytes)));
 
-      const doc = store.hvlDoc;
-      expect(doc).not.toBeNull();
+      const doc = store.ahxDoc;
+      expect(doc?.format).toBe('hvl');
       expectEveryChannel(song, doc!, channels, label);
       expect(doc!.base).toEqual(bytes);
-      // The gates are where they were: read-only, not editable, no edit doc.
-      expect([store.isAhxSong, store.isAhxEditable, store.isReadOnly]).toEqual([true, false, true]);
-      expect(store.ahxDoc).toBeNull();
-      // The engine's bytes are untouched (no publish).
+      // The gates open: an HVL song with its bytes is editable.
+      expect([store.isAhxSong, store.isAhxEditable, store.isReadOnly]).toEqual([true, true, false]);
+      // The engine's bytes are untouched until an edit (no publish at load, none at a flush).
       expect(currentAhxSource()).toBe(bytes);
-      // The grid: one pattern per position, every channel a track, stable ids, the transposes beside it.
+      store.flushAhxBytes();
+      expect(currentAhxSource()).toBe(bytes);
+      // The grid: one pattern per position, every channel a track, stable ids,
+      // each cell the doc's track (the editable projection: no latch, no clamp).
       expect(store.patterns.length).toBe(song.positions.length);
       expect(store.sequence).toEqual(store.patterns.map((p) => p.id));
       expect(store.currentPatternId).toBe('ahx-pos-0');
+      const projected = projectAhxPatterns(doc!);
       store.patterns.forEach((pattern, p) => {
         expect(pattern.tracks.length, `${label} position ${p}`).toBe(channels);
-        expect(pattern.positionTranspose, `${label} position ${p}`).toEqual(song.positions[p]!.transpose);
+        expect(pattern.tracks.map((t) => t.entries), `${label} position ${p}`).toEqual(projected[p]!.tracks.map((t) => t.entries));
       });
-      // A save embeds no rebuilt file for it, and history stays refused.
+      // A save still embeds no rebuilt file for it (P3), and history is recorded now.
       expect(store.serializeSong().data.ahxFile).toBeUndefined();
       store.pushHistory();
-      expect(store.undoStack).toEqual([]);
+      expect(store.undoStack).toHaveLength(1);
+      expect(store.undoStack[0]!.ahxDoc).toBe(doc);
     });
   }
 
   it('a new load clears the HVL doc', () => {
     const store = useTrackerStore();
     store.loadSongFile(importAhxToTrackerSong(toBuffer(demo('meltwater_10ch.hvl'))));
-    expect(store.hvlDoc).not.toBeNull();
+    expect(store.ahxDoc?.format).toBe('hvl');
     store.loadSongFile(importAhxToTrackerSong(toBuffer(demo('karma.ahx'))));
-    expect(store.hvlDoc).toBeNull();
     expect(store.ahxDoc?.format).toBe('ahx');
     store.loadSongFile(importAhxToTrackerSong(toBuffer(demo('sunspots.hvl'))));
-    expect(store.hvlDoc?.format).toBe('hvl');
-    expect(store.ahxDoc).toBeNull();
+    expect(store.ahxDoc?.format).toBe('hvl');
     store.resetToNewSong();
-    expect(store.hvlDoc).toBeNull();
+    expect(store.ahxDoc).toBeNull();
   });
 
-  it('an HVL song too wide for a doc keeps its imported display', () => {
+  it('an HVL song too wide for a doc keeps its imported display, read-only', () => {
     const store = useTrackerStore();
     store.loadSongFile(importAhxToTrackerSong(toBuffer(serializeAhx(wideSong(17, 1)))));
-    expect(store.hvlDoc).toBeNull();
+    expect(store.ahxDoc).toBeNull();
     expect(store.isReadOnly).toBe(true);
     // The import caps the grid at the engine's 16 channels.
     expect(store.patterns[0]!.tracks.length).toBe(16);

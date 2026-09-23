@@ -15,12 +15,15 @@ export function projectAhxPatterns(doc: AhxDoc): TrackerPattern[] {
 }
 
 /**
- * The grid of a doc that is shown, not edited (an HVL song until the store's
- * write-back knows its width, plan-hvl-editing.md P2): exactly the rows the
+ * The grid of a doc that is shown, not edited: exactly the rows the
  * file's display import builds (`importAhxToTrackerSong`: instruments latched
  * per channel, notes as the engine plays them), so reading them from the doc
  * changes nothing on screen, with the stable ids of the editable projection
  * and each position's transpose beside its rows for the read-only header chip.
+ * The store used it for HVL songs while they were display-only (P1); since
+ * plan-hvl-editing.md P2 an HVL doc is edited, so the store projects it with
+ * `projectAhxPatterns` like an AHX one (the rows differ only in the latched
+ * instrument numbers, which the editable grid shows where a step has one).
  */
 export function projectDisplayPatterns(doc: AhxDoc): TrackerPattern[] {
   return buildAhxTrackerPatterns(docToSong(doc, []), { stableIds: true }).map((pattern, index) => {

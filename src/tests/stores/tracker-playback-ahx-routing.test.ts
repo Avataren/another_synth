@@ -211,7 +211,7 @@ import { parseAhx, type Song } from '@another-synth/tracker-playback';
 
 const karmaBytes = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/ahx/karma.ahx'));
 // chiprolled.hvl was removed from the corpus 2026-09-23 (byte-identical dupe);
-// illuminated.hvl is the replacement read-only-HVL fixture.
+// illuminated.hvl is the replacement HVL fixture (read-only once its bytes are dropped).
 const hvlBytes = fs.readFileSync(path.resolve(__dirname, '../../../public/demos/ahx/illuminated.hvl'));
 
 /** The wiring `useTrackerSongHost` gives the file IO, over the real stores. */
@@ -879,8 +879,13 @@ describe('other formats', () => {
 describe('a read-only song', () => {
   it('refuses structural edits and history', async () => {
     const host = setupHost();
-    // HVL has no doc: it is the read-only case now (an AHX song with bytes is editable).
-    await openAhx(host, hvlBytes);
+    // A song file without its bytes has no doc: it is the read-only case now (an
+    // AHX song with bytes is editable, and so is an HVL one since
+    // plan-hvl-editing.md P2). The HVL fixture's song file, its bytes dropped.
+    const parsed = await host.fileIO.parseSongBuffer(
+      hvlBytes.buffer.slice(hvlBytes.byteOffset, hvlBytes.byteOffset + hvlBytes.byteLength) as ArrayBuffer,
+    );
+    await host.fileIO.applySongFile(JSON.parse(JSON.stringify(parsed)) as typeof parsed);
     const t = host.trackerStore;
     expect(t.isAhxSong).toBe(true);
     expect(t.isReadOnly).toBe(true);

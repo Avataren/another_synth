@@ -41,7 +41,6 @@ import {
   type ReplaceAhxBytesOptions,
 } from 'src/audio/tracker/ahx-source';
 import {
-  AHX_CHANNELS,
   ahxEditRefusal,
   ahxInstrumentBytes,
   allocTrack,
@@ -49,13 +48,14 @@ import {
   buildAhxFile,
   buildAhxSlots,
   decodeAhxFile,
+  docChannels,
   docFromSong,
   encodeAhxFile,
   entriesToTrack,
+  fileInstruments,
   instrumentGrowthRefusal,
   isBlankTrack,
   projectAhxPatterns,
-  projectDisplayPatterns,
   projectTracks,
   setTrack,
   setTranspose,
@@ -65,7 +65,6 @@ import {
   type AhxEditCheck,
   type AhxOpContext,
   type AhxPositionMap,
-  type HvlDoc,
 } from 'src/audio/tracker/ahx-doc';
 import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 
@@ -181,7 +180,7 @@ interface TrackerSnapshot {
   defaultPatternRows: number;
   stepSize: number;
   baseOctave: number;
-  /** Empty for an editable AHX song: the grid is rebuilt from `ahxDoc` on apply. */
+  /** Empty for an editable AHX/HVL song: the grid is rebuilt from `ahxDoc` on apply. */
   patterns: TrackerPattern[];
   sequence: string[];
   currentPatternId: string | null;
@@ -189,10 +188,8 @@ interface TrackerSnapshot {
   activeInstrumentId: string | null;
   currentInstrumentPage: number;
   songPatches: Record<string, Patch>;
-  /** The AHX doc of an editable AHX song (a reference: docs are immutable). */
+  /** The doc of an editable AHX or HVL song (a reference: docs are immutable). */
   ahxDoc?: AhxDoc | null;
-  /** The display-only doc of an HVL song (a reference, like `ahxDoc`). */
-  hvlDoc?: HvlDoc | null;
 }
 
 interface TrackerStoreState {
@@ -265,22 +262,16 @@ interface TrackerStoreState {
   /** Redo history stack */
   redoStack: TrackerSnapshot[];
   /**
-   * The structure of an editable AHX song (see `ahx-doc`); `null` for every
-   * other song, and for an AHX/HVL song that has no doc (it stays read-only).
-   * Always a `markRaw` object, replaced (never mutated) by an edit.
+   * The structure of an editable AHX or HVL song (see `ahx-doc`; `format`
+   * says which, `docChannels` its width); `null` for every other song, and for
+   * an AHX/HVL song that has no doc (it stays read-only). Always a `markRaw`
+   * object, replaced (never mutated) by an edit. An HVL doc is edited, played
+   * and undone exactly like an AHX one; only the `.cmod` save stays AHX-only
+   * (`serializeSong`, plan-hvl-editing.md P3).
    */
   ahxDoc: AhxDoc | null;
   /** Counts every change of `ahxDoc`, including the one that clears it. */
   ahxRevision: number;
-  /**
-   * The structure of an HVL song whose bytes are known, read-only: the grid is
-   * its display projection (`projectDisplayPatterns`) and nothing writes to it.
-   * Deliberately not `ahxDoc`: every reader of `ahxDoc` is an edit, publish or
-   * save path that knows four channels and the AHX format only, and the song
-   * must play and save exactly as its file (plan-hvl-editing.md P1). P2 moves
-   * it into `ahxDoc` when those paths learn HVL.
-   */
-  hvlDoc: HvlDoc | null;
 }
 
 const DEFAULT_TRACK_COLORS = [
@@ -511,8 +502,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       undoStack: [],
       redoStack: [],
       ahxDoc: null,
-      ahxRevision: 0,
-      hvlDoc: null
+      ahxRevision: 0
     };
   },
   getters: {
@@ -525,10 +515,11 @@ export const useTrackerStore = defineStore('trackerStore', {
       return this.moduleFormat === 'ahx' && this.ahxDoc !== null;
     },
     /**
-     * The song's row model is display only. An HVL song, or an AHX song that
-     * has no doc (a saved file without its bytes), is played from its file by
-     * the worklet's own engine; the patterns here mirror it for the eye, so an
-     * edit to them would never reach the audio. An AHX song with a doc is
+     * The song's row model is display only. An AHX or HVL song that has no
+     * doc (a saved file without its bytes, an HVL wider than the engine's 16
+     * channels) is played from its file by the worklet's own engine; the
+     * patterns here mirror it for the eye, so an edit to them would never reach
+     * the audio. A song with a doc (AHX, or HVL since plan-hvl-editing.md P2) is
      * editable: `isAhxSong` is the question "is it AHX", this is "may I write".
      */
     isReadOnly(): boolean {
@@ -541,7 +532,11 @@ export const useTrackerStore = defineStore('trackerStore', {
      * the cursor moves; the write-back's safety net asks the same rules.
      */
     ahxRefusal(): (check: AhxEditCheck) => string | null {
-      return (check) => (this.ahxDoc === null ? null : ahxEditRefusal(check, this.ahxDoc.trackLength));
+      return (check) => {
+        const doc = this.ahxDoc;
+        if (doc === null) return null;
+        return ahxEditRefusal(check, doc.trackLength, { format: doc.format, channels: docChannels(doc) });
+      };
     },
     /**
      * Row count of the pattern currently being edited. This is what the grid,
@@ -608,8 +603,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         activeInstrumentId: this.activeInstrumentId,
         currentInstrumentPage: this.currentInstrumentPage,
         songPatches: JSON.parse(JSON.stringify(this.songPatches)),
-        ahxDoc,
-        hvlDoc: this.moduleFormat === 'ahx' ? this.hvlDoc : null
+        ahxDoc
       };
     },
     /** Apply a snapshot back into the store state. */
@@ -632,8 +626,6 @@ export const useTrackerStore = defineStore('trackerStore', {
       const previousDoc = this.ahxDoc;
       this.ahxDoc = ahxDoc;
       this.ahxRevision += 1;
-      // Display only: the grid comes from the snapshot's patterns either way.
-      this.hvlDoc = snapshot.moduleFormat === 'ahx' ? snapshot.hvlDoc ?? null : null;
       clearAhxEditNotice();
       this.patterns = ahxDoc ? projectAhxPatterns(ahxDoc) : JSON.parse(JSON.stringify(snapshot.patterns));
 
@@ -716,7 +708,6 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.redoStack = [];
       this.ahxDoc = null;
       this.ahxRevision += 1;
-      this.hvlDoc = null;
       ahxSyncCacheOf(this).cells = [];
       ahxSyncCacheOf(this).published = null;
       clearAhxEditNotice();
@@ -1155,7 +1146,10 @@ export const useTrackerStore = defineStore('trackerStore', {
         songPatches: filteredSongPatches
       };
       // Both, as a belt against a stale doc: only an AHX song carries a file.
-      if (this.moduleFormat === 'ahx' && this.ahxDoc !== null) {
+      // An HVL doc is edited and played, but its song file carries no rebuilt
+      // file yet (the loader refuses an embedded HVL one, and the AHX exporter
+      // would hand it out as `.ahx`): saving HVL edits is plan-hvl-editing.md P3.
+      if (this.moduleFormat === 'ahx' && this.ahxDoc !== null && this.ahxDoc.format === 'ahx') {
         const bytes = this.currentAhxBytes();
         if (bytes !== null) data.ahxFile = encodeAhxFile(bytes);
       }
@@ -1176,11 +1170,9 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.redoStack = [];
 
       // The doc belongs to the song that is being replaced: whichever song this
-      // is, it starts without one (an editable AHX song, or an HVL song's
-      // display doc, is set below).
+      // is, it starts without one (an editable AHX or HVL song's is set below).
       this.ahxDoc = null;
       this.ahxRevision += 1;
-      this.hvlDoc = null;
       clearAhxEditNotice();
 
       this.currentSong = {
@@ -1304,10 +1296,11 @@ export const useTrackerStore = defineStore('trackerStore', {
     // ------------------------------------------------------------------
 
     /**
-     * Gives the AHX song just loaded its doc when its bytes are known: the grid
-     * becomes the doc's projection (no latch, no clamp, stable ids), so what the
-     * user edits is exactly what `entriesToTrack` reads back. A song with no
-     * bytes, HVL, or bytes the parser rejects stays a read-only display.
+     * Gives the AHX or HVL song just loaded its doc when its bytes are known: the
+     * grid becomes the doc's projection (no latch, no clamp, stable ids), so what
+     * the user edits is exactly what `entriesToTrack` reads back. A song with no
+     * bytes, or bytes the parser rejects (an HVL wider than the engine's 16
+     * channels among them), stays a read-only display.
      *
      * Where the bytes come from: a valid `data.ahxFile` wins over the source
      * record. The record can be older than the slots (an instrument-parameter
@@ -1318,8 +1311,9 @@ export const useTrackerStore = defineStore('trackerStore', {
      * the row model and slots written beside it are ignored. The record is what a
      * fresh `.ahx` import (and an in-memory pre-v5 snapshot) has.
      *
-     * An HVL song's record gets a display-only doc instead (`adoptHvlDoc`); an
-     * embedded file that turns out to be HVL stays refused, as before.
+     * An HVL song's doc comes from its record only: an embedded file that turns
+     * out to be HVL stays refused, as before (no save writes one: `serializeSong`
+     * embeds AHX files only until plan-hvl-editing.md P3).
      */
     adoptAhxDoc(file: TrackerSongFile, data: TrackerSongFile['data']) {
       let bytes: Uint8Array | null = null;
@@ -1335,18 +1329,14 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
       if (bytes === null) {
         const record = ahxSourceRecordOf(file);
-        if (record?.format === 'hvl') {
-          this.adoptHvlDoc(record.bytes, data);
-          return;
-        }
-        if (!record || record.format !== 'ahx') return;
+        if (!record || (record.format !== 'ahx' && record.format !== 'hvl')) return;
         bytes = record.bytes;
       }
       let doc: AhxDoc;
       let slots: InstrumentSlot[] | null = null;
       try {
         const song = parseAhx(bytes);
-        if (song.format !== 'ahx') throw new Error('Only AHX songs have an editable doc; HVL songs stay read-only.');
+        if (fromFile && song.format !== 'ahx') throw new Error('An embedded file must be AHX; HVL songs are loaded from their own file.');
         doc = docFromSong(song, bytes);
         if (fromFile) slots = buildAhxSlots(song);
       } catch (error) {
@@ -1361,34 +1351,9 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.currentPatternId = stableIdOf(Math.max(0, Math.min(doc.positions.length - 1, oldIndex)));
       this.primeAhxWriteBack();
       // The bytes are what the engine holds for this song (`applySongFile` hands
-      // them over): nothing is dirty until an edit (a flush of an unedited song
-      // is a no-op).
+      // them over; for HVL the file's own, see there): nothing is dirty until an
+      // edit (a flush of an unedited song is a no-op).
       ahxSyncCacheOf(this).published = this.ahxPublishKey();
-    },
-    /**
-     * Gives the HVL song just loaded its doc, read-only (`hvlDoc`): the grid
-     * is rebuilt as the doc's display projection, which shows exactly the rows
-     * the import built (a test pins it for the corpus), now with stable
-     * position ids. Nothing else moves: the engine keeps the file's bytes (no
-     * publish), the song stays read-only, the slots stay as imported, and no
-     * write-back watches the grid. Bytes the parser rejects, or a song wider
-     * than the engine's 16 channels, keep the imported display as it is.
-     */
-    adoptHvlDoc(bytes: Uint8Array, data: TrackerSongFile['data']) {
-      let doc: HvlDoc;
-      try {
-        const parsed = docFromSong(parseAhx(bytes), bytes);
-        if (parsed.format !== 'hvl') return;
-        doc = parsed;
-      } catch (error) {
-        console.warn('[TrackerStore] HVL song shown from its import: its bytes have no doc', error);
-        return;
-      }
-      const oldIndex = (data.patterns ?? []).findIndex((pattern) => pattern.id === data.currentPatternId);
-      this.hvlDoc = doc;
-      this.patterns = projectDisplayPatterns(doc);
-      this.sequence = this.patterns.map((pattern) => pattern.id);
-      this.currentPatternId = stableIdOf(Math.max(0, Math.min(doc.positions.length - 1, oldIndex)));
     },
     /**
      * The song as an `.ahx` file, from the doc, the slots and the title (the
@@ -1426,10 +1391,11 @@ export const useTrackerStore = defineStore('trackerStore', {
         );
       });
     },
-    /** What the size limit needs to know of the file besides the doc. */
+    /** What the size limit needs to know of the file besides the doc: the instruments the file will hold (an HVL doc's own). */
     ahxOpContext(): AhxOpContext {
-      const instruments = this.instrumentSlots.flatMap((slot) => (slot.ahxData ? [slot.ahxData] : []));
-      return { instrumentBytes: ahxInstrumentBytes(instruments, this.ahxDoc?.format ?? 'ahx') };
+      const doc = this.ahxDoc;
+      const instruments = doc === null ? this.instrumentSlots.flatMap((slot) => (slot.ahxData ? [slot.ahxData] : [])) : fileInstruments(doc, this.instrumentSlots);
+      return { instrumentBytes: ahxInstrumentBytes(instruments, doc?.format ?? 'ahx') };
     },
     /**
      * Writes every edited grid cell back into the doc. Idempotent, and safe to
@@ -1453,6 +1419,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       const cache = ahxSyncCacheOf(this);
       const patterns = this.patterns;
       const count = Math.min(patterns.length, doc.positions.length);
+      // Every channel of the doc: an HVL song's 5..16 are cells like the first four.
+      const channels = docChannels(doc);
 
       interface Edited {
         p: number;
@@ -1465,7 +1433,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       for (let p = 0; p < count; p++) {
         const cells = patterns[p]?.tracks;
         if (!cells) continue;
-        for (let c = 0; c < AHX_CHANNELS; c++) {
+        for (let c = 0; c < channels; c++) {
           const cell = cells[c];
           if (!cell) continue;
           const raw = toRaw(cell.entries);
@@ -1478,7 +1446,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       let next = doc;
       let problem: string | null = null;
       for (const cell of edited) {
-        const encoded = entriesToTrack(cell.entries, doc.trackLength);
+        const encoded = entriesToTrack(cell.entries, doc.trackLength, doc.format);
         if ('error' in encoded) {
           cell.revert = true;
           problem ??= encoded.error;
@@ -1519,13 +1487,13 @@ export const useTrackerStore = defineStore('trackerStore', {
         // Every cell that shows a track that changed (or is now another track),
         // and every reverted cell, gets the doc's rows. A cell that was edited
         // and now agrees with the doc keeps the text the user typed.
-        const own = new Map(edited.map((cell) => [cell.p * AHX_CHANNELS + cell.c, cell]));
+        const own = new Map(edited.map((cell) => [cell.p * channels + cell.c, cell]));
         const targets: { p: number; c: number; track: number }[] = [];
         for (let p = 0; p < count; p++) {
-          for (let c = 0; c < AHX_CHANNELS; c++) {
+          for (let c = 0; c < channels; c++) {
             const track = next.positions[p]?.track[c] as number;
             const before = doc.positions[p]?.track[c] as number;
-            const mine = own.get(p * AHX_CHANNELS + c);
+            const mine = own.get(p * channels + c);
             if (mine?.encoded && tracksEqual(mine.encoded, next.tracks[track] as AhxDocTrack)) continue;
             const moved = track !== before || next.tracks[track] !== doc.tracks[before];
             if (mine?.revert || moved) targets.push({ p, c, track });
@@ -1611,7 +1579,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         // No bytes at all is the same case (an editable song must never be
         // left without what Play loads), and it must not fail silently.
         if (install || currentAhxSource() === null) {
-          setCurrentAhxSource(bytes, { format: 'ahx', version: doc.version, edits: [] });
+          setCurrentAhxSource(bytes, { format: doc.format, version: doc.version, edits: [] });
         } else {
           replaceCurrentAhxBytes(bytes, replaceOptions);
         }
@@ -1621,9 +1589,10 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
     },
     /**
-     * Sets one position's per-channel transpose byte (the AHX field the engine
-     * applies to every note the position plays, `formats/ahx.ts`'s position
-     * parse and `hvl_replay.h pos_Transpose[]`). The write is `setTranspose`
+     * Sets one position's per-channel transpose byte (the AHX/HVL field the
+     * engine applies to every note the position plays, `formats/ahx.ts`'s
+     * position parse and `hvl_replay.h pos_Transpose[]`), on any of the doc's
+     * channels (`docChannels`: 4 for AHX, 4..16 for HVL). The write is `setTranspose`
      * (the model op, already validated, undo-supported at the op level, and
      * until now without a UI caller); this action wraps it with the store's
      * edit conventions: guards first (the refusal reports, nothing else
@@ -1637,7 +1606,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       if (!this.isAhxEditable) return false;
       const doc = this.ahxDoc as AhxDoc;
       const positionAt = doc.positions[position];
-      if (positionAt === undefined || channel < 0 || channel >= AHX_CHANNELS) {
+      if (positionAt === undefined || channel < 0 || channel >= docChannels(doc)) {
         reportAhxEditNotice(`Position ${position + 1}, channel ${channel + 1} does not exist in this song.`);
         return false;
       }

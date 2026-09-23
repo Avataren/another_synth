@@ -1,4 +1,4 @@
-import type { AhxStep } from '@another-synth/tracker-playback';
+import type { AhxInstrument, AhxStep } from '@another-synth/tracker-playback';
 
 /** Channels of an AHX song. An HVL doc carries its own count (`docChannels`). */
 export const AHX_CHANNELS = 4;
@@ -10,6 +10,14 @@ export const AHX_CHANNELS = 4;
  */
 export const HVL_MIN_CHANNELS = 4;
 export const HVL_MAX_CHANNELS = 16;
+/**
+ * HVL's blank-step escape: a stored step whose first byte is `0x3f` is one
+ * blank byte (`hvl_replay.c`'s loader), so a step with note 63 cannot be
+ * written (`serializeAhx` refuses it). The editor refuses it before that.
+ */
+export const HVL_BLANK_NOTE = 63;
+/** Why an HVL step cannot hold note 63 (D-6): the edit notice. */
+export const HVL_NOTE_63_REASON = 'HVL cannot store note 63 (D-6): that byte marks a blank step in the file. Use a note up to C#6.';
 /** `trackNr` is a byte, so a file holds at most 256 tracks. */
 export const AHX_MAX_TRACKS = 256;
 /** The header's position count is 12 bits, and the loader rejects more than 1000. */
@@ -32,16 +40,16 @@ export interface AhxDocPosition {
 
 /**
  * An AHX or HVL song's structure, as the file holds it: the model the editor
- * edits and the grid is a projection of. Instruments are not in it (they live
- * in the instrument slots, the single source of truth); `buildAhxFile` joins
- * the two.
+ * edits and the grid is a projection of. An AHX doc's instruments are not in
+ * it (they live in the instrument slots, the single source of truth);
+ * `buildAhxFile` joins the two. An HVL doc carries its own (`HvlDoc.instruments`).
  *
  * Immutable: every op returns a new doc that shares whatever it did not touch,
  * so an undo step is a reference swap. Every doc is `markRaw`-ed (Vue must not
  * wrap it in a Proxy) and its top level is frozen.
  *
- * The ops and the store's write-back know four channels only: an HVL doc is
- * display-only until they learn its width (plan-hvl-editing.md, P2).
+ * The ops and the store's write-back ask the doc its width (`docChannels`):
+ * an HVL doc is edited like an AHX one (plan-hvl-editing.md, P2).
  */
 export type AhxDoc = AhxFormatDoc | HvlDoc;
 
@@ -59,6 +67,13 @@ export interface HvlDoc extends AhxDocFields {
   readonly mixgainRaw: number;
   /** Header byte 15, as stored: the stereo-separation preset (`ht_defstereo`, hvl_replay.c:407). */
   readonly defstereo: number;
+  /**
+   * The song's instruments as parsed, instrument `n` at index `n - 1`: an HVL
+   * song has no instrument slots, so `buildAhxFile` writes these. Read-only
+   * until plan-hvl-editing.md P3 decides on HVL slots (§6 risk 6: no HVL
+   * instrument editing before then); no op changes them.
+   */
+  readonly instruments: readonly AhxInstrument[];
 }
 
 interface AhxDocFields {

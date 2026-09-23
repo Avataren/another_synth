@@ -14,6 +14,7 @@ import {
   docFromBytes,
   docFromSong,
   docToSong,
+  fileInstruments,
   projectAhxPatterns,
   projectDisplayPatterns,
   projectTracks,
@@ -85,6 +86,36 @@ describe('HVL docs over the corpus', () => {
     for (const { name, bytes } of corpus) {
       const song = parseAhx(bytes);
       expect(docToSong(docFromSong(song, bytes), song.instruments), name).toEqual(song);
+    }
+  });
+
+  it('an HVL doc carries its own instruments (P2, Option 1): docToSong(docFromSong(parse)) is the parse with no instrument list given, all 22', () => {
+    for (const { name, bytes } of corpus) {
+      const song = parseAhx(bytes);
+      const doc = hvlDoc(bytes);
+      expect(doc.instruments, name).toEqual(song.instruments.slice(1));
+      expect(doc.instruments.length, name).toBe(song.instrumentNr);
+      // Copies: the doc shares no object with the parse.
+      doc.instruments.forEach((ins, i) => {
+        expect(ins, `${name} instrument ${i + 1}`).not.toBe(song.instruments[i + 1]);
+        expect(ins.plist.entries, `${name} instrument ${i + 1}`).not.toBe(song.instruments[i + 1]!.plist.entries);
+      });
+      expect(docToSong(docFromSong(song, bytes)), name).toEqual(song);
+    }
+  });
+
+  it('buildAhxFile with the store\'s HVL slots (none) writes the doc\'s instruments: the source bytes, all 22', () => {
+    for (const { name, bytes } of corpus) {
+      const song = parseAhx(bytes);
+      const doc = docFromSong(song, bytes);
+      const built = buildAhxFile({ doc, slots: [], title: song.name.trim() || 'Imported HVL' });
+      expect(built.instrumentNamesAltered, name).toBe(false);
+      expectSource(name, built.bytes, bytes);
+      // Stray slots never override an HVL doc's instruments.
+      const stray = [{ ahxData: song.instruments[1] }];
+      expectSource(name, buildAhxFile({ doc, slots: stray, title: song.name.trim() || 'Imported HVL' }).bytes, bytes);
+      // What the size limit counts is the doc's instruments too.
+      expect(ahxUsedBytes(doc, ahxInstrumentBytes(fileInstruments(doc, []), 'hvl')), name).toBe(nameOffsetOf(bytes));
     }
   });
 

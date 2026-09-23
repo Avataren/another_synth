@@ -53,8 +53,13 @@ export function useAhxPListEditing(options: UseAhxPListEditingOptions) {
    */
   const plistCanvasRef = ref<{ focus: () => void } | null>(null);
 
-  /** Canvas editing is offered where an edit has an undo: an editable AHX song. */
-  const canEditPList = computed(() => trackerStore.isAhxEditable);
+  /**
+   * Canvas editing is offered where an edit has an undo: an editable AHX song.
+   * An HVL song's doc has an undo too since plan-hvl-editing.md P2, but HVL
+   * instrument editing is its own later pass (plan §6 risk 6): its canvas
+   * stays as it was, and it is edited in the table.
+   */
+  const canEditPList = computed(() => trackerStore.isAhxEditable && trackerStore.ahxDoc?.format === 'ahx');
 
   const plistCursor = computed(() => ({ column: plistEdit.column, nibble: plistEdit.nibble }));
   const plistContext = computed(() => ({ format: songFormat.value, version: sourceVersion.value }));
@@ -66,7 +71,7 @@ export function useAhxPListEditing(options: UseAhxPListEditingOptions) {
 
   const plistGesture = createPListGesture();
   const plistHost: PListEditHost = {
-    canUndo: () => trackerStore.isAhxEditable,
+    canUndo: () => canEditPList.value,
     pushHistory: () => trackerStore.pushHistory(),
     // Only reached if the store refuses a write it had just said yes to; the redo steps `pushHistory` cleared are not brought back.
     discardHistory: () => void trackerStore.undoStack.pop(),

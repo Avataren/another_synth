@@ -1,0 +1,99 @@
+$ npx vitest run src/tests/hvl-writeback-10ch.test.ts
+
+ RUN  v2.1.8 /home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/hvl-edit-p2
+
+ ❯ src/tests/hvl-writeback-10ch.test.ts (4 tests | 4 failed) 23ms
+   × HVL write-back at 10 channels (meltwater_10ch.hvl) > loads editable: the doc is in the edit slot (ahxDoc, hvl, 10 channels), the gates open, the grid is 10 tracks wide 12ms
+     → expected undefined to be 'hvl' // Object.is equality
+   × HVL write-back at 10 channels (meltwater_10ch.hvl) > a channel-4 edit (index 3) still lands in the built bytes (regression guard) 4ms
+     → currentAhxBytes() for the edited HVL song: expected null not to be null
+   × HVL write-back at 10 channels (meltwater_10ch.hvl) > channel-5 and channel-10 edits (indices 4 and 9) land in the built and the published bytes 3ms
+     → currentAhxBytes() for the edited HVL song: expected null not to be null
+   × HVL write-back at 10 channels (meltwater_10ch.hvl) > the edited song round-trips through serializeAhx with all 10 channels 3ms
+     → currentAhxBytes() for the edited HVL song: expected null not to be null
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/hvl-writeback-10ch.test.ts > HVL write-back at 10 channels (meltwater_10ch.hvl) > loads editable: the doc is in the edit slot (ahxDoc, hvl, 10 channels), the gates open, the grid is 10 tracks wide
+AssertionError: expected undefined to be 'hvl' // Object.is equality
+
+- Expected: 
+"hvl"
+
++ Received: 
+undefined
+
+ ❯ src/tests/hvl-writeback-10ch.test.ts:79:25
+     77|     const store = load();
+     78|     const doc = store.ahxDoc;
+     79|     expect(doc?.format).toBe('hvl');
+       |                         ^
+     80|     expect(doc === null ? null : docChannels(doc)).toBe(CHANNELS);
+     81|     expect([store.isAhxSong, store.isAhxEditable, store.isReadOnly]).t…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/tests/hvl-writeback-10ch.test.ts > HVL write-back at 10 channels (meltwater_10ch.hvl) > a channel-4 edit (index 3) still lands in the built bytes (regression guard)
+AssertionError: currentAhxBytes() for the edited HVL song: expected null not to be null
+ ❯ editAndBuild src/tests/hvl-writeback-10ch.test.ts:68:66
+     66|   store.syncAhxWriteBack();
+     67|   const bytes = store.currentAhxBytes();
+     68|   expect(bytes, 'currentAhxBytes() for the edited HVL song').not.toBeN…
+       |                                                                  ^
+     69|   return { bytes: bytes!, song: parseAhx(bytes!) };
+     70| }
+ ❯ src/tests/hvl-writeback-10ch.test.ts:92:22
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/tests/hvl-writeback-10ch.test.ts > HVL write-back at 10 channels (meltwater_10ch.hvl) > channel-5 and channel-10 edits (indices 4 and 9) land in the built and the published bytes
+AssertionError: currentAhxBytes() for the edited HVL song: expected null not to be null
+ ❯ editAndBuild src/tests/hvl-writeback-10ch.test.ts:68:66
+     66|   store.syncAhxWriteBack();
+     67|   const bytes = store.currentAhxBytes();
+     68|   expect(bytes, 'currentAhxBytes() for the edited HVL song').not.toBeN…
+       |                                                                  ^
+     69|   return { bytes: bytes!, song: parseAhx(bytes!) };
+     70| }
+ ❯ src/tests/hvl-writeback-10ch.test.ts:101:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/tests/hvl-writeback-10ch.test.ts > HVL write-back at 10 channels (meltwater_10ch.hvl) > the edited song round-trips through serializeAhx with all 10 channels
+AssertionError: currentAhxBytes() for the edited HVL song: expected null not to be null
+ ❯ editAndBuild src/tests/hvl-writeback-10ch.test.ts:68:66
+     66|   store.syncAhxWriteBack();
+     67|   const bytes = store.currentAhxBytes();
+     68|   expect(bytes, 'currentAhxBytes() for the edited HVL song').not.toBeN…
+       |                                                                  ^
+     69|   return { bytes: bytes!, song: parseAhx(bytes!) };
+     70| }
+ ❯ src/tests/hvl-writeback-10ch.test.ts:142:22
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+ Test Files  1 failed (1)
+      Tests  4 failed (4)
+   Start at  10:29:30
+   Duration  1.21s (transform 391ms, setup 13ms, collect 387ms, tests 23ms, environment 200ms, prepare 349ms)
+
+exit code: 1
+
+--- Red reason (today, 9367d23c) ---
+The HVL doc is attached to `hvlDoc`, not the edit slot: `ahxDoc` is null, so
+isAhxEditable=false, and currentAhxBytes()/syncAhxWriteBack() return null/false
+at the `doc === null` gate (tracker-store.ts:1403, :1452). Edits on every channel
+are refused.
+
+--- Sensitivity check (uncommitted experiment, reverted with `git checkout src/stores/tracker-store.ts`) ---
+Opened only the gate: adoptHvlDoc put the doc in `ahxDoc`, projected with
+projectAhxPatterns and primed the write-back, and the `AHX_CHANNELS` loops were
+left as they are. Result: 2 passed | 2 failed.
+  passed: gate/width test, channel-4 (index 3) regression guard
+  x channel-5 and channel-10 edits ... -> channel index 4 at position 0: expected [ …(64) ] to deeply equal [ …(64) ]
+  x round-trips through serializeAhx ... -> channel index 4: expected { note: 13, instrument: 4, … } to match object { note: 27, instrument: 1 }
+So the test catches the silent channel-5..10 drop (§6 risk 2) as well as the gate.
+
+--- Other gates ---
+npx vue-tsc --noEmit: exit 0 (clean)
+npx eslint src/tests/hvl-writeback-10ch.test.ts: exit 0
