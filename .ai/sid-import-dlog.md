@@ -275,6 +275,35 @@ and the loaded song stays (tested).
 - Red controls RC7 and RC8 (`.ai/checks-s5-red-controls.txt`) revert each pin and watch its test
   go red. `cargo test` for the whole crate is in `.ai/checks-s5-cargo.txt`: +3 passed vs baseline.
 
+### S5.6 addendum — the two recorded tie-note details are now aligned (branch agent/sid-timing-0923a, base ac35c660)
+
+The two frame-level details above ("recorded, NOT changed" at cross-check time) are now changed:
+- **Phase.** `read_row` no longer writes the tie pitch on tick 0; `continuous` (command 3,
+  parameter 0) re-asserts the persistent last note's table frequency on every tick ≥ 1 for as
+  long as the command stands (goattrk2.c:55 `optimizerealtime = 1`, gplay.c:728 tick-0 skip;
+  gplay.c:802-811 `freq = freqtbl[cptr->note]`, `vibtime = 0`; `cptr->note` is the persistent
+  note updated at tick 0, gplay.c:350 — a `3 00` on a rest or key-off row snaps back to it
+  too). The param≠0 glide keeps its pinned tick-0 start (tests_s3's portamento pin and the S5
+  control); GT would start it on tick 1 as well — recorded, not changed, outside the two
+  documented deviations.
+- **Wave-table notes through.** `wave_note` no longer suppresses the note under commands 1-3:
+  GT's wave-note path has no command check (gplay.c:714-722) and skips the tick effects on its
+  frame (gplay.c:722). Our frame order (effects first, wave step second) lands the same final
+  register value as GT's skip.
+- Tests (`rust-wasm/src/sid/tests_s5.rs`): the S5 tie pin updated in place (jump on tick 1; the
+  no-retrigger + instant-jump substance unchanged — disclosed here), plus two new tests (wave
+  note passes through a tie and the base pitch re-asserts; wave note passes through a speed
+  glide and the glide resumes from it). Red first: `.ai/checks-s56-red.txt` (the 3 target tests
+  failed, the untouched pins passed); green: `.ai/checks-s56-green-tests5.txt` (5/5). Whole
+  crate `.ai/checks-s56-cargo.txt`: 386 passed / 1 failed (the pre-existing
+  `manifest_covers_every_fixture`, AHX) / 1 ignored. The corpus import counts (478/36 and
+  4791/56) are pattern-data counts and did not move; `src/tests/sid-sng-corpus.test.ts` needed
+  no change, and no corpus test asserted the old tie/wave play behavior.
+- Execution note: the batch was to run via Claude Code headless (claude-opus-5-5); the account
+  was hard-limited (429 "session limit", resets 12:40am, retry confirmed) so the orchestrating
+  agent implemented the prepared brief directly (`.ai/coder-brief-s56.md`), same gates; see
+  `.ai/sid-timing-verdict.md`.
+
 ## 7. Player semantics the doc carries faithfully but the S3 player does not reproduce (S6/S8 inherit)
 
 MEASURED on the 61 GTS5 files; none changed here (the brief: only corpus-forced pins; these are
