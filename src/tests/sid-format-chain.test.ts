@@ -245,7 +245,8 @@ describe('a SID song through the store, the .cmod and the playback chain', () =>
     expect(a.store.moduleFormat).toBe('sid');
     expect(a.store.sidDoc).toBe(doc);
     expect(a.store.isSidSong).toBe(true);
-    expect(a.store.isReadOnly).toBe(true);
+    // S4 opened the grid: a SID song with a doc is editable.
+    expect(a.store.isReadOnly).toBe(false);
     expect(a.store.currentSong.title).toBe(SID_CHAIN_SONG_NAME);
 
     const cmod = await saveCmod(a);

@@ -23,4 +23,17 @@ export {
   serializeSidFile,
   type SidFileDecoding,
 } from './sid-file-codec';
-export { projectSidPatterns, sidDocTiming, sidNoteIndex, sidPositionPatternId } from './projection';
+export { projectSidPatterns, sidDocTiming, sidNoteIndex, sidPositionIndexOf, sidPositionPatternId } from './projection';
+export {
+  SID_INDEX_TO_MIDI,
+  SID_MAX_INPUT_MIDI,
+  SID_MIN_INPUT_MIDI,
+  sidCellEntries,
+  sidEditRefusal,
+  sidEntriesEqual,
+  sidEntriesToRows,
+  sidGridLayout,
+  sidRowToEntry,
+  type SidGridCell,
+  type SidGridLayout,
+} from './grid';

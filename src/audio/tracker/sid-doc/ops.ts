@@ -35,6 +35,29 @@ export function setSidRow(doc: SidDoc, pattern: number, row: number, next: SidDo
   return result({ ...doc, patterns });
 }
 
+/**
+ * Writes `rows` into pattern `pattern` from row `offset` on: what a grid cell
+ * edit is (`grid.ts`, the edit mapping). One doc for the whole slice; a slice
+ * that changes nothing returns the same doc.
+ */
+export function setSidPatternSlice(doc: SidDoc, pattern: number, offset: number, rows: readonly SidDocRow[]): SidOpResult {
+  const target = doc.patterns[pattern];
+  if (target === undefined || !Number.isInteger(offset) || offset < 0 || offset + rows.length > target.rows.length) {
+    return { ok: false, reason: `Pattern ${pattern} has no rows ${offset}-${offset + rows.length - 1}.` };
+  }
+  if (rows.every((row, i) => sidRowsEqual(target.rows[offset + i] as SidDocRow, row))) return { ok: true, doc };
+  const next = target.rows.slice();
+  rows.forEach((row, i) => {
+    const current = next[offset + i] as SidDocRow;
+    if (!sidRowsEqual(current, row)) {
+      next[offset + i] = Object.freeze({ note: row.note, instrument: row.instrument, command: row.command, param: row.param });
+    }
+  });
+  const patterns = doc.patterns.slice();
+  patterns[pattern] = { rows: next };
+  return result({ ...doc, patterns });
+}
+
 /** Replaces instrument `n` (1-based). */
 export function setSidInstrument(doc: SidDoc, n: number, next: SidInstrument): SidOpResult {
   if (doc.instruments[n - 1] === undefined) return { ok: false, reason: `There is no instrument ${n}.` };
