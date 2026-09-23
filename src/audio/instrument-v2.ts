@@ -60,8 +60,9 @@ interface SamplerUpdatePayload {
 }
 
 import type { BankInstrument } from './tracker/bank-instrument';
+import type { EditableInstrument } from './tracker/bank-instrument';
 
-export default class InstrumentV2 implements BankInstrument {
+export default class InstrumentV2 implements BankInstrument, EditableInstrument {
   readonly num_engines = ENGINES_PER_WORKLET;
   readonly voices_per_engine = VOICES_PER_ENGINE;
   readonly num_voices = TOTAL_VOICES;
