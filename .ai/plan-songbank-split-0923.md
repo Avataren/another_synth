@@ -142,3 +142,52 @@ suites (per N4). Commits on the branch, then stop — no push/merge.
 Chiprolled-removal and HVL doc-model passes run in other worktrees; owner
 marker written at `.ai/worktrees/songbank-split/.ai/worktree-owner`; no files
 outside this worktree touched.
+## Evidence / landed (2026-09-23, run 6a0acf4e)
+
+Branch `agent/songbank-split-0923a` (base 6123b5f4, NOT merged, NOT pushed):
+
+- 57f0260f docs: this plan
+- fe5337e3 Stage 1 — `BankInstrument` (bank-instrument.ts, 199 lines):
+  interface from the members the bank calls on the union; InstrumentV2,
+  ModInstrument (inherited via TrackerSamplerInstrument), PooledInstrument all
+  `implements`; `ActiveInstrument.instrument: BankInstrument`; the
+  `setEnvelopePositionAtTime` structural probe (:1654) became a typed optional
+  member. `getInstrument` keeps the concrete union for the editor boundary
+  (IndexPage.vue concrete-class checks; one documented cast).
+- f55ca3b7 Stage 2 — `EditableInstrument extends BankInstrument` (editor
+  surface: node-state updates, asset import/export, reverb generation,
+  arpeggiator, envelope/sampler previews); AudioSyncManager provider and
+  asset-store/patch-store params widen to it; all four `as InstrumentV2`
+  casts deleted (patch-store :368/:374/:439, instrument-store :102). Review's
+  claimed :752/:833/:921 casts no longer exist on main (extractAllAudioAssets
+  is AudioAssetSource-typed) — recorded as stale.
+- 160bc39c Stage 3 — §2b: instrument-lifecycle.ts (889 lines) holds the
+  lifecycle block verbatim (ensureInstrument/ensureInstrumentInternal,
+  normalizePatch*, restoreAudioAssets/parseWavInfo, applyNodeStates/
+  applySamplerStates/applyMacrosFromPatch, getPatchReuseKey,
+  teardownInstrument) plus pendingInstruments/restoredAssets; bank injects
+  instruments/activeNotes/eventQueue/voices/formatProfile()/useWorkletPooling()/workletPool()/generation()/flags.
+  song-bank.ts 2764 -> 2003 lines. Test access paths moved with their pins
+  (deep-link-suspended-load, instrument-build-slicing, patch-signature; no
+  weakening).
+- 9cf8256b Stage 4 — N4 step 5: per-note param probe in dispatchNoteOnAtTime
+  behind `SONGBANK_DEBUG_PARAM_PROBE` (module constant, default off). Only
+  ever logged; no AudioParam writes.
+
+Gates per staged step, all exit 0 on the exact commit content:
+| Stage | test:run | vue-tsc | lint | check:artifacts | gitleaks |
+|-------|----------|---------|------|-----------------|----------|
+| 1     | 235/3841 | 0       | 0    | OK              | no leaks (full history) |
+| 2     | 235/3841 | 0       | 0    | OK              | no leaks |
+| 3     | 235/3841 | 0       | 0    | OK              | no leaks |
+| 4     | 235/3841 | 0       | 0    | OK              | no leaks |
+
+Stage-3 red run fixed before landing: 3 test files accessed moved internals
+(spy on bank.ensureInstrument, Reflect.get getPatchReuseKey,
+bank.needsAudioContextResume) — access paths re-pointed to the lifecycle
+module / resumeFlags, same assertions.
+
+Not done (reported to Morten): N4 step 4 — deleting the "unreachable"
+InstrumentV2 branch. MEASURED: reachable whenever workletPool is null
+(after dispose(), or if pool construction fails); needs its own
+characterization pass.
