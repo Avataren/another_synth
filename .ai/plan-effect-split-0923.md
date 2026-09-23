@@ -95,3 +95,46 @@ all green (HVL P3 record). 233 test files / 3743 tests at review time; expect
 
 To be appended after gates: deviations, extraction map with before/after
 sizes, gate table with real exit codes.
+
+## ADDENDUM (implementer, 2026-09-23)
+
+Done per §2 without stopping: the move is verbatim, the import graph is acyclic, and no consumer changed
+(index.ts, engine.ts and the tests are untouched).
+
+### Deviations (honest list)
+
+1. **`ProcessorCommand` moved to effect-state.ts as well.** The plan did not list it. `TrackEffectState`
+   has `effectCommandBuffer: ProcessorCommand[]` and `volumeCommandBuffer: ProcessorCommand[]`, so leaving
+   the type in effect-processor.ts would force effect-state.ts to import from effect-processor.ts, which is the
+   cycle the rules forbid. It is a pure type with no dependencies, so it moved verbatim. effect-processor.ts
+   re-exports it. `TickCommandBatch` and the `push*` helpers stay in effect-processor.ts.
+2. **`VIBRATO_TABLE_PEAK` is exported from waveforms.ts** because the tremolo code in processEffectTickN
+   (orig ~:2083) uses it alongside `TREMOLO_DEPTH_DIVISOR`. My first cut missed this: vue-tsc failed with TS2304
+   and the tests failed. I fixed it mechanically by adding it to the import, then re-ran all gates. The outputs
+   below are from that final run.
+3. `export` was added to the five waveforms.ts names that effect-processor.ts consumes. They were module-private
+   before, and they are **not** added to index.ts, so the public API is unchanged.
+4. File sizes: effect-processor.ts 2454 → 1896 (inside the §3 1700–1900 range). effect-state.ts is 413 lines,
+   above the ~300–350 estimate, because it also holds `ProcessorCommand` (57 lines). waveforms.ts is 170 lines,
+   a little above the ~100–150 estimate, because the vibrato doc comments are long.
+5. Prettier is not a gate, and the original file already fails `prettier --check`. The moved lines were kept
+   byte-identical and not reformatted.
+
+### Extraction map
+
+See `.ai/extraction-map-effect-split.txt`. Summary: effect-state.ts ← orig :198–525, :938–994, :2436–2454;
+waveforms.ts ← orig :18–26, :87–181, :614–670. Verbatim status was checked with a line-multiset diff of the
+original against the union of the three files. The only differences are the `export` keywords, the file headers,
+and the import/re-export lines.
+
+### Gates (worktree, final tree; outputs in `.ai/checks-split-*.txt`)
+
+| Gate | Command | Exit |
+|---|---|---|
+| tests | `npm run test:run` | 0 (241 files / 3922 tests passed, equal to baseline) |
+| lint | `npm run lint` | 0 |
+| types | `npx vue-tsc --noEmit` | 0 |
+| secrets | `gitleaks detect --no-git --source .` | 0 |
+| artifacts | `npm run check:artifacts` | 0 |
+
+Not pushed, not merged.
