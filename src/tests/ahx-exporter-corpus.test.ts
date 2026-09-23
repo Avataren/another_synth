@@ -12,14 +12,23 @@ import { ahxExporter, hvlExporter } from 'src/audio/tracker/song-export';
  * exported from its own record must be its source file, byte for byte: the
  * overlay (slots + title) adds nothing and loses nothing. Covers the two
  * corpus names with edge whitespace (the title is only the trimmed name).
- * The 7 `.hvl` files go through the HVL exporter the same way (all use more
- * than 4 channels, so the AHX exporter refuses them).
+ * The 23 `.hvl` files go through the HVL exporter the same way. 22 reach past
+ * track 4, so the AHX exporter refuses them; ring_modulation_test_song fits 4
+ * tracks but uses the second effect column, which AHX has no room for.
  */
 const DEMOS = resolve(__dirname, '../../public/demos/ahx');
 const corpus = readdirSync(DEMOS)
   .filter((name) => /\.(ahx|hvl)$/.test(name))
   .sort()
   .map((name) => ({ name, bytes: new Uint8Array(readFileSync(resolve(DEMOS, name))) }));
+
+/**
+ * meltwater_10ch.hvl's string table omits the final (empty) instrument name's
+ * NUL terminator, so the writer canonically emits it: the export is the source
+ * plus exactly one trailing NUL byte, and the parse is the same song
+ * (measured 2026-09-23, curated HVL batch).
+ */
+const TRAILING_NAME_NUL = ['meltwater_10ch.hvl'];
 
 /** What `applySongFile` does for an AHX/HVL song: the store gets the file, `ahx-source` the bytes. */
 function openInEditor(bytes: Uint8Array) {
@@ -56,23 +65,37 @@ describe('the AHX exporter over the demo corpus, through the store', () => {
     for (const { name, bytes } of corpus.filter((f) => !name_isAhx(f.name))) {
       const song = snapshotEditorSong(openInEditor(bytes));
       expect(hvlExporter.check(song), name).toEqual({ ok: true });
-      expect(hvlExporter.serialize(song), name).toEqual(bytes);
+      if (TRAILING_NAME_NUL.includes(name)) {
+        const out = hvlExporter.serialize(song);
+        expect(out.length, name).toBe(bytes.length + 1);
+        expect(out.subarray(0, bytes.length), name).toEqual(bytes);
+        expect(out[out.length - 1], name).toBe(0);
+      } else {
+        expect(hvlExporter.serialize(song), name).toEqual(bytes);
+      }
       checked++;
     }
-    expect(checked).toBe(7);
+    expect(checked).toBe(23);
   });
 
-  it('refuses all 7 .hvl songs as AHX, pointing at HVL', () => {
+  it('refuses all 23 .hvl songs as AHX, pointing at HVL', () => {
     let checked = 0;
     for (const { name, bytes } of corpus.filter((f) => !name_isAhx(f.name))) {
       const song = snapshotEditorSong(openInEditor(bytes));
       const verdict = ahxExporter.check(song);
       expect(verdict.ok, name).toBe(false);
-      if (!verdict.ok) expect(verdict.reason, name).toMatch(/^AHX files have 4 tracks; this song reaches track \d+\. Export it as HVL instead\.$/);
+      if (!verdict.ok) {
+        if (name === 'ring_modulation_test_song.hvl') {
+          // Fits 4 tracks, so the refusal is the second effect column instead.
+          expect(verdict.reason, name).toBe("This song uses a second effect column, which AHX files don't have. Export it as HVL instead.");
+        } else {
+          expect(verdict.reason, name).toMatch(/^AHX files have 4 tracks; this song reaches track \d+\. Export it as HVL instead\.$/);
+        }
+      }
       expect(() => ahxExporter.serialize(song), name).toThrow(/Export it as HVL instead/);
       checked++;
     }
-    expect(checked).toBe(7);
+    expect(checked).toBe(23);
   });
 
   it('keeps a song name with edge whitespace verbatim when the title is untouched', () => {

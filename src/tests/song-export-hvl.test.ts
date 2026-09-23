@@ -27,35 +27,72 @@ const songOf = (name: string) => importAhxToTrackerSong(demo(name).slice().buffe
 /**
  * The highest track each demo `.hvl` reaches (the highest channel that holds a
  * non-blank track in any position, plus one), measured with the same scan the
- * exporter runs. No demo `.hvl` fits in 4: the smallest is 6. `moderate_sellotaping`
- * has 8 channels but never uses the last. It is not how many tracks are in use:
- * a channel below the highest may be blank.
+ * exporter runs. Only ring_modulation_test_song fits in 4 (it is refused as
+ * AHX for its second effect column instead); the smallest otherwise is 6.
+ * `moderate_sellotaping` has 8 channels but never uses the last. It is not how
+ * many tracks are in use: a channel below the highest may be blank.
  */
 const CHANNELS_USED: Record<string, number> = {
+  'a_little_cyberfunk.hvl': 8,
+  'afterstorm.hvl': 12,
   'chiprolled.hvl': 6,
   'doobrey_gubbins.hvl': 11,
   'drainage_proble.hvl': 7,
+  'drop_table.hvl': 12,
+  'forsaken.hvl': 6,
+  'galactic_emeralds.hvl': 10,
+  'hexplosion.hvl': 16,
   'illuminated.hvl': 6,
+  'incognito_crust.hvl': 6,
+  'lanterns.hvl': 16,
+  'meltwater_10ch.hvl': 10,
+  'mijikai_tobikomi.hvl': 11,
   'moderate_sellotaping.hvl': 7,
+  'ring_modulation_test_song.hvl': 3,
   'sliding_away.hvl': 6,
   'sunspots.hvl': 6,
+  'sweeties.hvl': 10,
+  'there_you_are.hvl': 6,
+  'top_gun_anthem.hvl': 12,
+  'unexpected_horse.hvl': 10,
+  'yoake_no_myoujou.hvl': 16,
 };
 
+/**
+ * meltwater_10ch.hvl's string table omits the final (empty) instrument name's
+ * NUL terminator, so the writer canonically emits it: the export is the source
+ * plus exactly one trailing NUL byte, and the parse is the same song
+ * (measured 2026-09-23, curated HVL batch).
+ */
+const TRAILING_NAME_NUL = ['meltwater_10ch.hvl'];
+
 describe('the HVL exporter on the demo .hvl files', () => {
-  it('finds all seven demos', () => {
+  it('finds all twenty-three demos', () => {
     expect([...HVL_FILES].sort()).toEqual(Object.keys(CHANNELS_USED).sort());
   });
 
   it.each(HVL_FILES)('%s: an unedited song exports as the file it came from, byte for byte', (name) => {
     const song = songOf(name);
     expect(describeSongExporter(hvlExporter, song)).toEqual({ state: 'enabled' });
-    expect(hvlExporter.serialize(song)).toEqual(demo(name));
+    const out = hvlExporter.serialize(song);
+    if (TRAILING_NAME_NUL.includes(name)) {
+      const bytes = demo(name);
+      expect(out.length).toBe(bytes.length + 1);
+      expect(out.subarray(0, bytes.length)).toEqual(bytes);
+      expect(out[out.length - 1]).toBe(0);
+    } else {
+      expect(out).toEqual(demo(name));
+    }
     expect(hvlExporter.warnings!(song)).toEqual([]);
   });
 
-  it.each(HVL_FILES)('%s: the AHX row is unavailable, and says which track the song reaches', (name) => {
+  it.each(HVL_FILES)('%s: the AHX row is unavailable, and says why', (name) => {
     const song = songOf(name);
-    const reason = `AHX files have 4 tracks; this song reaches track ${CHANNELS_USED[name]}. Export it as HVL instead.`;
+    // ring_modulation_test_song fits 4 tracks; its refusal is the second
+    // effect column. The rest reach past track 4.
+    const reason = CHANNELS_USED[name]! > 4
+      ? `AHX files have 4 tracks; this song reaches track ${CHANNELS_USED[name]}. Export it as HVL instead.`
+      : "This song uses a second effect column, which AHX files don't have. Export it as HVL instead.";
     expect(describeSongExporter(ahxExporter, song)).toEqual({ state: 'unavailable', reason });
     expect(() => ahxExporter.serialize(song)).toThrow(SongExportError);
     expect(() => ahxExporter.serialize(song)).toThrow(reason);

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-22T12:34:20.247Z",
+  "generated": "2026-09-23T05:12:51.111Z",
   "collections": [
     {
       "id": "ahx",
@@ -32,6 +32,15 @@
           "instruments": 8,
           "file": "ahx/8bit_fall.ahx",
           "bytes": 5181
+        },
+        {
+          "title": "A Little Cyberfunk",
+          "format": "HVL",
+          "channels": 8,
+          "patterns": 49,
+          "instruments": 13,
+          "file": "ahx/a_little_cyberfunk.hvl",
+          "bytes": 9581
         },
         {
           "title": "A New Beginning",
@@ -68,6 +77,15 @@
           "instruments": 10,
           "file": "ahx/afternoon voyage iii.ahx",
           "bytes": 4116
+        },
+        {
+          "title": "syphus-afterstorm",
+          "format": "HVL",
+          "channels": 12,
+          "patterns": 22,
+          "instruments": 17,
+          "file": "ahx/afterstorm.hvl",
+          "bytes": 8699
         },
         {
           "title": "All That She Wants",
@@ -250,6 +268,15 @@
           "bytes": 8068
         },
         {
+          "title": "syphus-drop_table",
+          "format": "HVL",
+          "channels": 12,
+          "patterns": 30,
+          "instruments": 16,
+          "file": "ahx/drop_table.hvl",
+          "bytes": 12778
+        },
+        {
           "title": "Einlauf",
           "format": "AHX",
           "channels": 4,
@@ -313,6 +340,24 @@
           "bytes": 4616
         },
         {
+          "title": "Virgill-Forsaken",
+          "format": "HVL",
+          "channels": 6,
+          "patterns": 29,
+          "instruments": 15,
+          "file": "ahx/forsaken.hvl",
+          "bytes": 7609
+        },
+        {
+          "title": "Galactic Emeralds",
+          "format": "HVL",
+          "channels": 10,
+          "patterns": 24,
+          "instruments": 19,
+          "file": "ahx/galactic_emeralds.hvl",
+          "bytes": 18392
+        },
+        {
           "title": "Gates",
           "format": "AHX",
           "channels": 4,
@@ -358,6 +403,15 @@
           "bytes": 1864
         },
         {
+          "title": "Hexplosion!",
+          "format": "HVL",
+          "channels": 16,
+          "patterns": 45,
+          "instruments": 36,
+          "file": "ahx/hexplosion.hvl",
+          "bytes": 38965
+        },
+        {
           "title": "I Love Holy Daze",
           "format": "AHX",
           "channels": 4,
@@ -374,6 +428,15 @@
           "instruments": 6,
           "file": "ahx/illuminated.hvl",
           "bytes": 1499
+        },
+        {
+          "title": "incognito crust",
+          "format": "HVL",
+          "channels": 6,
+          "patterns": 58,
+          "instruments": 27,
+          "file": "ahx/incognito_crust.hvl",
+          "bytes": 8291
         },
         {
           "title": "Joyous",
@@ -410,6 +473,15 @@
           "instruments": 20,
           "file": "ahx/klisje paa klisje.ahx",
           "bytes": 35060
+        },
+        {
+          "title": "Lanterns",
+          "format": "HVL",
+          "channels": 16,
+          "patterns": 37,
+          "instruments": 28,
+          "file": "ahx/lanterns.hvl",
+          "bytes": 17958
         },
         {
           "title": "lets_go",
@@ -475,6 +547,15 @@
           "bytes": 3954
         },
         {
+          "title": "syphus-meltwater.hvl",
+          "format": "HVL",
+          "channels": 10,
+          "patterns": 19,
+          "instruments": 10,
+          "file": "ahx/meltwater_10ch.hvl",
+          "bytes": 8207
+        },
+        {
           "title": "Mid Day Action",
           "format": "AHX",
           "channels": 4,
@@ -482,6 +563,15 @@
           "instruments": 20,
           "file": "ahx/mid day action.ahx",
           "bytes": 6243
+        },
+        {
+          "title": "Mijikai Tobikomi",
+          "format": "HVL",
+          "channels": 11,
+          "patterns": 17,
+          "instruments": 18,
+          "file": "ahx/mijikai_tobikomi.hvl",
+          "bytes": 16888
         },
         {
           "title": "moderate sellotaping",
@@ -574,6 +664,15 @@
           "bytes": 4448
         },
         {
+          "title": "Ring Modulation Test Song",
+          "format": "HVL",
+          "channels": 4,
+          "patterns": 6,
+          "instruments": 3,
+          "file": "ahx/ring_modulation_test_song.hvl",
+          "bytes": 427
+        },
+        {
           "title": "Robocop III (J.Tel)",
           "format": "AHX",
           "channels": 4,
@@ -655,6 +754,15 @@
           "bytes": 4153
         },
         {
+          "title": "syphus-sweeties.hvl",
+          "format": "HVL",
+          "channels": 10,
+          "patterns": 28,
+          "instruments": 13,
+          "file": "ahx/sweeties.hvl",
+          "bytes": 12052
+        },
+        {
           "title": "Tattoo in the armpit",
           "format": "AHX",
           "channels": 4,
@@ -718,6 +826,33 @@
           "bytes": 13785
         },
         {
+          "title": "there you are",
+          "format": "HVL",
+          "channels": 6,
+          "patterns": 48,
+          "instruments": 5,
+          "file": "ahx/there_you_are.hvl",
+          "bytes": 3191
+        },
+        {
+          "title": "syphus-Top Gun Anthem.hvl",
+          "format": "HVL",
+          "channels": 12,
+          "patterns": 21,
+          "instruments": 10,
+          "file": "ahx/top_gun_anthem.hvl",
+          "bytes": 10564
+        },
+        {
+          "title": "unexpected horse",
+          "format": "HVL",
+          "channels": 10,
+          "patterns": 116,
+          "instruments": 7,
+          "file": "ahx/unexpected_horse.hvl",
+          "bytes": 5327
+        },
+        {
           "title": "Wave Stepper",
           "format": "AHX",
           "channels": 4,
@@ -752,6 +887,15 @@
           "instruments": 14,
           "file": "ahx/yesterday_night.ahx",
           "bytes": 7966
+        },
+        {
+          "title": "Yoake no Myoujou",
+          "format": "HVL",
+          "channels": 16,
+          "patterns": 19,
+          "instruments": 15,
+          "file": "ahx/yoake_no_myoujou.hvl",
+          "bytes": 22387
         },
         {
           "title": "Zero Impression",
