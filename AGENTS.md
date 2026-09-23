@@ -1688,3 +1688,21 @@ Things to know before touching any of it:
   *other* half also used, and both surfaced only under `vue-tsc` — never in the
   1599-test corpus suite. Grep each constant across both halves before cutting,
   and remember a doc comment belongs to the function *below* it.
+
+## GoatTracker `.sng` import/export (S5, 2026-09-23)
+
+- `src/audio/tracker/sid-doc/gt-sng-{common,read,gt1,write}.ts`: `importGtSong(bytes, hints)`
+  never throws (`{ok:false, reason}`), dispatches on the magic (`GTS5`, `GTS!`; GT2 betas and
+  dual-SID refused with the reason); `exportGtSong(doc)` writes GTS5 or refuses. Offsets and
+  every INFERRED rule: `.ai/sid-import-dlog.md`. GPL: written from the readme §6.1 and the bytes
+  only; never open `gsong.c`/`gcommon.h` or the curator's `validate.py` (a loader transcription).
+- Traps measured on the corpus: a pattern's stored length and an orderlist's length both COUNT
+  their `$FF` end mark; the orderlist restart byte indexes BYTES (often a command, not a
+  pattern); GT's transpose is running state that survives the loop; instruments may point past a
+  table's stored rows (pad with blank rows). A `.sng` stores no tempo, chip model or speed
+  multiplier: the name hints (`gtSongHintsFromName`: `6581`, `2x`) carry the last two.
+- `parseSongBuffer(data, name?)`: the name is only a hint source; pass it from any new load path.
+- The S3 player had two corpus-visible semantics wrong, pinned in S5 (`tests_s5.rs`): `3 00` is
+  tie-note, and a wave-table delay row sets its note after the wait. Other GT semantics it does
+  not model (funktempo, wavetable commands, vibrato delay 0 = off, pulse width/filter routing
+  untouched by instruments without tables) are listed with counts in the D-log §7.

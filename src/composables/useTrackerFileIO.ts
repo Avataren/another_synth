@@ -9,6 +9,7 @@ import { looksLikeS3m, importS3mToTrackerSong } from 'src/audio/tracker/s3m-impo
 import { looksLikeAhxModule, importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import { attachAhxSource, ahxSourceRecordOf, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
 import { decodeAhxFile } from 'src/audio/tracker/ahx-doc';
+import { importGtSongToTrackerSong, looksLikeGtSongFile } from 'src/audio/tracker/sid-import';
 import { recordLoadedSongHash } from 'src/composables/song-identity';
 import { usePostFxStore } from 'src/stores/post-fx-store';
 
@@ -70,6 +71,7 @@ export const SONG_FILE_EXTENSIONS = [
   '.s3m',
   '.ahx',
   '.hvl',
+  '.sng',
 ] as const;
 
 /** Whether `name` looks like a song file `parseSongBuffer` might read. */
@@ -145,7 +147,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
                 'audio/x-mod': ['.mod'],
                 'audio/mod': ['.mod'],
                 'audio/x-xm': ['.xm'],
-                'application/octet-stream': ['.ahx', '.hvl']
+                'application/octet-stream': ['.ahx', '.hvl', '.sng']
               }
             }
           ],
@@ -159,7 +161,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     return await new Promise<ArrayBuffer | null>((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.cmod,application/json,.json,.mod,.xm,.s3m,.ahx,.hvl';
+      input.accept = '.cmod,application/json,.json,.mod,.xm,.s3m,.ahx,.hvl,.sng';
       input.onchange = () => {
         const file = input.files?.[0];
         if (!file) {
@@ -259,7 +261,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
    * the picker, minus the picker.
    */
   async function loadSongFromFile(file: File): Promise<void> {
-    await loadSongFromBuffer(await file.arrayBuffer());
+    await loadSongFromBuffer(await file.arrayBuffer(), file.name);
   }
 
   /**
@@ -271,7 +273,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       if (!response.ok) {
         throw new Error(`${response.status} ${response.statusText}`);
       }
-      await loadSongFromBuffer(await response.arrayBuffer());
+      await loadSongFromBuffer(await response.arrayBuffer(), url);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(`Failed to load song from ${url}`, error);
@@ -287,7 +289,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
    * fetch and the parse out of the gap between songs. Nothing here reads or
    * writes tracker state, so it is safe to run during playback.
    */
-  async function parseSongBuffer(data: ArrayBuffer): Promise<TrackerSongFile> {
+  async function parseSongBuffer(data: ArrayBuffer, name = ''): Promise<TrackerSongFile> {
     const buffer = new Uint8Array(data);
 
     if (buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
@@ -328,6 +330,11 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       // is only the display model
       return importAhxToTrackerSong(data);
     }
+    if (looksLikeGtSongFile(buffer)) {
+      // GoatTracker .sng (plan-sid-tracking.md S5): a SID song. The name is
+      // only a hint for what a .sng cannot store (chip model, multispeed).
+      return importGtSongToTrackerSong(data, name);
+    }
     // Plain JSON .cmod/.json file
     const decoder = new TextDecoder('utf-8');
     return finishSongFile(JSON.parse(decoder.decode(buffer)) as TrackerSongFile);
@@ -359,10 +366,10 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
    * same path through format detection, instrument rebuild and playback
    * re-initialisation.
    */
-  async function loadSongFromBuffer(data: ArrayBuffer) {
+  async function loadSongFromBuffer(data: ArrayBuffer, name = '') {
     try {
       context.isLoadingSong.value = true;
-      const songFile = await parseSongBuffer(data);
+      const songFile = await parseSongBuffer(data, name);
       // The report tool hashes the bytes as loaded, never by re-fetching. Only
       // once they parse: bytes that were not a song must not replace the hash
       // of the song that is still loaded.
