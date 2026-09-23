@@ -515,10 +515,11 @@ export const useTrackerStore = defineStore('trackerStore', {
       return this.moduleFormat === 'ahx' && this.ahxDoc !== null;
     },
     /**
-     * The song's row model is display only. An HVL song, or an AHX song that
-     * has no doc (a saved file without its bytes), is played from its file by
-     * the worklet's own engine; the patterns here mirror it for the eye, so an
-     * edit to them would never reach the audio. An AHX song with a doc is
+     * The song's row model is display only. An AHX or HVL song that has no
+     * doc (a saved file without its bytes, an HVL wider than the engine's 16
+     * channels) is played from its file by the worklet's own engine; the
+     * patterns here mirror it for the eye, so an edit to them would never reach
+     * the audio. A song with a doc (AHX, or HVL since plan-hvl-editing.md P2) is
      * editable: `isAhxSong` is the question "is it AHX", this is "may I write".
      */
     isReadOnly(): boolean {
