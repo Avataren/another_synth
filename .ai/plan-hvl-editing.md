@@ -403,9 +403,116 @@ Build succeeded (spa mode, 37 JS files); wasm rebuilt per script design (freshne
 | demos/index.json | `5ce336fd304f097e036523b53ed45f62` |
 | wasm/audio_processor_bg.wasm | `0b9548f882892c38b7574b9d106ca8ad` |
 
-## 9. P2 status (agent/hvl-edit-p2-0923a, not merged) — STOPPED
+## 9. P2 status (agent/hvl-edit-p2-0923a, not merged) — COMPLETE (Option 1)
 
-**Stopped on a plan/code contradiction; details and options in `.ai/p2-stop-notes.md`.**
+Branch `agent/hvl-edit-p2-0923a`, not pushed, not merged, not deployed. Commits
+on top of P1 (`9367d23c`): `fb70a7d2` red 10-ch write-back test · `87528052`
+unified doc slot · `044d1bd2` red edit matrix (the stop) · `c953c336` Option 1 ·
+`251a0dd8` playback routing test · `2ccbdb14` HVL-aware hints · this docs commit.
+
+### Decision record (2026-09-23)
+- **Blocker** (`.ai/p2-stop-notes.md`): HVL imports keep no instrument slots
+  (`ahx-import.ts:57`), so `buildAhxFile(doc, slots, title)` wrote every edited
+  HVL file with 0 instruments (meltwater 10 → 0, 8207 → 7589 bytes).
+- **Decision (Morten via main, final): Option 1: the HVL doc carries its own
+  instruments until P3.** Options 2 (pull P3's `'hvl'` slot format into P2)
+  and 3 (fall back to `doc.base`'s instruments) were rejected.
+- **Rationale:** smallest change, no UI change (nothing instrument-related
+  opens), corpus byte-exact (same instruments, same writer).
+- **Instrument EDITING for HVL stays deferred to P3's slot decision** (§3
+  Instruments row, §4 P3, §6 risk 6). No P3 scope was opened: HVL save/export
+  still refused (the title-only exporter gap stays flagged), no new-song work,
+  no AHX-exporter format guard, no `ModuleFormat`/`instrumentFormat` change, no
+  rust-wasm change. If P3 chooses `'hvl'` slots, it moves `HvlDoc.instruments`
+  into them and `fileInstrumentSlots` goes back to "slots for both".
+
+### What moved
+- `c953c336` feat(ahx-doc): HvlDoc carries its instrument set
+  - `ahx-doc/types.ts:76` `HvlDoc.instruments` (readonly, instrument n at index
+    n-1; required on HVL, absent on AHX, so AHX docs keep their exact shape).
+  - `ahx-doc/doc.ts:21` `PLACEHOLDER_INSTRUMENT` (moved from build-file.ts, same
+    value as the parser's `defaultInstrument`); `:41` `copyInstrument` (the doc
+    shares no object with the parse, as with its steps); `:114` docFromSong
+    fills it; `:131` `docToSong`'s instrument list now defaults to the doc's own
+    (`:154` `ownInstruments`: placeholder + HVL instruments, none for AHX), so
+    `docToSong(docFromSong(parse)) == parse` holds with no list given. Every
+    explicit-list caller (projection, tests) is unchanged.
+  - `ahx-doc/build-file.ts:72` `fileInstrumentSlots` (AHX → the slots,
+    unchanged; HVL → the doc's instruments), `:77` `fileInstruments`; `:90`
+    `buildAhxFile` writes through them. Same latin-1 pass, same writer, 5-byte
+    HVL PList rows and `ahxInstrumentBytes(…, format)` unchanged.
+  - `stores/tracker-store.ts:1395` `ahxOpContext` counts `fileInstruments`:
+    before, an HVL song's instrument bytes were 0, so the 64 KiB size guard
+    undercounted by every instrument (found while wiring, fixed, test-pinned).
+  - Tests: `hvl-edit-matrix.test.ts` 11/17 → 18/18 (+1 at `:316`: meltwater
+    after a channel-10 edit re-parses with `instrumentNr` 10, instruments equal,
+    `nameOffset` growth == the doc's size-budget growth, string table = source
+    + the pinned trailing NUL, so file = source + 1 + growth; no slot holds an
+    instrument; `ahxOpContext` == the source's instrument bytes).
+    `hvl-doc-corpus.test.ts` 10 → 12 (`:92`: doc instruments == parse's, copies,
+    `docToSong` with no list == parse, all 22; `buildAhxFile` with the store's
+    empty slots and with a stray slot byte-exact, budget via `fileInstruments`
+    == nameOffset, all 22).
+- `251a0dd8` test: `src/tests/hvl-engine-sync.test.ts` (5, new), the playback
+  routing test on `ahx-engine-sync.test.ts`'s harness (real stores, transport,
+  reload scheduler, real loader; fake worklet client), meltwater_10ch, edits on
+  channel 10. Unedited: the worklet is handed the file byte for byte, tagged
+  HVL; flush/snapshot/save/stop+Play keep the same array, announce nothing, load
+  nothing new. Playing: an edit publishes at once (one structure change) and
+  after `AHX_RELOAD_IDLE_MS` one load/seek/play burst of the edited file with
+  all 10 instruments. Stopped: nothing sent; the next Play loads it once. Undo
+  while playing reloads the file's own song (parse == source).
+- `2ccbdb14` fix(tracker-page): the P2 UI polish left at the stop (§3 UI "hints
+  say AHX"). Text only: `TrackerPage.vue:1206` `hvlDocChannels`; channel hint
+  says the HVL song's own width, instrument hint says HVL instruments come from
+  the file and cannot be edited yet (P3), length hint says AHX or HVL,
+  `readOnlyHint` (`:1130`) no longer claims every AHX/HVL song is read-only.
+  `tracker-store.ts:525` `isReadOnly` doc comment updated. No condition changed.
+
+### P2 row (§4) verified
+| Item | Status |
+|---|---|
+| Un-gate (`isAhxEditable` for HVL with a doc) | `87528052`; matrix "loads editable" |
+| Write-back loops at `docChannels` | `87528052`; `hvl-writeback-10ch` 4/4 (file unchanged) |
+| Undo/redo, snapshot carry the doc (and its instruments) by reference | matrix undo/redo + snapshot, 4 and 10 ch, green |
+| Second FX column editing | `87528052`; matrix green (display still the existing user setting, unchanged) |
+| Note-63 refusal | `87528052`; matrix pre-guard + write-back revert green |
+| Paste gates at N channels | `87528052`; matrix incl. the width refusal green |
+| Transpose chip N channels | works through the doc (`TrackerPage.vue` `ahxPositionChannels`); matrix transpose green |
+| Reuses the file-bytes reload path, zero rust-wasm | `hvl-engine-sync.test.ts`; no rust-wasm diff |
+| Readonly audit updated | re-measured: pins unchanged (store 4, selection 7, Jukebox 0, TrackerPage 25), test green |
+
+### Gates at code tip `2ccbdb14` (outputs `.ai/checks-p2-*.txt`, real exit codes)
+| Gate | Result | Exit |
+|---|---|---|
+| `npm run test:run` | 240 files / 3880 tests passed (3872 before + 8 new) | 0 |
+| `npm run lint` | no findings | 0 |
+| `npx vue-tsc --noEmit` | clean | 0 |
+| `gitleaks detect --no-git` | no leaks | 0 |
+| `npm run check:artifacts` | worklets + wasm match sources | 0 |
+
+Corpus: 22 .hvl byte-exact with base (meltwater_10ch trailing-NUL exception
+unchanged), also through `buildAhxFile` with the store's empty slots; 77 .ahx
+untouched (`ahx-writer-corpus`, `ahx-doc-corpus` green, unchanged).
+
+### Deviations (honest)
+1. **One extra commit** beyond the planned three: `2ccbdb14` (hint text). It is
+   a P2 item from the stop notes' own list, kept separate so the Option 1
+   commit stays pure.
+2. **`ahxOpContext` changed** (not named in the stop notes' Option 1 file list):
+   without it the size guard for HVL counted 0 instrument bytes. Test-pinned.
+3. **`docToSong`'s `instruments` parameter became optional** (default = the
+   doc's own). Needed for the stated lossless property without an explicit
+   list; all existing callers pass one and behave as before.
+4. The hint strings have no test (the suite never mounts `TrackerPage`).
+5. Still open for P3, unchanged: HVL `.cmod` save/`ahxFile` refused, exporter
+   title-only for HVL, `'Imported HVL'` fallback title note (§8), HVL
+   instrument editing / slots. The spectrum analyzer's 4-channel stereo map
+   (§3 UI) was not in the P2 row and was not touched.
+
+### Record of the stop (kept)
+
+Stopped on a plan/code contradiction; details and options in `.ai/p2-stop-notes.md`.
 §1.2/§1.5/§4-P2 assume HVL reuses `buildAhxFile(doc, slots, title)` for free, but
 HVL imports keep no instrument slots (`ahx-import.ts:57`), so every rebuilt HVL
 file has 0 instruments (meltwater: 10 → 0, 8207 → 7589 bytes after one edit).

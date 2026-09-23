@@ -1,3 +1,9 @@
+# RESOLVED 2026-09-23: Option 1 landed in commit c953c336
+
+The HVL doc carries its own instruments until P3 (`HvlDoc.instruments`; `buildAhxFile` writes them for HVL, slots for AHX); the edit matrix is 18/18, the corpus stays byte-exact, and HVL instrument editing stays deferred to P3's slot decision. Full record: plan-hvl-editing.md §9.
+
+---
+
 # P2 stop notes: plan contradicts code (agent/hvl-edit-p2-0923a, 2026-09-23)
 
 **Status: STOPPED after commit 1 (+ a red test). Morten needs to make a decision before P2 can go on.**
