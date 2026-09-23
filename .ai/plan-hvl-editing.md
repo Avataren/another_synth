@@ -698,9 +698,13 @@ before: the source for an untouched song, the rebuild after an edit.
    was the `.cmod` save, correct `.cmod`-only exports, the AHX guard, and the
    empty-name fix. The exporter now reads the doc's file directly instead of
    relying on that side channel.
-5. The intermediate commit `f89968f8` has 3 failing export tests: the AHX-row
-   corpus test and the untouched-meltwater pins, which `0a0fe258` fixes. The
-   save and the exporters are split into two commits for review; every gate
-   was run at the tip.
+5. **The intermediate commit `f89968f8` is not green on its own**: 13 failing
+   (measured with a full run of that commit). 9 are new P3 tests in
+   `hvl-save-export` that stay red until the exporter commit. 4 are existing
+   tests: `ahx-exporter-corpus` "exporting every unedited .hvl" and "refusing
+   all 22 .hvl as AHX" (in between, the AHX row really did leak HVL bytes,
+   which is the guard's red), and `song-export-hvl`'s two store-path tests.
+   `0a0fe258` fixes all 13. Save and exporters were split into two commits
+   for review. Every gate was run at the tip; do not land `f89968f8` alone.
 6. Not touched, as instructed: the sequence panel, the spectrum analyzer, and
    subsongs.
