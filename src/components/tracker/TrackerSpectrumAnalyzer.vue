@@ -257,12 +257,39 @@ function teardownGraph() {
   }
 }
 
+/**
+ * The per-track ("quad") layouts: which strip each track's analyser draws in,
+ * by track count. Four is the classic Amiga LRRL panning: tracks 0 & 3 left,
+ * 1 & 2 right. Three is a single SID chip (plan-sid-tracking.md S4): a mono
+ * chip has no panning, so the voices alternate from the left as the Amiga
+ * layout does (0 & 2 left, 1 right) and each still gets an analyser of its
+ * own. Any other count has no per-track layout and shows the stereo master.
+ */
+const TRACK_LAYOUTS: Readonly<Record<number, ReadonlyArray<readonly ['left' | 'right', number]>>> = {
+  3: [
+    ['left', 0],
+    ['left', 2],
+    ['right', 1],
+  ],
+  4: [
+    ['left', 0],
+    ['left', 3],
+    ['right', 1],
+    ['right', 2],
+  ],
+};
+
+function trackLayout() {
+  return TRACK_LAYOUTS[props.trackNodes.length];
+}
+
 function resolveMode(): Mode {
-  // Once already in quad mode, stay there as long as there are still 4
-  // tracks -- don't bounce out to 'stereo' (tearing down/rebuilding the
-  // whole graph) just because every trackNode is momentarily null at a
-  // pattern boundary (the instrument that was playing is still alive).
-  if (props.trackNodes.length === 4) {
+  // Once already in quad mode, stay there as long as the track count still
+  // has a per-track layout -- don't bounce out to 'stereo' (tearing
+  // down/rebuilding the whole graph) just because every trackNode is
+  // momentarily null at a pattern boundary (the instrument that was playing
+  // is still alive).
+  if (trackLayout()) {
     if (currentMode === 'quad') return 'quad';
     if (props.trackNodes.some((n) => n)) return 'quad';
   }
@@ -286,10 +313,10 @@ function syncGraph() {
         currentMode = 'none';
         return;
       }
-      // Tracks 0 & 3 (left-panned in the classic Amiga LRRL layout) go in
-      // the left strip; 1 & 2 (right-panned) go in the right strip.
-      left.channels = [createChannelAnalyzer(audioContext), createChannelAnalyzer(audioContext)];
-      right.channels = [createChannelAnalyzer(audioContext), createChannelAnalyzer(audioContext)];
+      // One analyser per track, in the strip its layout puts it in.
+      for (const [side] of trackLayout() ?? []) {
+        (side === 'left' ? left : right).channels.push(createChannelAnalyzer(audioContext));
+      }
     } else if (mode === 'stereo' && props.node) {
       buildStereoGraph(props.node);
     }
@@ -300,14 +327,13 @@ function syncGraph() {
   }
 
   if (mode === 'quad') {
-    // [track0, track3] -> left.channels[0], left.channels[1]
-    // [track1, track2] -> right.channels[0], right.channels[1]
-    const assignment: Array<[Side, number, number]> = [
-      [left, 0, 0],
-      [left, 1, 3],
-      [right, 0, 1],
-      [right, 1, 2],
-    ];
+    // Each track's analyser, in layout order within its strip.
+    const seen = { left: 0, right: 0 };
+    const assignment: Array<[Side, number, number]> = (trackLayout() ?? []).map(([name, track]) => [
+      name === 'left' ? left : right,
+      seen[name]++,
+      track,
+    ]);
     assignment.forEach(([side, channelIndex, track]) => {
       const channel = side.channels[channelIndex];
       const nextSource = props.trackNodes[track];

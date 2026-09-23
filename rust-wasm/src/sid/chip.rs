@@ -74,6 +74,15 @@
 //! quieter on the 6581. The rule is a derivation; the DC values it rests on
 //! are the INFERRED guesses above. Level balance is an ears-gate item.
 //! No 6581 volume-DAC nonlinearity is modelled: volume stays linear, VOL/15.
+//!
+//! Per-voice taps (S4, the app's per-track scopes and spectrum): `render_taps`
+//! also writes each voice's own signal, the decimated voice output before
+//! the filter, times volume and the model's gain, through a DC blocker of its
+//! own. INFERRED/approximate by construction: the filter is shared and (on the
+//! 6581) nonlinear, so a filtered voice's tap shows it unfiltered; the mix
+//! itself is unchanged (`render` and `render_taps` produce the same samples).
+//! A voice mask (`set_voice_mask`, the tracker's mute/solo) drops voices from
+//! the mix and their taps; all three on is the datasheet chip.
 
 use super::filter::Filter;
 use super::voice::{Voice, VOICE_DC_6581};
@@ -128,7 +137,13 @@ pub struct Chip {
     dc_x: f64,
     dc_y: f64,
     dc_r: f64,
+    voice_mask: u8,
+    tap_x: [f64; 3],
+    tap_y: [f64; 3],
 }
+
+/// All three voices heard: the mask of a powered-on chip.
+pub const ALL_VOICES: u8 = 0x07;
 
 impl Chip {
     /// A powered-on chip at 44.1 kHz output.
@@ -159,7 +174,21 @@ impl Chip {
             dc_x: 0.0,
             dc_y: 0.0,
             dc_r: (-2.0 * std::f64::consts::PI * DC_BLOCK_HZ / sample_rate).exp(),
+            voice_mask: ALL_VOICES,
+            tap_x: [0.0; 3],
+            tap_y: [0.0; 3],
         })
+    }
+
+    /// Which voices reach the output (bit `i` = voice `i`; `ALL_VOICES` is the
+    /// real chip). A masked voice still runs (sync, ring mod and OSC3/ENV3
+    /// are unaffected); only its contribution to the mix and its tap drop.
+    pub fn set_voice_mask(&mut self, mask: u8) {
+        self.voice_mask = mask & ALL_VOICES;
+    }
+
+    pub fn voice_mask(&self) -> u8 {
+        self.voice_mask
     }
 
     pub fn model(&self) -> SidModel {
@@ -261,10 +290,27 @@ impl Chip {
     /// Fill `out` with samples at the chip's sample rate, clocking the core
     /// through the cycles each sample spans.
     pub fn render(&mut self, out: &mut [f32]) {
+        self.render_inner(out, None);
+    }
+
+    /// `render`, and each voice's own signal into `taps[i]` (see the header).
+    /// Every tap must be at least `out.len()` long. The mix is the one
+    /// `render` produces, sample for sample.
+    pub fn render_taps(&mut self, out: &mut [f32], taps: [&mut [f32]; 3]) {
+        self.render_inner(out, Some(taps));
+    }
+
+    fn render_inner(&mut self, out: &mut [f32], mut taps: Option<[&mut [f32]; 3]>) {
         let filt_bits = self.res_filt & 0x07;
         let voice3_direct = self.mode_vol & VOICE3_OFF == 0;
         let volume = (self.mode_vol & 0x0F) as f64 / 15.0;
-        for o in out.iter_mut() {
+        let mask = self.voice_mask;
+        let tap_gain = volume
+            * match self.model {
+                SidModel::Sid8580 => CHIP_GAIN,
+                SidModel::Sid6581 => CHIP_GAIN_6581,
+            };
+        for (k, o) in out.iter_mut().enumerate() {
             self.cycle_frac += self.cycles_per_sample;
             let n = self.cycle_frac as u32;
             self.cycle_frac -= n as f64;
@@ -279,6 +325,16 @@ impl Chip {
             let mut direct = 0.0;
             for (i, s) in sum.iter().enumerate() {
                 let x = s / n.max(1) as f64;
+                if let Some(taps) = taps.as_mut() {
+                    let t = if mask & (1 << i) != 0 { x * tap_gain } else { 0.0 };
+                    let y = t - self.tap_x[i] + self.dc_r * self.tap_y[i];
+                    self.tap_x[i] = t;
+                    self.tap_y[i] = y;
+                    taps[i][k] = y as f32;
+                }
+                if mask & (1 << i) == 0 {
+                    continue;
+                }
                 if filt_bits & (1 << i) != 0 {
                     filt_in += x;
                 } else if i != 2 || voice3_direct {

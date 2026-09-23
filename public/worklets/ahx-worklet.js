@@ -2488,6 +2488,194 @@ var NoiseUpdateParams = class {
   }
 };
 if (Symbol.dispose) NoiseUpdateParams.prototype[Symbol.dispose] = NoiseUpdateParams.prototype.free;
+var SidPlayerFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_sidplayer_free(ptr >>> 0, 1));
+var SidPlayer = class {
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    SidPlayerFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_sidplayer_free(ptr, 0);
+  }
+  /**
+   * `"8580"` or `"6581"`: the chip this player built from the song's tag.
+   * @returns {string}
+   */
+  chip_model() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+      const ret = wasm.sidplayer_chip_model(this.__wbg_ptr);
+      deferred1_0 = ret[0];
+      deferred1_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+  }
+  /**
+   * @returns {boolean}
+   */
+  is_playing() {
+    const ret = wasm.sidplayer_is_playing(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * Loops song rows `start..end` (`end` exclusive; `end <= start` plays on).
+   * @param {number} start
+   * @param {number} end
+   */
+  set_loop_rows(start, end) {
+    wasm.sidplayer_set_loop_rows(this.__wbg_ptr, start, end);
+  }
+  /**
+   * Bit masks, bit `i` = voice `i`: muted voices, and (when non-zero) the
+   * only voices heard. Applied to the chip's voice mask.
+   * @param {number} mute
+   * @param {number} solo
+   */
+  set_mute_solo(mute, solo) {
+    wasm.sidplayer_set_mute_solo(this.__wbg_ptr, mute, solo);
+  }
+  /**
+   * Keyboard-preview mode: the song no longer plays; `preview_note_on`
+   * sounds its instruments on one voice. Renders at once.
+   */
+  enable_preview() {
+    wasm.sidplayer_enable_preview(this.__wbg_ptr);
+  }
+  clear_loop_rows() {
+    wasm.sidplayer_clear_loop_rows(this.__wbg_ptr);
+  }
+  /**
+   * Preview mode: `instrument` (1-based) at note table index `note`
+   * (0 = C-0 .. 92 = G#7). `false` outside preview or for a missing instrument.
+   * @param {number} instrument
+   * @param {number} note
+   * @returns {boolean}
+   */
+  preview_note_on(instrument, note) {
+    const ret = wasm.sidplayer_preview_note_on(this.__wbg_ptr, instrument, note);
+    return ret !== 0;
+  }
+  /**
+   * @returns {number}
+   */
+  instrument_count() {
+    const ret = wasm.sidplayer_instrument_count(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  preview_note_off() {
+    wasm.sidplayer_preview_note_off(this.__wbg_ptr);
+  }
+  /**
+   * Whether the player has played past the song's last row.
+   * @returns {boolean}
+   */
+  song_end_reached() {
+    const ret = wasm.sidplayer_song_end_reached(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * Parses a SID song file (`ASID`, what the app's `SidDoc` saves) and
+   * builds a paused player for subsong 0 on a chip of the song's model.
+   * @param {Uint8Array} bytes
+   * @param {number} sample_rate
+   */
+  constructor(bytes, sample_rate) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.sidplayer_new(ptr0, len0, sample_rate);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    this.__wbg_ptr = ret[0] >>> 0;
+    SidPlayerFinalization.register(this, this.__wbg_ptr, this);
+    return this;
+  }
+  play() {
+    wasm.sidplayer_play(this.__wbg_ptr);
+  }
+  /**
+   * Stops rendering (the output is silence) without losing the position.
+   */
+  pause() {
+    wasm.sidplayer_pause(this.__wbg_ptr);
+  }
+  /**
+   * Ticks per row now (the song's start tempo, or what an F command set).
+   * @returns {number}
+   */
+  tempo() {
+    const ret = wasm.sidplayer_tempo(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * Fills `out` with the mix and `v0`..`v2` with the three voices' taps;
+   * silence (all four) while paused. Every buffer must be as long as `out`.
+   * Returns the frames written.
+   * @param {Float32Array} out
+   * @param {Float32Array} v0
+   * @param {Float32Array} v1
+   * @param {Float32Array} v2
+   * @returns {number}
+   */
+  render(out, v0, v1, v2) {
+    var ptr0 = passArrayF32ToWasm0(out, wasm.__wbindgen_malloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = passArrayF32ToWasm0(v0, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    var ptr2 = passArrayF32ToWasm0(v1, wasm.__wbindgen_malloc);
+    var len2 = WASM_VECTOR_LEN;
+    var ptr3 = passArrayF32ToWasm0(v2, wasm.__wbindgen_malloc);
+    var len3 = WASM_VECTOR_LEN;
+    const ret = wasm.sidplayer_render(this.__wbg_ptr, ptr0, len0, out, ptr1, len1, v0, ptr2, len2, v1, ptr3, len3, v2);
+    return ret >>> 0;
+  }
+  /**
+   * @returns {number}
+   */
+  channels() {
+    const ret = wasm.sidplayer_channels(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * Moves to the start of song row `row`, keeping the play/pause state
+   * (`SidSongPlayer::seek_row`).
+   * @param {number} row
+   */
+  seek_row(row) {
+    wasm.sidplayer_seek_row(this.__wbg_ptr, row);
+  }
+  /**
+   * @param {number} gain
+   */
+  set_gain(gain) {
+    wasm.sidplayer_set_gain(this.__wbg_ptr, gain);
+  }
+  /**
+   * The row being played, counted from the top of the song.
+   * @returns {number}
+   */
+  song_row() {
+    const ret = wasm.sidplayer_song_row(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * The song's length in rows (the longest channel's first pass).
+   * @returns {number}
+   */
+  song_rows() {
+    const ret = wasm.sidplayer_song_rows(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+};
+if (Symbol.dispose) SidPlayer.prototype[Symbol.dispose] = SidPlayer.prototype.free;
 var WasmLfoUpdateParamsFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmlfoupdateparams_free(ptr >>> 0, 1));

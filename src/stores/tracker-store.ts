@@ -72,8 +72,15 @@ import {
   encodeSidFile,
   projectSidPatterns,
   sidDocTiming,
+  sidEditRefusal,
+  sidEntriesEqual,
+  sidEntriesToRows,
+  sidGridLayout,
   sidPositionPatternId,
+  setSidPatternSlice,
   type SidDoc,
+  type SidDocRow,
+  type SidOpResult,
 } from 'src/audio/tracker/sid-doc';
 
 export type {
@@ -198,6 +205,8 @@ interface TrackerSnapshot {
   songPatches: Record<string, Patch>;
   /** The doc of an editable AHX or HVL song (a reference: docs are immutable). */
   ahxDoc?: AhxDoc | null;
+  /** The doc of a SID song (a reference, like `ahxDoc`); the grid is rebuilt from it on apply. */
+  sidDoc?: SidDoc | null;
 }
 
 interface TrackerStoreState {
@@ -286,10 +295,13 @@ interface TrackerStoreState {
    * is the song: the grid is its projection (`projectSidPatterns`), a save
    * embeds it (`data.sidFile`) and the Rust player plays it. Always a
    * `markRaw` object, replaced (never mutated) by an edit (`commitSidDoc`).
-   * The grid does not write back to it yet (S4), so a SID song's grid is
-   * read-only.
+   * The grid writes back to it (`syncSidWriteBack`, S4: a cell is a slice of
+   * one shared pattern, see `sid-doc/grid.ts`); a SID song without a doc is a
+   * display only.
    */
   sidDoc: SidDoc | null;
+  /** Counts every change of `sidDoc`, including the one that clears it. */
+  sidRevision: number;
 }
 
 const DEFAULT_TRACK_COLORS = [
@@ -488,6 +500,23 @@ interface AhxSyncCache {
 }
 const ahxSyncCaches = new WeakMap<object, AhxSyncCache>();
 
+/** What the SID write-back has reconciled (the AHX cache's `cells`, for `sidDoc`). */
+interface SidSyncCache {
+  cells: unknown[][];
+  watching: boolean;
+}
+const sidSyncCaches = new WeakMap<object, SidSyncCache>();
+
+function sidSyncCacheOf(store: { $state: object }): SidSyncCache {
+  const key = toRaw(store.$state);
+  let cache = sidSyncCaches.get(key);
+  if (!cache) {
+    cache = { cells: [], watching: false };
+    sidSyncCaches.set(key, cache);
+  }
+  return cache;
+}
+
 function ahxSyncCacheOf(store: { $state: object }): AhxSyncCache {
   const key = toRaw(store.$state);
   let cache = ahxSyncCaches.get(key);
@@ -534,13 +563,28 @@ export const useTrackerStore = defineStore('trackerStore', {
       redoStack: [],
       ahxDoc: null,
       ahxRevision: 0,
-      sidDoc: null
+      sidDoc: null,
+      sidRevision: 0
     };
   },
   getters: {
     /** The song is a SID song (plan-sid-tracking.md S3): three voices, played from `sidDoc`. */
     isSidSong(): boolean {
       return this.moduleFormat === 'sid';
+    },
+    /** A SID song with a doc: its grid is edited and written back to the doc (S4). */
+    isSidEditable(): boolean {
+      return this.moduleFormat === 'sid' && this.sidDoc !== null;
+    },
+    /**
+     * The song's structure is its doc's, not a pattern list's: an AHX/HVL
+     * song (positions, one track length, numbered instruments) or a SID song
+     * (per-voice orderlists, the doc's instruments). Channels, patterns, the
+     * sequence, pattern lengths and patch slots are not the tracker's to
+     * change; cells may still be edited when the song is editable.
+     */
+    hasDocStructure(): boolean {
+      return this.moduleFormat === 'ahx' || this.moduleFormat === 'sid';
     },
     /** The song is an AHX song (editable or not): what the scope and waveform code means. */
     isAhxSong(): boolean {
@@ -559,9 +603,9 @@ export const useTrackerStore = defineStore('trackerStore', {
      * editable: `isAhxSong` is the question "is it AHX", this is "may I write".
      */
     isReadOnly(): boolean {
-      // A SID song's grid is the doc's projection, with no write-back until S4
-      // (plan-sid-tracking.md): an edit there would never reach the song.
-      if (this.moduleFormat === 'sid') return true;
+      // A SID song's grid is the doc's projection and writes back to it (S4);
+      // without a doc there is nothing an edit could reach.
+      if (this.moduleFormat === 'sid') return this.sidDoc === null;
       return this.moduleFormat === 'ahx' && this.ahxDoc === null;
     },
     /**
@@ -572,6 +616,11 @@ export const useTrackerStore = defineStore('trackerStore', {
      */
     ahxRefusal(): (check: AhxEditCheck) => string | null {
       return (check) => {
+        if (this.moduleFormat === 'sid') {
+          const sid = this.sidDoc;
+          if (sid === null) return null;
+          return sidEditRefusal(check, { rows: this.currentPatternRows, instruments: sid.instruments.length });
+        }
         const doc = this.ahxDoc;
         if (doc === null) return null;
         return ahxEditRefusal(check, doc.trackLength, { format: doc.format, channels: docChannels(doc) });
@@ -619,7 +668,9 @@ export const useTrackerStore = defineStore('trackerStore', {
       // Before anything is read: an edit the watcher has not flushed yet must
       // be in the doc this snapshot keeps, or an undo would lose it.
       this.syncAhxWriteBack();
+      this.syncSidWriteBack();
       const ahxDoc = this.moduleFormat === 'ahx' ? this.ahxDoc : null;
+      const sidDoc = this.moduleFormat === 'sid' ? this.sidDoc : null;
       return {
         currentSong: { ...this.currentSong },
         moduleFormat: this.moduleFormat,
@@ -635,14 +686,15 @@ export const useTrackerStore = defineStore('trackerStore', {
         // An editable AHX song keeps the doc (a reference: it is immutable) and
         // no grid: up to 129 patterns per keystroke are what the doc replaces,
         // and `applySnapshot` projects them again.
-        patterns: ahxDoc ? [] : JSON.parse(JSON.stringify(this.patterns)),
+        patterns: ahxDoc || sidDoc ? [] : JSON.parse(JSON.stringify(this.patterns)),
         sequence: [...this.sequence],
         currentPatternId: this.currentPatternId,
         instrumentSlots: JSON.parse(JSON.stringify(this.instrumentSlots)),
         activeInstrumentId: this.activeInstrumentId,
         currentInstrumentPage: this.currentInstrumentPage,
         songPatches: JSON.parse(JSON.stringify(this.songPatches)),
-        ahxDoc
+        ahxDoc,
+        sidDoc
       };
     },
     /** Apply a snapshot back into the store state. */
@@ -666,7 +718,15 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.ahxDoc = ahxDoc;
       this.ahxRevision += 1;
       clearAhxEditNotice();
-      this.patterns = ahxDoc ? projectAhxPatterns(ahxDoc) : JSON.parse(JSON.stringify(snapshot.patterns));
+      // A SID song's doc likewise: the grid is its projection.
+      const sidDoc = snapshot.moduleFormat === 'sid' ? snapshot.sidDoc ?? null : null;
+      if (sidDoc !== this.sidDoc) this.sidRevision += 1;
+      this.sidDoc = sidDoc;
+      this.patterns = ahxDoc
+        ? projectAhxPatterns(ahxDoc)
+        : sidDoc
+          ? projectSidPatterns(sidDoc)
+          : JSON.parse(JSON.stringify(snapshot.patterns));
 
       const patternIds = new Set(this.patterns.map((p) => p.id));
       const sequence = (snapshot.sequence ?? []).filter((id) => patternIds.has(id));
@@ -686,6 +746,8 @@ export const useTrackerStore = defineStore('trackerStore', {
 
       // Editing slot is only meaningful while on the patch page; reset on snapshot apply.
       this.editingSlot = null;
+
+      if (sidDoc) this.primeSidWriteBack();
 
       if (ahxDoc) {
         // The grid is the projection of the doc just set: nothing to write back.
@@ -748,6 +810,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.ahxDoc = null;
       this.sidDoc = null;
       this.ahxRevision += 1;
+      this.sidRevision += 1;
+      sidSyncCacheOf(this).cells = [];
       ahxSyncCacheOf(this).cells = [];
       ahxSyncCacheOf(this).published = null;
       ahxSyncCacheOf(this).loaded = null;
@@ -828,7 +892,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     createPattern() {
       // An AHX song's patterns are its positions: the position ops make them.
-      if (this.isAhxSong) return '';
+      if (this.hasDocStructure) return '';
       const newPattern: TrackerPattern = {
         id: uid(),
         name: `Pattern ${this.patterns.length + 1}`,
@@ -846,7 +910,7 @@ export const useTrackerStore = defineStore('trackerStore', {
      * song-level control behaved before per-pattern lengths existed.
      */
     setPatternRows(rows: number, patternId?: string) {
-      if (this.isAhxSong) return;
+      if (this.hasDocStructure) return;
       const targetId = patternId ?? this.currentPatternId;
       const pattern = this.patterns.find(p => p.id === targetId);
       if (!pattern) return;
@@ -855,7 +919,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.defaultPatternRows = clamped;
     },
     deletePattern(patternId: string) {
-      if (this.isAhxSong) return;
+      if (this.hasDocStructure) return;
       if (this.patterns.length <= 1) {
         // eslint-disable-next-line no-console
         console.warn('Cannot delete the last pattern');
@@ -873,24 +937,24 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
     },
     addPatternToSequence(patternId: string) {
-      if (this.isAhxSong) return;
+      if (this.hasDocStructure) return;
       this.sequence.push(patternId);
     },
     removePatternFromSequence(index: number) {
-      if (this.isAhxSong) return;
+      if (this.hasDocStructure) return;
       if (index >= 0 && index < this.sequence.length) {
         this.sequence.splice(index, 1);
       }
     },
     setPatternName(patternId: string, name: string) {
-      if (this.isAhxSong) return;
+      if (this.hasDocStructure) return;
       const pattern = this.patterns.find(p => p.id === patternId);
       if (pattern) {
         pattern.name = name;
       }
     },
     moveSequenceItem(fromIndex: number, toIndex: number) {
-      if (this.isAhxSong) return;
+      if (this.hasDocStructure) return;
       if (
         fromIndex < 0 ||
         fromIndex >= this.sequence.length ||
@@ -947,7 +1011,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     clearSlot(slotNumber: number) {
       // An AHX song's instruments are numbered in order: none is cleared here.
-      if (this.isAhxSong) return;
+      if (this.hasDocStructure) return;
       const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
       if (slot) {
         // Remove patch from song patches if no other slot uses it
@@ -998,7 +1062,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       // Like `assignPatchToSlot`: an AHX song's slots are read-only to the
       // patch editor, and no patch is ever written into an AHX slot (it would
       // give the slot a `patchId` next to its `ahxData`).
-      if (this.isAhxSong) return;
+      if (this.hasDocStructure) return;
       if (this.editingSlot === null || !patch.metadata?.id) return;
 
       const slot = this.instrumentSlots.find(s => s.slot === this.editingSlot);
@@ -1027,7 +1091,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     /** Assign a patch to a slot (copies it to song patches) */
     assignPatchToSlot(slotNumber: number, patch: Patch, bankName: string) {
-      if (this.isAhxSong) return;
+      if (this.hasDocStructure) return;
       if (!patch.metadata?.id) return;
 
       const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
@@ -1165,6 +1229,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     serializeSong(): TrackerSongFile {
       // An edit the watcher has not flushed yet is part of the song.
       this.flushAhxBytes();
+      this.syncSidWriteBack();
       // Only persist patches that are actually referenced by at least one
       // instrument slot. This keeps the song file from accumulating old
       // swapped-out patches (and their audio assets) over time.
@@ -1259,6 +1324,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.ahxDoc = null;
       this.sidDoc = null;
       this.ahxRevision += 1;
+      this.sidRevision += 1;
+      sidSyncCacheOf(this).cells = [];
       clearAhxEditNotice();
 
       this.currentSong = {
@@ -1414,17 +1481,39 @@ export const useTrackerStore = defineStore('trackerStore', {
     /**
      * Replaces the song's doc with an edited one (an op's result): the grid,
      * slot names and tempo follow it, and the position shown stays where it
-     * was. No undo step yet: SID editing, and its history, is S4.
+     * was. No undo step: `editSidDoc` is the edit with one.
      */
     commitSidDoc(doc: SidDoc) {
       if (this.moduleFormat !== 'sid') return;
+      // A grid edit not yet written back belongs to the doc being replaced.
+      this.syncSidWriteBack();
       const index = this.patterns.findIndex((pattern) => pattern.id === this.currentPatternId);
       this.showSidDoc(doc, index);
     },
+    /**
+     * An edit made outside the grid (the instrument page, a song setting): an
+     * op's result. A refusal is reported and changes nothing; an edit that
+     * changes the doc gets an undo step, then is committed. Returns whether the
+     * doc changed.
+     */
+    editSidDoc(result: SidOpResult): boolean {
+      if (!this.isSidEditable) return false;
+      if (!result.ok) {
+        reportAhxEditNotice(result.reason);
+        return false;
+      }
+      this.syncSidWriteBack();
+      if (result.doc === this.sidDoc) return false;
+      this.pushHistory();
+      this.commitSidDoc(result.doc);
+      return true;
+    },
     /** Sets the doc and everything projected from it; `index` is the grid position to show. */
     showSidDoc(doc: SidDoc, index: number) {
+      if (doc !== this.sidDoc) this.sidRevision += 1;
       this.sidDoc = doc;
       this.patterns = projectSidPatterns(doc);
+      this.primeSidWriteBack();
       this.sequence = this.patterns.map((pattern) => pattern.id);
       this.currentPatternId = sidPositionPatternId(Math.max(0, Math.min(this.patterns.length - 1, index)));
       const timing = sidDocTiming(doc);
@@ -1437,6 +1526,133 @@ export const useTrackerStore = defineStore('trackerStore', {
         const ins = doc.instruments[i];
         return ins === undefined ? slot : { ...slot, instrumentName: ins.name, instrumentFormat: 'sid' as const };
       });
+    },
+
+    /** Marks the grid as reconciled with the SID doc (it was just built from it) and makes sure the watcher runs. */
+    primeSidWriteBack() {
+      const cache = sidSyncCacheOf(this);
+      cache.cells = this.patterns.map((pattern) => pattern.tracks.map((track) => toRaw(track.entries)));
+      if (cache.watching) return;
+      cache.watching = true;
+      // Detached, as the AHX watcher: it lives as long as the store.
+      effectScope(true).run(() => {
+        watch(
+          () => (this.sidDoc === null ? null : this.patterns.map((pattern) => pattern.tracks.map((track) => track.entries))),
+          () => {
+            this.syncSidWriteBack();
+          }
+        );
+      });
+    },
+    /**
+     * Writes every edited grid cell of a SID song back into its doc (the
+     * edit mapping: `sid-doc/grid.ts`). Idempotent and safe at any moment, like
+     * `syncAhxWriteBack`: the watcher calls it, and so does every point that
+     * reads the doc (a snapshot, a save, a commit, a play).
+     *
+     * A cell is edited when its `entries` array is another one than at the last
+     * reconciliation. Its rows are encoded against the doc (`sidEntriesToRows`:
+     * a row that still shows what the doc holds keeps the doc's row), and only
+     * the rows that changed are written into the cell's pattern, so two edited
+     * cells over the same pattern both land. Every cell showing a pattern that
+     * changed is re-projected (the pattern is shared: the edit shows wherever
+     * it plays), except an edited cell that already shows exactly the
+     * projection. A cell that cannot be encoded is reverted from the doc, with
+     * a notice. Returns whether the doc changed.
+     */
+    syncSidWriteBack(): boolean {
+      const doc = this.sidDoc;
+      if (doc === null || this.moduleFormat !== 'sid') return false;
+      const cache = sidSyncCacheOf(this);
+      const patterns = this.patterns;
+      const layout = sidGridLayout(doc);
+      const count = Math.min(patterns.length, layout.cells.length);
+      const channels = doc.channels;
+
+      const edited: { p: number; c: number; entries: TrackerEntryData[] }[] = [];
+      for (let p = 0; p < count; p++) {
+        const cells = patterns[p]?.tracks;
+        if (!cells) continue;
+        for (let c = 0; c < channels; c++) {
+          const cell = cells[c];
+          if (!cell) continue;
+          const raw = toRaw(cell.entries);
+          if (cache.cells[p]?.[c] !== raw) edited.push({ p, c, entries: raw });
+        }
+      }
+      if (edited.length === 0) return false;
+
+      // Pattern -> row -> the row to write, in cell order (a later cell wins a row both wrote).
+      const writes = new Map<number, Map<number, SidDocRow>>();
+      const reverted = new Set<number>();
+      let problem: string | null = null;
+      for (const cell of edited) {
+        const at = layout.cells[cell.p]?.[cell.c];
+        if (!at) continue;
+        const rows = sidEntriesToRows(cell.entries, doc, at);
+        if ('error' in rows) {
+          reverted.add(cell.p * channels + cell.c);
+          problem ??= rows.error;
+          continue;
+        }
+        const source = doc.patterns[at.pattern]?.rows ?? [];
+        rows.forEach((row, r) => {
+          if (row === source[at.offset + r]) return;
+          let pattern = writes.get(at.pattern);
+          if (!pattern) writes.set(at.pattern, (pattern = new Map()));
+          pattern.set(at.offset + r, row);
+        });
+      }
+
+      let next = doc;
+      for (const [pattern, rows] of writes) {
+        const current = (next.patterns[pattern]?.rows ?? []).slice();
+        for (const [r, row] of rows) current[r] = row;
+        const written = setSidPatternSlice(next, pattern, 0, current);
+        if (!written.ok) {
+          // The encoder only makes rows the model accepts; this is the belt.
+          problem ??= written.reason;
+          for (const cell of edited) {
+            if (layout.cells[cell.p]?.[cell.c]?.pattern === pattern) reverted.add(cell.p * channels + cell.c);
+          }
+          continue;
+        }
+        next = written.doc;
+      }
+
+      if (next !== doc || reverted.size > 0) {
+        const own = new Map(edited.map((cell) => [cell.p * channels + cell.c, cell]));
+        const projected = projectSidPatterns(next);
+        for (let p = 0; p < count; p++) {
+          for (let c = 0; c < channels; c++) {
+            const at = layout.cells[p]?.[c];
+            const target = patterns[p]?.tracks[c];
+            if (!at || !target) continue;
+            const key = p * channels + c;
+            const changed = next.patterns[at.pattern] !== doc.patterns[at.pattern];
+            if (!changed && !reverted.has(key)) continue;
+            const fresh = projected[p]?.tracks[c]?.entries ?? [];
+            const mine = own.get(key);
+            const agrees =
+              mine !== undefined &&
+              !reverted.has(key) &&
+              mine.entries.length === fresh.length &&
+              mine.entries.every((entry, i) => sidEntriesEqual(entry, fresh[i]));
+            if (agrees) continue;
+            target.entries = fresh.map((entry) => ({ ...entry }));
+          }
+        }
+      }
+      cache.cells = patterns.map((pattern) => pattern.tracks.map((track) => toRaw(track.entries)));
+
+      const changed = next !== doc;
+      if (changed) {
+        this.sidDoc = next;
+        this.sidRevision += 1;
+        clearAhxEditNotice();
+      }
+      if (problem !== null) reportAhxEditNotice(problem);
+      return changed;
     },
 
     // ------------------------------------------------------------------

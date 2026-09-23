@@ -23,6 +23,11 @@
 //! S3 adds the song: `song.rs` reads and writes the SID song file the app's
 //! `SidDoc` saves, and `player.rs` plays it on a chip of the song's model.
 //! S3's record is `.ai/sid-song-model-verdict.md`.
+//!
+//! S4 adds what the browser needs: `wasm.rs` (`SidPlayer`, the worklet's
+//! class), per-voice taps and a voice mask on the chip, and the player's
+//! song-row transport (seek, row loop, preview voice). S4's record is
+//! `.ai/sid-editor-verdict.md`.
 
 pub mod chip;
 pub mod envelope;
@@ -32,6 +37,7 @@ pub mod player;
 pub mod song;
 pub mod voice;
 pub mod waveform;
+pub mod wasm;
 
 #[cfg(test)]
 mod tests;
@@ -39,10 +45,13 @@ mod tests;
 mod tests_s2;
 #[cfg(test)]
 mod tests_s3;
+#[cfg(test)]
+mod tests_s4;
 
 pub use chip::Chip;
 pub use player::SidSongPlayer;
 pub use song::SidSong;
+pub use wasm::SidPlayer;
 
 use std::fmt;
 

@@ -31,6 +31,7 @@ const WORKLET_BUILD_OPTIONS = {
     'src/audio/worklets/synth-worklet.ts',
     'src/audio/worklets/effects-worklet.ts',
     'src/audio/worklets/ahx-worklet.ts',
+    'src/audio/worklets/sid-worklet.ts',
   ],
   bundle: true,
   format: 'esm',

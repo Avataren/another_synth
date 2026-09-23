@@ -47,6 +47,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/AhxInstrumentPage.vue'),
       },
       {
+        // The SID instrument editor (plan-sid-tracking.md S4): edits the song
+        // doc's instrument, never a synth `Patch`, so it has its own page too.
+        path: 'sid/instrument/:slot(\\d+)',
+        name: 'sid-instrument-editor',
+        component: () => import('pages/SidInstrumentPage.vue'),
+      },
+      {
         path: 'tracker',
         component: () => import('pages/TrackerPage.vue'),
         beforeEnter: (to) => {

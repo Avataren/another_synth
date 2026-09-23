@@ -373,6 +373,16 @@ export class TrackerSongBank implements TrackerSink {
     return instrumentId ? this.getInstrumentOutput(instrumentId) : null;
   }
 
+  /**
+   * A track's monitor tap itself, for a sound source that feeds it directly
+   * rather than through a bank instrument: the SID worklet's voice outputs
+   * (plan-sid-tracking.md S4), so a SID voice is analysed on exactly the tap a
+   * sampled track would be. Null when per-track monitoring is off.
+   */
+  getTrackTap(trackIndex: number): GainNode | null {
+    return this.maybeTrackMonitor(trackIndex);
+  }
+
   /** Get the InstrumentV2 instance for a specific instrument (for live editing) */
   /**
    * Get the instrument for a specific instrument id (for live editing).
