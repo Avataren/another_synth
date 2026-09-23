@@ -15,9 +15,14 @@ import {
   docFromSong,
   docToSong,
   fileInstruments,
+  makeUnique,
   projectAhxPatterns,
   projectDisplayPatterns,
   projectTracks,
+  setStep,
+  setTranspose,
+  type AhxDoc,
+  type AhxDocStep,
   type HvlDoc,
 } from 'src/audio/tracker/ahx-doc';
 
@@ -198,5 +203,78 @@ describe('HVL docs over the corpus', () => {
         });
       });
     }
+  });
+});
+
+/**
+ * plan-hvl-editing.md P3: edited docs, over the whole corpus. Each file gets
+ * real edits through the ops on its *last* channel (for most files one the
+ * old four-channel code never reached): the position-0 cell gets a track of
+ * its own (`makeUnique`), row 0 a note with instrument 1 and a second-column
+ * effect (HVL only), and a transpose. The rebuilt file must hold exactly the
+ * edited doc, keep every instrument, and re-save byte for byte.
+ */
+describe('mutated HVL docs round-trip byte-exact (P3)', () => {
+  const STEP: AhxDocStep = { note: 13, instrument: 1, fx: 0, fxParam: 0, fxb: 0xc, fxbParam: 0x20 };
+  const ok = <T extends { ok: boolean }>(result: T, what: string): Extract<T, { ok: true }> => {
+    if (!result.ok) throw new Error(`${what}: ${(result as unknown as { reason: string }).reason}`);
+    return result as Extract<T, { ok: true }>;
+  };
+  function edited(name: string, bytes: Uint8Array): { doc: HvlDoc; channel: number; track: number; transpose: number } {
+    const doc = hvlDoc(bytes);
+    const channel = docChannels(doc) - 1;
+    const instrumentBytes = ahxInstrumentBytes(doc.instruments, 'hvl');
+    const unique = ok(makeUnique(doc, 0, channel, { instrumentBytes }), `${name} makeUnique`);
+    const stepped = ok(setStep(unique.doc, unique.track, 0, STEP), `${name} setStep`);
+    const transpose = doc.positions[0]!.transpose[channel] === -5 ? 7 : -5;
+    const moved = ok(setTranspose(stepped.doc, 0, channel, transpose), `${name} setTranspose`);
+    return { doc: moved.doc as HvlDoc, channel, track: unique.track, transpose };
+  }
+  const titleOf = (doc: AhxDoc): string => doc.songName.trim() || 'Imported HVL';
+
+  it('the edit lands and nothing else moves: the rebuilt file parses as the edited doc, instruments kept, all 22', () => {
+    for (const { name, bytes } of corpus) {
+      const source = parseAhx(bytes);
+      expect(source.instrumentNr, `${name} has an instrument 1 to use`).toBeGreaterThanOrEqual(1);
+      const { doc, channel, track, transpose } = edited(name, bytes);
+      const out = buildAhxFile({ doc, slots: [], title: titleOf(doc) }).bytes;
+      expect(sameBytes(out, bytes), `${name}: the edit changed the file`).toBe(false);
+      const back = parseAhx(out);
+      expect(back, name).toEqual(docToSong(doc));
+      expect(back.positions[0]!.track[channel], name).toBe(track);
+      expect(back.positions[0]!.transpose[channel], name).toBe(transpose);
+      expect(back.tracks[track]![0], name).toEqual(STEP);
+      expect(back.instrumentNr, name).toBe(source.instrumentNr);
+      expect(back.instruments, name).toEqual(source.instruments);
+      expect(back.channels, name).toBe(source.channels);
+      expect([back.mixgainRaw, back.defstereo], name).toEqual([source.mixgainRaw, source.defstereo]);
+      expect(nameOffsetOf(out), `${name}: size budget`).toBe(ahxUsedBytes(doc, ahxInstrumentBytes(fileInstruments(doc, []), 'hvl')));
+    }
+  });
+
+  it('an edited file re-saves byte for byte: load it, rebuild it untouched, same bytes (with base and through buildAhxFile), all 22', () => {
+    for (const { name, bytes } of corpus) {
+      const { doc } = edited(name, bytes);
+      const out = buildAhxFile({ doc, slots: [], title: titleOf(doc) }).bytes;
+      const again = hvlDoc(out);
+      expect(sameBytes(buildAhxFile({ doc: again, slots: [], title: titleOf(again) }).bytes, out), name).toBe(true);
+      expect(sameBytes(serializeAhx(parseAhx(out), { base: out }), out), `${name} base`).toBe(true);
+      // Without base too: the edited file's only base-held bit, the blank-first-track flag, is re-derived the same.
+      expect(parseAhx(serializeAhx(parseAhx(out))), `${name} no base`).toEqual(parseAhx(out));
+    }
+  });
+
+  it('meltwater_10ch.hvl (pinned): an edit on channel 10 keeps its 10 instruments, and the edited file is stable from then on', () => {
+    const bytes = corpus.find((f) => f.name === 'meltwater_10ch.hvl')!.bytes;
+    const { doc, channel } = edited('meltwater_10ch.hvl', bytes);
+    expect(channel).toBe(9);
+    const out = buildAhxFile({ doc, slots: [], title: titleOf(doc) }).bytes;
+    const back = parseAhx(out);
+    expect(back.instrumentNr).toBe(10);
+    expect(back.instruments.slice(1).map((i) => i.name)).toEqual(parseAhx(bytes).instruments.slice(1).map((i) => i.name));
+    // The rebuild writes the last (empty) name's NUL the source omits; once written it stays.
+    expect(out[out.length - 1]).toBe(0);
+    const twice = buildAhxFile({ doc: hvlDoc(out), slots: [], title: titleOf(doc) }).bytes;
+    expect(sameBytes(twice, out)).toBe(true);
   });
 });

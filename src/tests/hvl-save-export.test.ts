@@ -283,3 +283,36 @@ describe('an HVL song with no name', () => {
     expect(parseAhx(embedded(store.serializeSong())).name).toBe('Imported AHX');
   });
 });
+
+/**
+ * The whole HVL corpus through the app: open the file, edit its last channel,
+ * save; the `.cmod`'s file is what the HVL row exports; that export, opened
+ * again as an `.hvl`, saves and exports untouched as the same bytes.
+ */
+describe('every demo .hvl: edit, save, export, reopen, byte-exact (P3)', () => {
+  const HVL_FILES = fs.readdirSync(DEMOS).filter((name) => name.endsWith('.hvl')).sort();
+
+  it('covers the 22 demo files', () => {
+    expect(HVL_FILES).toHaveLength(22);
+  });
+
+  it.each(HVL_FILES)('%s', async (name) => {
+    const source = demo(name);
+    const store = await openHvl(source);
+    const last = store.ahxDoc!.positions[0]!.track.length - 1;
+    editCell(store, last);
+    const file = JSON.parse(JSON.stringify(store.serializeSong())) as TrackerSongFile;
+    const saved = embedded(file);
+    expect(stepAt(saved, last)).toMatchObject({ instrument: 1 });
+    expect(parseAhx(saved).instruments).toEqual(parseAhx(source).instruments);
+
+    const exported = hvlExporter.serialize(file);
+    expect(exported).toEqual(saved);
+
+    setActivePinia(createPinia());
+    setCurrentAhxSource(null);
+    const again = await openHvl(exported);
+    expect(embedded(again.serializeSong())).toEqual(exported);
+    expect(hvlExporter.serialize(snapshotEditorSong(again))).toEqual(exported);
+  });
+});
