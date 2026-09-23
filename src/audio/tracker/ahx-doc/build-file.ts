@@ -6,6 +6,12 @@ import type { AhxDoc } from './types';
 
 /** What an empty song name imports as (`importAhxToTrackerSong`'s title fallback). */
 export const AHX_IMPORT_FALLBACK_TITLE = 'Imported AHX';
+/** The same for an HVL file. */
+export const HVL_IMPORT_FALLBACK_TITLE = 'Imported HVL';
+
+/** The import's title for a file of `format` with no name. */
+export const importFallbackTitle = (format: AhxDoc['format']): string =>
+  format === 'hvl' ? HVL_IMPORT_FALLBACK_TITLE : AHX_IMPORT_FALLBACK_TITLE;
 
 /** The part of an instrument slot the file needs: slot `n` holds instrument `n + 1`. */
 export interface AhxFileSlot {
@@ -29,13 +35,14 @@ export interface BuiltAhxFile {
 
 /**
  * The name to write: the doc's own raw name when the title is still what the
- * import derived from it (trimmed, with the fallback), so edge whitespace
- * survives and an unchanged rename never writes the fallback into the file;
+ * import derived from it (trimmed, with the format's fallback), so edge
+ * whitespace survives and an unchanged rename never writes the fallback into
+ * the file (an HVL with no name keeps none, plan-hvl-editing.md P3);
  * otherwise the title as the format can hold it. For a new song the doc's name
  * is the title, so this is "the title, as latin-1".
  */
 export function songNameFor(doc: AhxDoc, title: string): { name: string; altered: boolean } {
-  if (title === (doc.songName.trim() || AHX_IMPORT_FALLBACK_TITLE)) return { name: doc.songName, altered: false };
+  if (title === (doc.songName.trim() || importFallbackTitle(doc.format))) return { name: doc.songName, altered: false };
   const { text, altered } = toLatin1(title);
   return { name: text, altered };
 }
