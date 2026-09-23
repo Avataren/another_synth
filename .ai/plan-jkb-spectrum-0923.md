@@ -121,4 +121,79 @@ addendum. Stop on the branch; no push, no merge, no deploy.
 
 ## Addendum — implementation record
 
-(appended after implementation)
+Branch tip at implementation: `agent/jkb-spectrum-0923a` (base 2d14da32).
+
+**What changed (2 files + 1 new test):**
+
+- `src/composables/useTrackerSongHost.ts:159-177` — `spectrumTrackNodes` now
+  returns `[]` when `moduleFormat === 'ahx'` (the only `ModuleFormat` value
+  whose songs carry no patches — AHX and HVL both report it,
+  `packages/tracker-playback/src/types.ts:16`, `src/audio/tracker/ahx-import.ts:50`),
+  so the analyzer resolves its stereo mode against `masterOutputNode`
+  (`postFxRack.output`) instead of locking into quad with four permanently
+  null taps. Per-track tap building, `trackAudioNodes`, the waveform path and
+  the audio graph are untouched (the fix is a read-only computed).
+- `src/tests/jukebox-spectrum-ahx.test.ts` (new) — pins the contract:
+  - **Host-level, real production path** (real pinia stores, real
+    `TrackerSongBank` on a stubbed suspended `AudioContext`, real demo bytes):
+    `(iridion 0.5)q22.ahx` and `ring_modulation_test_song.hvl` loaded through
+    the real funnel (`parseSongBuffer` → `applySongFile`) end with
+    `trackCount === 4` and `spectrumTrackNodes === []`; a native-format song
+    keeps the one-slot-per-track array shape (transient-null case unchanged).
+    Verified to FAIL against the unfixed host with exactly the root-cause
+    signature (`expected [null, null, null, null] to deeply equal []`) by
+    stashing the fix.
+  - **Component-level prop contract** (`TrackerSpectrumAnalyzer`, fake audio
+    nodes, oscilloscope-mono pattern): no taps + master → stereo graph built
+    from the master node; four live taps → quad (one analyser each);
+    quad → no taps (the AHX handoff) → tears down quad and rebuilds stereo
+    on the master node.
+
+**Deviations from the plan, honestly described:**
+
+- The plan's host test proposed `host.loadSongFromBuffer`; the host does not
+  re-export it — the tests call its two real constituents,
+  `host.parseSongBuffer` + `host.applySongFile` (the same funnel
+  `loadSongFromBuffer` is, and the shared path of the demo browser and
+  jukebox). Same production path, no mock.
+- The real-path test runs on a *suspended* stubbed `AudioContext` (postfx-path
+  pattern, `src/tests/postfx-path.test.ts:15-19`): with a running context the
+  AHX transport awaits the worklet's wasm handshake, which the fake worklet
+  never completes; a suspended context skips that await exactly like the
+  fresh-tab deep-link path (`src/stores/tracker-playback-store.ts`,
+  `loadAhxSong` suspended branch). The analyzer-tap contract does not depend
+  on context state; the suspended choice mirrors a real browser fresh tab.
+- `masterOutputNode`/`trackAudioNodes` identity in the component test is
+  pinned with `markRaw` taps: Vue proxies props, which would otherwise break
+  connect-source identity assertions (target identity — splitter/analysers —
+  is unaffected).
+- Root cause confirmed as planned; no rust-wasm changes, no audio-path
+  changes, no public/demos changes. The jukebox handover entry scenario
+  (editor song's live taps engaging quad before the first AHX plays) is
+  INFERRED from the wiring (`JukeboxPage.vue:625-631`,
+  `useTrackerSongHost.ts:118-127`) — not reproduced in a browser here; the
+  fix removes the failure mode regardless of which 4-track song precedes the
+  AHX/HVL one.
+
+**Gates (branch tip, real exit codes):**
+
+| Gate | Command | Exit |
+| --- | --- | --- |
+| tests | `npm run test:run` (242 files / 3928 tests) | 0 |
+| lint | `npm run lint` | 0 |
+| types | `npx vue-tsc --noEmit` | 0 |
+| secrets | `gitleaks detect --no-git --source .` | 0 (no leaks) |
+| artifacts | `npm run check:artifacts` | 0 |
+
+Raw outputs: `.ai/checks-spectrum-test.txt`, `.ai/checks-spectrum-rest.txt`
+(first pass — its per-tool EXIT lines are unreliable because of a `tail`
+pipe; re-run clean in `.ai/checks-spectrum-rest2.txt`, which caught and led
+to fixing a real `exactOptionalPropertyTypes` error in the new test).
+
+**Main moved mid-run:** `main`/`origin/main` = 693dcfd7 (P5 engine-split
+landing) while this branch bases 2d14da32, per instructions no rebase was
+done; `git diff 2d14da32..693dcfd7` touches none of the three files this fix
+changes (`useTrackerSongHost.ts`, `TrackerSpectrumAnalyzer.vue`,
+`ahx-import.ts`), so the later merge is expected clean.
+
+Stopped on the branch: no push, no merge, no deploy.
