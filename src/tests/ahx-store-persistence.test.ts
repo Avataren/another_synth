@@ -33,11 +33,14 @@ type Store = ReturnType<typeof useTrackerStore>;
 /** What `applySongFile` does to the store and the source registry (its AHX part). */
 function applyLikeFileIO(store: Store, file: TrackerSongFile): void {
   store.loadSongFile(file);
-  const bytes = store.currentAhxBytes();
-  if (bytes !== null && store.ahxDoc !== null) {
-    setCurrentAhxSource(bytes, { format: 'ahx', version: store.ahxDoc.version, edits: [] });
+  const doc = store.ahxDoc;
+  const bytes = doc?.format === 'ahx' ? store.currentAhxBytes() : null;
+  const record = ahxSourceRecordOf(file);
+  if (bytes !== null && doc !== null) {
+    setCurrentAhxSource(bytes, { format: 'ahx', version: doc.version, edits: [] });
+  } else if (!record && doc?.format === 'hvl' && doc.base !== undefined) {
+    setCurrentAhxSource(doc.base, { format: 'hvl', version: doc.version, edits: [] });
   } else {
-    const record = ahxSourceRecordOf(file);
     setCurrentAhxSource(record?.bytes ?? null, record ?? {});
   }
 }
@@ -179,7 +182,6 @@ describe('a file with a bad ahxFile falls back to a read-only display (no throw)
     ['invalid base64', '!!!!not base64!!!!'],
     ['base64 of bytes that are not a song', encodeAhxFile(new Uint8Array(64).fill(7))],
     ['not text', 42],
-    ['an HVL file', encodeAhxFile(demo(fs.readdirSync(DEMOS).find((n) => n.endsWith('.hvl'))!))],
   ];
 
   it.each(cases)('%s', (_name, ahxFile) => {
@@ -195,6 +197,21 @@ describe('a file with a bad ahxFile falls back to a read-only display (no throw)
     expect(currentAhxSource()).toBeNull();
     expect(warn).toHaveBeenCalled();
     expect(after.serializeSong().data.ahxFile).toBeUndefined();
+  });
+
+  it('an HVL file is no longer a bad one (plan-hvl-editing.md P3): it is the song, an editable HVL doc with no slots', () => {
+    const hvl = demo('meltwater_10ch.hvl');
+    const saved = viaJson(openKarma().serializeSong());
+    saved.data.ahxFile = encodeAhxFile(hvl);
+    const after = freshStore();
+    applyLikeFileIO(after, saved);
+    expect(after.ahxDoc?.format).toBe('hvl');
+    expect(after.isAhxEditable).toBe(true);
+    expect(after.instrumentSlots).toEqual([]);
+    expect(currentAhxSource()).toEqual(hvl);
+    const again = decodeAhxFile(after.serializeSong().data.ahxFile);
+    expect(again.ok && again.format).toBe('hvl');
+    expect(again.ok && again.bytes).toEqual(hvl);
   });
 
   it('an over-cap ahxFile is refused before it is decoded', () => {

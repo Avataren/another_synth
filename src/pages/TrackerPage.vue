@@ -1211,7 +1211,7 @@ const ahxChannelsHint = computed(() =>
   hvlDocChannels.value === null ? 'AHX songs have exactly 4 channels' : `This HVL song has ${hvlDocChannels.value} channels, set by its file`
 );
 const ahxLengthHint = 'All the tracks of an AHX or HVL song have the same length';
-// HVL instruments stay in the song's file until plan-hvl-editing.md P3 decides on HVL slots.
+// HVL instruments stay in the song's doc: plan-hvl-editing.md P3 deferred HVL slots and instrument editing to a later pass.
 const ahxInstrumentsHint = computed(() =>
   hvlDocChannels.value === null
     ? 'AHX instruments are numbered in order and edited in their own editor'

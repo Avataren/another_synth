@@ -265,9 +265,9 @@ interface TrackerStoreState {
    * The structure of an editable AHX or HVL song (see `ahx-doc`; `format`
    * says which, `docChannels` its width); `null` for every other song, and for
    * an AHX/HVL song that has no doc (it stays read-only). Always a `markRaw`
-   * object, replaced (never mutated) by an edit. An HVL doc is edited, played
-   * and undone exactly like an AHX one; only the `.cmod` save stays AHX-only
-   * (`serializeSong`, plan-hvl-editing.md P3).
+   * object, replaced (never mutated) by an edit. An HVL doc is edited, played,
+   * undone and saved (`serializeSong`, plan-hvl-editing.md P3) exactly like an
+   * AHX one; its instruments are its own, not slots.
    */
   ahxDoc: AhxDoc | null;
   /** Counts every change of `ahxDoc`, including the one that clears it. */
@@ -454,6 +454,12 @@ interface AhxSyncCache {
   watching: boolean;
   /** What the engine's bytes were last built from (`ahxPublishKey`); `null` when unknown. */
   published: string | null;
+  /**
+   * `ahxPublishKey` as the song was loaded (`adoptAhxDoc`): while it still
+   * matches, nothing was edited and an HVL song's file is its source bytes
+   * (`serializeSong`). `null` when no doc was adopted.
+   */
+  loaded: string | null;
 }
 const ahxSyncCaches = new WeakMap<object, AhxSyncCache>();
 
@@ -461,7 +467,7 @@ function ahxSyncCacheOf(store: { $state: object }): AhxSyncCache {
   const key = toRaw(store.$state);
   let cache = ahxSyncCaches.get(key);
   if (!cache) {
-    cache = { cells: [], watching: false, published: null };
+    cache = { cells: [], watching: false, published: null, loaded: null };
     ahxSyncCaches.set(key, cache);
   }
   return cache;
@@ -710,6 +716,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.ahxRevision += 1;
       ahxSyncCacheOf(this).cells = [];
       ahxSyncCacheOf(this).published = null;
+      ahxSyncCacheOf(this).loaded = null;
       clearAhxEditNotice();
     },
     undo() {
@@ -1025,7 +1032,7 @@ export const useTrackerStore = defineStore('trackerStore', {
      *
      * What the slot holds is what the editor shows and, through `ahx-source`, what
      * plays. An editable AHX song saves it: `serializeSong` embeds the file built
-     * from the slots (`data.ahxFile`). A song with no doc (HVL) cannot be saved as a
+     * from the slots (`data.ahxFile`). A song with no doc cannot be saved as a
      * `.cmod` (`handleSaveSongFile` refuses), so an edit to one lasts for the session.
      *
      * The instrument is written in the song's own format (HVL's wider PList
@@ -1071,8 +1078,9 @@ export const useTrackerStore = defineStore('trackerStore', {
      * validity (`sanitizeAhxInstrument`) and the file's size. An editable song
      * (one with a doc) has a 16-bit `nameOffset` the growth must not pass
      * (`instrumentGrowthRefusal`); an edit that does not grow the file is never
-     * refused, so a full song can still be edited. A song with no doc (HVL, a
+     * refused, so a full song can still be edited. A song with no doc (a
      * read-only AHX) has no budget here: it cannot be exported from the editor.
+     * An HVL song has no slots, so it never gets this far.
      */
     checkAhxInstrument(
       slotNumber: number,
@@ -1145,15 +1153,31 @@ export const useTrackerStore = defineStore('trackerStore', {
         currentInstrumentPage: this.currentInstrumentPage,
         songPatches: filteredSongPatches
       };
-      // Both, as a belt against a stale doc: only an AHX song carries a file.
-      // An HVL doc is edited and played, but its song file carries no rebuilt
-      // file yet (the loader refuses an embedded HVL one, and the AHX exporter
-      // would hand it out as `.ahx`): saving HVL edits is plan-hvl-editing.md P3.
-      if (this.moduleFormat === 'ahx' && this.ahxDoc !== null && this.ahxDoc.format === 'ahx') {
-        const bytes = this.currentAhxBytes();
+      // Only a song with a doc carries a file (the check on the format too is a
+      // belt against a stale doc). An HVL song's is an HVL file (plan-hvl-editing.md
+      // P3): the loader takes it back as the song's doc and engine bytes, and the
+      // AHX exporter converts it or refuses, never hands it out as `.ahx`.
+      if (this.moduleFormat === 'ahx' && this.ahxDoc !== null) {
+        const bytes = this.savedAhxBytes();
         if (bytes !== null) data.ahxFile = encodeAhxFile(bytes);
       }
       return { version: CURRENT_SONG_FILE_VERSION, data };
+    },
+    /**
+     * The file a save embeds: `currentAhxBytes`, except for an HVL song not
+     * edited since it was loaded, which is the file it came from, byte for byte
+     * (the doc's `base`): what the engine plays for it, and a rebuild can differ
+     * (meltwater_10ch.hvl's trailing NUL). An AHX song always takes the rebuild,
+     * as before.
+     */
+    savedAhxBytes(): Uint8Array | null {
+      const doc = this.ahxDoc;
+      if (doc !== null && doc.format === 'hvl' && doc.base !== undefined) {
+        // An edit the write-back finds here moves the revision, so the key tells.
+        this.syncAhxWriteBack();
+        if (ahxSyncCacheOf(this).loaded === this.ahxPublishKey()) return doc.base;
+      }
+      return this.currentAhxBytes();
     },
     loadSongFile(file: TrackerSongFile) {
       if (!file || !file.data) return;
@@ -1311,9 +1335,9 @@ export const useTrackerStore = defineStore('trackerStore', {
      * the row model and slots written beside it are ignored. The record is what a
      * fresh `.ahx` import (and an in-memory pre-v5 snapshot) has.
      *
-     * An HVL song's doc comes from its record only: an embedded file that turns
-     * out to be HVL stays refused, as before (no save writes one: `serializeSong`
-     * embeds AHX files only until plan-hvl-editing.md P3).
+     * An HVL song's embedded file (a save writes one since plan-hvl-editing.md
+     * P3) is taken the same way; its instruments are the doc's own, so it gets
+     * no slots, as its import has none.
      */
     adoptAhxDoc(file: TrackerSongFile, data: TrackerSongFile['data']) {
       let bytes: Uint8Array | null = null;
@@ -1336,9 +1360,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       let slots: InstrumentSlot[] | null = null;
       try {
         const song = parseAhx(bytes);
-        if (fromFile && song.format !== 'ahx') throw new Error('An embedded file must be AHX; HVL songs are loaded from their own file.');
         doc = docFromSong(song, bytes);
-        if (fromFile) slots = buildAhxSlots(song);
+        if (fromFile) slots = song.format === 'ahx' ? buildAhxSlots(song) : [];
       } catch (error) {
         console.warn('[TrackerStore] AHX song kept read-only: its bytes have no editable doc', error);
         return;
@@ -1353,7 +1376,9 @@ export const useTrackerStore = defineStore('trackerStore', {
       // The bytes are what the engine holds for this song (`applySongFile` hands
       // them over; for HVL the file's own, see there): nothing is dirty until an
       // edit (a flush of an unedited song is a no-op).
-      ahxSyncCacheOf(this).published = this.ahxPublishKey();
+      const cache = ahxSyncCacheOf(this);
+      cache.published = this.ahxPublishKey();
+      cache.loaded = cache.published;
     },
     /**
      * The song as an `.ahx` file, from the doc, the slots and the title (the

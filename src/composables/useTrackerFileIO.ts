@@ -189,14 +189,13 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
    * Save the current song to a .cmod file (zipped JSON)
    */
   async function handleSaveSongFile() {
-    // An editable AHX song saves its file inside the .cmod (`data.ahxFile`). One
-    // the editor has no doc for (an AHX file it could not read) is only a display
-    // model of a file it plays from, which a .cmod cannot turn back into sound:
-    // saving it would write a file that never plays. An HVL song is edited
-    // through its doc but its .cmod carries no file yet (plan-hvl-editing.md P3),
-    // so it is refused the same way, as it was before it became editable.
+    // An editable AHX or HVL song saves its file inside the .cmod (`data.ahxFile`;
+    // HVL since plan-hvl-editing.md P3). One the editor has no doc for (a file it
+    // could not read, a .cmod without its bytes) is only a display model of a
+    // file it plays from, which a .cmod cannot turn back into sound: saving it
+    // would write a file that never plays.
     const store = context.trackerStore;
-    if (store.moduleFormat === 'ahx' && (!store.isAhxEditable || store.ahxDoc?.format === 'hvl')) {
+    if (store.moduleFormat === 'ahx' && !store.isAhxEditable) {
       refuseSavingAhx();
       return;
     }
@@ -314,7 +313,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
 
   /**
    * What both JSON paths of `parseSongBuffer` (the zipped `.cmod` and the plain
-   * JSON) do with a parsed song file. A v5 AHX song carries its file
+   * JSON) do with a parsed song file. A v5 AHX (or HVL) song carries its file
    * (`data.ahxFile`); when it is valid its bytes are attached as the song's
    * source record, so the consumers that read the record before the store has
    * loaded the song (the exporter) see the bytes the store will build from. The
@@ -411,14 +410,19 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     // them. An HVL song (editable or not) and any other AHX song play their
     // record, the file's own bytes: an unedited HVL song must sound, and be,
     // exactly its file (a rebuild can differ, meltwater_10ch.hvl's trailing
-    // NUL), and its first edit publishes the rebuilt bytes. Every other format
+    // NUL), and its first edit publishes the rebuilt bytes. An HVL song with a
+    // doc and no record (a snapshot carrying its saved file: the Jukebox's) plays
+    // the bytes its doc was read from, which are that file. Every other format
     // clears them.
     const store = context.trackerStore;
-    const ahxBytes = store.ahxDoc?.format === 'ahx' ? store.currentAhxBytes() : null;
-    if (ahxBytes !== null && store.ahxDoc !== null) {
-      setCurrentAhxSource(ahxBytes, { format: 'ahx', version: store.ahxDoc.version, edits: [] });
+    const doc = store.ahxDoc;
+    const ahxBytes = doc?.format === 'ahx' ? store.currentAhxBytes() : null;
+    const ahxSource = ahxSourceRecordOf(songFile);
+    if (ahxBytes !== null && doc !== null) {
+      setCurrentAhxSource(ahxBytes, { format: 'ahx', version: doc.version, edits: [] });
+    } else if (!ahxSource && doc?.format === 'hvl' && doc.base !== undefined) {
+      setCurrentAhxSource(doc.base, { format: 'hvl', version: doc.version, edits: [] });
     } else {
-      const ahxSource = ahxSourceRecordOf(songFile);
       setCurrentAhxSource(ahxSource?.bytes ?? null, ahxSource ?? {});
     }
 
