@@ -2,6 +2,7 @@ import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { CURRENT_SONG_FILE_VERSION } from 'src/stores/tracker-store';
 import { attachAhxSource } from 'src/audio/tracker/ahx-source';
 import { buildAhxSlots } from 'src/audio/tracker/instrument-slots';
+import { importFallbackTitle } from 'src/audio/tracker/ahx-doc/build-file';
 import {
   looksLikeAhx as looksLikeAhxInternal,
   parseAhx,
@@ -42,7 +43,7 @@ export function importAhxToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
     version: CURRENT_SONG_FILE_VERSION,
     data: {
       currentSong: {
-        title: song.name.trim() || (song.format === 'hvl' ? 'Imported HVL' : 'Imported AHX'),
+        title: song.name.trim() || importFallbackTitle(song.format),
         author: 'Unknown',
         bpm: DEFAULT_BPM,
       },

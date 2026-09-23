@@ -1,6 +1,7 @@
 import type { AhxSong, ModuleFormat } from '@another-synth/tracker-playback';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { ahxSourceRecordOf, type AhxSource } from 'src/audio/tracker/ahx-source';
+import { importFallbackTitle } from 'src/audio/tracker/ahx-doc/build-file';
 
 /**
  * What the AHX and HVL exporters have in common: finding the source bytes of a
@@ -42,10 +43,6 @@ export function sourceRecordFor(song: TrackerSongFile, target: 'AHX' | 'HVL'): S
   if (!record) return { ok: false, reason: 'This song has no original file to export from.' };
   return { ok: true, record };
 }
-
-/** What the import calls a song whose file has no name (`importAhxToTrackerSong`). */
-export const importFallbackTitle = (format: AhxSong['format']): string =>
-  format === 'hvl' ? 'Imported HVL' : 'Imported AHX';
 
 /**
  * The song name to write. The title is the import's own derivation of the

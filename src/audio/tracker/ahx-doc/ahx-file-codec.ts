@@ -1,4 +1,4 @@
-import { parseAhx } from '@another-synth/tracker-playback';
+import { parseAhx, type AhxSongFormat } from '@another-synth/tracker-playback';
 
 /**
  * The AHX file a `.cmod` carries (`data.ahxFile`): the bytes `buildAhxFile`
@@ -24,12 +24,14 @@ export function encodeAhxFile(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-export type AhxFileDecoding = { ok: true; bytes: Uint8Array } | { ok: false; reason: string };
+export type AhxFileDecoding = { ok: true; bytes: Uint8Array; format: AhxSongFormat } | { ok: false; reason: string };
 
 /**
- * The AHX bytes `text` holds, or why it holds none. Never throws and refuses an
- * over-cap or malformed text before allocating the decoded array. The bytes must
- * parse as an AHX file (an HVL file is a valid module but not an editable one).
+ * The AHX or HVL bytes `text` holds, and which of the two they are, or why it
+ * holds none. Never throws and refuses an over-cap or malformed text before
+ * allocating the decoded array. The bytes must parse. An HVL song with a doc
+ * saves its file here too (plan-hvl-editing.md P3), so a reader that needs one
+ * format (the AHX exporter) checks `format` itself.
  */
 export function decodeAhxFile(text: unknown): AhxFileDecoding {
   if (typeof text !== 'string') return { ok: false, reason: 'it is not text' };
@@ -45,10 +47,11 @@ export function decodeAhxFile(text: unknown): AhxFileDecoding {
   } catch {
     return { ok: false, reason: 'it is not valid base64' };
   }
+  let format: AhxSongFormat;
   try {
-    if (parseAhx(bytes).format !== 'ahx') return { ok: false, reason: 'it is not an AHX file' };
+    format = parseAhx(bytes).format;
   } catch (error) {
-    return { ok: false, reason: `its bytes are not a readable AHX file (${(error as Error).message})` };
+    return { ok: false, reason: `its bytes are not a readable AHX/HVL file (${(error as Error).message})` };
   }
-  return { ok: true, bytes };
+  return { ok: true, bytes, format };
 }

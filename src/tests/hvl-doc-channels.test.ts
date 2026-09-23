@@ -6,7 +6,7 @@ import { parseAhx, type AhxSong, type AhxStep } from '@another-synth/tracker-pla
 import { serializeAhx } from 'src/audio/tracker/song-export';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import { currentAhxSource, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
-import { docFromBytes, docFromSong, docToSong, HVL_MAX_CHANNELS, projectAhxPatterns, type AhxDoc, type HvlDoc } from 'src/audio/tracker/ahx-doc';
+import { decodeAhxFile, docFromBytes, docFromSong, docToSong, HVL_MAX_CHANNELS, projectAhxPatterns, type AhxDoc, type HvlDoc } from 'src/audio/tracker/ahx-doc';
 import { useTrackerStore } from 'src/stores/tracker-store';
 
 /**
@@ -171,8 +171,10 @@ describe('the store attaches the HVL doc at load, editable (P2)', () => {
         expect(pattern.tracks.length, `${label} position ${p}`).toBe(channels);
         expect(pattern.tracks.map((t) => t.entries), `${label} position ${p}`).toEqual(projected[p]!.tracks.map((t) => t.entries));
       });
-      // A save still embeds no rebuilt file for it (P3), and history is recorded now.
-      expect(store.serializeSong().data.ahxFile).toBeUndefined();
+      // A save embeds its file since P3: unedited, the source bytes themselves
+      // (no rebuild). History is recorded.
+      const saved = decodeAhxFile(store.serializeSong().data.ahxFile);
+      expect(saved.ok && saved.bytes).toEqual(bytes);
       store.pushHistory();
       expect(store.undoStack).toHaveLength(1);
       expect(store.undoStack[0]!.ahxDoc).toBe(doc);

@@ -23,14 +23,6 @@ const corpus = readdirSync(DEMOS)
   .sort()
   .map((name) => ({ name, bytes: new Uint8Array(readFileSync(resolve(DEMOS, name))) }));
 
-/**
- * meltwater_10ch.hvl's string table omits the final (empty) instrument name's
- * NUL terminator, so the writer canonically emits it: the export is the source
- * plus exactly one trailing NUL byte, and the parse is the same song
- * (measured 2026-09-23, curated HVL batch).
- */
-const TRAILING_NAME_NUL = ['meltwater_10ch.hvl'];
-
 /** What `applySongFile` does for an AHX/HVL song: the store gets the file, `ahx-source` the bytes. */
 function openInEditor(bytes: Uint8Array) {
   const store = useTrackerStore();
@@ -66,14 +58,10 @@ describe('the AHX exporter over the demo corpus, through the store', () => {
     for (const { name, bytes } of corpus.filter((f) => !name_isAhx(f.name))) {
       const song = snapshotEditorSong(openInEditor(bytes));
       expect(hvlExporter.check(song), name).toEqual({ ok: true });
-      if (TRAILING_NAME_NUL.includes(name)) {
-        const out = hvlExporter.serialize(song);
-        expect(out.length, name).toBe(bytes.length + 1);
-        expect(out.subarray(0, bytes.length), name).toEqual(bytes);
-        expect(out[out.length - 1], name).toBe(0);
-      } else {
-        expect(hvlExporter.serialize(song), name).toEqual(bytes);
-      }
+      // Since plan-hvl-editing.md P3 an unedited HVL song is its source bytes,
+      // not a rebuild: meltwater_10ch.hvl (whose rebuild gains a trailing NUL,
+      // `ahx-writer-corpus.test.ts`) too.
+      expect(hvlExporter.serialize(song), name).toEqual(bytes);
       checked++;
     }
     expect(checked).toBe(22);
