@@ -272,3 +272,40 @@ the rerun.
    they are recorded here.
 4. Still unverified (§6): no test listens to a real worklet, so hot-applying
    HVL-width PList rows is exercised only at the record level.
+
+---
+
+## Landing record (2026-09-23, main-session lander)
+
+- Branch `agent/hvl-instruments-0923a` @ `018f97ef` (3 commits
+  `3f062810`→`97850fac`→`018f97ef`) merged into `main` with
+  `git merge --no-ff` → merge commit **`a2db88eb`** (base at merge time:
+  `5fd3b347` = origin/main, after the jkb-spectrum landing). No conflicts.
+- Review: PASS (as delegated; review PASS recorded pre-landing).
+- Pre-land verification: branch tip unchanged (`018f97ef`), worktree clean,
+  no owner marker / foreign writer.
+
+**Gates (merged main @ a2db88eb, real exit codes):**
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| tests | `npm run test:run` | 0 — 242 files / 3930 tests passed |
+| lint | `npm run lint` | 0 |
+| types | `npx vue-tsc --noEmit` | 0 |
+| secrets | `gitleaks detect --no-git` | 0 (no leaks) |
+| artifacts | `npm run check:artifacts` | 0 |
+
+Raw outputs: `.ai/checks-land-hvli-{test,lint,tsc,gitleaks,artifacts}.txt`.
+
+**Deploy:** `bash scripts/deploy.sh` → exit 0, "Deployed and verified"
+(`594d0a147896eccb4e859c66ac45c295`). Log:
+`.ai/deploy-hvl-instruments-20260923.log`. MD5 spot-check local(dist/spa) ↔
+remote avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth — all
+matched: index.html `594d0a14…`, demos/index.json `eeb79da2…`,
+wasm/audio_processor_bg.wasm `62ad8309…`, worklets/ahx-worklet.js
+`0b1e2828…`.
+
+**Wasm drift (known/benign):** this deploy's rebuild regenerated only
+`public/demos/index.json` (wasm itself reproduced byte-identical this run —
+wasm-bindgen permutation drift is intermittent, per P4/P6 precedent).
+Stashed, not committed: stash `wasm-rebuild-drift-post-hvli-land-20260923`.
