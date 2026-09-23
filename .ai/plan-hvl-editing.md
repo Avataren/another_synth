@@ -572,3 +572,135 @@ Script self-verification `Deployed and verified (68a95542c35f3b5eff45a564120b470
 `index.html`, `demos/index.json`, `wasm/audio_processor_bg.wasm`, `worklets/ahx-worklet.js`.
 
 Worktree: owner marker absent/cleared; worktree left in place for P3.
+
+## 10. P3 status (agent/hvl-edit-p3-0923a, not merged) — COMPLETE (defer outcome)
+
+Branch `agent/hvl-edit-p3-0923a` from `eb93ad3a` (main after the P2 landing);
+not pushed, not merged, not deployed. Commits: `1d9aec5c` red save/export
+matrix · `4a371ad1` empty-name fallback fix · `f89968f8` `.cmod` save ·
+`0a0fe258` exporters + AHX guard · `f436709f` test helper (jsdom Blob) ·
+`e626aadd` mutated corpus round-trips · this docs commit.
+
+### Save/export semantics actually implemented
+- **`.cmod` save** (`serializeSong`, `tracker-store.ts:1161`): an HVL song with
+  a doc now embeds `data.ahxFile`, like an AHX one. The bytes come from
+  `savedAhxBytes` (`:1173`): while nothing was edited since the load, the doc's
+  `base`, i.e. **the source file byte for byte, with no rebuild**. "Nothing was
+  edited" means `ahxPublishKey()` still equals the new `AhxSyncCache.loaded`
+  key (`:462`, set at `adoptAhxDoc` `:1381`). That key holds the doc revision,
+  the title and the slots, so an undo back to the original still counts as
+  touched and takes the rebuild, which only differs for meltwater's trailing
+  NUL. After any edit the embedded bytes are the `buildAhxFile` rebuild, which
+  is the same file the engine plays.
+- **Load**: `decodeAhxFile` accepts AHX and HVL and reports `format`
+  (`ahx-file-codec.ts:27,52`). `adoptAhxDoc` takes an embedded HVL file as the
+  song's doc and gives it no slots, because the doc carries its instruments
+  (`tracker-store.ts:1364`). The P1/P2 refusal of an embedded HVL file is gone.
+- **`handleSaveSongFile`** (`useTrackerFileIO.ts:198`) refuses only a song
+  that has no doc. Doc-less HVL songs, such as a `.cmod` without bytes or a
+  17-channel file, are still refused, the same as AHX (§6 risk 7).
+- **`applySongFile`** (`useTrackerFileIO.ts:423`): an HVL doc with no source
+  record, such as the Jukebox's `snapshotEditorSong`, which now carries
+  `ahxFile` and so attaches no record, plays `doc.base`. Without this it would
+  have played silence. Test-pinned.
+- **HVL exporter** (`hvl-exporter.ts`): the embedded file is the authority and
+  is exported as it is, with its edits, instruments and title. An embedded AHX
+  file is refused with "AHX songs can't be saved as HVL." (`:44`). A song with
+  no embedded file, such as a fresh import, uses its source record: if the
+  title is untouched, the source bytes are returned as they are (`:81`, no
+  rebuild); otherwise the title is written through `serializeAhx` with
+  `base`, as before. Description updated (`:95`).
+- **AHX exporter format guard** (`ahx-exporter.ts:69`): it hands out an
+  embedded file only when that file is AHX. An embedded HVL file is converted
+  like an HVL source record (`convertHvlToAhx`, which carries the edits) or
+  refused with the conversion's reason. It is never written out as `.ahx`
+  bytes.
+- **Empty-name fallback (§8 note)** (`build-file.ts:13,45`): `songNameFor`
+  compares the title with the fallback for the song's own format
+  (`importFallbackTitle`). An HVL file whose name is empty therefore keeps an
+  empty name through edits and saves; before this fix the first edit wrote
+  'Imported HVL' into the file. The import (`ahx-import.ts`) and the export
+  helper (`ahx-export-shared.ts`) now share this one definition. A title the
+  user types is still written, even if it is 'Imported AHX'.
+
+### Instrument-slot decision: DEFER (plan recommendation held; code agrees)
+No `'hvl'` ModuleFormat or slot format was added. `HvlDoc.instruments` (P2
+Option 1) remains the instrument source, and HVL instrument editing remains
+closed: no UI opens, and `updateAhxInstrument` still rejects because HVL songs
+have no slots. The code does not contradict the plan. Deferring still gives
+byte-exact saves:
+`fileInstrumentSlots` writes the doc's instruments. The new tests show every
+instrument surviving edit → save → reload → export for all 22 files, and the
+edited files re-save byte-exact. No stop notes were needed. The only UI change
+is the `TrackerPage.vue` comment on the instruments hint, which now records
+the decision; the hint text is unchanged.
+
+### Tests
+- `src/tests/hvl-save-export.test.ts` (new, 39): 16 targeted tests plus 22 corpus
+  files plus 1 corpus-size pin, all through the real store and real
+  `useTrackerFileIO` (including zip `.cmod` save and reopen). **Red first**:
+  at `1d9aec5c` on the P2 code, 14/16 targeted tests failed (the 2 passes are
+  pins: the doc-less refusal and the nameless fixture's own sanity). Re-checked
+  at the P2 tip `eb93ad3a` with the final file: 36/39 fail; the 3 passes are
+  those pins plus the corpus-size count.
+- AHX guard red: after the codec was widened and before `0a0fe258`, the AHX
+  row reported meltwater as `enabled` and wrote HVL magic `[72,86,76]` as
+  `.ahx` (the conversion test failed: expected THX).
+- `hvl-doc-corpus.test.ts` 12 → 15 (`:217`): mutated doc round-trips over all
+  22 files (a unique track, a note plus second-column effect, and a transpose
+  on the last channel). The rebuilt file parses as the edited doc, keeps its
+  instruments and mix, `nameOffset` matches the size budget, and it re-saves
+  byte-exact. meltwater is pinned. **These pass on the P2 code too** (checked
+  at `eb93ad3a`): they are coverage pins for the doc and writer, not a fix.
+- Intended pin changes: song-export-hvl and ahx-exporter-corpus now expect the
+  untouched meltwater export to be exactly the source (the song-export-hvl
+  test re-proves that the rebuild would still add the NUL; the writer-level
+  +1 NUL pins in `ahx-writer-corpus` and `hvl-doc-corpus` are unchanged).
+  The HVL row description is updated in the registry and dialog tests. In
+  ahx-store-persistence, the 'an HVL file' bad-`ahxFile` case became a
+  positive test, and its `applyLikeFileIO` mirror follows the new
+  `applySongFile` branch. The hvl-doc-channels "no ahxFile on save" pin now
+  expects the source bytes.
+- AHX paths: the full suite includes the 77 .ahx files in `ahx-writer-corpus`,
+  `ahx-doc-corpus` and `ahx-exporter-corpus`. All are green, and their count
+  pins are unchanged. The readonly audit pins are unchanged.
+
+### Gates at code tip `e626aadd` (outputs `.ai/checks-p3-*.txt`, real exit codes)
+| Gate | Result | Exit |
+|---|---|---|
+| `npm run test:run` | 241 files / 3922 tests passed (3880 + 42 new) | 0 |
+| `npm run lint` | no findings | 0 |
+| `npx vue-tsc --noEmit` | clean | 0 |
+| `gitleaks detect --no-git` | no leaks (182 MB scanned in this worktree) | 0 |
+| `npm run check:artifacts` | worklets + wasm match sources | 0 |
+
+No diff under `rust-wasm/` or `packages/`. The engine plays the same bytes as
+before: the source for an untouched song, the rebuild after an edit.
+
+### Deviations (honest)
+1. **Creating new HVL songs is not done.** `createNewHvlDoc`, the new-song
+   dialog, and the channel picker are P4 scope in the plan's §4, so they are
+   out of scope here.
+2. **The AHX guard converts instead of refusing outright.** An embedded HVL
+   file goes through `convertHvlToAhx` and is refused only when it does not
+   fit, just as an HVL source record already did. A flat refusal would have
+   removed the existing HVL→AHX conversion from every HVL song that has a doc,
+   because since this pass their snapshots carry `ahxFile` (§3: "HVL→AHX
+   stays as-is"). HVL bytes are still never exported as `.ahx`.
+3. **The exporter's record path also skips the rebuild when the title is
+   untouched**, not just the `.cmod` path. This is why meltwater's untouched
+   export changed from source+NUL to the exact source (pins updated and
+   explained above).
+4. **Finding:** P2's "exporter title-only" gap was already smaller in the
+   running app than recorded. The dialog's `snapshotEditorSong` attached the
+   *published* (edited) engine bytes as the record, so export already carried
+   grid edits after P2 (measured with a probe at `eb93ad3a`). What was missing
+   was the `.cmod` save, correct `.cmod`-only exports, the AHX guard, and the
+   empty-name fix. The exporter now reads the doc's file directly instead of
+   relying on that side channel.
+5. The intermediate commit `f89968f8` has 3 failing export tests: the AHX-row
+   corpus test and the untouched-meltwater pins, which `0a0fe258` fixes. The
+   save and the exporters are split into two commits for review; every gate
+   was run at the tip.
+6. Not touched, as instructed: the sequence panel, the spectrum analyzer, and
+   subsongs.
