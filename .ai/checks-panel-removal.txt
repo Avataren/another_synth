@@ -1,0 +1,27 @@
+=== targeted vitest 2026-09-23T06:49:15+02:00 ===
+ ✓ src/tests/pattern-canvas-transpose-chip.test.ts (6 tests) 57ms
+ ✓ src/tests/ahx-position-transpose.test.ts (8 tests) 66ms
+
+ Test Files  2 passed (2)
+      Tests  14 passed (14)
+   Start at  06:49:15
+   Duration  1.44s (transform 704ms, setup 24ms, collect 1.01s, tests 123ms, environment 410ms, prepare 655ms)
+
+=== lint 2026-09-23T06:49:17+02:00 ===
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 lint
+npm notice run eslint --ext .js,.ts,.vue ./
+lint exit: 0
+=== vue-tsc 2026-09-23T06:49:23+02:00 ===
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 npx
+npm notice run 'vue-tsc' --noEmit
+vuetsc exit: 0
+=== full suite 2026-09-23T06:49:32+02:00 ===
+
+ Test Files  235 passed (235)
+      Tests  3751 passed (3751)
+   Start at  06:49:33
+   Duration  61.75s (transform 26.20s, setup 6.24s, collect 167.16s, tests 395.71s, environment 192.49s, prepare 43.88s)
+
+=== DONE 2026-09-23T06:50:35+02:00 ===

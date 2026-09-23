@@ -324,7 +324,7 @@
               data-testid="ahx-hardcut-abrupt"
             >
               Hard cut release is off, so the note is muted abruptly {{ instrument.hardCutReleaseFrames }}
-              {{ instrument.hardCutReleaseFrames === 1 ? 'tick' : 'ticks' }} before the next row that sets an instrument (a number above the tempo cuts from the start of the row).
+              {{ instrument.hardCutReleaseFrames === 1 ? 'frame' : 'frames' }} before the next row that sets an instrument (a number above the tempo cuts from the start of the row).
             </p>
           </div>
         </fieldset>
@@ -346,20 +346,6 @@
             testid="ahx-seg-startWaveform"
             @update:model-value="setStartWaveform"
           />
-          <label class="ahx-field" :title="AHX_HELP.startWaveform">
-            <span class="ahx-field__label">Exact value</span>
-            <select
-              class="ahx-select"
-              data-testid="ahx-start-waveform"
-              :title="AHX_HELP.startWaveform"
-              :value="startWaveform"
-              @change="setStartWaveform(Number(($event.target as HTMLSelectElement).value))"
-            >
-              <option v-for="wave in WAVEFORM_CHOICES" :key="wave.value" :value="wave.value">
-                {{ wave.label }}
-              </option>
-            </select>
-          </label>
           <AhxSliderField
             label="Starting brightness"
             :model-value="startFilterPosition"

@@ -77,13 +77,11 @@ describe('AhxInstrumentPage, EDITOR-UX batch 2 "see the sound"', () => {
       expect(el(w, 'ahx-wave-shape').attributes('data-kind')).toBe('noise');
       expect(w.findAll('.ahx-wave-bar')).toHaveLength(0); // noise is a glyph, not bars
       expect(el(w, 'ahx-wave-shape-caption').text()).toMatch(/random burst/);
-      // the select stays as the exact-value fallback and agrees
-      expect((el(w, 'ahx-start-waveform').element as HTMLSelectElement).value).toBe('4');
     });
 
-    it('the exact-value select still edits it', async () => {
+    it('the start-waveform radio edits it', async () => {
       const w = await mountEditor(1);
-      await el(w, 'ahx-start-waveform').setValue('1');
+      await el(w, 'ahx-seg-startWaveform-1').setValue(true);
       expect(ins().plist.entries[0]!.waveform).toBe(1);
       expect(el(w, 'ahx-wave-shape').attributes('data-kind')).toBe('triangle');
     });
@@ -139,7 +137,7 @@ describe('AhxInstrumentPage, EDITOR-UX batch 2 "see the sound"', () => {
       await el(w, 'ahx-field-hardCutRelease').setValue(false);
       expect(ins().hardCutReleaseFrames).toBe(2);
       expect((el(w, 'ahx-field-hardCutReleaseFrames').element as HTMLInputElement).disabled).toBe(false);
-      expect(el(w, 'ahx-hardcut-abrupt').text()).toMatch(/muted abruptly 2 ticks before the next row that sets an instrument/);
+      expect(el(w, 'ahx-hardcut-abrupt').text()).toMatch(/muted abruptly 2 frames before the next row that sets an instrument/);
       await el(w, 'ahx-field-hardCutReleaseFrames').setValue('0');
       expect(has(w, 'ahx-hardcut-abrupt')).toBe(false);
     });

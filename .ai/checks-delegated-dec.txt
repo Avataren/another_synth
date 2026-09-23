@@ -1,0 +1,55 @@
+=== targeted vitest 2026-09-22T22:17:26+02:00 ===
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: q-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <FrequencyAnalyzerComponent node=null data-testid="ahx-analyzer-frequency" > 
+  at <Anonymous class="ahx-page" data-testid="ahx-instrument-display" > 
+  at <AhxInstrumentPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+
+ Test Files  3 passed (3)
+      Tests  38 passed (38)
+   Start at  22:17:26
+   Duration  3.28s (transform 1.06s, setup 27ms, collect 3.10s, tests 3.15s, environment 622ms, prepare 1.07s)
+
+=== lint 2026-09-22T22:17:30+02:00 ===
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 lint
+npm notice run eslint --ext .js,.ts,.vue ./
+=== vue-tsc 2026-09-22T22:17:36+02:00 ===
+quasar.config.ts(119,27): error TS7006: Parameter 'ctx' implicitly has an 'any' type.
+quasar.config.ts(139,29): error TS7031: Binding element 'file' implicitly has an 'any' type.
+quasar.config.ts(139,35): error TS7031: Binding element 'server' implicitly has an 'any' type.
+quasar.config.ts(204,22): error TS7006: Parameter 'viteConf' implicitly has an 'any' type.
+src/boot/axios.ts(1,28): error TS2307: Cannot find module '#q-app/wrappers' or its corresponding type declarations.
+src/boot/axios.ts(19,30): error TS7031: Binding element 'app' implicitly has an 'any' type.
+src/boot/pinia-audio-system.ts(1,28): error TS2307: Cannot find module '#q-app/wrappers' or its corresponding type declarations.
+src/boot/playback-diagnostics.ts(1,28): error TS2307: Cannot find module '#q-app/wrappers' or its corresponding type declarations.
+src/router/index.ts(1,30): error TS2307: Cannot find module '#q-app/wrappers' or its corresponding type declarations.
+src/stores/index.ts(1,29): error TS2307: Cannot find module '#q-app/wrappers' or its corresponding type declarations.
+=== full suite 2026-09-22T22:17:45+02:00 ===
+   ✓ scheduled-command identity: raw-byte path vs text path > schedules identically for 4-mat_-_rose.xm 2603ms
+   ✓ scheduled-command identity: raw-byte path vs text path > schedules identically for BUTTERFL.XM 1492ms
+   ✓ scheduled-command identity: raw-byte path vs text path > schedules identically for DEADLOCK.XM 4713ms
+   ✓ scheduled-command identity: raw-byte path vs text path > schedules identically for amiga boy.xm 1806ms
+   ✓ scheduled-command identity: raw-byte path vs text path > schedules identically for an-path.xm 897ms
+   ✓ scheduled-command identity: raw-byte path vs text path > schedules identically for elw-sick.xm 449ms
+   ✓ scheduled-command identity: raw-byte path vs text path > schedules identically for fall.xm 328ms
+   ✓ scheduled-command identity: raw-byte path vs text path > schedules identically for jt_911.xm 1012ms
+   ✓ scheduled-command identity: raw-byte path vs text path > schedules identically for jt_letgo.xm 411ms
+   ✓ scheduled-command identity: raw-byte path vs text path > schedules identically for radix_-_yuki_satellites.xm 1434ms
+   ✓ scheduled-command identity: raw-byte path vs text path > schedules identically for sweetdre.xm 462ms
+   ✓ scheduled-command identity: raw-byte path vs text path > schedules identically for DOPE.MOD 503ms
+ ✓ src/tests/ahx-doc-ops.test.ts (31 tests) 36935ms
+   ✓ property: whatever the ops accept serializes, parses back to the doc and projects the same > 300 random op sequences on 8 corpus songs and a new song, with and without size pressure 35936ms
+
+ Test Files  236 passed (236)
+      Tests  3758 passed (3758)
+   Start at  22:17:46
+   Duration  62.70s (transform 36.60s, setup 5.27s, collect 188.39s, tests 394.39s, environment 192.04s, prepare 48.01s)
+
+=== DONE 2026-09-22T22:18:49+02:00 exit=0 ===
