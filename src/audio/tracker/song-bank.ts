@@ -61,6 +61,19 @@ const INSTRUMENT_BUILD_SLICE_SIZE = 2;
 /** Idle-yield timeout between instrument-build slices (see idleYield). */
 const INSTRUMENT_BUILD_IDLE_TIMEOUT_MS = 50;
 
+/**
+ * Per-note AudioParam-presence probe (N4 step 5, arch-review-2026-09-22).
+ *
+ * The check below builds two param-name strings and does two
+ * `parameters.get` lookups on EVERY scheduled note-on just to produce a
+ * console.warn if a param is missing -- on the same main thread whose
+ * longtasks the instrument-build slicing works hard to keep short. It can
+ * only ever log (no AudioParam writes), so it now runs only when a debugger
+ * session opts in. This is the one intentional log-surface change of this
+ * pass.
+ */
+const SONGBANK_DEBUG_PARAM_PROBE = false;
+
 interface IdleWindow {
   requestIdleCallback?: (
     cb: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void,
@@ -1383,8 +1396,10 @@ export class TrackerSongBank implements TrackerSink {
       },
     );
 
-    // Verify parameter presence for debugging
-    if (voiceIndex !== undefined && worklet) {
+    // Verify parameter presence for debugging (behind
+    // SONGBANK_DEBUG_PARAM_PROBE: this only ever warns; the lookups ran on
+    // every note-on otherwise -- N4 step 5).
+    if (SONGBANK_DEBUG_PARAM_PROBE && voiceIndex !== undefined && worklet) {
       const instrumentWithParamName = active.instrument as unknown as {
         getParamName?: (paramType: string, voiceIndex: number) => string;
       };
