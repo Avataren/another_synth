@@ -290,6 +290,7 @@ describe('GoatTracker 1 (GTS!), converted', () => {
     bad[good.length - 7] = 5;
     expect(refusal(bad)).toBe('pattern 0 is 5 bytes long, not a whole number of 3-byte rows');
     expect(refusal(Uint8Array.from([...good, 1, 2, 3]))).toBe('3 bytes follow the last pattern; a GoatTracker 1 song ends there or after a 256-byte filter table');
-    expect(refusal(gt1([lead], [[[0x5d, 8, 0]]]))).toBe('pattern 0 row 0: note byte $5D is not a GoatTracker 1 note');
+    // A pattern-end byte inside a pattern (other stray note bytes are rests, gsong.c:559-560).
+    expect(refusal(gt1([lead], [[[0xff, 8, 0], [0x30, 8, 0]]]))).toBe('pattern 0 row 0: note byte $FF is not a GoatTracker 1 note');
   });
 });

@@ -48,7 +48,7 @@ export const GT1_INSTRUMENTS = 31;
 const GT1_INSTRUMENT_HEADER = 8;
 const GT1_FILTER_TABLE_BYTES = 256;
 const GT1_FILTER_ROWS = 64;
-/** Measured GT1 note bytes: $00-$5C notes C-0..G#7 (INFERRED: GT2's $60-$BC less $60), $5E key off, $5F rest, $FF end. */
+/** GT1 note bytes: $00-$5C notes C-0..G#7 (GT2's $60-$BC less $60, gsong.c:559), $5E key off, $5F rest, $FF end (gcommon.h:44-54). */
 const GT1_NOTE_LAST = 0x5c;
 const GT1_NOTE_KEY_OFF = 0x5e;
 const GT1_NOTE_REST = 0x5f;
@@ -244,6 +244,8 @@ export function readGt1Song(
         drop(`${where}: its wavetable jumps to row ${row.right} of ${ins.wave.length}; the jump stops instead`);
         return { left: JUMP, right: 0 };
       }
+      // Lefts $08-$0F are pre-2.18 delays, GT2's $E8-$EF (gsong.c:396-397).
+      if (row.left >= 0x08 && row.left <= 0x0f) return { left: row.left | 0xe0, right: row.right };
       return row;
     });
     if (program.at(-1)?.left !== JUMP) {
@@ -402,7 +404,16 @@ export function readGt1Song(
       if (nb <= GT1_NOTE_LAST) note = nb + 1;
       else if (nb === GT1_NOTE_KEY_OFF) note = SID_NOTE_KEY_OFF;
       else if (nb === GT1_NOTE_REST) note = SID_NOTE_NONE;
-      else throw new GtFormatError(`${where}: note byte $${hex(nb)} is not a GoatTracker 1 note`);
+      else if (nb === GT1_PATTERN_END) throw new GtFormatError(`${where}: note byte $${hex(nb)} is not a GoatTracker 1 note`);
+      else {
+        // Any other byte is a rest: GT adds GT2's first note, $60, and rests
+        // what lands past its last, $BC (gsong.c:559-560). Its note byte is 8
+        // bits: $9F lands on its pattern end and from $A0 the sum wraps below
+        // its first note. Not a note either way: rested here, and reported.
+        note = SID_NOTE_NONE;
+        const wrapped = (nb + 0x60) & 0xff;
+        if (nb + 0x60 >= GT1_PATTERN_END) convert(`${where}: note byte $${hex(nb)} becomes GoatTracker 2's $${hex(wrapped)}, ${wrapped === GT1_PATTERN_END ? 'its pattern end' : 'no note'}; rested`);
+      }
       let instrument = packed >> 3;
       if (instrument !== 0) current = instrument;
       const cmd = packed & 0x07;

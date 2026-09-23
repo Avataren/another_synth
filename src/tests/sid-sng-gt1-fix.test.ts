@@ -366,7 +366,7 @@ describe('GT1 notes and wavetable bytes', () => {
     expect(notes).toEqual([]);
   });
 
-  it('rests $9F-$FE too, reporting that GoatTracker wraps them to non-notes', () => {
+  it('rests $9F-$FE too, reporting that GoatTracker makes them its pattern end or wraps them to non-notes', () => {
     const { doc, notes } = ok(importGtSong(gt1([lead()], [[row(0x9f, 1, 0, 0), row(0xa0, 0, 0, 0), row(0xfe, 0, 0, 0)]])));
     expect(doc.patterns[0]!.rows.map((r) => r.note)).toEqual([0, 0, 0]);
     expect(kinds(notes)).toEqual(['gt1-convert', 'gt1-convert', 'gt1-convert']);
