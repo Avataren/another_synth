@@ -162,6 +162,12 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
    * Handing the analyzer four nulls would lock it in its sticky quad mode
    * with four dead channels; no taps at all resolves its stereo mode against
    * the master output, which does carry the file engine's audio.
+   *
+   * A SID song is not that case (plan-sid-tracking.md S4): its worklet feeds
+   * each voice into the bank's own per-track tap (`getTrackTap`, routed by
+   * `SidSongTransport.connectVoiceTaps`), so its three tracks carry real taps
+   * through the same branch as a sampled song (`trackAudioNodes`, which
+   * `updateTrackAudioNodes` fills with them).
    */
   const spectrumTrackNodes = computed<(AudioNode | null)[]>(() => {
     if (moduleFormat.value === 'ahx') return [];
@@ -171,11 +177,23 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
     );
   });
 
+  /** A SID voice's node: its track tap, whatever the row plays (the voice IS the track). */
+  function sidVoiceNode(trackIndex: number): AudioNode | null {
+    return trackIndex < trackCount.value ? songBank.getTrackTap(trackIndex) : null;
+  }
+
   function setTrackAudioNodeForInstrument(
     trackIndex: number,
     instrumentId?: string,
   ): void {
     if (!trackMonitoringWanted.value) return;
+    if (moduleFormat.value === 'sid') {
+      const tap = sidVoiceNode(trackIndex);
+      if (trackAudioNodes.value[trackIndex] !== tap) {
+        trackAudioNodes.value = { ...trackAudioNodes.value, [trackIndex]: tap };
+      }
+      return;
+    }
     const normalized = normalizeInstrumentId(instrumentId);
     // Not the instrument's output: one sample is one instrument, shared by
     // every channel that plays it, so that node carries other tracks too. The
@@ -192,6 +210,14 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
     }
     const nodes: Record<number, AudioNode | null> = {};
     const tracks = (currentPattern.value?.tracks ?? []) as TrackerTrackData[];
+    if (moduleFormat.value === 'sid') {
+      for (let i = 0; i < tracks.length; i++) nodes[i] = sidVoiceNode(i);
+      trackAudioNodes.value = nodes;
+      // The taps may be new ones (monitoring was switched back on): the SID
+      // worklet's voices go into these, not the dropped ones.
+      playbackStore.connectSidVoiceTaps();
+      return;
+    }
     for (let i = 0; i < tracks.length; i++) {
       // Only meter tracks that actually play something in this pattern; while
       // playing, a track with nothing here may still be sounding a note from
@@ -209,6 +235,12 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
   }
 
   function clearTrackAudioNodes(): void {
+    // A SID voice's tap is not a note's: it stays while anything looks (no
+    // per-note callback would bring it back, the worklet plays the voices).
+    if (moduleFormat.value === 'sid' && trackMonitoringWanted.value) {
+      updateTrackAudioNodes();
+      return;
+    }
     const tracks = (currentPattern.value?.tracks ?? []) as TrackerTrackData[];
     const nodes: Record<number, AudioNode | null> = {};
     for (let i = 0; i < tracks.length; i++) nodes[i] = null;
