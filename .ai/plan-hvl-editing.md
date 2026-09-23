@@ -402,3 +402,20 @@ Build succeeded (spa mode, 37 JS files); wasm rebuilt per script design (freshne
 | index.html | `3d2af47ed5258f81684b971fbcd14c7a` |
 | demos/index.json | `5ce336fd304f097e036523b53ed45f62` |
 | wasm/audio_processor_bg.wasm | `0b9548f882892c38b7574b9d106ca8ad` |
+
+## 9. P2 status (agent/hvl-edit-p2-0923a, not merged) — STOPPED
+
+**Stopped on a plan/code contradiction; details and options in `.ai/p2-stop-notes.md`.**
+§1.2/§1.5/§4-P2 assume HVL reuses `buildAhxFile(doc, slots, title)` for free, but
+HVL imports keep no instrument slots (`ahx-import.ts:57`), so every rebuilt HVL
+file has 0 instruments (meltwater: 10 → 0, 8207 → 7589 bytes after one edit).
+The instrument source is the P3 slot decision (§3, §4-P3); P2 needs it first.
+
+- Landed on the branch: `87528052` unified doc slot (hvlDoc → ahxDoc, every
+  deviation-1 reader audited, write-back at `docChannels`, format-aware
+  ops/entries/edit-guard, HVL save still refused / no `ahxFile` — P3).
+- Red test before/after: `hvl-writeback-10ch.test.ts` 0/4 → 4/4 (unchanged file).
+- New red test: `hvl-edit-matrix.test.ts` 11/17 pass; the 6 failures are the
+  missing instruments (edit, undo/redo, snapshot at 4 and 10 channels).
+- Exporter gap (unchanged, P3): HVL export is still title-only from the source bytes.
+- Do not merge before the instrument-source decision (stop notes, option 1 recommended).
