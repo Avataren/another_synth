@@ -35,8 +35,9 @@ import { SongExportError, type SongExportCheck, type SongExporter } from './type
  * That is what plays, so it is what the export holds. Author, BPM and the row
  * model have no AHX home and are never written.
  *
- * An HVL song is exported as AHX only when it fits (`convertHvlToAhx`); it has
- * no instrument slots in the store, so only its title is overlaid. Its
+ * An HVL song is exported as AHX only when it fits (`convertHvlToAhx`); its
+ * slots only mirror the doc's instruments (whose edits reach the embedded
+ * file), so only its title is overlaid. Its
  * embedded file (an HVL song with a doc saves one, plan-hvl-editing.md P3) is
  * an HVL file: it is never handed out as it is, only converted from like a
  * source record, so the edits in it are converted too.

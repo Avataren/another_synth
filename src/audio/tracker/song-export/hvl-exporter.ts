@@ -18,8 +18,9 @@ import { SongExportError, type SongExportCheck, type SongExporter } from './type
  * A song without one (a fresh import the store has not serialized) exports its
  * source bytes: as they are when the title is the import's, else written with
  * the title as the name, `serializeAhx` with the source as `base` keeping
- * everything else byte for byte. Instruments are not edited for HVL (no slots;
- * the doc carries them), and author, BPM and the row model have no HVL home.
+ * everything else byte for byte. Instrument edits are not overlaid (the doc
+ * carries them, so they reach the embedded file; the slots only mirror them),
+ * and author, BPM and the row model have no HVL home.
  */
 
 type Plan =

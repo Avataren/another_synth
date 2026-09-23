@@ -68,10 +68,12 @@ export interface HvlDoc extends AhxDocFields {
   /** Header byte 15, as stored: the stereo-separation preset (`ht_defstereo`, hvl_replay.c:407). */
   readonly defstereo: number;
   /**
-   * The song's instruments as parsed, instrument `n` at index `n - 1`: an HVL
-   * song has no instrument slots, so `buildAhxFile` writes these. Read-only
-   * until plan-hvl-editing.md P3 decides on HVL slots (§6 risk 6: no HVL
-   * instrument editing before then); no op changes them.
+   * The song's instruments, instrument `n` at index `n - 1`: `buildAhxFile`
+   * writes these, not the slots. An HVL song lists them in slots too (the
+   * editor's surface, plan-hvl-instruments-0923), and an instrument edit or
+   * rename replaces the whole doc with a new array holding the edited one
+   * (the store's `replaceHvlDocInstrument`). Read-only: undo snapshots hold the
+   * doc by reference, so it is never changed in place.
    */
   readonly instruments: readonly AhxInstrument[];
 }

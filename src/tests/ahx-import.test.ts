@@ -126,12 +126,19 @@ describe('importAhxToTrackerSong', () => {
     expect(songFile.data.songPatches).toEqual({});
   });
 
-  it('leaves HVL songs without instrument slots (they need their own format tag)', () => {
+  it('lists an HVL song\'s instruments in slots too, stamped ahx (plan-hvl-instruments-0923)', () => {
     const hvl = bytes('ahx/doobrey_gubbins.hvl');
     const file = importAhxToTrackerSong(
       hvl.buffer.slice(hvl.byteOffset, hvl.byteOffset + hvl.byteLength) as ArrayBuffer,
     );
-    expect(file.data.instrumentSlots).toEqual([]);
+    const song = parseAhx(hvl);
+    expect(file.data.instrumentSlots).toHaveLength(TOTAL_SLOTS);
+    const filled = file.data.instrumentSlots.filter((slot) => slot.ahxData !== undefined);
+    expect(filled.map((slot) => slot.slot)).toEqual(Array.from({ length: song.instrumentNr }, (_, i) => i + 1));
+    for (const slot of filled) {
+      expect([slot.instrumentType, slot.instrumentFormat, slot.patchId]).toEqual(['ahx', 'ahx', undefined]);
+      expect(slot.ahxData).toEqual(song.instruments[slot.slot]);
+    }
     expect(file.data.songPatches).toEqual({});
   });
 

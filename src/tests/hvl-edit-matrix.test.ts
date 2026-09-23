@@ -9,12 +9,22 @@ import {
   normalizeInstrumentId,
   parseAhx,
   parseTrackerNoteSymbol,
+  serializeAhxInstrument,
 } from '@another-synth/tracker-playback';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { useTrackerEditing, type TrackerEditingContext } from 'src/composables/useTrackerEditing';
 import { useTrackerSelection, type TrackerSelectionContext } from 'src/composables/useTrackerSelection';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
-import { ahxSourceInfo, currentAhxSource, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
+import {
+  ahxSourceInfo,
+  currentAhxInstrumentEdits,
+  currentAhxSource,
+  onAhxStructureChange,
+  setCurrentAhxSource,
+  snapshotEditorSong,
+} from 'src/audio/tracker/ahx-source';
+import { canEditSlot } from 'src/audio/tracker/instrument-types';
+import { hvlExporter } from 'src/audio/tracker/song-export';
 import { ahxEditNotice, clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
   ahxEditRefusal,
@@ -322,9 +332,17 @@ describe('an edited HVL song keeps its instruments (P2, Option 1: the doc carrie
     expect(source.instrumentNr).toBe(10);
     const h = harness(bytes);
     const original = h.doc();
-    // No instrument slot holds them: HVL instrument editing stays closed until P3 decides on slots.
-    expect(h.store.instrumentSlots.filter((slot) => slot.ahxData !== undefined)).toHaveLength(0);
-    // The size limit counts the doc's instruments (HVL has no slots): the source's nameOffset exactly.
+    // Flipped by plan-hvl-instruments-0923 (was: no slot holds them): the list
+    // shows all 10, by the file's names, each one opening the AHX editor.
+    const listed = h.store.instrumentSlots.filter((slot) => slot.ahxData !== undefined);
+    expect(listed.map((slot) => slot.slot)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    for (const slot of listed) {
+      const name = source.instruments[slot.slot]!.name.trim() || `Instrument ${formatInstrumentId(slot.slot)}`;
+      expect(slot.instrumentName, `slot ${slot.slot}`).toBe(name);
+      expect([slot.instrumentType, slot.instrumentFormat, canEditSlot(slot)]).toEqual(['ahx', 'ahx', true]);
+      expect(slot.ahxData).toEqual(source.instruments[slot.slot]);
+    }
+    // The size limit counts the doc's instruments (the file's own): the source's nameOffset exactly.
     const instrumentBytes = ahxInstrumentBytes(source.instruments.slice(1), 'hvl');
     expect(h.store.ahxOpContext().instrumentBytes).toBe(instrumentBytes);
     expect(ahxUsedBytes(original, instrumentBytes)).toBe(nameOffsetOf(bytes));
@@ -346,6 +364,83 @@ describe('an edited HVL song keeps its instruments (P2, Option 1: the doc carrie
     expect(nameOffsetOf(published) - nameOffsetOf(bytes)).toBe(growth);
     expect(published.length - nameOffsetOf(published)).toBe(bytes.length - nameOffsetOf(bytes) + 1);
     expect(published.length).toBe(bytes.length + 1 + growth);
+  });
+});
+
+/**
+ * plan-hvl-instruments-0923: an HVL instrument is edited through the AHX
+ * editor's store call, the doc is replaced copy-on-write (undo snapshots hold
+ * it by reference) and quietly (the recorded edit is what the worklet hears;
+ * the rebuilt file takes it at the next flush).
+ */
+describe('an HVL instrument edit (meltwater_10ch.hvl)', () => {
+  it('is applied, reaches the rebuilt file alone, is quiet, and undoes in the doc and the slot', () => {
+    const bytes = demo('meltwater_10ch.hvl');
+    const source = parseAhx(bytes);
+    const h = harness(bytes);
+    const original = h.doc();
+    const reloads: unknown[] = [];
+    const stop = onAhxStructureChange((change) => reloads.push(change));
+    try {
+      const instrument = source.instruments[1]!;
+      const volume = instrument.volume === 5 ? 6 : 5;
+      const editsBefore = currentAhxInstrumentEdits().length;
+
+      h.store.pushHistory(); // as the editor does, before the edit
+      expect(h.store.updateAhxInstrument(1, { ...instrument, volume })).toBe('applied');
+
+      // Copy-on-write: a new doc, the snapshot's untouched.
+      const edited = h.doc();
+      expect(edited).not.toBe(original);
+      expect(original.format === 'hvl' && original.instruments[0]!.volume).toBe(instrument.volume);
+      expect(edited.format === 'hvl' && edited.instruments[0]!.volume).toBe(volume);
+      expect(h.store.undoStack[0]!.ahxDoc).toBe(original);
+      expect(h.store.instrumentSlots[0]!.ahxData!.volume).toBe(volume);
+
+      // Quiet: recorded for the worklet, the engine's bytes not replaced.
+      expect(currentAhxInstrumentEdits().length).toBe(editsBefore + 1);
+      expect(currentAhxInstrumentEdits().find((edit) => edit.instrument === 1)).toBeDefined();
+      expect(currentAhxSource()).toBe(bytes);
+      expect(reloads).toEqual([]);
+
+      // The rebuilt file: 10 instruments, the edit, the other nine as they were.
+      const built = h.store.currentAhxBytes()!;
+      const song = parseAhx(built);
+      expect(song.instrumentNr).toBe(10);
+      expect(song.instruments[1]!.volume).toBe(volume);
+      expect(song.instruments[1]).toEqual({ ...source.instruments[1], volume });
+      for (let n = 2; n <= 10; n++) {
+        expect(serializeAhxInstrument(song.instruments[n]!, 'hvl'), `instrument ${n}`).toEqual(serializeAhxInstrument(source.instruments[n]!, 'hvl'));
+        expect(song.instruments[n], `instrument ${n}`).toEqual(source.instruments[n]);
+      }
+      // Export path: a save embeds the same rebuild, and the HVL export is it.
+      expect(hvlExporter.serialize(snapshotEditorSong(h.store))).toEqual(built);
+
+      h.store.undo();
+      expect(h.store.ahxDoc).toBe(original);
+      expect(h.store.instrumentSlots[0]!.ahxData).toEqual(source.instruments[1]);
+      expect(parseAhx(currentAhxSource()!).instruments).toEqual(source.instruments);
+    } finally {
+      stop();
+    }
+  });
+
+  it('a rename reaches the doc copy-on-write, the file, and undoes', () => {
+    const bytes = demo('meltwater_10ch.hvl');
+    const h = harness(bytes);
+    const original = h.doc();
+    const was = h.store.instrumentSlots[1]!.instrumentName;
+    h.store.pushHistory();
+    h.store.setInstrumentName(2, 'Renamed');
+    const edited = h.doc();
+    expect(edited).not.toBe(original);
+    expect(edited.format === 'hvl' && edited.instruments[1]!.name).toBe('Renamed');
+    expect(original.format === 'hvl' && original.instruments[1]!.name).toBe(parseAhx(bytes).instruments[2]!.name);
+    expect(parseAhx(h.store.currentAhxBytes()!).instruments[2]!.name).toBe('Renamed');
+
+    h.store.undo();
+    expect(h.store.ahxDoc).toBe(original);
+    expect(h.store.instrumentSlots[1]!.instrumentName).toBe(was);
   });
 });
 

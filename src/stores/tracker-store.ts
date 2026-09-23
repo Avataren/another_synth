@@ -889,7 +889,27 @@ export const useTrackerStore = defineStore('trackerStore', {
       // "Instrument NN" for an unnamed instrument, which the file never had.
       if (isAhxSlot(slot) && slot.ahxData && slot.instrumentName !== previous) {
         slot.ahxData.name = slot.instrumentName;
+        this.replaceHvlDocInstrument(slotNumber, slot.ahxData);
       }
+    },
+    /**
+     * An HVL doc's file instruments are its own (`fileInstrumentSlots`), so an
+     * instrument edit or rename in slot `slotNumber` has to reach
+     * `doc.instruments[slotNumber - 1]` too. Copy-on-write, like every doc
+     * change: undo snapshots hold the doc by reference, so the doc they hold
+     * must never change. The instrument goes in as a copy of its own, so the
+     * slot's in-place rename above never reaches a doc either. Quiet (no
+     * `commitAhxDoc`, no byte publish): the edit is heard through the recorded
+     * instrument edit, and the rebuilt file picks it up at the next flush. A
+     * no-op for an AHX doc (its instruments are the slots').
+     */
+    replaceHvlDocInstrument(slotNumber: number, instrument: AhxInstrument) {
+      const doc = this.ahxDoc;
+      if (doc === null || doc.format !== 'hvl' || this.moduleFormat !== 'ahx') return;
+      if (slotNumber < 1 || slotNumber > doc.instruments.length) return;
+      const copy = { ...instrument };
+      this.ahxDoc = { ...doc, instruments: doc.instruments.map((ins, i) => (i === slotNumber - 1 ? copy : ins)) };
+      this.ahxRevision += 1;
     },
     clearSlot(slotNumber: number) {
       // An AHX song's instruments are numbered in order: none is cleared here.
@@ -1032,7 +1052,9 @@ export const useTrackerStore = defineStore('trackerStore', {
      *
      * What the slot holds is what the editor shows and, through `ahx-source`, what
      * plays. An editable AHX song saves it: `serializeSong` embeds the file built
-     * from the slots (`data.ahxFile`). A song with no doc cannot be saved as a
+     * from the slots (`data.ahxFile`); an HVL song's file takes the doc's
+     * instruments, so the edit replaces the doc too (`replaceHvlDocInstrument`,
+     * copy-on-write and quiet). A song with no doc cannot be saved as a
      * `.cmod` (`handleSaveSongFile` refuses), so an edit to one lasts for the session.
      *
      * The instrument is written in the song's own format (HVL's wider PList
@@ -1061,6 +1083,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
       const { slot, played, format } = checked;
       slot.ahxData = played;
+      this.replaceHvlDocInstrument(slotNumber, played);
       return recordAhxInstrumentEdit(slotNumber, serializeAhxInstrument(played, format)) ? 'applied' : 'kept';
     },
     /**
@@ -1080,7 +1103,8 @@ export const useTrackerStore = defineStore('trackerStore', {
      * (`instrumentGrowthRefusal`); an edit that does not grow the file is never
      * refused, so a full song can still be edited. A song with no doc (a
      * read-only AHX) has no budget here: it cannot be exported from the editor.
-     * An HVL song has no slots, so it never gets this far.
+     * The file's instruments are counted where the file takes them from
+     * (`fileInstruments`): the slots for AHX, the doc's own for HVL.
      */
     checkAhxInstrument(
       slotNumber: number,
@@ -1098,7 +1122,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       if (!clean) return { reason: 'That is not a valid instrument for this song.', growth: false };
       const played = normalizeAhxInstrumentForVersion(clean, format, info?.version ?? 1);
       if (this.moduleFormat === 'ahx' && this.ahxDoc !== null) {
-        const instruments = this.instrumentSlots.flatMap((s) => (s.ahxData ? [s.ahxData] : []));
+        const instruments = fileInstruments(this.ahxDoc, this.instrumentSlots);
         const reason = instrumentGrowthRefusal(this.ahxDoc, ahxInstrumentBytes(instruments, this.ahxDoc.format), slot.ahxData, played);
         if (reason !== null) return { reason, growth: true };
       }
@@ -1336,8 +1360,10 @@ export const useTrackerStore = defineStore('trackerStore', {
      * fresh `.ahx` import (and an in-memory pre-v5 snapshot) has.
      *
      * An HVL song's embedded file (a save writes one since plan-hvl-editing.md
-     * P3) is taken the same way; its instruments are the doc's own, so it gets
-     * no slots, as its import has none.
+     * P3) is taken the same way, slots included (plan-hvl-instruments-0923):
+     * the list shows them and the editor edits them, while the file's
+     * instruments stay the doc's own (`fileInstrumentSlots`), which every
+     * instrument edit and rename replaces copy-on-write.
      */
     adoptAhxDoc(file: TrackerSongFile, data: TrackerSongFile['data']) {
       let bytes: Uint8Array | null = null;
@@ -1361,7 +1387,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       try {
         const song = parseAhx(bytes);
         doc = docFromSong(song, bytes);
-        if (fromFile) slots = song.format === 'ahx' ? buildAhxSlots(song) : [];
+        if (fromFile) slots = buildAhxSlots(song);
       } catch (error) {
         console.warn('[TrackerStore] AHX song kept read-only: its bytes have no editable doc', error);
         return;

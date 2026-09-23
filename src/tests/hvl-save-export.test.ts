@@ -152,7 +152,8 @@ describe('saving an HVL song with a doc (.cmod)', () => {
     expect(after.ahxDoc?.format).toBe('hvl');
     expect(after.isAhxEditable).toBe(true);
     expect(after.currentSong.title).toBe('Meltdown');
-    expect(after.instrumentSlots.filter((slot) => slot.ahxData !== undefined)).toEqual([]);
+    // Flipped by plan-hvl-instruments-0923 (was: no slots): the embedded file's instruments are listed.
+    expect(after.instrumentSlots.filter((slot) => slot.ahxData !== undefined).map((slot) => slot.ahxData)).toEqual(parseAhx(expected).instruments.slice(1));
     // The engine plays the embedded file, and saving again changes nothing.
     expect(currentAhxSource()).toEqual(expected);
     expect(embedded(after.serializeSong())).toEqual(expected);
