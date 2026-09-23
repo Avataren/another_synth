@@ -1,0 +1,59 @@
+# S2 negative controls 2026-09-23T15:51:41+02:00. Each mutant applied to the real code, sid:: tests run, tree restored and verified with diff -r.
+## mutant: 6581 saturator applied to the 8580 too (gate removed)  (filter.rs: s/if self.model == SidModel::Sid6581 {/if true {/)
+test sid::filter::tests::resonance_peak_grows_with_the_register ... FAILED
+test sid::filter::tests::no_mode_bit_is_silent_and_lp_plus_hp_notches ... FAILED
+test sid::filter::tests::filter_6581_small_signal_peak_is_q_and_compresses_with_level ... FAILED
+test sid::tests_s2::pin_8580_render_is_bit_identical_to_s1 ... FAILED
+test sid::tests_s2::two_models_side_by_side_share_no_state ... FAILED
+test sid::tests_s2::filter_6581_peak_gain_depends_on_level_the_8580_does_not ... FAILED
+test result: FAILED. 79 passed; 6 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.94s
+error: test failed, to rerun pass `--lib`
+## mutant: VOICE_DC_6581 = 0  (voice.rs: s/pub const VOICE_DC_6581: f64 = 0.25;/pub const VOICE_DC_6581: f64 = 0.0;/)
+test sid::tests_s2::volume_write_steps_the_6581_mixer_dc_and_not_the_8580 ... FAILED
+test sid::tests_s2::pin_6581_render_is_bit_identical_to_s2 ... FAILED
+test sid::tests_s2::note_on_thump_from_the_6581_voice_dc ... FAILED
+test sid::tests_s2::level_balance_6581_vs_8580_is_the_derived_gain_ratio ... FAILED
+test result: FAILED. 81 passed; 4 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.90s
+error: test failed, to rerun pass `--lib`
+## mutant: no attack lag (amp = target always)  (voice.rs: s/self.amp + (target - self.amp) \* self.lag_alpha/target/)
+test sid::tests_s2::attack_6581_follows_the_hand_derived_lag_curve ... FAILED
+test sid::tests_s2::pin_6581_render_is_bit_identical_to_s2 ... FAILED
+test sid::tests_s2::note_on_thump_from_the_6581_voice_dc ... FAILED
+test result: FAILED. 82 passed; 3 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.98s
+error: test failed, to rerun pass `--lib`
+## mutant: 6581 combined pull-down disabled  (waveform.rs: s/Some(COMBINED_6581\[out as usize\])/Some(out)/)
+test sid::tests_s2::combined_waveforms_6581_are_attenuated_through_osc3 ... FAILED
+test sid::tests_s2::combined_waveform_6581_is_a_bit_subset_of_the_8580_every_cycle ... FAILED
+test sid::waveform::tests::combined_6581_only_removes_bits_and_only_for_combinations ... FAILED
+test sid::tests_s2::pin_6581_render_is_bit_identical_to_s2 ... FAILED
+test result: FAILED. 81 passed; 4 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.92s
+error: test failed, to rerun pass `--lib`
+## mutant: no 6581 waveform-0 fade  (voice.rs: s/                    self.wave = 0;/                    {}/)
+test sid::tests_s2::test_pulse_edge_into_waveform_zero ... FAILED
+test sid::tests_s2::waveform_zero_fades_on_the_6581_and_test_does_not_touch_it ... FAILED
+test result: FAILED. 83 passed; 2 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.93s
+error: test failed, to rerun pass `--lib`
+## mutant: MIX_DC_6581 = 0  (chip.rs: s/pub const MIX_DC_6581: f64 = 0.5;/pub const MIX_DC_6581: f64 = 0.0;/)
+test sid::tests_s2::volume_write_steps_the_6581_mixer_dc_and_not_the_8580 ... FAILED
+test sid::tests_s2::pin_6581_render_is_bit_identical_to_s2 ... FAILED
+test sid::tests_s2::note_on_thump_from_the_6581_voice_dc ... FAILED
+test sid::tests_s2::level_balance_6581_vs_8580_is_the_derived_gain_ratio ... FAILED
+test result: FAILED. 81 passed; 4 failed; 0 ignored; 0 measured; 120 filtered out; finished in 2.00s
+error: test failed, to rerun pass `--lib`
+## mutant: 6581 uses the 8580 cutoff map  (filter.rs: s/SidModel::Sid6581 => cutoff_hz_6581(reg),/SidModel::Sid6581 => cutoff_hz(reg),/)
+test sid::filter::tests::map_6581_is_strictly_monotonic_and_unlike_the_8580 ... FAILED
+test sid::filter::tests::filter_6581_small_signal_peak_is_q_and_compresses_with_level ... FAILED
+test sid::tests_s2::each_instance_uses_its_own_filter_maps ... FAILED
+test sid::tests_s2::pin_6581_render_is_bit_identical_to_s2 ... FAILED
+test sid::tests_s2::filter_6581_peak_gain_depends_on_level_the_8580_does_not ... FAILED
+test result: FAILED. 80 passed; 5 failed; 0 ignored; 0 measured; 120 filtered out; finished in 2.04s
+error: test failed, to rerun pass `--lib`
+## mutant: 8580 gain nudged by 3.6e-7 relative (0.28 -> 0.2800001; CHIP_GAIN_6581 derives from it, so 6581 tests trip too)  (chip.rs: s/pub const CHIP_GAIN: f64 = 0.28;/pub const CHIP_GAIN: f64 = 0.2800001;/)
+test sid::tests_s2::volume_write_steps_the_6581_mixer_dc_and_not_the_8580 ... FAILED
+test sid::tests_s2::pin_8580_render_is_bit_identical_to_s1 ... FAILED
+test sid::tests_s2::pin_6581_render_is_bit_identical_to_s2 ... FAILED
+test sid::tests_s2::two_models_side_by_side_share_no_state ... FAILED
+test result: FAILED. 81 passed; 4 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.99s
+error: test failed, to rerun pass `--lib`
+## restored: diff -r clean
+test result: ok. 85 passed; 0 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.98s

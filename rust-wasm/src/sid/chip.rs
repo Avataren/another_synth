@@ -53,15 +53,42 @@
 //! land between chip cycles, but callers can only interleave them with
 //! `render` at sample boundaries. This is a sample-rate approximation of the
 //! analog path over an exact digital core, not cycle-exact audio.
+//!
+//! Output stage, 6581 (S2). Public knowledge: the 6581's output carries a
+//! large DC level. Part of it is per voice and envelope-scaled (`voice.rs`).
+//! Part of it sits in the mixer/volume stage: the volume DAC scales a
+//! standing DC. That second part is what makes the classic "$D418 volume
+//! digi" loud on a 6581 and near-silent on an 8580. Modelled as
+//!   x = (filter + direct + MIX_DC_6581) * VOL / 15 * CHIP_GAIN_6581
+//! INFERRED: MIX_DC_6581 = 0.5 (half a full-scale voice) is a tuning guess.
+//! The output coupling (16 Hz DC blocker, shared with the 8580) removes any
+//! steady DC. So both DC terms are heard only as transients: a volume write
+//! gives a step of MIX_DC * dVOL/15 * gain that decays as r^n (r =
+//! e^(-2 pi 16 / fs)), and a note-on gives a VOICE_DC-sized thump.
+//! Gain calibration: the 6581 gain is derived, not guessed, from the S0/S1
+//! headroom rule. With every DC term at its worst, the 6581's peak equals
+//! the 8580's three full-scale voices:
+//!   CHIP_GAIN_6581 = CHIP_GAIN * 3 / (3 * (1 + VOICE_DC_6581) + MIX_DC_6581)
+//!                  = 0.28 * 3 / (3.75 + 0.5) = 0.84 / 4.25 = 0.197647
+//! The same waveform is therefore 20 log10(0.197647 / 0.28) = -3.03 dB
+//! quieter on the 6581. The rule is a derivation; the DC values it rests on
+//! are the INFERRED guesses above. Level balance is an ears-gate item.
+//! No 6581 volume-DAC nonlinearity is modelled: volume stays linear, VOL/15.
 
 use super::filter::Filter;
-use super::voice::Voice;
+use super::voice::{Voice, VOICE_DC_6581};
 use super::waveform::SYNC;
 use super::{SidError, SidModel, DEFAULT_SAMPLE_RATE, PAL_CLOCK_HZ};
 
 /// Headroom constant: three full-scale voices at volume 15 peak at 3.0; the
 /// resonant filter can add ~+8 dB on top. INFERRED tuning (carried from S0).
 pub const CHIP_GAIN: f64 = 0.28;
+
+/// 6581 mixer/volume-stage DC in voice units. INFERRED tuning (header).
+pub const MIX_DC_6581: f64 = 0.5;
+
+/// 6581 output gain, from the headroom rule in the header.
+pub const CHIP_GAIN_6581: f64 = CHIP_GAIN * 3.0 / (3.0 * (1.0 + VOICE_DC_6581) + MIX_DC_6581);
 
 /// Corner of the output AC coupling (the C64's output capacitor), Hz.
 /// INFERRED tuning (carried from S0).
@@ -109,8 +136,8 @@ impl Chip {
         Chip::with_sample_rate(model, DEFAULT_SAMPLE_RATE)
     }
 
-    /// A powered-on chip rendering at `sample_rate` Hz. Refuses the 6581
-    /// until the S2 character pass lands (see `SidModel::Sid6581`).
+    /// A powered-on chip rendering at `sample_rate` Hz. Each instance keeps
+    /// its model for life; build another chip to switch models.
     pub fn with_sample_rate(model: SidModel, sample_rate: f64) -> Result<Chip, SidError> {
         if let Some(reason) = model.unimplemented_reason() {
             return Err(SidError::ModelNotImplemented { model, reason });
@@ -121,8 +148,8 @@ impl Chip {
         Ok(Chip {
             model,
             sample_rate,
-            voices: [Voice::default(); 3],
-            filter: Filter::new(sample_rate),
+            voices: [Voice::new(model); 3],
+            filter: Filter::with_model(model, sample_rate),
             fc: 0,
             res_filt: 0,
             mode_vol: 0,
@@ -218,9 +245,8 @@ impl Chip {
             }
         }
         let accs: [u32; 3] = std::array::from_fn(|i| self.voices[i].accumulator());
-        let model = self.model;
         for (i, v) in self.voices.iter_mut().enumerate() {
-            v.finish_cycle(model, accs[source_of(i)]);
+            v.finish_cycle(accs[source_of(i)]);
         }
         self.cycles += 1;
     }
@@ -259,7 +285,12 @@ impl Chip {
                     direct += x;
                 }
             }
-            let x = (self.filter.process(filt_in) + direct) * volume * CHIP_GAIN;
+            let x = match self.model {
+                SidModel::Sid8580 => (self.filter.process(filt_in) + direct) * volume * CHIP_GAIN,
+                SidModel::Sid6581 => {
+                    (self.filter.process(filt_in) + direct + MIX_DC_6581) * volume * CHIP_GAIN_6581
+                }
+            };
             let y = x - self.dc_x + self.dc_r * self.dc_y;
             self.dc_x = x;
             self.dc_y = y;

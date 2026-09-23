@@ -18,17 +18,78 @@
 //!   output is `(wave - 0x800) / 0x800 * env / 255`. INFERRED from the
 //!   8580 being documented as having near-linear DACs and none of the
 //!   6581's large per-voice DC offset.
+//!
+//! 6581 (S2), all gated on `SidModel::Sid6581`:
+//! - DAC DC offset. Public knowledge: the 6581's waveform DAC is not
+//!   centred on its zero point, so every voice carries a DC level that the
+//!   envelope scales. That is why 6581 gate edges thump and why
+//!   envelope/volume "digis" are loud on a 6581. Modelled as a constant
+//!   added to the normalised waveform before the envelope product:
+//!     out = ((wave - 0x800) / 0x800 + VOICE_DC_6581) * amp
+//!   INFERRED: the sign (positive) follows the public "zero point below
+//!   mid-scale" description; the size 0.25 (a quarter of half-scale) is a
+//!   tuning guess. Behind the chip's 16 Hz DC blocker this shows up as a
+//!   thump on note-on/off and on envelope moves, never as a steady offset.
+//!   Ears-gate.
+//! - Attack shape. The plan (§1.2) cites a published 6581 measurement: a
+//!   ~1.5 ms floor and a nonlinear attack shape. No GPL-free copy of that
+//!   curve was available here, so the plan's figure is taken at face value
+//!   and turned into a model: the envelope counter and the shared rate
+//!   table are untouched (ENV3 still reads the linear digital level), but
+//!   the amplitude the voice applies, `amp`, follows the level through a
+//!   one-pole lag that acts on RISING level only:
+//!     target = level / 255
+//!     amp <- amp + (target - amp) * alpha   if target > amp
+//!     amp <- target                         otherwise
+//!     alpha = 1 - e^(-1 / tau),  tau = 1.5 ms / ln 9 * 985 248 = 672.61 cycles
+//!   ln 9 makes the 10 %-90 % rise of a full-scale step exactly 1.5 ms: that
+//!   is the "floor", since no attack can rise faster. A ramp of length T
+//!   comes out as (t - tau (1 - e^(-t/tau))) / T: a slow, curved onset,
+//!   then a straight line one tau late. At the fastest nibble (T = 255 * 9
+//!   cycles = 2.33 ms) the whole attack is curved; slow attacks are just
+//!   delayed by tau. Decay and release follow the level exactly, and so
+//!   does any fall after the lag has caught up (no step at the stage change).
+//!   Why a lag and not a stateless level -> amplitude table (the plan's
+//!   "table lookup"): a table applied only in attack jumps when the stage
+//!   changes mid-attack (gate off at level L would snap from table(L) to
+//!   L/255), and a table applied in every stage changes every sustain level.
+//!   INFERRED: the one-pole form and the 10-90 % reading of "1.5 ms floor".
+//!   Ears-gate.
+//! - Waveform 0 fade. With no waveform selected the DAC input floats (see
+//!   `waveform.rs`). Public notes say the held value leaks away, far faster
+//!   on the 6581 than on the 8580. Modelled as: after WAVE0_FADE_CYCLES_6581
+//!   consecutive cycles with no waveform, the held value drops to 0. TEST
+//!   does not drive the DAC and neither restarts nor stops the count. The
+//!   8580 keeps S1's hold. INFERRED: the hold time (65 536 cycles,
+//!   66.5 ms) and the single drop instead of a gradual leak. Ears-gate.
 
 use super::envelope::{Envelope, Stage};
 use super::noise::Noise;
 use super::waveform::{waveform_output, GATE, NOISE, TEST};
-use super::{SidModel, ACC_MASK};
+use super::{SidModel, ACC_MASK, PAL_CLOCK_HZ};
 
 const MSB: u32 = 0x80_0000;
 const NOISE_CLOCK_BIT: u32 = 0x08_0000; // accumulator bit 19
 
+/// 6581 waveform-DAC DC offset in normalised units (half-scale = 1).
+/// INFERRED tuning.
+pub const VOICE_DC_6581: f64 = 0.25;
+/// The 6581 attack floor: 10 %-90 % rise of a full-scale step, seconds.
+/// The plan's cited figure (§1.2), taken at face value.
+pub const ATTACK_FLOOR_6581_S: f64 = 1.5e-3;
+/// Cycles of waveform 0 before a 6581's held DAC value drops to 0.
+/// INFERRED tuning.
+pub const WAVE0_FADE_CYCLES_6581: u32 = 65_536;
+
+/// The 6581 attack lag's time constant in chip cycles:
+/// ATTACK_FLOOR_6581_S / ln 9 * PAL clock.
+pub fn attack_lag_tau_cycles() -> f64 {
+    ATTACK_FLOOR_6581_S / 9f64.ln() * PAL_CLOCK_HZ
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Voice {
+    model: SidModel,
     acc: u32,
     freq: u16,
     pw: u16,
@@ -41,11 +102,26 @@ pub struct Voice {
     prev_acc: u32,
     /// The MSB went 0 -> 1 during the current cycle.
     msb_rising: bool,
+    /// 6581: the lagged envelope amplitude, 0..1. Unused on the 8580.
+    amp: f64,
+    /// 6581: per-cycle coefficient of the attack lag.
+    lag_alpha: f64,
+    /// 6581: consecutive cycles with no waveform selected (saturates at
+    /// the fade time). Unused on the 8580.
+    wave0_age: u32,
 }
 
 impl Default for Voice {
     fn default() -> Self {
+        Voice::new(SidModel::Sid8580)
+    }
+}
+
+impl Voice {
+    /// A powered-on voice of `model`.
+    pub fn new(model: SidModel) -> Self {
         Voice {
+            model,
             acc: 0,
             freq: 0,
             pw: 0,
@@ -55,11 +131,16 @@ impl Default for Voice {
             wave: 0,
             prev_acc: 0,
             msb_rising: false,
+            amp: 0.0,
+            lag_alpha: 1.0 - (-1.0 / attack_lag_tau_cycles()).exp(),
+            wave0_age: 0,
         }
     }
-}
 
-impl Voice {
+    pub fn model(&self) -> SidModel {
+        self.model
+    }
+
     /// 24-bit phase accumulator.
     #[inline]
     pub fn accumulator(&self) -> u32 {
@@ -111,10 +192,26 @@ impl Voice {
         self.noise.register()
     }
 
-    /// Envelope-scaled output, normalised to about -1..1.
+    /// The amplitude the envelope applies to the waveform, 0..1: level/255
+    /// on the 8580, the attack-lagged level on the 6581 (header).
+    #[inline]
+    pub fn envelope_amplitude(&self) -> f64 {
+        match self.model {
+            SidModel::Sid8580 => self.env.level() as f64 / 255.0,
+            SidModel::Sid6581 => self.amp,
+        }
+    }
+
+    /// Envelope-scaled output, normalised to about -1..1 (8580) or
+    /// -0.75..1.25 (6581, with its DAC DC offset).
     #[inline]
     pub fn output(&self) -> f64 {
-        (self.wave as f64 - 2048.0) / 2048.0 * (self.env.level() as f64 / 255.0)
+        match self.model {
+            SidModel::Sid8580 => {
+                (self.wave as f64 - 2048.0) / 2048.0 * (self.env.level() as f64 / 255.0)
+            }
+            SidModel::Sid6581 => ((self.wave as f64 - 2048.0) / 2048.0 + VOICE_DC_6581) * self.amp,
+        }
     }
 
     pub(super) fn set_freq_lo(&mut self, v: u8) {
@@ -182,25 +279,43 @@ impl Voice {
     /// Cycle phase 3: noise clock, envelope, waveform latch. `source_acc` is
     /// the ring-mod source's accumulator after phases 1-2.
     #[inline]
-    pub(super) fn finish_cycle(&mut self, model: SidModel, source_acc: u32) {
+    pub(super) fn finish_cycle(&mut self, source_acc: u32) {
         if self.control & TEST != 0 {
             self.noise.test_reset();
         } else if self.prev_acc & NOISE_CLOCK_BIT == 0 && self.acc & NOISE_CLOCK_BIT != 0 {
             if self.control & NOISE != 0 && self.control & 0x70 != 0 {
-                if let Some(w) = self.select(model, source_acc) {
+                if let Some(w) = self.select(source_acc) {
                     self.noise.write_back(w);
                 }
             }
             self.noise.shift();
         }
         self.env.clock();
-        if let Some(w) = self.select(model, source_acc) {
-            self.wave = w;
+        match self.select(source_acc) {
+            Some(w) => {
+                self.wave = w;
+                self.wave0_age = 0;
+            }
+            None if self.model == SidModel::Sid6581 && self.wave0_age < WAVE0_FADE_CYCLES_6581 => {
+                self.wave0_age += 1;
+                if self.wave0_age == WAVE0_FADE_CYCLES_6581 {
+                    self.wave = 0;
+                }
+            }
+            None => {}
+        }
+        if self.model == SidModel::Sid6581 {
+            let target = self.env.level() as f64 / 255.0;
+            self.amp = if target > self.amp {
+                self.amp + (target - self.amp) * self.lag_alpha
+            } else {
+                target
+            };
         }
     }
 
     #[inline]
-    fn select(&self, model: SidModel, source_acc: u32) -> Option<u16> {
-        waveform_output(model, self.control, self.acc, source_acc, self.pw, self.noise.output())
+    fn select(&self, source_acc: u32) -> Option<u16> {
+        waveform_output(self.model, self.control, self.acc, source_acc, self.pw, self.noise.output())
     }
 }

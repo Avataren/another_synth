@@ -1,0 +1,91 @@
+# S2 8580 regression-pin capture on the UNMODIFIED S1 tree (4f76a8d3)
+# date: 2026-09-23T15:39:12+02:00
+## git status (only the new test file + its mod line):
+ M rust-wasm/src/sid/mod.rs
+?? rust-wasm/src/sid/tests_s2.rs
+## git diff of tracked sid/ files (must show only the tests_s2 mod line):
+diff --git a/rust-wasm/src/sid/mod.rs b/rust-wasm/src/sid/mod.rs
+index 31ecbd9d..753aa640 100644
+--- a/rust-wasm/src/sid/mod.rs
++++ b/rust-wasm/src/sid/mod.rs
+@@ -25,6 +25,8 @@ pub mod waveform;
+ 
+ #[cfg(test)]
+ mod tests;
++#[cfg(test)]
++mod tests_s2;
+ 
+ pub use chip::Chip;
+ 
+## sha256 of S1 model sources at capture time:
+1a6cb9ad075ab8693b9e45c7f07cba0b817e2fb81fe718f2213faf83819fb598  rust-wasm/src/sid/chip.rs
+7eec4674ed73e5a723c698d93a5711563b0cb058858d058ef909589bd592bcec  rust-wasm/src/sid/envelope.rs
+3831a243c9ca46a77449d8d5377dfa171b949c62a781f5e8d9ab7777831018fc  rust-wasm/src/sid/filter.rs
+1dbc6df37838e7ebe9c7b8ea5ca21dafe1ea7ca4c11bf60398c23db995bff1ac  rust-wasm/src/sid/noise.rs
+86a0bfdf1d160c5d9cad4485707417b6c0c5791b72f795cb81b9a63927c6f5a0  rust-wasm/src/sid/voice.rs
+b2ec6f85de60baf95c644329994c07fdddabb4072a6d4e3ca5d86b5918562fee  rust-wasm/src/sid/waveform.rs
+## run: cargo test --features native-host --lib sid::
+test sid::envelope::tests::exp_period_breakpoints ... ok
+test sid::envelope::tests::rate_periods_match_datasheet ... ok
+test sid::filter::tests::register_maps ... ok
+test sid::noise::tests::seed_output_and_first_shift ... ok
+test sid::noise::tests::test_value_outputs_all_taps ... ok
+test sid::noise::tests::write_back_clears_exactly_the_low_taps ... ok
+test sid::tests::combined_waveforms_through_osc3 ... ok
+test sid::tests::filter_registers_program_the_filter ... ok
+test sid::tests::a4_register_is_7493_at_440_02_hz ... ok
+test sid::tests::model_flag_8580_builds_6581_is_a_documented_stub ... ok
+test sid::tests::notes_from_c1_to_a_sharp_7_are_within_two_cents ... ok
+test sid::tests::accumulator_and_osc3_golden_trace ... ok
+test sid::filter::tests::step_response_settles_to_unity_dc_gain ... ok
+test sid::tests::ring_mod_truth_table_through_the_chip ... ok
+test sid::tests::retrigger_attacks_from_the_current_level ... ok
+test sid::tests::test_bit_holds_the_accumulator_at_zero ... ok
+test sid::tests::test_bit_holds_the_pulse_output_high ... ok
+test sid::filter::tests::no_mode_bit_is_silent_and_lp_plus_hp_notches ... ok
+test sid::tests::sync_destination_held_by_test_bit ... ok
+test sid::tests::every_voice_syncs_to_its_datasheet_source ... ok
+test sid::tests::chained_sync_a_reset_source_does_not_propagate_its_rise ... ok
+test sid::tests::sync_resets_on_the_source_msb_rising_edge_only ... ok
+test sid::tests::test_bit_leaves_the_envelope_alone ... ok
+test sid::tests::test_bit_resets_noise_and_its_phase_to_the_oscillator ... ok
+test sid::tests::sync_without_the_sync_bit_does_nothing ... ok
+test sid::waveform::tests::combined_waveforms_are_the_wired_and ... ok
+test sid::waveform::tests::no_waveform_selected_is_none ... ok
+test sid::waveform::tests::pulse_compares_upper_bits_against_width ... ok
+test sid::waveform::tests::pulse_duty_cycle_over_a_full_sweep ... ok
+test sid::tests::sync_source_held_by_test_bit_locks_out_the_sync ... ok
+test sid::waveform::tests::ring_mod_truth_table ... ok
+test sid::waveform::tests::sawtooth_is_upper_twelve_bits ... ok
+test sid::waveform::tests::triangle_folds_on_msb_and_has_even_output ... ok
+test sid::waveform::tests::test_bit_forces_pulse_high_and_nothing_else ... ok
+test sid::tests::sync_source_wrap_vs_destination_wrap ... ok
+test sid::tests::test_bit_on_a_source_with_msb_set_does_not_sync ... ok
+test sid::filter::tests::slopes_are_twelve_and_six_db_per_octave ... ok
+test sid::tests::waveform_zero_holds_the_last_output ... ok
+test sid::noise::tests::low_nibble_is_always_zero_and_output_is_roughly_balanced ... ok
+test sid::tests::osc3_env3_reflect_voice_3_only ... ok
+test sid::noise::tests::never_reaches_the_all_zero_state_on_its_own ... ok
+test sid::tests::attack_steps_on_the_measured_period ... ok
+test sid::tests::sync_holds_a_zero_frequency_destination_at_zero ... ok
+test sid::filter::tests::resonance_peak_grows_with_the_register ... ok
+test sid::tests::adsr_delay_bug_from_the_15_bit_rate_counter ... ok
+test sid::tests::pure_noise_never_locks_up ... ok
+test sid::tests::ring_mod_follows_the_live_source_msb_every_cycle ... ok
+test sid::tests::zero_frequency_source_never_syncs ... ok
+test sid::tests::decay_follows_the_exponential_divider ... ok
+test sid::tests::a4_wraps_exactly_100_times_in_224_000_cycles ... ok
+test sid::tests::sustain_is_an_equality_compare ... ok
+test sid::tests::noise_combined_with_a_low_pulse_locks_up_until_test ... ok
+test sid::tests::release_runs_to_zero_and_freezes ... ok
+test sid::tests_s2::pin_8580_render_is_bit_identical_to_s1 ... ok
+test sid::tests::filt_bits_are_per_voice ... ok
+test sid::tests::band_pass_selects_the_region_around_cutoff ... ok
+test sid::filter::tests::impulse_response_is_stable_and_decays_for_every_setting ... ok
+test sid::tests::master_volume_scales_linearly ... ok
+test sid::tests::filt_bits_route_voices_through_the_filter ... ok
+test sid::tests::saw_harmonics_match_ideal_minus_decimator_droop ... ok
+test sid::tests::voice3_off_mutes_only_the_direct_voice_3 ... ok
+test sid::tests::s0_bin_grid_estimator_reproduces_the_scalloping_first_cause ... ok
+test sid::tests::rendered_a4_saw_is_440_hz_at_44_1_and_48_khz ... ok
+test result: ok. 63 passed; 0 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.72s

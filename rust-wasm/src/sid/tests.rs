@@ -87,25 +87,24 @@ fn saw_a4(c: &mut Chip, v: u8) {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn model_flag_8580_builds_6581_is_a_documented_stub() {
+fn model_flag_both_models_construct_per_instance() {
+    // S2 rewrite of S1's refusal test: the 6581 is no longer a stub. Both
+    // models construct, each instance keeps its own model, and the sample
+    // rate check still refuses for either.
     let c = chip();
     assert_eq!(c.model(), SidModel::Sid8580);
     assert_eq!(c.sample_rate(), 44_100.0);
-    assert_eq!(SidModel::Sid8580.unimplemented_reason(), None);
-    let err = Chip::new(SidModel::Sid6581).unwrap_err();
-    match &err {
-        SidError::ModelNotImplemented { model, reason } => {
-            assert_eq!(*model, SidModel::Sid6581);
-            assert!(reason.contains("S2"), "{reason}");
-        }
-        e => panic!("unexpected {e:?}"),
+    let c6 = Chip::new(SidModel::Sid6581).expect("6581 is implemented (S2)");
+    assert_eq!(c6.model(), SidModel::Sid6581);
+    assert_eq!(c.model(), SidModel::Sid8580, "building a 6581 leaves the 8580 alone");
+    for m in [SidModel::Sid8580, SidModel::Sid6581] {
+        assert_eq!(m.unimplemented_reason(), None);
+        assert!(Chip::with_sample_rate(m, 48_000.0).is_ok());
+        assert!(matches!(
+            Chip::with_sample_rate(m, 0.0),
+            Err(SidError::UnsupportedSampleRate(_))
+        ));
     }
-    assert!(err.to_string().starts_with("6581 not implemented"));
-    assert!(Chip::with_sample_rate(SidModel::Sid8580, 48_000.0).is_ok());
-    assert!(matches!(
-        Chip::with_sample_rate(SidModel::Sid8580, 0.0),
-        Err(SidError::UnsupportedSampleRate(_))
-    ));
 }
 
 // ---------------------------------------------------------------------------
