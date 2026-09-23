@@ -284,6 +284,18 @@ export function readGt1Song(
 
   // --- Patterns.
   const speedRow = (left: number, right: number) => speed.add([{ left, right }]);
+  /**
+   * Funktempo's speed row (gsong.c:698): GT packs filter row 0's bytes 2-3
+   * as b2<<4 | (b3 & 15) and splits that as bits 4-7 / 0-3 (gtable.c:876-878),
+   * so the row is (b2 & 15, b3 & 15); a packed 0 is no row (gtable.c:862).
+   * Without a filter table GT reads uninitialised stack bytes (gsong.c:341);
+   * zeros stand in for them.
+   */
+  const funktempo = (): number => {
+    const [b2, b3] = filterTable === null ? [0, 0] : [filterTable[2]!, filterTable[3]!];
+    if (((b2 << 4) | (b3 & 0x0f)) === 0) return 0;
+    return speedRow(b2 & 0x0f, b3 & 0x0f);
+  };
   const arpeggios = new Map<number, number>();
   const patterns: SidDocPattern[] = rawPatterns.map((data, p) => {
     const n = data.length / 3;
@@ -349,13 +361,25 @@ export function readGt1Song(
             }
           }
           break;
-        case 7:
-          // Tempo, GT2's FXY with the same parameter (INFERRED).
-          command = 0xf;
+        case 6:
+          // Set SR: GT2's own command 6, kept as is (gsong.c:574-590 has no case for it).
+          command = 0x6;
           out = param;
           break;
         default:
-          drop(`${where}: command 6 ($${hex(param)}) has no known meaning; dropped`);
+          // Tempo (gsong.c:581-589, 694-699): below $F0 GT2's FXY with the
+          // same parameter, $F0 up master volume DXY with the low nibble, 00
+          // funktempo EXY.
+          if (param >= 0xf0) {
+            command = 0xd;
+            out = param & 0x0f;
+          } else if (param !== 0) {
+            command = 0xf;
+            out = param;
+          } else {
+            command = 0xe;
+            out = funktempo();
+          }
       }
       rows.push({ note, instrument, command, param: out });
     }
