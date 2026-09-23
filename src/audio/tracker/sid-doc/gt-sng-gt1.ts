@@ -253,26 +253,49 @@ export function readGt1Song(
     // GT copies the left bytes and leaves the right ones blank (gsong.c:740).
     const head = program.findIndex((row) => row.left === JUMP);
     arpeggioHeads.push(ins.noWave ? [] : program.slice(0, head).map((row) => ({ left: row.left, right: 0 })));
-    // Pulse: +2 start, +3 speed, +4/+5 low/high limit, the limits and start
-    // the width's top 8 bits (INFERRED). GT1's limit-based sweep becomes GT2
-    // time-based steps (readme §3.6.1). The speed is taken as GT2's own unit
-    // (INFERRED): every corpus speed ($10-$50) is then inside GT2's signed
-    // range and the GTS5 corpus's measured one; doubling it, as readme §1.1
-    // note 9 does for pre-2.4 GT2 songs, would overflow $7F for 43 of them.
-    const [pw, pspeed, plo, phi] = [h[2]! << 4, h[3]!, h[4]! << 4, h[5]! << 4];
+    // Pulse (gsong.c:375-382, 418-538): +2 start, +3 speed, +4/+5 low/high
+    // limit, the width's top 8 bits. Bit 0 of the start is GT1's "no hard
+    // restart" flag, not width (gsong.c:381-382); a start of 0 makes no
+    // program. GT2 turns the limit-based sweep into timed steps: a rise to
+    // the high limit, a fall to the low one, then a rise back either to the
+    // start (when it lies between the two turns; the loop then restarts at
+    // the first rise) or to the high limit (the loop restarts at the fall).
+    // Each leg lasts floor(distance / speed) frames at speed/2, which the
+    // pre-2.4 pass doubles and clamps to +127/-128 (gsong.c:816-830; a row
+    // of speed 0 is not doubled). That math applies to every GTS! file:
+    // gsong.c:330 is the one GTS! branch, with no sub-version switch
+    // (betaconv.c reads GTS2 only, betaconv.c:83), so the corpus's odd-looking
+    // bytes (limits $01-$0F, speeds $80-$F0 in maximum_rastertime_test,
+    // b.o.f.h. and wod) are converted by it, clamps included.
+    const noHardRestart = (h[2]! & 0x01) !== 0;
+    const start = h[2]! & 0xfe;
+    const [add, low, high] = [h[3]!, h[4]! << 4, h[5]! << 4];
     let pulsePtr = 0;
-    if (pw !== 0 || pspeed !== 0) {
-      const steps: SidTableRow[] = [{ left: 0x80 | (pw >> 8), right: pw & 0xff }];
-      const s = Math.min(0x7f, pspeed);
-      if (pspeed > 0x7f) convert(`${where}: pulse speed $${hex(pspeed)} exceeds $7F; clamped`);
-      if (s === 0 || phi <= plo) {
-        if (s !== 0) drop(`${where}: pulse limits $${hex(plo >> 4)}-$${hex(phi >> 4)} leave no sweep; the width holds`);
-        steps.push({ left: JUMP, right: 0 });
-      } else {
-        const span = Math.ceil((phi - plo) / s);
-        steps.push(...timedRows(Math.max(0, Math.ceil((phi - pw) / s)), s));
-        const loop = steps.length + 1;
-        steps.push(...timedRows(span, -s), ...timedRows(span, s), { left: JUMP, right: loop });
+    if (start !== 0) {
+      const steps: SidTableRow[] = [{ left: 0x80 | (start >> 4), right: (start << 4) & 0xff }];
+      if (add === 0) steps.push({ left: JUMP, right: 0 });
+      else {
+        const twice = (add >> 1) * 2;
+        const [up, down] = [Math.min(0x7f, twice), -Math.min(0x80, twice)];
+        if (twice !== add || twice > 0x7f) convert(`${where}: pulse speed $${hex(add)} becomes +${up}/${down} per frame (GoatTracker halves and doubles it)`);
+        /** A leg of `dist` (> 0) at `speed`; the distance it covers. */
+        const leg = (dist: number, speed: number): number => {
+          const time = Math.floor(dist / add);
+          steps.push(...timedRows(time, speed));
+          return time * add;
+        };
+        const from = start << 4;
+        let at = from;
+        if (high > at) at += leg(high - at, up);
+        const fall = steps.length + 1;
+        if (at > low) at -= leg(at - low, down);
+        if (from < high && from > at) {
+          leg(from - at, up);
+          steps.push({ left: JUMP, right: 2 });
+        } else {
+          if (high > at) leg(high - at, up);
+          steps.push({ left: JUMP, right: fall });
+        }
       }
       pulsePtr = pulse.add(steps);
     }
@@ -287,11 +310,11 @@ export function readGt1Song(
       waveform: 0,
       pulseWidth: 0,
       filter: { enabled: false, cutoff: 0, resonance: 0, mode: 0 },
-      // A GT1 instrument has no first-wave, gate-timer or hard-restart byte:
-      // GT2's defaults for a new instrument (readme §3.3/§3.7: $09, 2). INFERRED.
+      // A GT1 instrument has no first-wave or gate-timer byte: GT2's
+      // defaults for a new instrument (ginstr.c:210-221: $09, 2 at speed 1).
       firstWave: 0x09,
       gateTimer: 2,
-      hardRestart: true,
+      hardRestart: !noHardRestart,
       vibratoDelay: 0,
       wavePtr: wave.add(program),
       pulsePtr,
