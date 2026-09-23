@@ -83,3 +83,76 @@ Output goes to `.ai/checks-delegated-dec.txt`:
 Every change is its own commit on this branch, touching UI text, one template
 block, tests and docs. To undo one, `git revert <sha>`. Nothing is pushed or
 merged.
+
+## Landed (2026-09-23)
+
+- Branch `agent/delegated-decisions-0922a` (tip `3fe8929b`) merged no-ff into
+  main as `d901d68e`; pushed range `e5aa86e6..d901d68e`.
+- Independent review PASS (2026-09-23 06:51–06:55): diff scope exact
+  (AhxPositionPanel + its test deleted; TrackerPage panel wiring removed +
+  HIDE_TRANSPOSE_PANEL collapsed; AhxInstrumentPage dropdown removed +
+  ticks→frames text fix; `ahx-position-display.ts` tooltip text; verdict.md
+  docs; 2 instrument-page tests updated), zero references remain, transpose
+  chip path verified (8/8 tests).
+
+### Decisions summary (standing delegation)
+
+- Position panel removal: user-directed (Morten) — transpose edits live in
+  the canvas header chip only; wheel entry kept, tooltip points to the chip.
+- Ring-mod: measure-first (decided, not yet implemented).
+- Gibbs clipping: accepted + documented (M5/M6 evidence,
+  `.ai/band-limit-analysis.md` §7 row 6).
+- Batch: deferred.
+- Instrument-page duplicate exact-value start-waveform dropdown: removed.
+- Envelope default: applied as planned.
+- Hard-cut warning: unit corrected ticks → frames.
+
+### Gates (post-merge, on main `d901d68e`, real exit codes)
+
+| Gate | Result |
+| --- | --- |
+| vitest run | 235 files / 3751 tests passed, exit 0 |
+| eslint . | exit 0 |
+| vue-tsc --noEmit | exit 0 |
+| npm run check:artifacts | exit 0 |
+| gitleaks detect --no-git | exit 0, no leaks (2.54 GB scanned) |
+
+No Rust changes → no cargo, no wasm rebuild needed (deploy's standard
+build:wasm still ran, see below).
+
+### Deploy
+
+`scripts/deploy.sh` → avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth,
+exit 0. Full output: `.ai/deploy-decisions-20260923.log`.
+
+Byte-match (md5, local `dist/spa` vs remote, all identical):
+
+| Artifact | md5 | Match |
+| --- | --- | --- |
+| index.html | 95319a4e25353ec8936505ef453f4dac | ✓ |
+| wasm/audio_processor_bg.wasm | 178c2b860fdf34c6e17b5afd817bfaae | ✓ |
+| wasm/audio_processor.js | b4a1b4ccd50a92959320c9763539ef94 | ✓ |
+| worklets/ahx-worklet.js | 0b1e28a2d692f80a2f9fc3a46d77f1e6 | ✓ |
+| worklets/synth-worklet.js | d3be4813a900d1db107ac182b425f346 | ✓ |
+| worklets/effects-worklet.js | ea0b2d2be2fd5dd6ec9a6a6ccb5c5e71 | ✓ |
+| worklets/recording-worklet.js | 9c96bf69c35c1b90db4314dd0923147f | ✓ |
+| demos/index.json | 10a5b4ad7113170410cee716ec9adf68 | ✓ |
+
+wasm note: NOT byte-identical to the band-limit deploy (`e52bf5a9…` then vs
+`178c2b8…` now) although no Rust changes exist (`git diff e5aa86e6..d901d68e
+-- rust-wasm` is empty). deploy.sh always runs build:wasm and rebuilt wasm
+bytes differ run-to-run in this environment; the band-limit landing shows the
+same pattern (deployed `e52bf5a9` vs committed `62ad8309`). Artifact
+freshness verified by check:artifacts before the deploy.
+
+### Failed-forward note
+
+Morten's 22:09 directive was initially missed by the delegated run; delivered
+the next morning and executed (this landing).
+
+### Postdeploy
+
+Known residue (demos:refresh + build:wasm rewrote public/demos/index.json,
+public/wasm/SOURCE_HASH.json, public/wasm/audio_processor_bg.wasm) stashed as
+residue-recoverable. Worktree `.ai/worktrees/decide-impl` and branch
+`agent/delegated-decisions-0922a` left in place, clean.

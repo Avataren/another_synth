@@ -1,0 +1,187 @@
+Building…
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 build
+npm notice run npm run demos:refresh && npm run build:wasm && npm run build:worklets && quasar build
+npm warn Unknown env config "shamefully-hoist". This will error in a future major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "resolution-mode". This will error in a future major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 demos:refresh
+npm notice run node scripts/build-demo-manifest.mjs public/demos public/demos
+Indexed 222 module(s) in 4 collection(s) in public/demos
+Manifest lists 222 song(s)
+npm warn Unknown env config "shamefully-hoist". This will error in a future major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "resolution-mode". This will error in a future major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 build:wasm
+npm notice run node build-wasm.cjs
+🦀 Building Rust WebAssembly...
+⚙️  Skipping wasm-opt (set ENABLE_WASM_OPT=1 to enable).
+[INFO]: 🎯  Checking for the Wasm target...
+[INFO]: 🌀  Compiling to Wasm...
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:119:35
+    |
+119 |         let safe_ms = ms.max(f32::EPSILON * 1000.0); // Ensure positive
+    |                                   ^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:286:32
+    |
+286 |             envelope_l += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:293:32
+    |
+293 |             envelope_r += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: `audio_processor` (lib) generated 3 warnings
+    Finished `release` profile [optimized] target(s) in 0.03s
+[INFO]: ⬇️  Installing wasm-bindgen...
+[INFO]: License key is set in Cargo.toml but no LICENSE file(s) were found; Please add the LICENSE file(s) to your project directory
+[INFO]: ✨   Done in 0.27s
+[INFO]: 📦   Your wasm pkg is ready to publish at pkg.
+[WARN]: ⚠️   There's a newer version of wasm-pack available, the new version is: 0.15.0, you are using: 0.13.1. To update, navigate to: https://rustwasm.github.io/wasm-pack/installer/
+🔏 Wrote public/wasm/SOURCE_HASH.json (sources 5c9e359d60dc)
+✅ WebAssembly build complete!
+npm warn Unknown env config "shamefully-hoist". This will error in a future major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "resolution-mode". This will error in a future major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 build:worklets
+npm notice run node build-worklets.cjs
+
+  public/worklets/synth-worklet.js    160.4kb
+  public/worklets/ahx-worklet.js      109.2kb
+  public/worklets/effects-worklet.js   10.7kb
+
+⚡ Done in 10ms
+
+ .d88888b.
+d88P" "Y88b
+888     888
+888     888 888  888  8888b.  .d8888b   8888b.  888d888
+888     888 888  888     "88b 88K          "88b 888P"
+888 Y8b 888 888  888 .d888888 "Y8888b. .d888888 888
+Y88b.Y8b88P Y88b 888 888  888      X88 888  888 888
+ "Y888888"   "Y88888 "Y888888  88888P' "Y888888 888
+       Y8b
+
+
+ Build mode............. spa
+ Pkg quasar............. v2.17.4
+ Pkg @quasar/app-vite... v2.4.0
+ Pkg vite............... v5.4.21
+ Debugging.............. no
+ Publishing............. no
+
+ App • Using quasar.config.ts in "ts" format
+ App •  WAIT  • Compiling of SPA UI with Vite in progress...
+(node:789390) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Browserslist: browsers data (caniuse-lite) is 10 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ App •  DONE  • SPA UI compiled with success by Vite • 4201ms
+
+ Build summary with important files:
+ ╔════════════════════════════════════════════════╦══════════════╦══════════════╗
+ ║                                          Asset ║         Size ║      Gzipped ║
+ ╟────────────────────────────────────────────────╫──────────────╫──────────────╢
+ ║           assets/AhxInstrumentPage-DqSxGdCl.js ║    108.42 KB ║     35.95 KB ║
+ ║                  assets/ClosePopup-AV5fPufV.js ║     14.36 KB ║      5.53 KB ║
+ ║               assets/ErrorNotFound-DNj1iHpA.js ║      0.52 KB ║      0.37 KB ║
+ ║  assets/FrequencyAnalyzerComponent-B5FIh0M1.js ║      5.23 KB ║      2.08 KB ║
+ ║                    assets/HelpPage-Bl7pGjX_.js ║     11.71 KB ║      3.23 KB ║
+ ║                   assets/IndexPage-HouvOzK3.js ║    239.17 KB ║     70.59 KB ║
+ ║                 assets/JukeboxPage-BusGbUS8.js ║     19.58 KB ║      7.08 KB ║
+ ║                  assets/MainLayout-Bh54BE-G.js ║     11.73 KB ║      4.73 KB ║
+ ║               assets/PatternCanvas-BK0NXbOT.js ║     33.76 KB ║     11.47 KB ║
+ ║         assets/PostFxFilterControl-AalbYdMM.js ║    184.06 KB ║     59.25 KB ║
+ ║             assets/QLinearProgress-BEtOgN-9.js ║      1.92 KB ║      0.88 KB ║
+ ║                       assets/QPage-PihBa41o.js ║      0.87 KB ║      0.48 KB ║
+ ║                     assets/QSelect-pSy1n-Il.js ║     31.02 KB ║     10.32 KB ║
+ ║                  assets/QTabPanels-aNJYH5s5.js ║      7.69 KB ║      3.01 KB ║
+ ║                       assets/QTabs-BgDj_McK.js ║     13.17 KB ║      5.08 KB ║
+ ║                assets/SettingsPage-9PEIRHr7.js ║     17.12 KB ║      5.64 KB ║
+ ║                 assets/TrackerPage-DuOW2w16.js ║     87.82 KB ║     27.23 KB ║
+ ║            assets/_commonjsHelpers-BJ9K-jSW.js ║      0.31 KB ║      0.22 KB ║
+ ║                       assets/axios-ByT-QHOA.js ║     35.62 KB ║     14.41 KB ║
+ ║                       assets/color-BrcZGgZ6.js ║      1.29 KB ║      0.68 KB ║
+ ║                       assets/index-DjjEVbnW.js ║    261.82 KB ║     93.04 KB ║
+ ║            assets/instrument-store-DjUZyqCa.js ║    107.36 KB ║     26.77 KB ║
+ ║              assets/keyboard-store-M5bG8PyW.js ║     84.00 KB ║     19.30 KB ║
+ ║                assets/note-key-map-CQ2KbJcC.js ║      0.60 KB ║      0.42 KB ║
+ ║          assets/pinia-audio-system-CFXg27X3.js ║      0.82 KB ║      0.45 KB ║
+ ║        assets/playback-diagnostics-Cjdr1JEg.js ║      3.21 KB ║      1.44 KB ║
+ ║                         assets/rtl-DFPa-2ov.js ║      0.33 KB ║      0.22 KB ║
+ ║                   assets/selection-C274nLlk.js ║      0.32 KB ║      0.21 KB ║
+ ║                 assets/theme-store-CBzJQCub.js ║     24.81 KB ║      5.24 KB ║
+ ║      assets/tracker-playback-store-DIDlcVFV.js ║    172.29 KB ║     46.32 KB ║
+ ║             assets/useMobileLayout-CDrUlhBO.js ║      0.47 KB ║      0.29 KB ║
+ ║         assets/user-settings-store-Vu95R-kV.js ║     14.29 KB ║      4.55 KB ║
+ ║                        wasm/audio_processor.js ║    102.62 KB ║     15.73 KB ║
+ ║                        worklets/ahx-worklet.js ║    109.21 KB ║     19.09 KB ║
+ ║                    worklets/effects-worklet.js ║     10.66 KB ║      2.41 KB ║
+ ║                  worklets/recording-worklet.js ║      0.63 KB ║      0.32 KB ║
+ ║                      worklets/synth-worklet.js ║    160.38 KB ║     27.91 KB ║
+ ╟────────────────────────────────────────────────╫──────────────╫──────────────╢
+ ║          assets/AhxInstrumentPage-bj2NPHTv.css ║     18.92 KB ║      3.82 KB ║
+ ║ assets/FrequencyAnalyzerComponent-Dl2NGxoB.css ║      0.76 KB ║      0.32 KB ║
+ ║                   assets/HelpPage-Bhn4vXaa.css ║      1.95 KB ║      0.69 KB ║
+ ║                  assets/IndexPage-C84t9Ikq.css ║     24.43 KB ║      4.37 KB ║
+ ║                assets/JukeboxPage-DrARK1ag.css ║     11.82 KB ║      2.35 KB ║
+ ║                 assets/MainLayout-C_sLcz4N.css ║      3.35 KB ║      0.98 KB ║
+ ║              assets/PatternCanvas-CWeQKOre.css ║      3.56 KB ║      1.03 KB ║
+ ║        assets/PostFxFilterControl-Cnpxgh3j.css ║     18.60 KB ║      3.66 KB ║
+ ║               assets/SettingsPage-hB5uRVTE.css ║     12.16 KB ║      2.11 KB ║
+ ║                assets/TrackerPage-DMZZxIs-.css ║     31.96 KB ║      5.54 KB ║
+ ║                      assets/index-DRVmJaWN.css ║    197.02 KB ║     34.84 KB ║
+ ║             assets/keyboard-store-BsXRYPnb.css ║      7.65 KB ║      1.52 KB ║
+ ╟────────────────────────────────────────────────╫──────────────╫──────────────╢
+ ║                             default-patch.json ║  37293.84 KB ║            - ║
+ ║                               demos/index.json ║     48.64 KB ║            - ║
+ ║                               system-bank.json ║  37282.75 KB ║            - ║
+ ║                          wasm/SOURCE_HASH.json ║      0.63 KB ║            - ║
+ ╟────────────────────────────────────────────────╫──────────────╫──────────────╢
+ ║                                     index.html ║      0.89 KB ║            - ║
+ ╠════════════════════════════════════════════════╬══════════════╬══════════════╣
+ ║                            Total JS (37 files) ║   1879.18 KB ║            - ║
+ ║                           Total CSS (12 files) ║    332.18 KB ║            - ║
+ ╚════════════════════════════════════════════════╩══════════════╩══════════════╝
+
+ Build succeeded
+
+ Build mode............. spa
+ Pkg quasar............. v2.17.4
+ Pkg @quasar/app-vite... v2.4.0
+ Pkg vite............... v5.4.21
+ Debugging.............. no
+ Publishing............. no
+ Browser target......... es2022|firefox115|chrome115|safari14
+ =======================
+ Output folder.......... /home/openclaw/.openclaw/workspace/another_synth/dist/spa
+
+ Tip: Built files are meant to be served over an HTTP server
+      Opening index.html over file:// won't work
+
+ Tip: You can use "$ quasar serve" command to create a web server,
+      both for testing or production. Type "$ quasar serve -h" for
+      parameters. Also, an npm script (usually named "start") can
+      be added for deployment environments.
+      If you're using Vue Router "history" mode, don't forget to
+      specify the "--history" parameter: "$ quasar serve --history"
+
+Deploying to avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth
+Verifying…
+Deployed and verified (95319a4e25353ec8936505ef453f4dac)
