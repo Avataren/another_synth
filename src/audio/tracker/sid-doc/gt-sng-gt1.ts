@@ -134,62 +134,83 @@ export function readGt1Song(
 
   const wave = new TableBuilder('wave');
   const pulse = new TableBuilder('pulse');
-  const filter = new TableBuilder('filter');
   const speed = new TableBuilder('speed');
   const convert = (message: string) => notes.push({ kind: 'gt1-convert', message });
   const drop = (message: string) => notes.push({ kind: 'gt1-dropped', message });
 
-  // --- The filter table: 64 rows of (control, resonance|volume or time, cutoff or speed, next row). INFERRED.
-  const filterStart = new Map<number, number>();
-  const filterRow = (i: number): number => {
-    const known = filterStart.get(i);
-    if (known !== undefined) return known;
-    if (filterTable === null) throw new Error('no filter table');
-    // Lay the chain from row i out in order: each GT1 row becomes its GT2
-    // rows, then falls through to its `next` when that is laid out right
-    // after it, or jumps there.
-    const program: { row: number; rows: SidTableRow[] }[] = [];
-    const start = filter.rows.length + 1;
-    let at = start;
-    let row = i;
-    for (;;) {
-      filterStart.set(row, at);
-      const [ctl, b1, b2, next] = [filterTable[row * 4]!, filterTable[row * 4 + 1]!, filterTable[row * 4 + 2]!, filterTable[row * 4 + 3]!];
-      let rows: SidTableRow[];
-      if (ctl !== 0) {
-        // Set: control bits 0-2 = passband (1 LP, 2 BP, 4 HP), bits 4-6 =
-        // channels 1-3; b1 = resonance<<4 | volume. GT2: "set filter
-        // parameters" then "set cutoff" (readme §3.4.3).
-        rows = [
-          { left: 0x80 | ((ctl & 0x07) << 4), right: (b1 & 0xf0) | ((ctl >> 4) & 0x07) },
-          { left: 0x00, right: b2 },
-        ];
-        if ((b1 & 0x0f) !== 0x0f) drop(`filter table row ${row}: master volume ${b1 & 0x0f} has no filter-table equivalent`);
+  // --- The filter table: 64 rows of (b0, b1, b2, next row), converted as
+  // GT2's loader does (gsong.c:602-669). Rows 1..n are laid out in order,
+  // where n is the highest row anything names: an instrument filter byte
+  // (gsong.c:380), a command-5 parameter (gsong.c:578, every row read, the
+  // end row too) or any row's `next` byte, row 0's included (gsong.c:609);
+  // at most 63 (gsong.c:612). Row 0 is never laid: its bytes 2-3 are the
+  // funktempo (command 7 00).
+  let filterRowCount = 0;
+  for (const ins of raw) filterRowCount = Math.max(filterRowCount, ins.header[6]!);
+  for (const data of rawPatterns) {
+    for (let k = 0; k + 2 < data.length; k += 3) if ((data[k + 1]! & 0x07) === 5) filterRowCount = Math.max(filterRowCount, data[k + 2]!);
+  }
+  const filterRows: SidTableRow[] = [];
+  /** GT1 row -> 1-based GT2 row (gsong.c:616); 0 stays 0. */
+  const filterMap = new Array<number>(GT1_FILTER_ROWS).fill(0);
+  if (filterTable !== null) {
+    for (let c = 0; c < GT1_FILTER_ROWS; c++) filterRowCount = Math.max(filterRowCount, filterTable[c * 4 + 3]!);
+    filterRowCount = Math.min(filterRowCount, GT1_FILTER_ROWS - 1);
+    const jumps: { at: number; to: number }[] = [];
+    for (let c = 1; c <= filterRowCount; c++) {
+      // Every row maps to where the output stands, an all-zero one (which
+      // lays nothing) to whatever is laid next.
+      filterMap[c] = filterRows.length + 1;
+      const [b0, b1, b2, next] = [filterTable[c * 4]!, filterTable[c * 4 + 1]!, filterTable[c * 4 + 2]!, filterTable[c * 4 + 3]!];
+      if ((b0 | b1 | b2 | next) === 0) continue;
+      if (b0 !== 0) {
+        // Set (gsong.c:621-631): b0 is SID $D417 as is (resonance<<4 |
+        // channels), b1 is $D418 (bits 4-6 the passband, bit 7 voice 3 off,
+        // bits 0-3 the master volume). GT2 keeps the passband, then sets the
+        // cutoff b2 when it is not 0.
+        filterRows.push({ left: 0x80 | (b1 & 0x70), right: b0 });
+        if (b2 !== 0) filterRows.push({ left: 0x00, right: b2 });
+        const lost = [(b1 & 0x0f) !== 0x0f ? `master volume ${b1 & 0x0f}` : '', (b1 & 0x80) !== 0 ? 'voice 3 off' : ''].filter(Boolean);
+        if (lost.length > 0) drop(`filter table row ${c}: ${lost.join(' and ')} has no filter-table equivalent`);
       } else {
-        rows = timedRows(b1, b2);
-        if (rows.length === 0) {
-          convert(`filter table row ${row}: a modulation of 0 frames becomes one still frame`);
-          rows = [{ left: 0x01, right: 0x00 }];
+        // Modulation (gsong.c:633-647): b1 frames at signed b2, in rows of at
+        // most 127 frames. 0 frames lays no row.
+        filterRows.push(...timedRows(b1, b2));
+      }
+      // Falls through when `next` is the row after it (gsong.c:650).
+      if (next !== c + 1) {
+        let to = next;
+        if (to >= GT1_FILTER_ROWS) {
+          // GT indexes its 64-entry map with it (gsong.c:664): out of bounds.
+          drop(`filter table row ${c}: next row $${hex(next)} is past the table; the jump stops instead`);
+          to = 0;
         }
+        jumps.push({ at: filterRows.length, to });
+        filterRows.push({ left: JUMP, right: 0 });
       }
-      at += rows.length;
-      const target = next % GT1_FILTER_ROWS;
-      const laid = filterStart.get(target);
-      if (laid === undefined) {
-        program.push({ row, rows });
-        row = target;
-        continue;
-      }
-      // A set row that loops onto itself holds its setting: stop there.
-      const selfSet = target === row && ctl !== 0;
-      rows = [...rows, { left: JUMP, right: selfSet ? 0 : laid }];
-      at += 1;
-      program.push({ row, rows });
-      break;
     }
-    for (const part of program) filter.rows.push(...part.rows);
-    filter.check();
-    return start;
+    for (const { at, to } of jumps) filterRows[at] = { left: JUMP, right: filterMap[to]! };
+    if (filterRows.length > SID_MAX_TABLE_ROWS) {
+      throw new GtFormatError(`converted to GoatTracker 2 tables, its filter table needs ${filterRows.length} rows; a table holds ${SID_MAX_TABLE_ROWS}`);
+    }
+  }
+  /**
+   * A GT1 filter row an instrument or command 5 names -> its GT2 row
+   * (gsong.c:667-669, 690-692). Without a filter table GT maps through a
+   * table it built from 256 uninitialised stack bytes (gsong.c:341, 602),
+   * which nothing can reproduce: a non-zero pointer is dropped then.
+   */
+  const mapFilter = (ptr: number, where: string): number | null => {
+    if (ptr === 0) return 0;
+    if (filterTable === null) {
+      drop(`${where}: filter pointer $${hex(ptr)} with no filter table in the file; dropped`);
+      return null;
+    }
+    if (ptr >= GT1_FILTER_ROWS) {
+      drop(`${where}: filter pointer $${hex(ptr)} is past the filter table; dropped`);
+      return 0;
+    }
+    return filterMap[ptr]!;
   };
 
   // --- Instruments.
@@ -237,14 +258,8 @@ export function readGt1Song(
       }
       pulsePtr = pulse.add(steps);
     }
-    // Filter: +6 is a filter-table row. INFERRED; without a filter table
-    // there is nothing it can point at.
-    let filterPtr = 0;
-    const f = h[6]!;
-    if (f !== 0) {
-      if (filterTable !== null && f < GT1_FILTER_ROWS) filterPtr = filterRow(f);
-      else drop(`${where}: filter byte $${hex(f)} ${filterTable === null ? 'with no filter table in the file' : 'is past the filter table'}; dropped`);
-    }
+    // Filter: +6 is a filter-table row (gsong.c:379).
+    const filterPtr = mapFilter(h[6]!, where) ?? 0;
     return {
       name: ins.name,
       attack: h[0]! >> 4,
@@ -325,12 +340,13 @@ export function readGt1Song(
           if (param !== 0) out = speedRow(param >> 4, (param & 0x0f) << 4);
           break;
         case 5:
-          // Filter-table pointer (INFERRED): GT2's AXY.
-          if (filterTable !== null && param < GT1_FILTER_ROWS) {
-            command = 0xa;
-            out = filterRow(param);
-          } else {
-            drop(`${where}: filter pointer $${hex(param)} ${filterTable === null ? 'with no filter table' : 'past the filter table'}; dropped`);
+          // Filter-table pointer: GT2's AXY (gsong.c:576-578, 690-692).
+          {
+            const ptr = mapFilter(param, where);
+            if (ptr !== null) {
+              command = 0xa;
+              out = ptr;
+            }
           }
           break;
         case 7:
@@ -356,11 +372,17 @@ export function readGt1Song(
     }),
   }));
 
+  // An all-zero last row maps one past what was laid: GT2's table is 255
+  // rows, blank past its content, so the doc gets that blank row.
+  let filterEnd = Math.max(0, ...instruments.map((ins) => ins.filterPtr), ...filterRows.map((row) => (row.left === JUMP ? row.right : 0)));
+  for (const pattern of patterns) for (const row of pattern.rows) if (row.command === 0xa) filterEnd = Math.max(filterEnd, row.param);
+  while (filterRows.length < filterEnd) filterRows.push({ left: 0, right: 0 });
+
   return {
     ...header,
     subsongs,
     patterns,
     instruments,
-    tables: { wave: wave.rows, pulse: pulse.rows, filter: filter.rows, speed: speed.rows },
+    tables: { wave: wave.rows, pulse: pulse.rows, filter: filterRows, speed: speed.rows },
   };
 }

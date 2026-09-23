@@ -213,7 +213,7 @@ describe('GoatTracker 1 (GTS!), converted', () => {
   ];
   const filter = [
     [0x80, 0x0f, 0x00, 0x00],
-    [0x91, 0x1f, 0x40, 0x02], // set: LP, channel 1, resonance 1, cutoff $40, then row 2
+    [0x91, 0x1f, 0x40, 0x02], // set: resonance 9, channel 1 ($D417); LP, volume F ($D418); cutoff $40; row 2 follows
     [0x00, 0x10, 0x01, 0x02], // modulate 16 frames at +1, looping on itself
   ];
 
@@ -260,7 +260,7 @@ describe('GoatTracker 1 (GTS!), converted', () => {
       { left: 0xff, right: b.pulsePtr + 2 },
     ]);
     expect(doc.tables.filter.slice(a.filterPtr - 1, a.filterPtr + 3)).toEqual([
-      { left: 0x90, right: 0x11 },
+      { left: 0x90, right: 0x91 },
       { left: 0x00, right: 0x40 },
       { left: 16, right: 1 },
       { left: 0xff, right: a.filterPtr + 2 },
@@ -275,8 +275,8 @@ describe('GoatTracker 1 (GTS!), converted', () => {
     expect(doc.tables.filter).toEqual([]);
     expect(doc.patterns[0]!.rows[6]).toEqual({ note: 0, instrument: 0, command: 0, param: 0 });
     expect(notes.filter((n) => n.kind === 'gt1-dropped').map((n) => n.message)).toEqual([
-      'instrument 1: filter byte $01 with no filter table in the file; dropped',
-      'pattern 0 row 6: filter pointer $01 with no filter table; dropped',
+      'instrument 1: filter pointer $01 with no filter table in the file; dropped',
+      'pattern 0 row 6: filter pointer $01 with no filter table in the file; dropped',
     ]);
   });
 
