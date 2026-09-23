@@ -182,3 +182,10 @@ Deviations / judgement calls:
 No test edits; no `rust-wasm/`, `public/` changes. Gates on the branch tip (outputs in
 `.ai/checks-p6-*.txt`): test:run 0 (241 files / 3922 tests), lint 0, vue-tsc 0,
 gitleaks 0, check:artifacts 0.
+
+Independent verification (operator role, after the coder run): all five gates re-run on
+`ce036a1b` — test:run 0, lint 0, vue-tsc 0, gitleaks 0, check:artifacts 0 (real exit codes,
+rerun outputs in `.ai/checks-p6-*-rerun.txt`, summary `.ai/checks-p6-rerun-summary.txt`).
+Coder `modelUsage` resolved canonical `claude-opus-5-5` (firstParty), session
+`0318493d-30db-4eaa-8add-d2b78e79048f`. Owner marker cleared at completion; stopped on the
+branch — no push, no merge, no deploy.
