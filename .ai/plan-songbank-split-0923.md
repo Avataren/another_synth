@@ -191,3 +191,17 @@ Not done (reported to Morten): N4 step 4 — deleting the "unreachable"
 InstrumentV2 branch. MEASURED: reachable whenever workletPool is null
 (after dispose(), or if pool construction fails); needs its own
 characterization pass.
+
+## LANDED + DEPLOYED (2026-09-23 ~10:05)
+
+- Landing run: no-ff merge `399cffd3` ("Merge agent/songbank-split-0923a: song-bank split + N4 (review PASS on 989bd0bf)"), 14 files +1432/−881 (instrument-lifecycle.ts 889 lines, bank-instrument.ts 200 lines extracted; song-bank.ts 939→slim). Merged from main at `bc3d033c` (origin/main had moved: chiprolled removal `6d02f6d2` + record `bc3d033c` already merged first — clean ort merge, no conflicts).
+- Review reference: delta re-review PASS on tip `989bd0bf` — findings verbatim-move, zero behavioral deltas, gates 237/3858 as reviewed.
+- Post-merge gates on main (real exit codes, all 0):
+  | test:run | lint | vue-tsc | gitleaks | check:artifacts |
+  |----------|------|---------|----------|-----------------|
+  | 235 files / 3834 tests PASS | 0 | 0 | no leaks (3.43 GB scanned) | ✓ worklets+wasm match sources |
+  (Test count differs from reviewed ~237/3858: counted pre-merge working tree; merge itself adds no test files.)
+- Push: `bc3d033c..399cffd3 main -> main` (origin==main verified at 399cffd3).
+- Deploy: `bash scripts/deploy.sh` → avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth — "Deployed and verified (42c349473bbbca7e39dbb52484d8a40d)". wasm rebuild expected and ran.
+- Post-deploy md5 spot-check local↔remote, all four MATCH: index.html 42c34947, demos/index.json ab8cb15b, wasm/audio_processor_bg.wasm e52bf5a9, worklets/ahx-worklet.js 0b1e28a2.
+- Worktree .ai/worktrees/songbank-split left clean, no owner marker; branch agent/songbank-split-0923a retained at `989bd0bf`.
