@@ -20,6 +20,7 @@ import {
   createAmigaPitchModel,
   createLinearPitchModel,
   createS3mPitchModel,
+  createSidPitchModel,
   createXmAmigaPitchModel,
 } from './pitch-model';
 
@@ -953,12 +954,65 @@ export const AHX_PROFILE: FormatProfile = {
   },
 };
 
+/**
+ * SID songs (plan-sid-tracking.md S3): GoatTracker-shaped rows played by the
+ * Rust SID player (`rust-wasm/src/sid/player.rs`), which owns the transport
+ * and every command, as the AHX worklet does for AHX. This profile is what
+ * the TS side reads for such a song: the pitch model (the SID note table,
+ * `createSidPitchModel`) and the decode of the four commands with a
+ * format-neutral equivalent, for the row model and the editor.
+ *
+ * Timing: a SID song ticks on the PAL frame, 50 Hz times the song's
+ * multispeed (`SidDoc.speedMultiplier`), and its tempo is ticks per row,
+ * so a song reaches the engine at 125 BPM per 50 Hz (ProTracker's
+ * BPM * 2 / 5 tick rate) with `initialSpeed` = the tempo
+ * (`sid-doc/projection.ts`, `sidDocTiming`).
+ *
+ * Commands (the GT pattern column, 0x0-0xF; semantics as the player's
+ * header documents them): 1/2 portamento and 3 tone portamento take a
+ * speed-table index, not a slide amount, and 4 vibrato a speed-table index
+ * too, so the table below maps only what the command IS, for display.
+ * 5-0xE (ADSR, waveform, table pointers, filter, volume, funktempo) have
+ * no format-neutral equivalent and stay undecoded. 0xF sets the tempo
+ * unconditionally, with no MOD-style tempo split and no F00 song stop.
+ * No pattern arpeggio: a SID song arpeggiates through its wave table.
+ */
+export const SID_PROFILE: FormatProfile = {
+  ...PROTRACKER_PROFILE,
+  format: 'sid',
+  pitch: createSidPitchModel(),
+  // A SID voice has no per-note volume: loudness is the envelope and the
+  // chip's master volume. Kept at the 0-64 scale so nothing divides by 0.
+  volumeSlideUnit: 1 / 64,
+  volumeSlideHasMemory: false,
+  // A speed-table value is a register delta per frame: one unit, no scaling.
+  portamentoUnitScale: 1,
+  portamentoHasMemory: false,
+  fineSlideHasMemory: false,
+  noteDelayOverflowCarries: false,
+  filterToggleCommand: false,
+  fastVolumeSlides: false,
+  speedTempoCommandByte: undefined,
+  plainSpeedCommandByte: 0xf,
+  f00StopsSong: false,
+  arpeggioCommandByte: 0xff,
+  extendedCommandByte: undefined,
+  extendedSubcommandMap: {},
+  effectCommands: {
+    0x1: 'portaUp',
+    0x2: 'portaDown',
+    0x3: 'tonePorta',
+    0x4: 'vibrato',
+  },
+};
+
 const PROFILES: Record<ModuleFormat, FormatProfile> = {
   native: NATIVE_PROFILE,
   protracker: PROTRACKER_PROFILE,
   xm: XM_PROFILE,
   s3m: S3M_PROFILE,
   ahx: AHX_PROFILE,
+  sid: SID_PROFILE,
 };
 
 export interface ProfileOptions {

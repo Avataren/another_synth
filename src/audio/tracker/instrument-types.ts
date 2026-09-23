@@ -32,6 +32,7 @@ const INSTRUMENT_FORMATS: readonly InstrumentFormat[] = [
   'xm',
   's3m',
   'ahx',
+  'sid',
 ];
 
 export interface InstrumentTags {
@@ -112,7 +113,7 @@ export function inferSlotTags(
     // Legacy 'mod' slots always came from an importer.
     const legacyLineage = slot.instrumentType === 'mod' || patchType === 'mod';
     const lineage: InstrumentFormat =
-      moduleFormat !== 'native' && moduleFormat !== 'ahx'
+      moduleFormat !== 'native' && moduleFormat !== 'ahx' && moduleFormat !== 'sid'
         ? moduleFormat
         : legacyLineage
           ? 'protracker'
@@ -143,13 +144,18 @@ export function inferSlotTags(
  */
 export type InstrumentEditorId = 'synth-patch' | 'sampler-patch' | 'ahx-display';
 
-/** Editor by `instrumentFormat`: the format decides whose data model it is. */
-export const INSTRUMENT_EDITOR_BY_FORMAT: Readonly<Record<InstrumentFormat, InstrumentEditorId>> = {
+/**
+ * Editor by `instrumentFormat`: the format decides whose data model it is.
+ * A SID instrument has none yet: its page is S4 (plan-sid-tracking.md), so
+ * until then its slot opens nothing.
+ */
+export const INSTRUMENT_EDITOR_BY_FORMAT: Readonly<Record<InstrumentFormat, InstrumentEditorId | null>> = {
   native: 'synth-patch',
   protracker: 'sampler-patch',
   xm: 'sampler-patch',
   s3m: 'sampler-patch',
   ahx: 'ahx-display',
+  sid: null,
 };
 
 /**
@@ -210,6 +216,7 @@ const FORMAT_BADGE: Readonly<Record<InstrumentFormat, string>> = {
   xm: 'XM',
   s3m: 'S3M',
   ahx: 'AHX',
+  sid: 'SID',
 };
 
 /** Short list badge: the lineage for a module instrument, 'OPL' for AdLib, '' for native. */

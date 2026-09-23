@@ -10,10 +10,12 @@ export type TransportState = 'stopped' | 'playing' | 'paused';
  * degrading both.
  *
  * 'native' means a song authored in this tracker, with no legacy quirks.
+ * 'sid' is a C64 SID song (plan-sid-tracking.md S3): its model is the app's
+ * `SidDoc`, it plays in the Rust SID player, and its profile is `SID_PROFILE`.
  *
  * See PLAN-module-format-support.md for the roadmap this belongs to.
  */
-export type ModuleFormat = 'native' | 'protracker' | 'xm' | 's3m' | 'ahx';
+export type ModuleFormat = 'native' | 'protracker' | 'xm' | 's3m' | 'ahx' | 'sid';
 
 /**
  * Format assumed for songs saved before the format tag existed, when nothing

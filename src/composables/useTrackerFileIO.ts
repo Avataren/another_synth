@@ -186,6 +186,20 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
   }
 
   /**
+   * A SID song is its doc (plan-sid-tracking.md S3): one loaded without a
+   * readable doc is only the grid it was saved with, which cannot play.
+   */
+  function refuseSavingSid(): void {
+    const message = "This SID song can't be saved: its song data didn't load.";
+    if (context.notify) {
+      context.notify(message);
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn(message);
+    }
+  }
+
+  /**
    * Save the current song to a .cmod file (zipped JSON)
    */
   async function handleSaveSongFile() {
@@ -199,12 +213,20 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       refuseSavingAhx();
       return;
     }
+    if (store.moduleFormat === 'sid' && store.sidDoc === null) {
+      refuseSavingSid();
+      return;
+    }
     try {
       const songFile = context.trackerStore.serializeSong();
       // The belt to the check above: an AHX song that could not be written
       // carries no file, and a .cmod without one would never play.
       if (songFile.data.moduleFormat === 'ahx' && songFile.data.ahxFile === undefined) {
         refuseSavingAhx();
+        return;
+      }
+      if (songFile.data.moduleFormat === 'sid' && songFile.data.sidFile === undefined) {
+        refuseSavingSid();
         return;
       }
       const json = JSON.stringify(songFile, null, 2);
