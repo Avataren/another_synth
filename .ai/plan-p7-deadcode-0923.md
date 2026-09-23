@@ -162,4 +162,109 @@ final tally, N9/N10 outcomes.
 
 ## Addendum (post-run)
 
-_(filled at completion)_
+### Commits (branch `agent/p7-deadcode-0923a`, not pushed/merged/rebased)
+| SHA | Message |
+|---|---|
+| `718d7e2e` | chore(p7): delete dead audio twins |
+| `ae0505fc` | chore(p7): delete dead worklet handlers + adapter |
+| `8221e81f` | chore(p7): delete example store + AssemblyScript leftovers |
+| `244adec0` | docs(p7): AGENTS.md — mark typed-protocol migration abandoned |
+| `5c809bf0` | refactor(p7): N9 — extract useTrackerScrollSync + move tracker styles to scss |
+| `edde1153` | chore(p7): sync package-lock.json with assemblyscript removal |
+| `6fc9cf1e` | refactor(p7): N10 — gate song-bank/playback-store logging behind ?diag |
+
+### Gate results (MEASURED, real exit codes)
+| Stage | File | test:run | lint | vue-tsc | gitleaks | check:artifacts |
+|---|---|---|---|---|---|---|
+| g1 dead audio twins | `checks-p7-g1.txt` | 0 (242 files / 3930 tests) | 0 | 0 | — | — |
+| g2 handlers + adapter | `checks-p7-g2.txt` | 0 (242 / 3930) | 0 | 0 | — | — |
+| g3 example store + AS | `checks-p7-g3.txt` | 0 (242 / 3930) | 0 | 0 | — | — |
+| g4 AGENTS.md | `checks-p7-g4.txt` | 0 (242 / 3930) | 0 | 0 | — | — |
+| N9 | `checks-p7-n9.txt` | 0 (242 / 3930) | 0 | 0 | — | — |
+| **Final @ `6fc9cf1e`** | `checks-p7-final.txt` | **0 (243 / 3934)** | **0** | **0** | **0 (no leaks found)** | **0** |
+
+Per-group runs covered the three code gates; gitleaks and check:artifacts
+ran once at the tip (full suite). +1 file / +4 tests at the tip are the new
+`src/tests/diagnostics/debug-log.test.ts`.
+
+### Final deletion tally (N6)
+10 files deleted, **4650 lines** (`wc -l` at `main`):
+
+| Lines | File |
+|---|---|
+| 1986 | `src/audio/worklets/synth-worklet.ts.backup` |
+| 1010 | `src/audio/instrument.ts` |
+| 660 | `src/audio/adapters/wasm-engine-adapter.ts` |
+| 428 | `src/audio/worklets/handlers/worklet-message-handlers.ts` |
+| 250 | `src/audio/processor.ts` |
+| 155 | `src/audio/instrument-v2-pooled.ts.unused` |
+| 116 | `src/audio/voice.ts` |
+| 22 | `asconfig.json` |
+| 15 | `src/stores/example-store.ts` |
+| 8 | `src/audio/worklets/handlers/oscillator-update-handler.ts` |
+
+Plus in-file removals: `quasar.config.ts` commented `watch-assemblyscript`
+block (49 lines), `package.json` `exports` block + `assemblyscript`
+devDependency (7 lines). Branch total vs `main`: 23 files changed,
++1955 / −6359 (the + side is mostly the N9 move, not new code).
+`packages/` consumers of deleted files: none.
+
+### N9 outcome
+- Composable: `src/composables/useTrackerScrollSync.ts` (299 lines).
+- `src/pages/TrackerPage.vue`: 4231 → 2689 lines.
+- Styles moved verbatim to `src/css/tracker-page.scss` (1330 lines), pulled
+  in via `@import '../css/tracker-page.scss';` inside the existing
+  `<style scoped lang="scss">` (scoping preserved).
+- Teardown ownership: the plan's claim that the page's `onBeforeUnmount`
+  did not tear scroll sync down was wrong — it did (old line 2886). That
+  call was removed; the composable's own `onBeforeUnmount` now owns it. It
+  runs marginally earlier (registered first); it only removes listeners /
+  disconnects the ResizeObserver, so no observable difference.
+- Page still owns refs/constants and `scrollActiveTrackIntoView` /
+  `setupTrackWheelScroll`; call signatures unchanged.
+
+### N10 outcome
+- New `src/diagnostics/debug-log.ts`: `debugLog(...args)` forwards to
+  `console.log` only when `?diag=playback` was present at module init
+  (reuses `isPlaybackDiagEnabled` from `playback-diagnostics.ts`; URL parsed
+  once, not per call). Plain passthrough rather than `debugLog(tag, …)` so
+  message text stays byte-identical (tags are already in the strings).
+- Converted (`console.log` before → after):
+  - `src/audio/tracker/song-bank.ts`: 24 → 1 (23 live calls converted; the
+    remaining one is inside a commented-out block at ~`:1336`, left as is).
+  - `src/stores/tracker-playback-store.ts`: 10 → 0 (all on `loadSong` /
+    `play` paths, `:493-608`).
+- `console.warn` / `console.error` untouched. Diff verified mechanically to
+  be exactly `console.log(` → `debugLog(` plus one import per file; argument
+  expressions are still evaluated (side-effect-free template strings), so no
+  logic change.
+- Tests updated: **none**. No test pins these strings (`[SongBank]` /
+  `[PlaybackStore]` absent from `src/tests`); existing `console.log` spies
+  only silence output. Added `src/tests/diagnostics/debug-log.test.ts`
+  (disabled, other diag value, enabled, read-once-at-init).
+- Note: `debug-log.ts` itself has no deps, but importing
+  `isPlaybackDiagEnabled` pulls `playback-diagnostics.ts` (and its `quasar`
+  `Notify` import) into song-bank's module graph. Full suite green; if a
+  truly quasar-free graph is wanted later, move the predicate into a tiny
+  pure module and re-export it.
+
+### Deviations
+a. `edde1153` (lockfile sync) ran `npm install --package-lock-only`, which
+   also rewrote `node_modules/.package-lock.json` in the **shared**
+   `node_modules` (worktree symlinks to the main checkout's). npm metadata
+   only — nothing installed or removed. The lockfile diff itself only drops
+   `assemblyscript`, `binaryen`, `long`. Drop `edde1153` if the
+   no-`node_modules`-touch rule must hold strictly.
+b. AGENTS.md: besides the two notes the plan named, the Files Added row for
+   `wasm-engine-adapter.ts` was also struck (file deleted in g2). Other
+   `WasmEngineAdapter` prose (~611–637, 777, 932, 950, 978, 1055) left
+   alone; the new Phase 2 note flags it as the abandoned design.
+c. CSS equivalence (N9): scoped CSS compiled via `@vue/compiler-sfc` before
+   and after — 179 rules / 180 scope attributes both sides. Only diff: Sass
+   normalised `width: min(420px, calc(100vw - 24px))` to
+   `min(420px, 100vw - 24px)` in `.bug-report-float` — semantically
+   identical.
+d. No scroll-sync-specific tests exist; N9 is covered only by the existing
+   page-level suite.
+e. N10 uses a passthrough `debugLog(...args)` instead of the plan's
+   `debugLog(tag, ...args)` signature (see N10 outcome).
