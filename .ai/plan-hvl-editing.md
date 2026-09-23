@@ -708,3 +708,50 @@ before: the source for an untouched song, the rebuild after an edit.
    for review. Every gate was run at the tip; do not land `f89968f8` alone.
 6. Not touched, as instructed: the sequence panel, the spectrum analyzer, and
    subsongs.
+
+## Landing record (2026-09-23, agent/hvl-edit-p3-0923a P3)
+
+Merge: `71b4a810` (`git merge --no-ff`, parents `eb93ad3a` + `e1fc93f4`, message:
+"Merge branch 'agent/hvl-edit-p3-0923a': HVL editing P3 (review PASS on e1fc93f4)")
+on main at `eb93ad3a` == `origin/main`, no conflicts, no main movement since review.
+Branch worktree `.ai/worktrees/hvl-edit-p3` clean at tip `e1fc93f4` (code tip `d7893041`,
+last 2 commits docs-only), no owner marker / foreign writer at land time. Main tree
+carried the expected pre-existing deploy leftovers (demos/index.json + SOURCE_HASH.json +
+wasm, rebuild non-determinism since the P1 deploy); the branch touches no `public/` paths,
+so the merge was unaffected.
+
+### Review reference
+
+**PASS on branch tip `e1fc93f4`.** Red-first 36/39 proven at parent; original-bytes embed
+pin; instrument DEFER verified; exporter authority verified.
+
+### Post-merge gates on merged main `71b4a810` (real exit codes, this run)
+
+| Gate | Result | Exit |
+|---|---|---|
+| npm run test:run | 241 files / 3922 tests passed (63.99s) | 0 |
+| npm run lint (eslint .js,.ts,.vue) | no findings | 0 |
+| npx vue-tsc --noEmit | clean | 0 |
+| gitleaks detect --no-git | no leaks (3.82 GB scanned, 1m34s) | 0 |
+| npm run check:artifacts | worklets + wasm match sources | 0 |
+| npm run check:artifacts (re-run post-deploy) | worklets + wasm match sources | 0 |
+
+### Push
+
+`git push origin main`: `eb93ad3a..71b4a810 main -> main`, exit 0, no force.
+
+### Deploy
+
+`scripts/deploy.sh` → `avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth`.
+Script self-verification `Deployed and verified (c51cd65c80d0e0b84eb2bf588bc86719)`
+(index.html md5); deploy exit 0. wasm rebuilt per script design; this branch touches no
+rust-wasm/ and `SOURCE_HASH.json`'s `sourceHash` (rust sources) is unchanged; the rebuild's
+output hash drift vs the committed wasm is the known local rebuild non-determinism,
+self-consistent with the local `SOURCE_HASH.json` and green `check:artifacts` both
+pre-deploy and post-deploy.
+
+**Fresh md5 spot-check (local `dist/spa` ↔ remote, all identical): 4/4**
+`index.html` (c51cd65c…), `demos/index.json` (caf6c41f…), `wasm/audio_processor_bg.wasm`
+(178c2b86…), `worklets/ahx-worklet.js` (0b1e28a2…).
+
+Worktree: owner marker absent/cleared; worktree left in place.
