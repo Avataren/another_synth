@@ -268,3 +268,50 @@ d. No scroll-sync-specific tests exist; N9 is covered only by the existing
    page-level suite.
 e. N10 uses a passthrough `debugLog(...args)` instead of the plan's
    `debugLog(tag, ...args)` signature (see N10 outcome).
+## Landing record (2026-09-23)
+
+- **Branch:** `agent/p7-deadcode-0923a`, review PASS at tip `c54d7900`
+  (code tip `6fc9cf1e`, base main `4a005309`, 10 commits).
+- **Merge:** `git merge --no-ff agent/p7-deadcode-0923a` from the main tree,
+  clean (ort strategy, no conflicts). Merge sha **`8781d6a0`**
+  (`8781d6a098d4c1c15b17c38aeca777c610456f48`). Pushed `origin/main`
+  `4a005309..8781d6a0`, no force.
+- **Review PASS reference:** 10 files / 4,650 lines grep-proven dead; no
+  unique content lost in backup deletions; N9 verbatim 213/262 + 565/565
+  scss; N10 gate verified; gates 243/3934 re-run.
+- **Review nits carried into landing:**
+  - gitleaks must be invoked by absolute path `/usr/bin/gitleaks` — plain
+    `npx gitleaks` cannot resolve here (used absolute path for the gate).
+  - stale `INTEGRATION_COMPLETE` / `TYPESCRIPT_FIXES` docs still exist;
+    candidate for a later cleanup sweep, not touched in this landing.
+
+### Gate table (re-run on merged main, real exit codes)
+
+| Gate | Result |
+| --- | --- |
+| `npm run test:run` | PASS — 243 files / 3,934 tests, exit 0 |
+| `npm run lint` | PASS — exit 0 |
+| `npx vue-tsc --noEmit` | PASS — exit 0 |
+| `/usr/bin/gitleaks detect --no-git` | PASS — no leaks, 5.10 GB scanned, exit 0 |
+| `npm run check:artifacts` | PASS — worklets/wasm match sources, exit 0 |
+
+### Deploy proof
+
+- `bash scripts/deploy.sh` → `avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth`,
+  exit 0. Script self-verified: checksum `1ba7ed866714e20bb32bbd06917fe588`.
+- Post-deploy md5 spot-check local↔remote, all four match:
+  - `index.html` — `1ba7ed866714e20bb32bbd06917fe588`
+  - `demos/index.json` — `093f110b6a7cf626d261cdd265c79735`
+  - `wasm/audio_processor_bg.wasm` — `acf69b52abc38d941d30e3a493eb270e`
+  - `worklets/ahx-worklet.js` — `0b1e28a2d692f80a2f9fc3a46d77f1e6`
+- **Wasm drift note:** the local rebuild produced nondeterministic
+  wasm-bindgen permutations — `public/wasm/audio_processor_bg.wasm`,
+  `public/wasm/SOURCE_HASH.json`, `public/demos/index.json` differed from
+  the committed tree after the build. Known/benign per P4/P6 precedent:
+  stashed (`git stash push -m "P7 landing: rebuilt wasm nondeterminism
+  drift (P4/P6 precedent, not committed)"`), NOT committed. The deployed
+  remote copy is the freshly built artifacts; the repo keeps the committed
+  baseline.
+
+Landing record appended via house force-add convention
+(`git add -f .ai/plan-p7-deadcode-0923.md`).
