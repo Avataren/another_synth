@@ -42,10 +42,16 @@ function makeSlots(count: number) {
 }
 
 function spyOnEnsureInstrument(bank: TrackerSongBank) {
+  // ensureInstrument moved to the InstrumentLifecycle module (arch-review
+  // §2b); syncSlots dispatches through it, so the spy follows the code.
   return vi.spyOn(
-    bank as unknown as {
-      ensureInstrument: (id: string, patch: Patch) => Promise<void>;
-    },
+    (
+      bank as unknown as {
+        lifecycle: {
+          ensureInstrument: (id: string, patch: Patch) => Promise<void>;
+        };
+      }
+    ).lifecycle,
     'ensureInstrument',
   );
 }
