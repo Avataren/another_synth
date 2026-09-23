@@ -13,6 +13,8 @@ import {
   SID_MAX_PATTERN_ROWS,
   SID_MAX_PATTERNS,
   SID_MAX_SUBSONGS,
+  SID_MAX_INSTRUMENT_NAME_LENGTH,
+  SID_MAX_INSTRUMENTS,
   SID_MAX_TABLE_ROWS,
   SID_NOTE_KEY_OFF,
   SID_NOTE_NONE,
@@ -94,6 +96,8 @@ interface Gt1Instrument {
   name: string;
   wave: SidTableRow[];
   empty: boolean;
+  /** GT2 takes the program back: the instrument has no wave pointer there (gsong.c:407-416). */
+  noWave: boolean;
 }
 
 export function readGt1Song(
@@ -107,6 +111,12 @@ export function readGt1Song(
   const rawLists = readGtOrderlists(r, subtunes);
 
   const raw: Gt1Instrument[] = [];
+  // How many wave rows GT2's own loader has laid (gsong.c:385-416): it lays
+  // every instrument's rows, no two shared, while the table has room, and
+  // takes back a program of one blank row and its end. The arpeggio programs
+  // it adds later fit or not by this count (gsong.c:738, 747), whatever our
+  // de-duplicated table holds.
+  let gtWaveRows = 0;
   for (let i = 0; i < GT1_INSTRUMENTS; i++) {
     const h = r.take(GT1_INSTRUMENT_HEADER, `instrument ${i + 1}`);
     const name = gtText(r.take(GT_INSTRUMENT_NAME_LENGTH, `instrument ${i + 1}`));
@@ -114,7 +124,10 @@ export function readGt1Song(
     const w = r.take(pairs * 2, `instrument ${i + 1}'s wavetable`);
     const wave = Array.from({ length: pairs }, (_, k) => ({ left: w[k * 2]!, right: w[k * 2 + 1]! }));
     const empty = name === '' && h.subarray(0, 7).every((b) => b === 0) && wave.every((row) => row.left === 0 || (row.left === JUMP && row.right === 0));
-    raw.push({ header: h, name, wave, empty });
+    gtWaveRows = Math.min(SID_MAX_TABLE_ROWS, gtWaveRows + pairs);
+    const noWave = pairs === 2 && wave[0]!.left === 0 && wave[0]!.right === 0;
+    if (noWave) gtWaveRows -= 2;
+    raw.push({ header: h, name, wave, empty, noWave });
   }
 
   const patternCount = r.byte('the pattern count');
@@ -219,6 +232,8 @@ export function readGt1Song(
   let count = GT1_INSTRUMENTS;
   while (count > usedInstruments && raw[count - 1]!.empty) count -= 1;
 
+  /** Each instrument's wave rows up to its first jump, lefts only: an arpeggio program's head (gsong.c:731-744). */
+  const arpeggioHeads: SidTableRow[][] = [];
   const instruments: SidInstrument[] = raw.slice(0, count).map((ins, i) => {
     const h = ins.header;
     const where = `instrument ${i + 1}`;
@@ -235,6 +250,9 @@ export function readGt1Song(
       convert(`${where}: its wavetable has no end jump; one is added`);
       program.push({ left: JUMP, right: 0 });
     }
+    // GT copies the left bytes and leaves the right ones blank (gsong.c:740).
+    const head = program.findIndex((row) => row.left === JUMP);
+    arpeggioHeads.push(ins.noWave ? [] : program.slice(0, head).map((row) => ({ left: row.left, right: 0 })));
     // Pulse: +2 start, +3 speed, +4/+5 low/high limit, the limits and start
     // the width's top 8 bits (INFERRED). GT1's limit-based sweep becomes GT2
     // time-based steps (readme §3.6.1). The speed is taken as GT2's own unit
@@ -296,12 +314,64 @@ export function readGt1Song(
     if (((b2 << 4) | (b3 & 0x0f)) === 0) return 0;
     return speedRow(b2 & 0x0f, b3 & 0x0f);
   };
-  const arpeggios = new Map<number, number>();
+  /**
+   * GT2's arpeggio conversion (gsong.c:709-797), once per (instrument,
+   * parameter): a wave program of the instrument's head, then the steps X, Y
+   * and 0 semitones (bit 7 of the parameter the steps' left byte, a 1-frame
+   * delay each: half speed), looping on X (gsong.c:746-760). The instrument
+   * is then cloned onto that program, into the slots after the highest one a
+   * pattern names (gsong.c:598, 762-776), and the row plays the clone; with
+   * no slot left, the row starts the program with command 8 (gsong.c:777-780).
+   * `null`: the wave table has no room, and the row keeps command 0 00.
+   */
+  const arpeggios = new Map<string, { clone: boolean; value: number } | null>();
+  let nextSlot = usedInstruments + 1;
+  const arpeggio = (ins: number, param: number, where: string): { clone: boolean; value: number } | null => {
+    const key = `${ins},${param}`;
+    let arp = arpeggios.get(key);
+    if (arp === undefined) {
+      const head = arpeggioHeads[ins - 1]!;
+      gtWaveRows = Math.min(SID_MAX_TABLE_ROWS, gtWaveRows + head.length);
+      if (gtWaveRows >= SID_MAX_TABLE_ROWS - 3) arp = null;
+      else {
+        gtWaveRows += 4;
+        const delay = param >> 7;
+        const ptr = wave.add([
+          ...head,
+          { left: delay, right: (param >> 4) & 0x07 },
+          { left: delay, right: param & 0x0f },
+          { left: delay, right: 0x00 },
+          { left: JUMP, right: head.length + 1 },
+        ]);
+        const source = instruments[ins - 1]!;
+        if (nextSlot <= SID_MAX_INSTRUMENTS) {
+          const slot = nextSlot++;
+          const replaced = instruments[slot - 1];
+          if (replaced !== undefined && !raw[slot - 1]!.empty) {
+            convert(`instrument ${slot} ("${replaced.name}"), which no pattern plays, is replaced by an arpeggio instrument (as GoatTracker does)`);
+          }
+          // GT appends "0XY" when the name has room (gsong.c:769-774).
+          const name = source.name.length < SID_MAX_INSTRUMENT_NAME_LENGTH - 3 ? `${source.name}0${hex(param & 0x7f)}` : source.name;
+          instruments[slot - 1] = { ...source, name, wavePtr: ptr };
+          arp = { clone: true, value: slot };
+          convert(`arpeggio $${hex(param)} of instrument ${ins} became wave program ${ptr}, played by instrument ${slot}`);
+        } else {
+          arp = { clone: false, value: ptr };
+          convert(`arpeggio $${hex(param)} of instrument ${ins} became wave program ${ptr} (command 8: no instrument slot left)`);
+        }
+      }
+      arpeggios.set(key, arp);
+    }
+    if (arp === null) drop(`${where}: arpeggio $${hex(param)} of instrument ${ins} does not fit the wave table; dropped`);
+    return arp;
+  };
   const patterns: SidDocPattern[] = rawPatterns.map((data, p) => {
     const n = data.length / 3;
     if (n < 2 || data[(n - 1) * 3] !== GT1_PATTERN_END) throw new GtFormatError(`pattern ${p} does not end with the pattern-end row`);
     if (n - 1 > SID_MAX_PATTERN_ROWS) throw new GtFormatError(`pattern ${p} has ${n - 1} rows; a pattern has at most ${SID_MAX_PATTERN_ROWS}`);
     const rows: SidDocRow[] = [];
+    // The instrument the pattern last named (gsong.c:675, 678).
+    let current = 0;
     for (let i = 0; i < n - 1; i++) {
       const where = `pattern ${p} row ${i}`;
       const [nb, packed, param] = [data[i * 3]!, data[i * 3 + 1]!, data[i * 3 + 2]!];
@@ -310,30 +380,30 @@ export function readGt1Song(
       else if (nb === GT1_NOTE_KEY_OFF) note = SID_NOTE_KEY_OFF;
       else if (nb === GT1_NOTE_REST) note = SID_NOTE_NONE;
       else throw new GtFormatError(`${where}: note byte $${hex(nb)} is not a GoatTracker 1 note`);
-      const instrument = packed >> 3;
+      let instrument = packed >> 3;
+      if (instrument !== 0) current = instrument;
       const cmd = packed & 0x07;
       let command = 0;
       let out = 0;
       switch (cmd) {
         case 0:
-          // Arpeggio (GT1 only; readme §1.2: GT2 turns it into wavetable
-          // programs). X (bit 3 masked off, INFERRED a flag) and Y are the
-          // semitones over the note: a looping 0, X, Y wave program, started
-          // with command 8.
           if (param !== 0) {
-            let ptr = arpeggios.get(param);
-            if (ptr === undefined) {
-              ptr = wave.add([
-                { left: 0x00, right: 0x00 },
-                { left: 0x00, right: (param >> 4) & 0x07 },
-                { left: 0x00, right: param & 0x0f },
-                { left: JUMP, right: 1 },
-              ]);
-              arpeggios.set(param, ptr);
-              convert(`arpeggio $${hex(param)} became wave program ${ptr} (command 8)`);
+            // Arpeggio: GT2 converts it only on a note, and only once the
+            // pattern has named an instrument (gsong.c:701-707); anywhere else
+            // the parameter is cleared (gsong.c:800-802). The program the note
+            // starts loops on, so a later row's clearing loses nothing.
+            if (nb > GT1_NOTE_LAST) break;
+            if (current === 0) {
+              drop(`${where}: arpeggio $${hex(param)} before the pattern names an instrument; dropped`);
+              break;
             }
-            command = 0x8;
-            out = ptr;
+            const arp = arpeggio(current, param, where);
+            if (arp === null) break;
+            if (arp.clone) instrument = arp.value;
+            else {
+              command = 0x8;
+              out = arp.value;
+            }
           }
           break;
         case 1:

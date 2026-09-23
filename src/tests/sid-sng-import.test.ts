@@ -220,17 +220,20 @@ describe('GoatTracker 1 (GTS!), converted', () => {
   it('keeps notes and instruments, converts the commands (readme §3.4.4 for vibrato and portamento), trims unused instruments', () => {
     const { doc, variant, notes } = ok(importGtSong(gt1([lead, sweep], [rows], filter)));
     expect(variant).toBe('GTS!');
-    expect(doc.instruments.map((i) => i.name)).toEqual(['Lead', 'Sweep']);
+    // Arpeggio $37 on instrument 1 -> a clone, "Lead037", on the instrument's
+    // wave head then a looping 3/7/0 program (gsong.c:700-803).
+    expect(doc.instruments.map((i) => i.name)).toEqual(['Lead', 'Sweep', 'Lead037']);
     const r = doc.patterns[0]!.rows;
     expect(r.map((x) => x.note)).toEqual([0x31, 126, 0, 0, 0, 0, 0]);
-    expect(r.map((x) => x.instrument)).toEqual([1, 0, 2, 0, 0, 0, 0]);
-    // Arpeggio -> command 8 into a looping 0/3/7 wave program.
-    expect(r[0]).toMatchObject({ command: 8 });
-    expect(doc.tables.wave.slice(r[0]!.param - 1, r[0]!.param + 3)).toEqual([
-      { left: 0, right: 0 },
+    expect(r.map((x) => x.instrument)).toEqual([3, 0, 2, 0, 0, 0, 0]);
+    expect(r[0]).toMatchObject({ command: 0, param: 0 });
+    const arp = doc.instruments[2]!.wavePtr;
+    expect(doc.tables.wave.slice(arp - 1, arp + 4)).toEqual([
+      { left: 0x41, right: 0 },
       { left: 0, right: 3 },
       { left: 0, right: 7 },
-      { left: 0xff, right: r[0]!.param },
+      { left: 0, right: 0 },
+      { left: 0xff, right: arp + 1 },
     ]);
     // Vibrato $34 -> speed 03, depth 40; portamento $08 -> speed $0020.
     expect(r[2]).toMatchObject({ command: 4 });

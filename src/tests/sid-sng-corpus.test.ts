@@ -10,6 +10,7 @@ import {
   importGtSong,
   type GtImportNoteKind,
   type GtSongImport,
+  type SidInstrument,
 } from 'src/audio/tracker/sid-doc';
 
 /**
@@ -158,14 +159,33 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
       for (let i = 0; i < 31; i++) p += 24 + (b[p + 7]! >> 1) * 2;
       const np = b[p++]!;
       expect(r.doc.patterns, name).toHaveLength(np);
+      // GT2 clones an instrument per arpeggio (gsong.c:762-776) into the slots
+      // after the highest one a pattern names; the arpeggio row plays the clone.
+      let highest = 0;
+      for (let k = 0, q = p; k < np; k++) {
+        const len = b[q++]!;
+        for (let i = 0; i < len / 3 - 1; i++) highest = Math.max(highest, b[q + i * 3 + 1]! >> 3);
+        q += len;
+      }
+      const sameBut = (ins: SidInstrument) => ({ ...ins, name: '', wavePtr: 0 });
       for (let k = 0; k < np; k++) {
         const len = b[p++]!;
         const rows = r.doc.patterns[k]!.rows;
         expect(rows.length, `${name} pattern ${k}`).toBe(len / 3 - 1);
+        let current = 0;
         rows.forEach((row, i) => {
-          const nb = b[p + i * 3]!;
+          const [nb, packed, param] = [b[p + i * 3]!, b[p + i * 3 + 1]!, b[p + i * 3 + 2]!];
+          const where = `${name} p${k} r${i}`;
+          if (packed >> 3 !== 0) current = packed >> 3;
           const note = nb <= 0x5c ? nb + 1 : nb === 0x5e ? SID_NOTE_KEY_OFF : SID_NOTE_NONE;
-          expect([row.note, row.instrument], `${name} p${k} r${i}`).toEqual([note, b[p + i * 3 + 1]! >> 3]);
+          expect(row.note, where).toBe(note);
+          if ((packed & 7) === 0 && param !== 0 && nb <= 0x5c && row.instrument !== packed >> 3) {
+            expect(row.instrument, where).toBeGreaterThan(highest);
+            expect([row.command, row.param], where).toEqual([0, 0]);
+            expect(sameBut(r.doc.instruments[row.instrument - 1]!), where).toEqual(sameBut(r.doc.instruments[current - 1]!));
+          } else {
+            expect(row.instrument, where).toBe(packed >> 3);
+          }
         });
         p += len;
       }
