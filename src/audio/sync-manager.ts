@@ -4,7 +4,7 @@ import {
     type NodeConnectionUpdate,
     type NodeConnection,
 } from './types/synth-layout';
-import type InstrumentV2 from './instrument-v2';
+import type { EditableInstrument } from './tracker/bank-instrument';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { useConnectionStore } from 'src/stores/connection-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
@@ -44,13 +44,13 @@ interface WasmNode {
  * a re-sync later, call start() again; it's idempotent per lastWasmState.)
  */
 export class AudioSyncManager {
-    private readonly resolveInstrument: () => InstrumentV2 | null;
+    private readonly resolveInstrument: () => EditableInstrument | null;
     private layoutStore = useLayoutStore();
     private connectionStore = useConnectionStore();
     private nodeStateStore = useNodeStateStore();
     private lastWasmState: string = '';
 
-    constructor(instrumentProvider: () => InstrumentV2 | null) {
+    constructor(instrumentProvider: () => EditableInstrument | null) {
         this.resolveInstrument = instrumentProvider;
     }
 

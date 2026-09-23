@@ -51,7 +51,10 @@ import {
  * Lightweight instrument wrapper for shared worklets.
  * Implements the same interface as InstrumentV2 but uses a voice offset.
  */
-export class PooledInstrument {
+import type { BankInstrument } from './tracker/bank-instrument';
+import type { EditableInstrument } from './tracker/bank-instrument';
+
+export class PooledInstrument implements BankInstrument, EditableInstrument {
   readonly num_voices: number;
   readonly outputNode: GainNode;
   readonly workletNode: AudioWorkletNode;

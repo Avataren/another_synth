@@ -114,9 +114,16 @@ describe('song load with a suspended AudioContext (deep-link fix)', () => {
 
     const ensureInstrument = vi
       .spyOn(
-        bank as unknown as {
-          ensureInstrument: (id: string, patch: unknown) => Promise<void>;
-        },
+        (
+          bank as unknown as {
+            lifecycle: {
+              ensureInstrument: (
+                id: string,
+                patch: unknown,
+              ) => Promise<void>;
+            };
+          }
+        ).lifecycle,
         'ensureInstrument',
       )
       .mockResolvedValue(undefined);
@@ -131,8 +138,11 @@ describe('song load with a suspended AudioContext (deep-link fix)', () => {
 
     expect(ensureInstrument).toHaveBeenCalledWith('inst-01', patch);
     expect(
-      (bank as unknown as { needsAudioContextResume: boolean })
-        .needsAudioContextResume,
+      (
+        bank as unknown as {
+          resumeFlags: { needsAudioContextResume: boolean };
+        }
+      ).resumeFlags.needsAudioContextResume,
     ).toBe(true);
   });
 

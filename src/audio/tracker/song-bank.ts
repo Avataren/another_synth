@@ -14,57 +14,21 @@ import ModInstrument from 'src/audio/mod-instrument';
 import { WorkletPool } from 'src/audio/worklet-pool';
 import { VOICES_PER_ENGINE } from '../worklet-config';
 import { PooledInstrument } from 'src/audio/pooled-instrument-factory';
-import type {
-  AudioAsset,
-  Patch,
-  MacroRouteState,
-} from 'src/audio/types/preset-types';
-import {
-  deserializePatch,
-  type DeserializedPatch,
-  parseAudioAssetId,
-} from 'src/audio/serialization/patch-serializer';
-import {
-  WasmModulationType,
-  ModulationTransformation,
-  PortId,
-} from 'app/public/wasm/audio_processor';
-import {
-  synthLayoutToPatchLayout,
-  type SynthLayout,
-  type FilterState,
-  type EnvelopeConfig,
-  type LfoState,
-  type SamplerState,
-  type GlideState,
-  type ConvolverState,
-  type DelayState,
-  type ChorusState,
-  type ReverbState,
-  type CompressorState,
-  type SaturationState,
-  type BitcrusherState,
-} from 'src/audio/types/synth-layout';
-import type OscillatorState from 'src/audio/models/OscillatorState';
-import {
-  PRESET_SCHEMA_VERSION,
-  type PatchMetadata,
-  type SynthState,
-} from 'src/audio/types/preset-types';
-import {
-  combineDetuneParts,
-  frequencyFromDetune,
-} from 'src/audio/utils/sampler-detune';
+import type { Patch } from 'src/audio/types/preset-types';
+import { deserializePatch } from 'src/audio/serialization/patch-serializer';
 import { getSharedAudioSystem } from 'src/audio/shared-audio-system';
-import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import {
   MIN_SCHEDULE_LEAD_SECONDS,
   ScheduledEventQueue,
   type PendingScheduledEvent,
 } from './scheduled-events';
 import { SongBankRecorder } from './recorder';
-import { isSamplerInstrumentType } from './instrument-types';
+import {
+  InstrumentLifecycle,
+  type ResumeFlags,
+} from './instrument-lifecycle';
 import { TrackVoiceRegistry } from './track-voice-registry';
+import type { BankInstrument } from './bank-instrument';
 
 export interface SongBankSlot {
   instrumentId: string;
@@ -97,6 +61,19 @@ const INSTRUMENT_BUILD_SLICE_SIZE = 2;
 /** Idle-yield timeout between instrument-build slices (see idleYield). */
 const INSTRUMENT_BUILD_IDLE_TIMEOUT_MS = 50;
 
+/**
+ * Per-note AudioParam-presence probe (N4 step 5, arch-review-2026-09-22).
+ *
+ * The check below builds two param-name strings and does two
+ * `parameters.get` lookups on EVERY scheduled note-on just to produce a
+ * console.warn if a param is missing -- on the same main thread whose
+ * longtasks the instrument-build slicing works hard to keep short. It can
+ * only ever log (no AudioParam writes), so it now runs only when a debugger
+ * session opts in. This is the one intentional log-surface change of this
+ * pass.
+ */
+const SONGBANK_DEBUG_PARAM_PROBE = false;
+
 interface IdleWindow {
   requestIdleCallback?: (
     cb: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void,
@@ -124,7 +101,7 @@ function idleYield(timeoutMs: number): Promise<void> {
 }
 
 export interface ActiveInstrument {
-  instrument: InstrumentV2 | ModInstrument | PooledInstrument;
+  instrument: BankInstrument;
   patchId: string;
   patchReuseKey: string | null;
   hasPortamento: boolean;
@@ -150,8 +127,11 @@ export class TrackerSongBank implements TrackerSink {
   /** Per-track taps for the visualisers; see getTrackMonitor. */
   private readonly trackMonitors: Map<number, GainNode> = new Map();
   private monitorSink: GainNode | null = null;
-  private readonly restoredAssets: Map<string, Set<string>> = new Map();
-  private readonly pendingInstruments: Map<string, Promise<void>> = new Map();
+  private readonly resumeFlags: ResumeFlags = {
+    wasSuspended: false,
+    needsAudioContextResume: false,
+  };
+  private readonly lifecycle: InstrumentLifecycle;
   /**
    * Playback semantics of the loaded song.
    *
@@ -168,8 +148,6 @@ export class TrackerSongBank implements TrackerSink {
   private moduleFormat: ModuleFormat = DEFAULT_MODULE_FORMAT;
   /** The loaded song's playback semantics; see `setModuleFormat` (P4). */
   private formatProfile: FormatProfile = profileForFormat(DEFAULT_MODULE_FORMAT);
-  private wasSuspended = false;
-  private needsAudioContextResume = false;
   private readonly eventQueue: ScheduledEventQueue;
   private readonly voices: TrackVoiceRegistry;
   private readonly recorder: SongBankRecorder;
@@ -230,10 +208,25 @@ export class TrackerSongBank implements TrackerSink {
       this.audioSystem.postFxOutput,
     );
 
+    this.lifecycle = new InstrumentLifecycle({
+      audioSystem: this.audioSystem,
+      masterGain: this.masterGain,
+      audioContext: this.audioSystem.audioContext,
+      formatProfile: () => this.formatProfile,
+      useWorkletPooling: () => this.useWorkletPooling,
+      workletPool: () => this.workletPool,
+      instruments: this.instruments,
+      activeNotes: this.activeNotes,
+      eventQueue: this.eventQueue,
+      voices: this.voices,
+      generation: () => this.generation,
+      flags: this.resumeFlags,
+    });
+
     this.audioSystem.audioContext.onstatechange = () => {
       if (
         this.audioSystem.audioContext.state === 'running' &&
-        this.needsAudioContextResume
+        this.resumeFlags.needsAudioContextResume
       ) {
         const pendingSlots: SongBankSlot[] = Array.from(
           this.desired.entries(),
@@ -262,7 +255,7 @@ export class TrackerSongBank implements TrackerSink {
   }
 
   get needsResume(): boolean {
-    return this.needsAudioContextResume;
+    return this.resumeFlags.needsAudioContextResume;
   }
 
   get audioContext(): AudioContext {
@@ -380,11 +373,20 @@ export class TrackerSongBank implements TrackerSink {
   }
 
   /** Get the InstrumentV2 instance for a specific instrument (for live editing) */
+  /**
+   * Get the instrument for a specific instrument id (for live editing).
+   *
+   * Editor-facing boundary: callers (IndexPage.vue) do concrete-class checks
+   * (instanceof ModInstrument) we cannot retype, so this keeps returning the
+   * concrete union exactly as before. The bank's INTERNAL handling is typed
+   * through `BankInstrument` (ActiveInstrument.instrument); this single cast
+   * is the boundary, not a capability probe.
+   */
   getInstrument(
     instrumentId: string,
   ): InstrumentV2 | ModInstrument | PooledInstrument | null {
     const active = this.instruments.get(instrumentId);
-    return active?.instrument ?? null;
+    return (active?.instrument as InstrumentV2 | ModInstrument | PooledInstrument) ?? null;
   }
 
   /** Get WorkletPool statistics (for debugging and monitoring) */
@@ -545,7 +547,7 @@ export class TrackerSongBank implements TrackerSink {
       const nextDesired = new Map<string, Patch>();
       for (const slot of slots) {
         if (!slot.instrumentId) continue;
-        nextDesired.set(slot.instrumentId, this.normalizePatch(slot.patch));
+        nextDesired.set(slot.instrumentId, this.lifecycle.normalizePatch(slot.patch));
       }
 
       // Update desired patches immediately so playback can prepare instruments
@@ -562,7 +564,7 @@ export class TrackerSongBank implements TrackerSink {
       for (const [id] of this.instruments.entries()) {
         if (!wantedIds.has(id)) {
           console.log(`[SongBank] Tearing down unwanted instrument: ${id}`);
-          this.teardownInstrument(id);
+          this.lifecycle.teardownInstrument(id);
         }
       }
 
@@ -573,7 +575,7 @@ export class TrackerSongBank implements TrackerSink {
       // stays armed and the onstatechange handler rebuilds instruments via
       // syncSlots on the first user gesture.
       if (this.audioContext.state === 'suspended') {
-        this.wasSuspended = true;
+        this.resumeFlags.wasSuspended = true;
       }
       const contextRunning = await this.ensureAudioContextRunning(
         SYNC_SLOTS_RESUME_WAIT_MS,
@@ -585,11 +587,11 @@ export class TrackerSongBank implements TrackerSink {
         );
       }
 
-      if (this.wasSuspended && this.audioContext.state === 'running') {
+      if (this.resumeFlags.wasSuspended && this.audioContext.state === 'running') {
         // Recreate instruments after a resume to avoid stale worklet state
         console.log('[SongBank] Disposing all instruments after resume');
         this.disposeInstruments();
-        this.wasSuspended = false;
+        this.resumeFlags.wasSuspended = false;
       }
 
       // Load instruments in small idle-scheduled slices: a big batch stacks
@@ -617,7 +619,7 @@ export class TrackerSongBank implements TrackerSink {
           console.log(
             `[SongBank] Ensuring instrument: ${instrumentId}, patch: ${patch?.metadata?.id}`,
           );
-          ensureTasks.push(this.ensureInstrument(instrumentId, patch));
+          ensureTasks.push(this.lifecycle.ensureInstrument(instrumentId, patch));
         }
 
         await Promise.all(ensureTasks);
@@ -687,7 +689,7 @@ export class TrackerSongBank implements TrackerSink {
     if (!instrumentId) return;
     const patch = this.desired.get(instrumentId);
     if (!patch) return;
-    await this.ensureInstrument(instrumentId, patch);
+    await this.lifecycle.ensureInstrument(instrumentId, patch);
   }
 
   dispose() {
@@ -705,11 +707,11 @@ export class TrackerSongBank implements TrackerSink {
 
   private disposeInstruments() {
     for (const id of Array.from(this.instruments.keys())) {
-      this.teardownInstrument(id);
+      this.lifecycle.teardownInstrument(id);
     }
     this.activeNotes.clear();
     this.voices.clearAll();
-    this.restoredAssets.clear();
+    this.lifecycle.clearRestoredAssets();
   }
 
   allNotesOff() {
@@ -982,7 +984,7 @@ export class TrackerSongBank implements TrackerSink {
 
   /** Return a small lead time (seconds) to drop the gate before retriggering. */
   private getGateLeadTime(
-    instrument: InstrumentV2 | ModInstrument | PooledInstrument,
+    instrument: BankInstrument,
   ): number {
     // Ensure at least one quantum of gate-low so the automation frame sees the edge.
     // Fallback to ~5ms if we don't know the block size.
@@ -1010,7 +1012,7 @@ export class TrackerSongBank implements TrackerSink {
     trackIndex?: number,
   ) {
     if (this.audioContext.state === 'suspended') {
-      this.wasSuspended = true;
+      this.resumeFlags.wasSuspended = true;
     }
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);
@@ -1043,7 +1045,7 @@ export class TrackerSongBank implements TrackerSink {
       `[SongBank] previewNoteOn: inst=${instrumentId}, midi=${midi}, vel=${velocity}`,
     );
     if (this.audioContext.state === 'suspended') {
-      this.wasSuspended = true;
+      this.resumeFlags.wasSuspended = true;
     }
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);
@@ -1138,7 +1140,7 @@ export class TrackerSongBank implements TrackerSink {
 
     if (!contextRunning || !active || !instrumentReady) {
       if (!contextRunning) {
-        this.wasSuspended = true;
+        this.resumeFlags.wasSuspended = true;
         console.warn(
           '[SongBank] noteOnAtTime: AudioContext is suspended, queuing event.',
         );
@@ -1192,7 +1194,7 @@ export class TrackerSongBank implements TrackerSink {
 
     if (!contextRunning || !active || !instrumentReady) {
       if (!contextRunning) {
-        this.wasSuspended = true;
+        this.resumeFlags.wasSuspended = true;
         console.warn(
           '[SongBank] noteOffAtTime: AudioContext is suspended, queuing event.',
         );
@@ -1310,7 +1312,7 @@ export class TrackerSongBank implements TrackerSink {
   private ensureInstrumentIfDesired(instrumentId: string) {
     const patch = this.desired.get(instrumentId);
     if (patch) {
-      void this.ensureInstrument(instrumentId, patch);
+      void this.lifecycle.ensureInstrument(instrumentId, patch);
     }
   }
 
@@ -1394,8 +1396,10 @@ export class TrackerSongBank implements TrackerSink {
       },
     );
 
-    // Verify parameter presence for debugging
-    if (voiceIndex !== undefined && worklet) {
+    // Verify parameter presence for debugging (behind
+    // SONGBANK_DEBUG_PARAM_PROBE: this only ever warns; the lookups ran on
+    // every note-on otherwise -- N4 step 5).
+    if (SONGBANK_DEBUG_PARAM_PROBE && voiceIndex !== undefined && worklet) {
       const instrumentWithParamName = active.instrument as unknown as {
         getParamName?: (paramType: string, voiceIndex: number) => string;
       };
@@ -1650,10 +1654,11 @@ export class TrackerSongBank implements TrackerSink {
     );
     if (!target) return;
 
-    const envelopes = target.active.instrument as {
-      setEnvelopePositionAtTime?: (v: number, t: number, when: number) => void;
-    };
-    envelopes.setEnvelopePositionAtTime?.(target.voiceIndex, tick, time);
+    target.active.instrument.setEnvelopePositionAtTime?.(
+      target.voiceIndex,
+      tick,
+      time,
+    );
   }
 
   /**
@@ -1753,12 +1758,12 @@ export class TrackerSongBank implements TrackerSink {
   async ensureAudioContextRunning(maxWaitMs = 10000): Promise<boolean> {
     const ctx = this.audioContext;
     if (ctx.state === 'running') {
-      this.needsAudioContextResume = false;
+      this.resumeFlags.needsAudioContextResume = false;
       void this.eventQueue.flushPendingScheduledEvents();
       return true;
     }
 
-    this.needsAudioContextResume = true;
+    this.resumeFlags.needsAudioContextResume = true;
     console.warn(
       `[SongBank] AudioContext state=${ctx.state}; attempting to resume.`,
     );
@@ -1786,7 +1791,7 @@ export class TrackerSongBank implements TrackerSink {
     while (true) {
       const currentState: string = ctx.state;
       if (currentState === 'running') {
-        this.needsAudioContextResume = false;
+        this.resumeFlags.needsAudioContextResume = false;
         void this.eventQueue.flushPendingScheduledEvents();
         return true;
       }
@@ -1807,774 +1812,8 @@ export class TrackerSongBank implements TrackerSink {
     console.warn(
       `[SongBank] AudioContext resume timed out; final state=${ctx.state}`,
     );
-    this.needsAudioContextResume = true;
+    this.resumeFlags.needsAudioContextResume = true;
     return false;
-  }
-
-  private async ensureInstrument(
-    instrumentId: string,
-    patch: Patch,
-  ): Promise<void> {
-    const generation = this.generation;
-    // Check if this instrument is already being initialized
-    const pending = this.pendingInstruments.get(instrumentId);
-    if (pending) {
-      await pending;
-      return;
-    }
-
-    // Start initialization and track the promise
-    const initPromise = this.ensureInstrumentInternal(
-      instrumentId,
-      patch,
-      generation,
-    );
-    this.pendingInstruments.set(instrumentId, initPromise);
-
-    try {
-      await initPromise;
-    } finally {
-      // Clean up the pending promise when done
-      this.pendingInstruments.delete(instrumentId);
-    }
-  }
-
-  private async ensureInstrumentInternal(
-    instrumentId: string,
-    patch: Patch,
-    generation: number,
-  ): Promise<void> {
-    // A created-but-suspended context is enough for instrument/worklet
-    // construction (fresh-tab deep links); only playback needs 'running'.
-    // Only a closed context genuinely blocks construction. If still
-    // suspended, needsAudioContextResume is armed (set by the bounded resume
-    // attempt in syncSlots or here) and the onstatechange handler rebuilds
-    // instruments built this way when the context becomes running.
-    const contextState = this.audioContext.state;
-    if (contextState === 'closed') {
-      console.warn(
-        `[SongBank] Skipping ensureInstrument for ${instrumentId} because AudioContext is closed. needsResume=${this.needsAudioContextResume}`,
-      );
-
-      return;
-    }
-    if (contextState !== 'running') {
-      this.wasSuspended = true;
-      this.needsAudioContextResume = true;
-      console.warn(
-        `[SongBank] Building instrument ${instrumentId} while AudioContext is ${contextState}; it will be rebuilt when the context resumes.`,
-      );
-    }
-    const normalizedPatch = this.normalizePatch(patch);
-    const deserialized = deserializePatch(normalizedPatch);
-    const patchId = normalizedPatch?.metadata?.id;
-    if (!patchId) return;
-    const patchReuseKey = this.getPatchReuseKey(normalizedPatch);
-    const hasPortamento = this.hasActivePortamento(normalizedPatch);
-
-    const existing = this.instruments.get(instrumentId);
-    const canReuse =
-      existing &&
-      existing.patchId === patchId &&
-      patchReuseKey !== null &&
-      existing.patchReuseKey === patchReuseKey;
-
-    if (canReuse) {
-      // console.log(
-      //   `[SongBank] Reusing existing instrument: ${instrumentId} (skipping state reapplication to preserve live audio)`,
-      // );
-      existing.hasPortamento = hasPortamento;
-      this.normalizeVoiceGain(existing.instrument);
-      // Skip restoreAudioAssets, applyNodeStates, and applyMacros when reusing
-      // These would reset effect buffers (delays, reverbs) and interrupt live playback
-      // The instrument already has the correct patch loaded from previous sync
-      // Verify connection is still intact, reconnect if needed
-      if (existing.instrument.outputNode.numberOfOutputs === 0) {
-        console.warn(
-          `[SongBank] Instrument ${instrumentId} was disconnected, reconnecting...`,
-        );
-        existing.instrument.outputNode.connect(this.masterGain);
-      }
-      await this.eventQueue.flushPendingScheduledEvents(instrumentId);
-      return;
-    }
-
-    if (existing) {
-      console.log(
-        `[SongBank] Tearing down existing instrument (different patch): ${instrumentId}`,
-      );
-      this.teardownInstrument(instrumentId);
-    }
-
-    console.log(`[SongBank] Creating new instrument: ${instrumentId}`);
-
-    // Check if this is a MOD instrument and user has simplified MOD instruments enabled
-    const userSettings = useUserSettingsStore();
-    const isModInstrument = isSamplerInstrumentType(
-      normalizedPatch.metadata.instrumentType,
-    );
-    // ModInstrument's per-voice pitch automation (e.g. 3xx tone portamento)
-    // is scheduled directly on the native AudioParam (see
-    // ModInstrument.setVoiceFrequencyAtTime), and MOD import/playback is
-    // tuned against this path, so it defaults to ON (see SETTINGS_VERSION v1
-    // in user-settings-store.ts). Users can still opt back into routing MOD
-    // instruments through the full WASM synth.
-    //
-    // NOTE: this is app-global today. Per PLAN-module-format-support.md (D4),
-    // engine choice should move into the per-song FormatProfile; ModInstrument
-    // does implement XM's tracker volume/pan envelopes, auto-vibrato and
-    // per-channel voice ownership, so this is an architecture cleanup rather
-    // than a functional gap.
-    //
-    // The per-song `FormatProfile.instrumentEngine` wins when present; no
-    // song sets it yet, so the global setting still decides for all of them.
-    const instrumentEngine =
-      this.formatProfile.instrumentEngine ??
-      (userSettings.settings.useSimplifiedModInstruments
-        ? 'sampler'
-        : 'worklet');
-    const useSimplified = instrumentEngine === 'sampler';
-
-    // DETAILED DEBUGGING
-    console.log('[SongBank] === INSTRUMENT CREATION DEBUG ===');
-    console.log(`[SongBank]   instrumentId: ${instrumentId}`);
-    console.log(
-      `[SongBank]   instrumentType: ${normalizedPatch.metadata.instrumentType}`,
-    );
-    console.log(`[SongBank]   isModInstrument: ${isModInstrument}`);
-    console.log(`[SongBank]   useSimplified: ${useSimplified}`);
-    console.log(`[SongBank]   useWorkletPooling: ${this.useWorkletPooling}`);
-    console.log(
-      `[SongBank]   workletPool exists: ${this.workletPool !== null}`,
-    );
-    console.log(
-      `[SongBank]   Decision: ${
-        isModInstrument && useSimplified
-          ? 'ModInstrument'
-          : this.useWorkletPooling && isModInstrument && this.workletPool
-            ? 'PooledInstrument'
-            : 'InstrumentV2 (LEGACY - CREATES OWN WORKLET!)'
-      }`,
-    );
-
-    let instrument: InstrumentV2 | ModInstrument | PooledInstrument;
-
-    if (isModInstrument && useSimplified) {
-      // Option 1: Use ModInstrument (native Web Audio API, no worklet)
-      console.log(`[SongBank] Creating ModInstrument for ${instrumentId}`);
-      instrument = new ModInstrument(
-        this.masterGain,
-        this.audioSystem.audioContext,
-        { pitchModel: this.formatProfile.pitch },
-      );
-
-      await instrument.loadPatch(normalizedPatch);
-      console.log(
-        `[SongBank] ModInstrument ${instrumentId} loaded, isReady=${instrument.isReady}`,
-      );
-    } else if (this.useWorkletPooling && this.workletPool) {
-      // Option 2: Use PooledInstrument (shared worklet, efficient for tracker playback)
-      console.log(
-        `[SongBank] Creating PooledInstrument for ${instrumentId} via WorkletPool`,
-      );
-
-      // Use the patch's requested voice count (clamped to per-engine limit)
-      const requestedVoices = Math.max(
-        1,
-        Math.min(
-          VOICES_PER_ENGINE,
-          normalizedPatch?.synthState?.layout?.voiceCount ??
-            normalizedPatch?.synthState?.layout?.voices?.length ??
-            VOICES_PER_ENGINE,
-        ),
-      );
-
-      const allocation = await this.workletPool.allocateVoices(
-        instrumentId,
-        requestedVoices,
-      );
-
-      console.log(
-        `[SongBank] Allocated voices ${allocation.startVoice}-${allocation.endVoice - 1} on worklet ${allocation.workletIndex} for ${instrumentId}`,
-      );
-
-      // Create pooled instrument with the allocation
-      instrument = new PooledInstrument(
-        this.masterGain,
-        this.audioSystem.audioContext,
-        instrumentId,
-        allocation,
-      );
-
-      await instrument.loadPatch(normalizedPatch);
-      console.log(
-        `[SongBank] PooledInstrument ${instrumentId} loaded, isReady=${instrument.isReady}`,
-      );
-
-      // Log pool statistics
-      const stats = this.workletPool.getStats();
-      console.log(
-        `[SongBank] Pool stats: ${stats.workletCount} worklets, ${stats.allocatedVoices}/${stats.totalVoices} voices allocated`,
-      );
-
-      await this.restoreAudioAssets(
-        instrumentId,
-        instrument,
-        normalizedPatch,
-        deserialized,
-      );
-
-      // Normalize sampler loop points/detune for pooled instruments (patch stores normalized values)
-      this.applySamplerStates(instrument, deserialized.samplers);
-
-      // Apply macro values/routes so pooled instruments match the patch (e.g., vibrato depth).
-      this.applyMacrosFromPatch(instrument, normalizedPatch);
-    } else {
-      // Option 3: Use InstrumentV2 (own worklet, for patch editor or non-MOD instruments)
-      console.log(`[SongBank] Creating InstrumentV2 for ${instrumentId}`);
-      const memory = new WebAssembly.Memory({
-        initial: 256,
-        maximum: 1024,
-        shared: true,
-      });
-      instrument = new InstrumentV2(
-        this.masterGain,
-        this.audioSystem.audioContext,
-        memory,
-      );
-
-      const ready = await this.waitForInstrumentReady(instrument);
-      if (!ready) {
-        console.warn('[TrackerSongBank] Instrument initialization timeout');
-        instrument.outputNode.disconnect();
-        return;
-      }
-      console.log(
-        `[SongBank] Instrument ${instrumentId} worklet ready, loading patch...`,
-      );
-
-      await instrument.loadPatch(normalizedPatch);
-      console.log(
-        `[SongBank] Instrument ${instrumentId} patch loaded, isReady=${instrument.isReady}`,
-      );
-      // Give WASM time to finish building all voice node structures before updating states
-      // Reduced from 100ms to 20ms - loadPatch already waits for synthLayout response,
-      // this additional delay just ensures voice structures are built. Conservative reduction
-      // maintains stability while reducing stutter on laptops
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
-      // Apply assets and node state in parallel to avoid serial stalls (only for InstrumentV2)
-      await Promise.all([
-        this.restoreAudioAssets(
-          instrumentId,
-          instrument,
-          normalizedPatch,
-          deserialized,
-        ),
-        this.applyNodeStates(instrument, deserialized),
-      ]);
-
-      this.applyMacrosFromPatch(instrument, normalizedPatch);
-    }
-
-    this.normalizeVoiceGain(instrument);
-    if (generation !== this.generation) {
-      console.warn(
-        `[SongBank] Discarding instrument ${instrumentId} from previous generation`,
-      );
-      instrument.dispose();
-      return;
-    }
-    this.instruments.set(instrumentId, {
-      instrument,
-      patchId,
-      patchReuseKey,
-      hasPortamento,
-    });
-    await this.eventQueue.flushPendingScheduledEvents(instrumentId);
-  }
-
-  private normalizeVoiceGain(
-    instrument: InstrumentV2 | ModInstrument | PooledInstrument,
-  ) {
-    // Ensure voice gains aren't left at a previous automation value (e.g. 0)
-    instrument.setGainForAllVoices(1);
-  }
-
-  private async restoreAudioAssets(
-    instrumentId: string,
-    instrument: InstrumentV2 | PooledInstrument,
-    patch: Patch,
-    deserialized: DeserializedPatch,
-  ): Promise<void> {
-    const assets = patch.audioAssets;
-    if (!assets || Object.keys(assets).length === 0) {
-      return;
-    }
-
-    // Track imported assets per instrument to avoid re-importing (expensive for wavetables).
-    let seen = this.restoredAssets.get(instrumentId);
-    if (!seen) {
-      seen = new Set<string>();
-      this.restoredAssets.set(instrumentId, seen);
-    }
-
-    const assetEntries = Object.entries(assets) as [string, AudioAsset][];
-    for (const [assetId, asset] of assetEntries) {
-      try {
-        if (seen.has(assetId)) continue;
-        const parsed = parseAudioAssetId(assetId);
-        if (!parsed) continue;
-        const { nodeType, nodeId } = parsed;
-
-        const binaryData = atob(asset.base64Data);
-        const bytes = new Uint8Array(binaryData.length);
-        for (let i = 0; i < binaryData.length; i++) {
-          bytes[i] = binaryData.charCodeAt(i);
-        }
-
-        if (nodeType === 'sample') {
-          const wavInfo = this.parseWavInfo(bytes);
-          if (wavInfo) {
-            const samplerState = deserialized.samplers.get(nodeId);
-            if (samplerState) {
-              deserialized.samplers.set(nodeId, {
-                ...samplerState,
-                sampleLength: wavInfo.frames,
-                sampleRate: wavInfo.sampleRate,
-                channels: wavInfo.channels,
-              });
-            }
-          }
-          await instrument.importSampleData(nodeId, bytes);
-        } else if (nodeType === 'impulse_response') {
-          await instrument.importImpulseWaveformData(nodeId, bytes);
-        } else if (nodeType === 'wavetable') {
-          await instrument.importWavetableData(nodeId, bytes);
-        }
-        seen.add(assetId);
-      } catch (error) {
-        console.error(
-          `[TrackerSongBank] Failed to restore audio asset ${assetId}:`,
-          error,
-        );
-      }
-    }
-  }
-
-  private applyMacrosFromPatch(
-    instrument: InstrumentV2 | PooledInstrument,
-    patch: Patch,
-  ) {
-    const macros = patch?.synthState?.macros;
-    if (!macros) return;
-
-    if (Array.isArray(macros.values)) {
-      macros.values.forEach((value, index) => {
-        if (Number.isFinite(value)) {
-          instrument.setMacro(index, Number(value));
-        }
-      });
-    }
-
-    if (Array.isArray(macros.routes)) {
-      (macros.routes as MacroRouteState[]).forEach((route) => {
-        if (!route || route.targetId === undefined) return;
-
-        const macroIndex = Number(route.macroIndex);
-        if (!Number.isFinite(macroIndex) || macroIndex < 0) return;
-
-        const targetPort = Number(route.targetPort ?? PortId.AudioInput0);
-        const amount = Number(route.amount ?? 0);
-        const modulationType =
-          (route.modulationType as WasmModulationType | undefined) ??
-          WasmModulationType.Additive;
-        const modulationTransformation =
-          (route.modulationTransformation as
-            | ModulationTransformation
-            | undefined) ?? ModulationTransformation.None;
-
-        instrument.connectMacroRoute({
-          macroIndex,
-          targetId: route.targetId,
-          targetPort: targetPort as PortId,
-          amount,
-          modulationType,
-          modulationTransformation,
-        });
-      });
-    }
-  }
-
-  private async waitForInstrumentReady(
-    instrument: InstrumentV2,
-    timeoutMs = 8000,
-    pollMs = 50,
-  ): Promise<boolean> {
-    const start = Date.now();
-    while (!instrument.isReady) {
-      if (Date.now() - start > timeoutMs) {
-        console.warn(
-          '[TrackerSongBank] Timed out waiting for instrument readiness',
-        );
-        return false;
-      }
-      await new Promise((resolve) => setTimeout(resolve, pollMs));
-    }
-    return true;
-  }
-
-  private hasActivePortamento(patch: Patch): boolean {
-    const glides = patch?.synthState?.glides;
-    if (!glides) return false;
-    return Object.values(glides).some((glide) => {
-      if (!glide) return false;
-      const time = Number(glide.time ?? 0);
-      const active = !!glide.active;
-      return active && time > 0;
-    });
-  }
-
-  /**
-   * Normalize a patch so tracker playback uses the same upgraded shapes
-   * as the patch editor (fills missing fields, canonical voice, etc.).
-   */
-  private normalizePatch(patch: Patch): Patch {
-    try {
-      const deserialized = deserializePatch(patch);
-      const metadata = this.normalizePatchMetadata(patch.metadata);
-      const synthState: SynthState = {
-        layout: this.normalizePatchLayout(deserialized.layout),
-        oscillators: this.mapToRecord(deserialized.oscillators),
-        wavetableOscillators: this.mapToRecord(
-          deserialized.wavetableOscillators,
-        ),
-        filters: this.mapToRecord(deserialized.filters),
-        envelopes: this.mapToRecord(deserialized.envelopes),
-        lfos: this.mapToRecord(deserialized.lfos),
-        samplers: this.mapToRecord(deserialized.samplers),
-        glides: this.mapToRecord(deserialized.glides),
-        convolvers: this.mapToRecord(deserialized.convolvers),
-        delays: this.mapToRecord(deserialized.delays),
-        choruses: this.mapToRecord(deserialized.choruses),
-        reverbs: this.mapToRecord(deserialized.reverbs),
-        compressors: this.mapToRecord(deserialized.compressors),
-        saturations: this.mapToRecord(deserialized.saturations),
-        bitcrushers: this.mapToRecord(deserialized.bitcrushers),
-      };
-
-      if (deserialized.noise !== undefined) {
-        synthState.noise = deserialized.noise;
-      }
-      if (deserialized.velocity !== undefined) {
-        synthState.velocity = deserialized.velocity;
-      }
-      if (deserialized.macros) {
-        synthState.macros = {
-          values: deserialized.macros.values ?? [],
-          routes: deserialized.macros.routes ?? [],
-        };
-      }
-
-      return {
-        metadata,
-        synthState,
-        audioAssets: this.mapToRecord(deserialized.audioAssets),
-      };
-    } catch (error) {
-      console.warn(
-        '[TrackerSongBank] Failed to normalize patch; using raw patch',
-        error,
-      );
-      return patch;
-    }
-  }
-
-  private normalizePatchLayout(layout: SynthLayout): SynthState['layout'] {
-    return synthLayoutToPatchLayout(layout);
-  }
-
-  private normalizePatchMetadata(metadata: PatchMetadata): PatchMetadata {
-    const safeTags = Array.isArray(metadata?.tags)
-      ? [...metadata.tags]
-      : undefined;
-    const created = metadata?.created ?? metadata?.modified ?? 0;
-    const modified = metadata?.modified ?? metadata?.created ?? created;
-    return {
-      id: metadata?.id ?? `song-patch-${created || Date.now()}`,
-      name: metadata?.name ?? 'Untitled',
-      created,
-      modified,
-      version: metadata?.version ?? PRESET_SCHEMA_VERSION,
-      ...(typeof metadata?.category === 'string'
-        ? { category: metadata.category }
-        : {}),
-      ...(typeof metadata?.author === 'string'
-        ? { author: metadata.author }
-        : {}),
-      ...(safeTags ? { tags: safeTags } : {}),
-      ...(typeof metadata?.description === 'string'
-        ? { description: metadata.description }
-        : {}),
-      ...(metadata?.instrumentType
-        ? { instrumentType: metadata.instrumentType }
-        : {}),
-    };
-  }
-
-  private mapToRecord<T>(map: Map<string, T>): Record<string, T> {
-    const record: Record<string, T> = {};
-    map.forEach((value, key) => {
-      record[key] = value;
-    });
-    return record;
-  }
-
-  private async applyNodeStates(
-    instrument: InstrumentV2,
-    deserialized: DeserializedPatch,
-  ): Promise<void> {
-    deserialized.oscillators.forEach(
-      (state: OscillatorState, nodeId: string) => {
-        instrument.updateOscillatorState(nodeId, { ...state, id: nodeId });
-      },
-    );
-
-    deserialized.wavetableOscillators.forEach(
-      (state: OscillatorState, nodeId: string) => {
-        instrument.updateWavetableOscillatorState(nodeId, {
-          ...state,
-          id: nodeId,
-        });
-      },
-    );
-
-    const envelopePromises: Promise<void>[] = [];
-    deserialized.envelopes.forEach((state: EnvelopeConfig, nodeId: string) => {
-      envelopePromises.push(
-        instrument.updateEnvelopeState(nodeId, {
-          ...state,
-          id: nodeId,
-        }),
-      );
-    });
-
-    deserialized.lfos.forEach((state: LfoState, nodeId: string) => {
-      instrument.updateLfoState(nodeId, {
-        id: nodeId,
-        frequency: state.frequency,
-        phaseOffset: state.phaseOffset ?? 0,
-        waveform: state.waveform,
-        useAbsolute: state.useAbsolute,
-        useNormalized: state.useNormalized,
-        triggerMode: state.triggerMode,
-        gain: state.gain,
-        active: state.active,
-        loopMode: state.loopMode,
-        loopStart: state.loopStart,
-        loopEnd: state.loopEnd,
-      });
-    });
-
-    deserialized.filters.forEach((state: FilterState, nodeId: string) => {
-      instrument.updateFilterState(nodeId, { ...state, id: nodeId });
-    });
-
-    deserialized.glides.forEach((state: GlideState, nodeId: string) => {
-      instrument.updateGlideState(nodeId, { ...state, id: nodeId });
-    });
-
-    deserialized.convolvers.forEach((state: ConvolverState, nodeId: string) => {
-      instrument.updateConvolverState(nodeId, { ...state, id: nodeId });
-    });
-
-    deserialized.delays.forEach((state: DelayState, nodeId: string) => {
-      instrument.updateDelayState(nodeId, { ...state, id: nodeId });
-    });
-
-    deserialized.choruses.forEach((state: ChorusState, nodeId: string) => {
-      instrument.updateChorusState(nodeId, { ...state, id: nodeId });
-    });
-
-    deserialized.reverbs.forEach((state: ReverbState, nodeId: string) => {
-      instrument.updateReverbState(nodeId, { ...state, id: nodeId });
-    });
-
-    deserialized.compressors.forEach(
-      (state: CompressorState, nodeId: string) => {
-        instrument.updateCompressorState(nodeId, { ...state, id: nodeId });
-      },
-    );
-
-    deserialized.saturations.forEach(
-      (state: SaturationState, nodeId: string) => {
-        instrument.updateSaturationState(nodeId, { ...state, id: nodeId });
-      },
-    );
-
-    deserialized.bitcrushers.forEach(
-      (state: BitcrusherState, nodeId: string) => {
-        instrument.updateBitcrusherState(nodeId, { ...state, id: nodeId });
-      },
-    );
-
-    this.applySamplerStates(instrument, deserialized.samplers);
-
-    await Promise.all(envelopePromises);
-  }
-
-  private clamp01(value: number): number {
-    if (!Number.isFinite(value)) return 0;
-    return Math.min(1, Math.max(0, value));
-  }
-
-  private buildSamplerUpdatePayload(state: SamplerState) {
-    const sampleLength = Math.max(
-      1,
-      state.sampleLength || state.sampleRate || 1,
-    );
-    const loopStartNorm = this.clamp01(state.loopStart ?? 0);
-    const requestedEnd = this.clamp01(state.loopEnd ?? 1);
-    const minDelta = 1 / sampleLength;
-    const loopEndNorm =
-      requestedEnd <= loopStartNorm + minDelta
-        ? Math.min(1, loopStartNorm + minDelta)
-        : requestedEnd;
-    const detuneCents = Number.isFinite(state.detune)
-      ? (state.detune as number)
-      : combineDetuneParts(
-          state.detune_oct ?? 0,
-          state.detune_semi ?? 0,
-          state.detune_cents ?? 0,
-        );
-    const tuningFrequency = frequencyFromDetune(detuneCents);
-
-    return {
-      frequency: tuningFrequency,
-      // Avoid silent samplers when gain is 0 (common for MOD imports that rely on Axx/Cxx to fade in)
-      gain: state.gain === 0 ? 1 : state.gain,
-      loopMode: state.loopMode,
-      loopStart: loopStartNorm * sampleLength,
-      loopEnd: loopEndNorm * sampleLength,
-      rootNote: state.rootNote,
-      triggerMode: state.triggerMode,
-      active: state.active,
-    };
-  }
-
-  private applySamplerStates(
-    instrument: InstrumentV2 | PooledInstrument,
-    samplers: Map<string, SamplerState>,
-  ) {
-    samplers.forEach((state: SamplerState, nodeId: string) => {
-      instrument.updateSamplerState(
-        nodeId,
-        this.buildSamplerUpdatePayload(state),
-      );
-    });
-  }
-
-  /**
-   * Minimal WAV header parser to extract sample rate, channels, and frame count.
-   */
-  private parseWavInfo(
-    bytes: Uint8Array,
-  ): { sampleRate: number; channels: number; frames: number } | null {
-    const getString = (offset: number, length: number) =>
-      String.fromCharCode(...bytes.slice(offset, offset + length));
-    const getUint32LE = (offset: number) =>
-      ((bytes[offset] ?? 0) |
-        ((bytes[offset + 1] ?? 0) << 8) |
-        ((bytes[offset + 2] ?? 0) << 16) |
-        ((bytes[offset + 3] ?? 0) << 24)) >>>
-      0;
-    const getUint16LE = (offset: number) =>
-      ((bytes[offset] ?? 0) | ((bytes[offset + 1] ?? 0) << 8)) >>> 0;
-
-    if (bytes.length < 44) return null;
-    if (getString(0, 4) !== 'RIFF' || getString(8, 4) !== 'WAVE') return null;
-
-    let offset = 12;
-    let fmtSampleRate = 0;
-    let fmtChannels = 0;
-    let bitsPerSample = 16;
-    let dataSize = 0;
-
-    while (offset + 8 <= bytes.length) {
-      const chunkId = getString(offset, 4);
-      const chunkSize = getUint32LE(offset + 4);
-      const next = offset + 8 + chunkSize;
-      if (chunkId === 'fmt ') {
-        fmtChannels = getUint16LE(offset + 10);
-        fmtSampleRate = getUint32LE(offset + 12);
-        bitsPerSample = getUint16LE(offset + 22);
-      } else if (chunkId === 'data') {
-        dataSize = chunkSize;
-      }
-      offset = next;
-    }
-
-    if (!fmtSampleRate || !fmtChannels || !dataSize) return null;
-    const bytesPerSample = (bitsPerSample / 8) * fmtChannels;
-    if (!bytesPerSample) return null;
-    const frames = Math.floor(dataSize / bytesPerSample);
-    return {
-      sampleRate: fmtSampleRate,
-      channels: fmtChannels,
-      frames,
-    };
-  }
-
-  /**
-   * Key used to decide whether a slot's currently-live instrument can be
-   * reused as-is (same key) or must be torn down and rebuilt (different
-   * key). Deliberately just `id:revision`, not a hash of the patch's
-   * content: `metadata.revision` is only ever incremented by patchStore
-   * when a real, detected edit is saved (see patchStore.isDirty /
-   * IndexPage.vue saveSongPatch) -- unlike `metadata.modified`, which used
-   * to be bumped on every save regardless of whether anything actually
-   * changed, forcing a rebuild (and losing live envelope/oscillator/LFO
-   * phase) on every no-op editor visit. Comparing the explicit revision is
-   * both cheaper and more honest about what it's actually testing than
-   * hashing a multi-KB JSON blob of synthState + audioAssets on every sync.
-   */
-  private getPatchReuseKey(patch: Patch): string | null {
-    const id = patch?.metadata?.id;
-    if (!id) return null;
-    return `${id}:${patch?.metadata?.revision ?? 0}`;
-  }
-
-  private teardownInstrument(instrumentId: string) {
-    const active = this.instruments.get(instrumentId);
-    if (!active) return;
-
-    const isPooled = active.instrument instanceof PooledInstrument;
-    const isModInstrument = active.instrument instanceof ModInstrument;
-    const instrumentType = isPooled
-      ? 'PooledInstrument'
-      : isModInstrument
-        ? 'ModInstrument'
-        : 'InstrumentV2';
-    console.log(
-      `[SongBank] Tearing down instrument ${instrumentId}, type: ${instrumentType}`,
-    );
-
-    try {
-      active.instrument.dispose();
-    } catch (error) {
-      console.warn('[TrackerSongBank] Failed to dispose instrument', error);
-    }
-
-    // Deallocate from pool if this is a pooled instrument
-    if (isPooled && this.workletPool) {
-      this.workletPool.deallocateVoices(instrumentId);
-      console.log(`[SongBank] Deallocated ${instrumentId} from WorkletPool`);
-    }
-
-    this.instruments.delete(instrumentId);
-    this.activeNotes.delete(instrumentId);
-    this.voices.removeInstrument(instrumentId);
-    this.restoredAssets.delete(instrumentId);
   }
 
   /**
@@ -2586,7 +1825,7 @@ export class TrackerSongBank implements TrackerSink {
       '[SongBank] Resetting for new song (disposing all instruments)',
     );
     this.generation += 1;
-    this.pendingInstruments.clear();
+    this.lifecycle.clearPendingInstruments();
     this.disposeInstruments();
     this.desired.clear();
     this.resetMasterVolumeToBaseline();
@@ -2620,7 +1859,7 @@ export class TrackerSongBank implements TrackerSink {
 
     try {
       // Normalize and apply the patch to the active instrument
-      const normalizedPatch = this.normalizePatch(patch);
+      const normalizedPatch = this.lifecycle.normalizePatch(patch);
 
       // Load the patch into the instrument (this updates all synth parameters)
       await active.instrument.loadPatch(normalizedPatch);
@@ -2628,7 +1867,7 @@ export class TrackerSongBank implements TrackerSink {
       // Restore audio assets (samplers, convolvers) if any (only for InstrumentV2)
       if (active.instrument instanceof InstrumentV2) {
         const deserialized = deserializePatch(normalizedPatch);
-        await this.restoreAudioAssets(
+        await this.lifecycle.restoreAudioAssets(
           instrumentId,
           active.instrument,
           normalizedPatch,
@@ -2639,10 +1878,10 @@ export class TrackerSongBank implements TrackerSink {
       // Update the stored patch reference and signature
       this.desired.set(instrumentId, normalizedPatch);
       active.patchId = normalizedPatch.metadata.id;
-      active.patchReuseKey = this.getPatchReuseKey(normalizedPatch);
+      active.patchReuseKey = this.lifecycle.getPatchReuseKey(normalizedPatch);
 
       // Update portamento state based on new patch
-      active.hasPortamento = this.hasActivePortamento(normalizedPatch);
+      active.hasPortamento = this.lifecycle.hasActivePortamento(normalizedPatch);
 
       return true;
     } catch (error) {
@@ -2670,7 +1909,7 @@ export class TrackerSongBank implements TrackerSink {
    * @param patch - The serialized patch with the current state
    */
   updateStoredPatch(instrumentId: string, patch: Patch): void {
-    const normalizedPatch = this.normalizePatch(patch);
+    const normalizedPatch = this.lifecycle.normalizePatch(patch);
     const patchId = normalizedPatch?.metadata?.id;
     if (!patchId) return;
 
@@ -2700,8 +1939,8 @@ export class TrackerSongBank implements TrackerSink {
         return;
       }
       active.patchId = patchId;
-      active.patchReuseKey = this.getPatchReuseKey(normalizedPatch);
-      active.hasPortamento = this.hasActivePortamento(normalizedPatch);
+      active.patchReuseKey = this.lifecycle.getPatchReuseKey(normalizedPatch);
+      active.hasPortamento = this.lifecycle.hasActivePortamento(normalizedPatch);
 
       // Also push the updated patch into the live instrument so tracker playback
       // uses the same edits heard in the instrument editor (handles multi-engine worklet).

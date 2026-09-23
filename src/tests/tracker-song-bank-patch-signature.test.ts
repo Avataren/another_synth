@@ -85,10 +85,13 @@ function makePatch(overrides: Partial<Patch> = {}): Patch {
  */
 describe('TrackerSongBank patch reuse key', () => {
   function getReuseKey(bank: TrackerSongBank, patch: Patch): string | null {
-    const fn = Reflect.get(bank as object, 'getPatchReuseKey') as (
-      p: Patch,
-    ) => string | null;
-    return fn.call(bank, patch);
+    // getPatchReuseKey moved to the InstrumentLifecycle module (arch-review
+    // §2b); the bank holds it as the private `lifecycle` field.
+    return (
+      bank as unknown as {
+        lifecycle: { getPatchReuseKey: (p: Patch) => string | null };
+      }
+    ).lifecycle.getPatchReuseKey(patch);
   }
 
   it('is stable across a re-save that only bumps `modified` with the same revision', () => {
