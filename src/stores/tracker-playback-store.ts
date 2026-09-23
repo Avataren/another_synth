@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { PlaybackEngine } from '@another-synth/tracker-playback';
 import type {
   Song as PlaybackSong,
@@ -13,6 +13,7 @@ import {
   AhxSongTransport,
   type PlaybackMode,
 } from 'src/audio/tracker/ahx-song-transport';
+import { SidSongTransport } from 'src/audio/tracker/sid-song-transport';
 import { debugLog } from 'src/diagnostics/debug-log';
 
 export type { PlaybackMode };
@@ -416,6 +417,69 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     stopSampleEngine,
   });
 
+  // ============================================
+  // SID transport (plan-sid-tracking.md S4)
+  // ============================================
+  //
+  // A `'sid'` song plays in the SID worklet (`SidSongTransport`) from the
+  // store's doc, like an AHX song plays in the AHX worklet from its bytes.
+
+  const sid = new SidSongTransport({
+    isPlaying,
+    isPaused,
+    playbackMode,
+    playbackRow,
+    currentSequenceIndex,
+    selectedSequenceIndex,
+    mutedTracks,
+    soloedTracks,
+    hasSongLoaded,
+    loopSong,
+    songEndListeners,
+    trackerStore,
+    getSongBank,
+    setPlaybackState: (playing) => audioStore.setPlaybackState(playing),
+    applyPosition,
+    resolveStartSequenceIndex,
+    recordLastSong,
+    sanitizeMuteSoloState,
+    stopSampleEngine,
+  });
+  // An edit of the doc (the grid's write-back, the instrument page, an undo)
+  // reaches a playing song through a reload.
+  watch(
+    () => trackerStore.sidRevision,
+    () => sid.onDocChange(),
+  );
+
+  /** Sound a SID instrument from the keyboard (the instrument page): its own preview voice. */
+  async function previewSidNoteOn(instrument: number, midi: number): Promise<boolean> {
+    return sid.previewNoteOn(instrument, midi);
+  }
+
+  function previewSidNoteOff(): void {
+    sid.previewNoteOff();
+  }
+
+  /** The SID preview voice's output (the instrument page's analyzer), or null before its first note. */
+  function sidPreviewOutput(): AudioNode | null {
+    return sid.previewOutput;
+  }
+
+  function onSidPreviewOutput(listener: (node: AudioNode | null) => void): () => void {
+    return sid.onPreviewOutput(listener);
+  }
+
+  /** Re-route the SID worklet's voices into the bank's current per-track taps (the host rebuilt them). */
+  function connectSidVoiceTaps(): void {
+    sid.connectVoiceTaps();
+  }
+
+  /** The SID transport itself (tests and diagnostics). */
+  function sidTransport(): SidSongTransport {
+    return sid;
+  }
+
   async function previewAhxNoteOn(instrument: number, midi: number, velocity = 127): Promise<boolean> {
     return ahx.previewAhxNoteOn(instrument, midi, velocity);
   }
@@ -500,8 +564,13 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       return true;
     }
 
-    if (song.moduleFormat === 'ahx') return ahx.loadAhxSong(song, mode);
+    if (song.moduleFormat === 'ahx') {
+      sid.leave();
+      return ahx.loadAhxSong(song, mode);
+    }
     ahx.leaveAhx();
+    if (song.moduleFormat === 'sid') return sid.load(song, mode);
+    sid.leave();
 
     const engine = ensureEngine();
 
@@ -561,8 +630,13 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     debugLog(
       `[PlaybackStore] play() called: mode=${mode}, startRow=${startRow}, startSequenceIndex=${startSequenceIndex ?? 'auto'}`,
     );
-    if (song.moduleFormat === 'ahx') return ahx.playAhx(song, mode, startRow, startSequenceIndex);
+    if (song.moduleFormat === 'ahx') {
+      sid.leave();
+      return ahx.playAhx(song, mode, startRow, startSequenceIndex);
+    }
     ahx.leaveAhx();
+    if (song.moduleFormat === 'sid') return sid.play(song, mode, startRow, startSequenceIndex);
+    sid.leave();
     const songBank = getSongBank();
 
     // Resolve and persist the starting sequence index up front so UI selection stays in sync
@@ -617,6 +691,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       ahx.pause();
       return;
     }
+    if (sid.isActive) {
+      sid.pause();
+      return;
+    }
     if (!playbackEngineInstance) return;
 
     playbackEngineInstance.pause();
@@ -632,6 +710,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       ahx.resume();
       return;
     }
+    if (sid.isActive) {
+      sid.resume();
+      return;
+    }
     await playbackEngineInstance?.play();
   }
 
@@ -641,6 +723,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   function stop(): void {
     if (ahx.isActive) {
       ahx.stop();
+      return;
+    }
+    if (sid.isActive) {
+      sid.stop();
       return;
     }
     if (!playbackEngineInstance) return;
@@ -665,6 +751,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       ahx.seek(row);
       return;
     }
+    if (sid.isActive) {
+      sid.seek(row);
+      return;
+    }
     if (!playbackEngineInstance) return;
     playbackEngineInstance.seek(row);
   }
@@ -674,7 +764,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    */
   function setBpm(bpm: number): void {
     // The AHX engine's tempo comes from the song's own speed commands.
-    if (ahx.isActive || !playbackEngineInstance) return;
+    if (ahx.isActive || sid.isActive || !playbackEngineInstance) return;
     playbackEngineInstance.setBpm(bpm);
   }
 
@@ -683,7 +773,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * takes effect without restarting playback.
    */
   function setPatternLength(patternId: string | null, rows: number): void {
-    if (ahx.isActive || !playbackEngineInstance || !patternId) return;
+    if (ahx.isActive || sid.isActive || !playbackEngineInstance || !patternId) return;
     playbackEngineInstance.setPatternLength(patternId, rows);
   }
 
@@ -699,6 +789,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   function applyAudibilityChange(before: boolean[], trackCount: number): void {
     if (ahx.isActive) {
       ahx.syncAhxMuteSolo();
+      return;
+    }
+    if (sid.isActive) {
+      sid.syncMuteSolo();
       return;
     }
     muteInaudibleTracks(before, getAudibilitySnapshot(trackCount));
@@ -758,6 +852,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     mutedTracks.value = newMuted;
     soloedTracks.value = newSoloed;
     ahx.syncAhxMuteSolo();
+    sid.syncMuteSolo();
   }
 
   // ============================================
@@ -809,6 +904,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     loopSong.value = loop;
     playbackEngineInstance?.setLoopSong(loop);
     ahx.setLoopSong(loop);
+    sid.setLoopSong(loop);
   }
 
   /**
@@ -831,6 +927,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     }
 
     ahx.dispose();
+    sid.dispose();
 
     if (positionUnsubscribe) {
       positionUnsubscribe();
@@ -901,6 +998,14 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // AHX/HVL per-voice scopes
     setAhxScopesEnabled,
     getAhxChannelWaveform,
+
+    // SID (plan-sid-tracking.md S4)
+    previewSidNoteOn,
+    previewSidNoteOff,
+    sidPreviewOutput,
+    onSidPreviewOutput,
+    connectSidVoiceTaps,
+    sidTransport,
 
     // Mute/Solo
     toggleMute,

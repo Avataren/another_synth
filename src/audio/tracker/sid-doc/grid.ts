@@ -140,7 +140,7 @@ export function sidNoteIndex(note: number, transpose: number): number | undefine
 export const SID_INDEX_TO_MIDI = 12;
 /** The MIDI range a SID note can be typed in: C-0 .. G#7. */
 export const SID_MIN_INPUT_MIDI = SID_INDEX_TO_MIDI;
-export const SID_MAX_INPUT_MIDI = SID_INDEX_TO_MIDI + SID_NOTE_COUNT - 1;
+export const SID_MAX_INPUT_MIDI = SID_INDEX_TO_MIDI + SID_NOTE_LAST - SID_NOTE_FIRST;
 
 /** A doc row as it shows in a cell under `transpose` (`undefined`: an empty cell). */
 export function sidRowToEntry(row: SidDocRow, index: number, transpose: number): TrackerEntryData | undefined {
