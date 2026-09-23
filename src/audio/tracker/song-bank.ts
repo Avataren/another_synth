@@ -29,6 +29,7 @@ import {
 } from './instrument-lifecycle';
 import { TrackVoiceRegistry } from './track-voice-registry';
 import type { BankInstrument } from './bank-instrument';
+import { debugLog } from 'src/diagnostics/debug-log';
 
 export interface SongBankSlot {
   instrumentId: string;
@@ -181,7 +182,7 @@ export class TrackerSongBank implements TrackerSink {
         this.audioSystem.audioContext,
         this.masterGain,
       );
-      console.log(
+      debugLog(
         '[SongBank] WorkletPool initialized for efficient resource usage',
       );
     }
@@ -516,27 +517,27 @@ export class TrackerSongBank implements TrackerSink {
   private syncInProgress = false;
 
   async syncSlots(slots: SongBankSlot[]): Promise<void> {
-    console.log(`[SongBank] syncSlots called with ${slots.length} slots`);
-    console.log(
+    debugLog(`[SongBank] syncSlots called with ${slots.length} slots`);
+    debugLog(
       `[SongBank] Current instruments before sync: [${Array.from(this.instruments.keys()).join(', ')}]`,
     );
-    console.log(`[SongBank] AudioContext state: ${this.audioContext.state}`);
-    console.log(
+    debugLog(`[SongBank] AudioContext state: ${this.audioContext.state}`);
+    debugLog(
       `[SongBank] MasterGain connected: ${this.masterGain.numberOfOutputs > 0}, gain value: ${this.masterGain.gain.value}`,
     );
     // Verify destinationNode connection
-    console.log(
+    debugLog(
       `[SongBank] AudioSystem destinationNode outputs: ${this.audioSystem.destinationNode.numberOfOutputs}`,
     );
 
     // Prevent concurrent syncs - wait for previous sync to complete
     if (this.syncInProgress) {
-      console.log('[SongBank] Sync already in progress, waiting...');
+      debugLog('[SongBank] Sync already in progress, waiting...');
       // Wait for the current sync to finish (poll every 50ms)
       while (this.syncInProgress) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
-      console.log('[SongBank] Previous sync completed, proceeding');
+      debugLog('[SongBank] Previous sync completed, proceeding');
     }
 
     this.syncInProgress = true;
@@ -563,7 +564,7 @@ export class TrackerSongBank implements TrackerSink {
       const wantedIds = new Set(nextDesired.keys());
       for (const [id] of this.instruments.entries()) {
         if (!wantedIds.has(id)) {
-          console.log(`[SongBank] Tearing down unwanted instrument: ${id}`);
+          debugLog(`[SongBank] Tearing down unwanted instrument: ${id}`);
           this.lifecycle.teardownInstrument(id);
         }
       }
@@ -589,7 +590,7 @@ export class TrackerSongBank implements TrackerSink {
 
       if (this.resumeFlags.wasSuspended && this.audioContext.state === 'running') {
         // Recreate instruments after a resume to avoid stale worklet state
-        console.log('[SongBank] Disposing all instruments after resume');
+        debugLog('[SongBank] Disposing all instruments after resume');
         this.disposeInstruments();
         this.resumeFlags.wasSuspended = false;
       }
@@ -604,19 +605,19 @@ export class TrackerSongBank implements TrackerSink {
       // queue the event and ensureInstrumentIfDesired()-build it on demand,
       // replaying via flushPendingScheduledEvents once it's ready.
       const entries = Array.from(nextDesired.entries());
-      console.log(
+      debugLog(
         `[SongBank] Loading ${entries.length} instruments in idle-scheduled slices of ${INSTRUMENT_BUILD_SLICE_SIZE}`,
       );
 
       for (let i = 0; i < entries.length; i += INSTRUMENT_BUILD_SLICE_SIZE) {
         const slice = entries.slice(i, i + INSTRUMENT_BUILD_SLICE_SIZE);
-        console.log(
+        debugLog(
           `[SongBank] Loading slice ${Math.floor(i / INSTRUMENT_BUILD_SLICE_SIZE) + 1}/${Math.ceil(entries.length / INSTRUMENT_BUILD_SLICE_SIZE)}: instruments ${slice.map(([id]) => id).join(', ')}`,
         );
 
         const ensureTasks: Promise<void>[] = [];
         for (const [instrumentId, patch] of slice) {
-          console.log(
+          debugLog(
             `[SongBank] Ensuring instrument: ${instrumentId}, patch: ${patch?.metadata?.id}`,
           );
           ensureTasks.push(this.lifecycle.ensureInstrument(instrumentId, patch));
@@ -634,10 +635,10 @@ export class TrackerSongBank implements TrackerSink {
 
       const loadedCount = this.instruments.size;
       const expectedCount = nextDesired.size;
-      console.log(
+      debugLog(
         `[SongBank] syncSlots complete: ${loadedCount}/${expectedCount} instruments loaded`,
       );
-      console.log(
+      debugLog(
         `[SongBank] Active instruments: ${Array.from(this.instruments.keys()).join(', ')}`,
       );
 
@@ -658,7 +659,7 @@ export class TrackerSongBank implements TrackerSink {
           `[SongBank] ❌ ${disconnectedCount} instruments failed to connect!`,
         );
       } else if (loadedCount === expectedCount && loadedCount > 0) {
-        console.log(
+        debugLog(
           `[SongBank] ✅ All ${loadedCount} instruments loaded and connected`,
         );
       } else if (loadedCount < expectedCount) {
@@ -675,7 +676,7 @@ export class TrackerSongBank implements TrackerSink {
         );
         this.masterGain.connect(this.audioSystem.destinationNode);
       } else {
-        console.log('[SongBank] ✅ Master gain connected to destination');
+        debugLog('[SongBank] ✅ Master gain connected to destination');
       }
 
       // Try to flush any scheduled events that were queued while suspended/loading
@@ -701,7 +702,7 @@ export class TrackerSongBank implements TrackerSink {
     if (this.workletPool) {
       this.workletPool.dispose();
       this.workletPool = null;
-      console.log('[SongBank] WorkletPool disposed');
+      debugLog('[SongBank] WorkletPool disposed');
     }
   }
 
@@ -1041,7 +1042,7 @@ export class TrackerSongBank implements TrackerSink {
     midi: number,
     velocity = 100,
   ) {
-    console.log(
+    debugLog(
       `[SongBank] previewNoteOn: inst=${instrumentId}, midi=${midi}, vel=${velocity}`,
     );
     if (this.audioContext.state === 'suspended') {
@@ -1232,7 +1233,7 @@ export class TrackerSongBank implements TrackerSink {
    * Ensures all voice gains are at 1, gates are at 0, and connections are intact.
    */
   resetForPlayback() {
-    console.log('[SongBank] resetForPlayback: resetting all instruments');
+    debugLog('[SongBank] resetForPlayback: resetting all instruments');
     for (const [id, active] of this.instruments.entries()) {
       // Reset all voice gains to 1
       active.instrument.setGainForAllVoices(1);
@@ -1247,7 +1248,7 @@ export class TrackerSongBank implements TrackerSink {
 
       // Log state for debugging
       const outputGain = (active.instrument.outputNode as GainNode).gain.value;
-      console.log(
+      debugLog(
         `[SongBank] resetForPlayback: ${id} outputGain=${outputGain}, connected=${active.instrument.outputNode.numberOfOutputs > 0}`,
       );
     }
@@ -1821,7 +1822,7 @@ export class TrackerSongBank implements TrackerSink {
    * every existing AudioWorklet before instantiating the next set.
    */
   resetForNewSong(): void {
-    console.log(
+    debugLog(
       '[SongBank] Resetting for new song (disposing all instruments)',
     );
     this.generation += 1;
@@ -1833,7 +1834,7 @@ export class TrackerSongBank implements TrackerSink {
     // Reset pool allocations but keep worklets alive for reuse
     if (this.workletPool) {
       this.workletPool.resetAllocations();
-      console.log(
+      debugLog(
         '[SongBank] WorkletPool allocations reset (worklets kept alive for reuse)',
       );
     }

@@ -13,6 +13,7 @@ import {
   AhxSongTransport,
   type PlaybackMode,
 } from 'src/audio/tracker/ahx-song-transport';
+import { debugLog } from 'src/diagnostics/debug-log';
 
 export type { PlaybackMode };
 
@@ -490,12 +491,12 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     skipIfPlaying: boolean = false,
     startSequenceIndex: number | null = null,
   ): Promise<boolean> {
-    console.log(`[PlaybackStore] loadSong called: mode=${mode}, skipIfPlaying=${skipIfPlaying}, isPlaying=${isPlaying.value}, isPaused=${isPaused.value}, hasSongLoaded=${hasSongLoaded.value}`);
-    console.log(`[PlaybackStore] Song has ${song.sequence.length} patterns, ${song.bpm} BPM`);
+    debugLog(`[PlaybackStore] loadSong called: mode=${mode}, skipIfPlaying=${skipIfPlaying}, isPlaying=${isPlaying.value}, isPaused=${isPaused.value}, hasSongLoaded=${hasSongLoaded.value}`);
+    debugLog(`[PlaybackStore] Song has ${song.sequence.length} patterns, ${song.bpm} BPM`);
 
     // If already playing/paused and skipIfPlaying is set, don't disturb the current playback
     if (skipIfPlaying && (isPlaying.value || isPaused.value) && hasSongLoaded.value) {
-      console.log('[PlaybackStore] Skipping load - playback active and skipIfPlaying=true');
+      debugLog('[PlaybackStore] Skipping load - playback active and skipIfPlaying=true');
       return true;
     }
 
@@ -514,7 +515,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // Re-applied on every load: setLoopSong may have been called before this
     // engine existed, and a fresh engine defaults to looping.
     engine.setLoopSong(loopSong.value);
-    console.log('[PlaybackStore] Loading song into engine...');
+    debugLog('[PlaybackStore] Loading song into engine...');
     const sequenceIndex = startSequenceIndex ?? resolveStartSequenceIndex(song);
     // The bank needs the format too: it decides whether a new note on a track
     // cuts the previous one (a module channel is monophonic) or releases it
@@ -525,11 +526,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       song.amigaLimits,
     );
     engine.loadSong(song, sequenceIndex);
-    console.log('[PlaybackStore] Preparing instruments...');
+    debugLog('[PlaybackStore] Preparing instruments...');
     await engine.prepareInstruments();
     hasSongLoaded.value = true;
     recordLastSong(song, mode);
-    console.log('[PlaybackStore] Song loaded successfully');
+    debugLog('[PlaybackStore] Song loaded successfully');
 
     return true;
   }
@@ -557,7 +558,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     startRow: number = 0,
     startSequenceIndex: number | null = null,
   ): Promise<void> {
-    console.log(
+    debugLog(
       `[PlaybackStore] play() called: mode=${mode}, startRow=${startRow}, startSequenceIndex=${startSequenceIndex ?? 'auto'}`,
     );
     if (song.moduleFormat === 'ahx') return ahx.playAhx(song, mode, startRow, startSequenceIndex);
@@ -572,7 +573,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // Stop any existing playback
     suppressPositionUpdates = true;
     if (playbackEngineInstance) {
-      console.log('[PlaybackStore] Stopping existing playback');
+      debugLog('[PlaybackStore] Stopping existing playback');
       playbackEngineInstance.stop();
     }
     suppressPositionUpdates = false;
@@ -599,13 +600,13 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     const engine = ensureEngine();
 
     // Configure and start
-    console.log(`[PlaybackStore] Starting playback: bpm=${song.bpm}`);
+    debugLog(`[PlaybackStore] Starting playback: bpm=${song.bpm}`);
     engine.setBpm(song.bpm);
     // Pattern lengths travel on the Song itself now; no song-level override.
     engine.seek(startRow);
 
     await engine.play();
-    console.log('[PlaybackStore] Playback started');
+    debugLog('[PlaybackStore] Playback started');
   }
 
   /**
