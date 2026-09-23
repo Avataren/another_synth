@@ -138,3 +138,51 @@ and the import/re-export lines.
 | artifacts | `npm run check:artifacts` | 0 |
 
 Not pushed, not merged.
+
+## Landing record (2026-09-23, landed by run e5be76e6)
+
+Merged `agent/effect-split-0923a` into main with `git merge --no-ff` from the main tree.
+Merge sha: **b6acbc0a** (`b045e5af..b6acbc0a main -> main`, pushed, no force).
+Merged tree hash `59bc0ba7…` is byte-identical to the reviewed tip `d88f2500`'s tree — the merge
+contains exactly the reviewed content. Note: local main had moved one commit past the review base
+b045e5af to 63fbb1ca (the plan-first commit for this very plan file, authored 11:45 today); it is an
+ancestor of the branch (branch merge-base = main tip), origin/main was still b045e5af with no foreign
+pushes, so the merge was conflict-free by construction. 63fbb1ca went out with the same push.
+
+Review PASS reference: PASS on d88f2500 — verbatim-move line-multiset proof with only 13 benign lines
+(export keywords, file headers, import/re-export lines), extraction 2454 → 1896 + 413 + 170, acyclic
+import graph, zero consumer churn, no API leakage, gates 241/3922.
+
+### Gates (merged main, tree 59bc0ba7…; logs /tmp/gate-*.log)
+
+| Gate | Command | Exit |
+|---|---|---|
+| tests | `npm run test:run` | 0 (241 files / 3922 tests passed) |
+| lint | `npm run lint` | 0 |
+| types | `npx vue-tsc --noEmit` | 0 |
+| secrets | `gitleaks detect --no-git` | 0 (no leaks found) |
+| artifacts | `npm run check:artifacts` | 0 (worklets and wasm match their sources) |
+
+### Deploy proof
+
+`bash scripts/deploy.sh` → avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth, exit 0,
+script self-verified ("Deployed and verified (a8bac153cdb80bc32e4bfaac155e1eef)" — index.html md5).
+Independent md5 spot-check local (dist/spa) ↔ remote, all identical:
+- index.html a8bac153cdb80bc32e4bfaac155e1eef
+- demos/index.json 932613b4b8ce6b5e61448f0ada9a32eb
+- wasm/audio_processor_bg.wasm e52bf5a9cd4f38e458532726f86e3f67
+- worklets/effects-worklet.js ea0b2d2be2fd5dd6ec9a6a6ccb5c5e71
+
+### Caveat: wasm rebuild is NOT byte-stable in this environment
+
+This branch touches no rust-wasm/. The deploy-time `build:wasm` ran against the identical source set
+(SOURCE_HASH.json sourceHash 5c9e359d…, 75 files, unchanged) but produced a different wasm sha256 than
+the committed artifact (a9f17cab… vs committed 61a0c69e…). An identical phenomenon was observed at 09:41
+today (same source hash, different output bytes, same file size); both pre-date and are unaffected by this
+branch. The deployed wasm was built from exactly the reviewed sources, so it is source-correct, but the
+byte-stability assumption for wasm rebuilds is empirically false here — likely nondeterministic
+wasm-pack/wasm-bindgen output. The rebuild artifacts (demos/index.json timestamp, SOURCE_HASH.json, wasm
+bytes) were stashed, not committed: `git stash list` → "post-deploy-p4: deploy-time wasm rebuild artifacts…"
+and "pre-land-p4: local wasm/demo rebuild artifacts 0941". Worth a follow-up if byte-stable wasm deploys matter.
+
+Landed, pushed, deployed.
