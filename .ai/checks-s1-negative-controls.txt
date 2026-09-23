@@ -1,0 +1,93 @@
+== MUTANT: sync on any MSB change (not only rising)  (voice.rs: s/self.msb_rising = self.prev_acc \& MSB == 0 \&\& self.acc \& MSB != 0;/self.msb_rising = (self.prev_acc ^ self.acc) \& MSB != 0;/)
+test sid::tests::chained_sync_a_reset_source_does_not_propagate_its_rise ... FAILED
+test sid::tests::sync_resets_on_the_source_msb_rising_edge_only ... FAILED
+test sid::tests::sync_destination_held_by_test_bit ... FAILED
+test sid::tests::sync_source_wrap_vs_destination_wrap ... FAILED
+test sid::tests::test_bit_on_a_source_with_msb_set_does_not_sync ... FAILED
+test result: FAILED. 57 passed; 5 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.70s
+error: test failed, to rerun pass `--lib`
+== MUTANT: no chain rule for sync  (chip.rs: s/if sync \&\& !raw\[source_of(i)\] {/if sync {/)
+test sid::tests::chained_sync_a_reset_source_does_not_propagate_its_rise ... FAILED
+test result: FAILED. 61 passed; 1 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.70s
+error: test failed, to rerun pass `--lib`
+== MUTANT: ring fold without NOT  (waveform.rs: s/triangle_folded(acc, own ^ !src)/triangle_folded(acc, own ^ src)/)
+test sid::tests::ring_mod_follows_the_live_source_msb_every_cycle ... FAILED
+test sid::tests::ring_mod_truth_table_through_the_chip ... FAILED
+test sid::waveform::tests::ring_mod_truth_table ... FAILED
+test result: FAILED. 59 passed; 3 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.71s
+error: test failed, to rerun pass `--lib`
+== MUTANT: S0 >= rate compare (no ADSR delay bug)  (envelope.rs: s/if self.rate_counter != self.period() {/if self.rate_counter < self.period() {/)
+test sid::tests::adsr_delay_bug_from_the_15_bit_rate_counter ... FAILED
+test result: FAILED. 61 passed; 1 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.71s
+error: test failed, to rerun pass `--lib`
+== MUTANT: S0 sustain floor compare  (envelope.rs: s/(self.stage == Stage::DecaySustain \&\& self.level == self.sustain \* 17)/(self.stage == Stage::DecaySustain \&\& self.level <= self.sustain * 17)/)
+test sid::tests::sustain_is_an_equality_compare ... FAILED
+test result: FAILED. 61 passed; 1 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.71s
+error: test failed, to rerun pass `--lib`
+== MUTANT: no noise write-back  (noise.rs: s/self.reg \&= !(1 << from);/let _ = from;/)
+test sid::noise::tests::write_back_clears_exactly_the_low_taps ... FAILED
+test sid::tests::noise_combined_with_a_low_pulse_locks_up_until_test ... FAILED
+test result: FAILED. 60 passed; 2 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.71s
+error: test failed, to rerun pass `--lib`
+== MUTANT: TEST does not reset noise  (voice.rs: s/            self.noise.test_reset();/            {}/)
+test sid::tests::test_bit_resets_noise_and_its_phase_to_the_oscillator ... FAILED
+test sid::tests::noise_combined_with_a_low_pulse_locks_up_until_test ... FAILED
+test result: FAILED. 60 passed; 2 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.71s
+error: test failed, to rerun pass `--lib`
+== MUTANT: TEST does not force pulse high  (waveform.rs: s/if control \& TEST != 0 { 0xFFF } else { pulse(acc, pw) }/pulse(acc, pw)/)
+test sid::tests::test_bit_holds_the_pulse_output_high ... FAILED
+test sid::waveform::tests::test_bit_forces_pulse_high_and_nothing_else ... FAILED
+test result: FAILED. 60 passed; 2 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.71s
+error: test failed, to rerun pass `--lib`
+== MUTANT: 3OFF ignored  (chip.rs: s/} else if i != 2 || voice3_direct {/} else if i != 2 || voice3_direct || true {/)
+test sid::tests::voice3_off_mutes_only_the_direct_voice_3 ... FAILED
+test result: FAILED. 61 passed; 1 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.71s
+error: test failed, to rerun pass `--lib`
+== MUTANT: combined = OR instead of AND  (waveform.rs: s/out \&= sawtooth(acc);/out |= sawtooth(acc);/)
+test sid::tests::combined_waveforms_through_osc3 ... FAILED
+test sid::tests::accumulator_and_osc3_golden_trace ... FAILED
+test sid::tests::ring_mod_truth_table_through_the_chip ... FAILED
+test sid::waveform::tests::combined_waveforms_are_the_wired_and ... FAILED
+test sid::tests::waveform_zero_holds_the_last_output ... FAILED
+test sid::waveform::tests::ring_mod_truth_table ... FAILED
+test sid::waveform::tests::test_bit_forces_pulse_high_and_nothing_else ... FAILED
+test sid::tests::osc3_env3_reflect_voice_3_only ... FAILED
+test sid::tests::filt_bits_are_per_voice ... FAILED
+test sid::tests::filt_bits_route_voices_through_the_filter ... FAILED
+test sid::tests::rendered_a4_saw_is_440_hz_at_44_1_and_48_khz ... FAILED
+test sid::tests::saw_harmonics_match_ideal_minus_decimator_droop ... FAILED
+test sid::tests::s0_bin_grid_estimator_reproduces_the_scalloping_first_cause ... FAILED
+test result: FAILED. 49 passed; 13 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.09s
+error: test failed, to rerun pass `--lib`
+== MUTANT: waveform 0 outputs midpoint  (voice.rs: 0,/if let Some(w) = self.select(model, source_acc) {/s//self.wave = 0x800; if let Some(w) = self.select(model, source_acc) {/)
+test result: ok. 62 passed; 0 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.72s
+== MUTANT: wrong sync source (i+1)  (chip.rs: s/(i + 2) % 3/(i + 1) % 3/)
+test sid::tests::chained_sync_a_reset_source_does_not_propagate_its_rise ... FAILED
+test sid::tests::ring_mod_truth_table_through_the_chip ... FAILED
+test sid::tests::sync_holds_a_zero_frequency_destination_at_zero ... FAILED
+test sid::tests::sync_resets_on_the_source_msb_rising_edge_only ... FAILED
+test sid::tests::sync_source_wrap_vs_destination_wrap ... FAILED
+test sid::tests::every_voice_syncs_to_its_datasheet_source ... FAILED
+test sid::tests::sync_destination_held_by_test_bit ... FAILED
+test sid::tests::test_bit_on_a_source_with_msb_set_does_not_sync ... FAILED
+test sid::tests::sync_source_held_by_test_bit_locks_out_the_sync ... FAILED
+test result: FAILED. 53 passed; 9 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.71s
+error: test failed, to rerun pass `--lib`
+== MUTANT: decimator: first cycle only (no boxcar)  (chip.rs: s/let x = s \/ n.max(1) as f64;/let x = self.voices[i].output() * 0.0 + s \/ n.max(1) as f64 * if n > 0 { 1.0 } else { 0.0 } + 0.02 * (i as f64);/)
+test sid::tests::voice3_off_mutes_only_the_direct_voice_3 ... FAILED
+test sid::tests::filt_bits_route_voices_through_the_filter ... FAILED
+test result: FAILED. 60 passed; 2 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.74s
+error: test failed, to rerun pass `--lib`
+RESTORED
+-- the 'waveform 0 outputs midpoint' mutant above was mis-targeted (sed hit the noise write-back select, not the latch); the 'decimator' mutant above injected DC instead of removing the boxcar. Redone properly:
+== MUTANT (redo): waveform 0 outputs midpoint (latch)  (voice.rs)
+test sid::tests::waveform_zero_holds_the_last_output ... FAILED
+test sid::tests::osc3_env3_reflect_voice_3_only ... FAILED
+test result: FAILED. 60 passed; 2 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.72s
+error: test failed, to rerun pass `--lib`
+== MUTANT (redo): point-sample decimation (no boxcar average)  (chip.rs)
+test sid::tests::saw_harmonics_match_ideal_minus_decimator_droop ... FAILED
+test sid::tests::s0_bin_grid_estimator_reproduces_the_scalloping_first_cause ... FAILED
+test result: FAILED. 60 passed; 2 failed; 0 ignored; 0 measured; 120 filtered out; finished in 1.72s
+error: test failed, to rerun pass `--lib`
+RESTORED

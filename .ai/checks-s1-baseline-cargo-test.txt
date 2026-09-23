@@ -1,0 +1,581 @@
+$ cargo test --features native-host --no-fail-fast   (rust-wasm/, native)
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:119:35
+    |
+119 |         let safe_ms = ms.max(f32::EPSILON * 1000.0); // Ensure positive
+    |                                   ^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:286:32
+    |
+286 |             envelope_l += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:293:32
+    |
+293 |             envelope_r += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: function `port_id_from_u32` is never used
+  --> src/audio_engine/patch_loader.rs:25:8
+   |
+25 | pub fn port_id_from_u32(value: u32) -> PatchLoaderResult<PortId> {
+   |        ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `modulation_type_from_i32` is never used
+  --> src/audio_engine/patch_loader.rs:59:8
+   |
+59 | pub fn modulation_type_from_i32(value: i32) -> PatchLoaderResult<ModulationType> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `modulation_transform_from_i32` is never used
+  --> src/audio_engine/patch_loader.rs:69:8
+   |
+69 | pub fn modulation_transform_from_i32(value: i32) -> PatchLoaderResult<ModulationTransformation> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `filter_type_from_i32` is never used
+  --> src/audio_engine/patch_loader.rs:80:8
+   |
+80 | pub fn filter_type_from_i32(value: i32) -> PatchLoaderResult<FilterType> {
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `find_node_id` is never used
+  --> src/audio_engine/patch_loader.rs:96:8
+   |
+96 | pub fn find_node_id(voice_layout: &PatchVoiceLayout, node_type: &str) -> Option<String> {
+   |        ^^^^^^^^^^^^
+
+warning: function `parse_audio_asset_id` is never used
+   --> src/audio_engine/patch_loader.rs:105:8
+    |
+105 | pub fn parse_audio_asset_id(asset_id: &str) -> Option<(String, String)> {
+    |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `ensure_gate_buffer_len`, `ensure_frequency_buffer_len`, `set_gate_buffer`, and `set_frequency_buffer` are never used
+   --> src/automation.rs:205:8
+    |
+ 31 | impl AutomationFrame {
+    | -------------------- methods in this implementation
+...
+205 |     fn ensure_gate_buffer_len(&mut self, target_len: usize) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+...
+215 |     fn ensure_frequency_buffer_len(&mut self, target_len: usize) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+239 |     fn set_gate_buffer(&mut self, voice_index: usize, values: &[f32]) {
+    |        ^^^^^^^^^^^^^^^
+...
+273 |     fn set_frequency_buffer(&mut self, voice_index: usize, values: &[f32]) {
+    |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::*`
+    --> src/audio_engine/native.rs:1537:9
+     |
+1537 |     use super::*;
+     |         ^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `Connection`, `ModulationTransformation`, and `ModulationType`
+    --> src/audio_engine/native.rs:1538:24
+     |
+1538 |     use crate::graph::{Connection, ModulationTransformation, ModulationType};
+     |                        ^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+
+warning: unused imports: `AnalogOscillator` and `Mixer`
+    --> src/audio_engine/native.rs:1539:24
+     |
+1539 |     use crate::nodes::{AnalogOscillator, Mixer};
+     |                        ^^^^^^^^^^^^^^^^  ^^^^^
+
+warning: unused import: `crate::PortId`
+    --> src/audio_engine/native.rs:1540:9
+     |
+1540 |     use crate::PortId;
+     |         ^^^^^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+    --> src/audio_engine/native.rs:1541:9
+     |
+1541 |     use uuid::Uuid;
+     |         ^^^^^^^^^^
+
+warning: `audio_processor` (lib) generated 10 warnings
+warning: `audio_processor` (lib test) generated 14 warnings (9 duplicates) (run `cargo fix --lib -p audio_processor --tests` to apply 5 suggestions)
+warning: variable does not need to be mutable
+   --> tests/ahx_replace.rs:218:10
+    |
+218 |     let (mut a, mut b, mut c) = (
+    |          ----^
+    |          |
+    |          help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `audio_processor` (test "ahx_replace") generated 1 warning (run `cargo fix --test "ahx_replace" -p audio_processor` to apply 1 suggestion)
+warning: unused dependency `anyhow`
+  --> Cargo.toml:46:1
+   |
+46 | anyhow = "1.0.93"
+   | ^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::unused_dependencies` is set to `warn` by default
+help: consider removing the dependency on `anyhow`
+warning: unused dependency `base64`
+  --> Cargo.toml:41:1
+   |
+41 | base64 = "0.22"
+   | ^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `base64`
+warning: unused dependency `cpal`
+  --> Cargo.toml:45:1
+   |
+45 | cpal = { version = "0.16.0", optional = true, features = ["jack"] }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `cpal`
+warning: unused dependency `hound`
+  --> Cargo.toml:39:1
+   |
+39 | hound = "3.5.1"
+   | ^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `hound`
+help: to still use for development builds, move to `dev-dependencies`
+warning: unused dependency `rayon`
+  --> Cargo.toml:48:1
+   |
+48 | rayon = { version = "1.10.0", optional = true }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `rayon`
+warning: unused dependency `rubato`
+  --> Cargo.toml:51:1
+   |
+51 | rubato = "0.16.2"
+   | ^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `rubato`
+warning: unused dependency `serde_path_to_error`
+  --> Cargo.toml:36:1
+   |
+36 | serde_path_to_error = "0.1.16"
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `serde_path_to_error`
+warning: unused dependency `serde-wasm-bindgen`
+  --> Cargo.toml:33:1
+   |
+33 | serde-wasm-bindgen = { version = "0.6.5", optional = true }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `serde-wasm-bindgen`
+warning: unused dependency `web-sys`
+  --> Cargo.toml:32:1
+   |
+32 | web-sys = { version = "0.3.81", features = ["Window", "Crypto", "console", "Performance"], optional = true }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `web-sys`
+warning: `audio_processor` (manifest) generated 9 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/lib.rs (target/debug/build/audio_processor/c2aa128425eb2c43/out/audio_processor-c2aa128425eb2c43)
+
+running 120 tests
+test ahx::engine::tests::effect_c_tier_1_sets_this_voices_note_volume_only ... ok
+test ahx::engine::tests::effect_c_tier_3_sets_only_this_voices_master_volume ... ok
+test ahx::engine::tests::effect_c_gap_between_tiers_is_ignored ... ok
+test ahx::engine::tests::effect_c_tier_2_broadcasts_master_volume_to_every_voice ... ok
+test ahx::engine::tests::filter_override_routes_by_range ... ok
+test ahx::engine::tests::fineslide_wraps_like_an_int16_member ... ok
+test ahx::engine::tests::misc_flags_override_transpose_needs_version_1 ... ok
+test ahx::engine::tests::pattern_break_beyond_track_length_restarts_at_row_zero ... ok
+test ahx::engine::tests::speed_zero_ends_the_song ... ok
+test ahx::envelope::tests::a_release_after_no_attack_or_decay_swings_negative ... ok
+test ahx::envelope::tests::attack_reaches_exact_target_volume_on_last_frame ... ok
+test ahx::envelope::tests::hard_cut_release_ramps_to_instrument_release_target ... ok
+test ahx::envelope::tests::zero_frame_phase_snaps_immediately_on_next_step ... ok
+test ahx::envelope::tests::sustain_holds_volume_while_counting_down ... ok
+test ahx::filter_sweep::tests::trigger_starts_centered_with_swapped_bounds_if_needed ... ok
+test ahx::filter_sweep::tests::walk_bounces_between_bounds_after_init_slides_in ... ok
+test ahx::filter_sweep::tests::walk_clamps_final_position_to_1_63 ... ok
+test ahx::hifi::tests::a_partial_exactly_at_nyquist_is_dropped ... ok
+test ahx::hifi::tests::a_locked_miss_with_nothing_coarser_falls_back_to_the_reference ... ok
+test ahx::hifi::tests::level_ladder_runs_from_full_band_to_one_partial ... ok
+test ahx::player::tests::deinterleave_splits_channels_and_applies_gain ... ok
+test ahx::hifi::tests::a_level_has_no_energy_above_its_partial_count ... ok
+test ahx::player::tests::i16_conversion_hits_the_full_scale_endpoints_exactly ... ok
+test ahx::plist::tests::command_0_prefers_pending_ignore_value ... ok
+test ahx::plist::tests::command_15_sets_perf_speed_and_wait ... ok
+test ahx::plist::tests::command_12_tiers_route_to_the_right_field ... ok
+test ahx::hifi::tests::table_size_follows_the_level_ladder ... ok
+test ahx::hifi::tests::table_size_clamps_at_both_ends ... ok
+test ahx::player::tests::deinterleave_stops_at_the_shortest_buffer_and_leaves_the_rest ... ok
+test ahx::plist::tests::command_0_sets_filter_pos_directly ... ok
+test ahx::plist::tests::command_4_zero_param_toggles_square_positive ... ok
+test ahx::plist::tests::command_4_high_nibble_f_toggles_filter_negative ... ok
+test ahx::plist::tests::command_7_out_of_range_turns_ring_off ... ok
+test ahx::plist::tests::command_7_fixed_period_sets_ring_triangle ... ok
+test ahx::plist::tests::command_8_relative_period_sets_ring_sawtooth ... ok
+test ahx::plist::tests::command_9_sets_pan_from_signed_byte ... ok
+test ahx::voice::tests::calc_period_negative_vibrato_is_signed_mod_2_16 ... ok
+test ahx::voice::tests::calc_period_wraps_int16_intermediates_like_the_reference ... ok
+test ahx::voice::tests::phase_continue_does_not_touch_the_ring_position ... ok
+test ahx::voice::tests::trigger_clears_ring_mix_but_keeps_ring_audio_source ... ok
+test ahx::voice::tests::trigger_resets_expected_fields ... ok
+test ahx::voice::tests::wave_length_above_five_is_clamped_not_ub ... ok
+test ahx::waveform::tests::filter_row_geometry_puts_the_unfiltered_block_between_lowpass_and_highpass ... ok
+test ahx::waveform::tests::waves_size_matches_reference_macro ... ok
+test audio_engine::patch_loader::tests::test_parse_audio_asset_id ... ok
+test audio_engine::patch_loader::tests::test_parse_node_id ... ok
+test ahx::hifi::tests::level_choice_never_lets_a_partial_pass_nyquist ... ok
+test audio_engine::wav_decode::tests::complete_16bit_data_keeps_the_i16_max_scale ... ok
+test audio_engine::wav_decode::tests::truncated_data_chunk_is_an_error_not_a_panic ... ok
+test biquad::biquad::tests::test_biquad_all_filter_types ... ok
+test biquad::biquad::tests::test_biquad_coeff_update_precision ... ok
+test ahx::hifi::tests::a_locked_bank_never_builds_and_degrades_to_a_duller_level ... ok
+test ahx::hifi::tests::full_band_level_reproduces_the_staircase_it_was_built_from ... ok
+test biquad::biquad::tests::test_biquad_dc_blocking ... ok
+test biquad::biquad::tests::test_biquad_denormal_prevention ... ok
+test biquad::biquad::tests::test_biquad_frequency_clamping ... ok
+test ahx::hifi::tests::locking_zeroes_the_miss_count_and_prewarm_never_evicts ... ok
+test biquad::biquad::tests::test_biquad_gain ... ok
+test ahx::hifi::tests::a_wider_table_keeps_its_cells_too ... ok
+test biquad::biquad::tests::test_biquad_process_impulse ... ok
+test biquad::biquad::tests::test_biquad_q_clamping ... ok
+test biquad::biquad::tests::test_biquad_reset ... ok
+test biquad::biquad::tests::test_biquad_stability ... ok
+test biquad::biquad::tests::test_cascaded_biquad ... ok
+test ahx::hifi::tests::table_bytes_counts_each_table_at_its_own_size ... ok
+test nodes::envelope::tests::test_envelope_creation ... ok
+test ahx::hifi::tests::silent_table_falls_back_and_equal_contents_share_levels ... ok
+test nodes::envelope::tests::test_envelope_attack_modulation ... ok
+test nodes::envelope::tests::test_envelope_gate_on_triggers_attack ... ok
+test nodes::envelope::tests::test_envelope_config_update ... ok
+test nodes::envelope::tests::test_envelope_minimum_attack_time ... ok
+test nodes::envelope::tests::test_envelope_reset ... ok
+test nodes::envelope::tests::test_envelope_attack_phase ... ok
+test nodes::envelope::tests::test_envelope_retrigger ... ok
+test nodes::envelope::tests::test_envelope_curves ... ok
+test nodes::freeverb::tests::test_allpass_filter_response ... ok
+test nodes::freeverb::tests::test_comb_filter_warmup ... ok
+test nodes::envelope::tests::test_envelope_decay_phase ... ok
+test nodes::glide::tests::glide_smooths_step_input ... ok
+test nodes::glide::tests::glide_stops_sliding_when_gate_is_off ... ok
+test nodes::glide::tests::glide_zero_time_is_passthrough ... ok
+test nodes::sampler::tests::sampler_with_default_sample_produces_output ... ok
+test utils::buffer_ops::tests::test_multiply_buffers ... ok
+test nodes::envelope::tests::test_envelope_phase_transitions_are_smooth ... ok
+test utils::curves::tests::test_boundary_values ... ok
+test utils::curves::tests::test_exponential_curve ... ok
+test utils::curves::tests::test_finite_output ... ok
+test nodes::envelope::tests::test_envelope_sustain_phase ... ok
+test utils::curves::tests::test_linear_curve ... ok
+test utils::curves::tests::test_logarithmic_curve ... ok
+test utils::curves::tests::test_monotonic_increasing ... ok
+test nodes::envelope::tests::test_envelope_is_processing_active ... ok
+test nodes::envelope::tests::test_envelope_release_phase ... ok
+test nodes::envelope::tests::test_envelope_full_cycle ... ok
+test nodes::filter_collection::tests::test_ladder_drive_effect ... ok
+test nodes::filter_collection::tests::test_ladder_self_oscillation_moog_style ... ok
+test nodes::freeverb::tests::test_freeverb_dry_only ... ok
+test ahx::hifi::tests::dc_is_preserved ... ok
+test nodes::filter_collection::tests::test_ladder_authentic_moog_distortion ... ok
+test ahx::waveform::tests::triangle_04_is_the_classic_four_point_wave ... ok
+test ahx::waveform::tests::square_first_variant_is_all_low_then_all_high ... ok
+test ahx::waveform::tests::sawtooth_04_ramps_from_negative_to_positive ... ok
+test ahx::voice::tests::plain_triangle_note_produces_nonzero_audio_period_and_volume ... ok
+test ahx::voice::tests::phase_continue_keeps_the_wave_read_position_across_a_trigger ... ok
+test ahx::engine::tests::replace_instrument_keeps_the_name_and_refuses_what_the_song_lacks ... ok
+test ahx::engine::tests::only_what_reaches_a_wave_table_counts_as_a_table_change ... ok
+test nodes::filter_collection::tests::test_ladder_stability_high_cutoff_resonance ... ok
+test nodes::envelope::tests::test_envelope_output_range ... ok
+test nodes::filter_collection::tests::test_filter_collection_lowpass_response_24db_resonance ... ok
+test ahx::engine::tests::a_table_free_edit_keeps_the_previews_warm_record_and_a_table_edit_drops_it ... ok
+test nodes::filter_collection::tests::test_filter_collection_lowpass_response_12db ... ok
+test nodes::filter_collection::tests::test_ladder_20khz_cutoff_fixed ... ok
+test nodes::freeverb::tests::test_freeverb_wet_only_warmup ... ok
+test nodes::filter_collection::tests::test_resonance_compensation ... ok
+test nodes::noise_generator::tests::white_peak ... ok
+test nodes::noise_generator::tests::brown_peak ... ok
+test nodes::noise_generator::tests::pink_peak ... ok
+test ahx::hifi::tests::a_table_is_never_shorter_than_its_cycle ... ok
+test ahx::engine::tests::a_held_voice_survives_its_plist_being_cut_short ... ok
+test ahx::engine::tests::the_bounded_hold_builds_every_table_the_full_hold_does ... ok
+
+test result: ok. 120 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 47.16s
+
+     Running tests/ahx_capture.rs (target/debug/build/audio_processor/aa65724cc43642ad/out/ahx_capture-aa65724cc43642ad)
+
+running 7 tests
+test off_by_default_and_nothing_to_read ... ok
+test decimated_snapshot_box_averages_the_full_one ... ok
+test snapshot_is_what_the_mixer_used ... ok
+test snapshot_argument_edges ... ok
+test a_fresh_capture_reads_silence_and_rewind_clears_it ... ok
+test player_exposes_the_same_contract ... ok
+test capture_never_changes_mixed_samples ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running tests/ahx_format.rs (target/debug/build/audio_processor/ff2825a6e3e63d66/out/ahx_format-ff2825a6e3e63d66)
+
+running 11 tests
+test sunspots_hvl_header_decodes ... ok
+test sunspots_hvl_instrument_one_decodes ... ok
+test karma_ahx_every_instrument_has_a_plist ... ok
+test rejects_truncated_header ... ok
+test karma_ahx_instrument_one_decodes ... ok
+test looks_like_ahx_or_hvl_sniffs_every_fixture ... ok
+test rejects_bad_magic ... ok
+test rejects_too_short ... ok
+test hvl_corpus_decodes_with_matching_names ... ok
+test karma_ahx_header_decodes ... ok
+test karma_ahx_first_position_decodes ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ahx_hifi.rs (target/debug/build/audio_processor/09da1b0e64adf623/out/ahx_hifi-09da1b0e64adf623)
+
+running 11 tests
+test prewarm_with_hifi_off_is_a_no_op ... ok
+test hifi_setting_survives_a_rewind ... ok
+test a_low_note_is_left_essentially_alone ... ok
+test hifi_keeps_the_probe_at_the_same_pitch_and_level ... ok
+test hifi_switched_off_mid_song_rejoins_the_reference_exactly ... ok
+test a_high_probe_note_folds_back_in_the_reference_and_not_in_hifi ... ok
+test hifi_off_is_bit_identical_to_never_touching_it ... ok
+test cold_start_render_of_a_sixteen_voice_hvl_with_and_without_prewarm ... ok
+test prewarming_mid_song_changes_nothing_but_the_cache ... ok
+test robocop_iii_high_passages_fold_back_less_in_hifi ... ok
+test a_prewarmed_song_never_misses_across_laps_and_subsongs has been running for over 60 seconds
+test a_prewarmed_song_never_misses_across_laps_and_subsongs ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 116.88s
+
+     Running tests/ahx_hifi_baseline.rs (target/debug/build/audio_processor/ad5939dc8c493e01/out/ahx_hifi_baseline-ad5939dc8c493e01)
+
+running 1 test
+test hifi_render_matches_the_pinned_baseline ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.41s
+
+     Running tests/ahx_live.rs (target/debug/build/audio_processor/63e0bab36fc1579f/out/ahx_live-63e0bab36fc1579f)
+
+running 21 tests
+test playhead::instrument_0_and_missing_instruments_never_report ... ok
+test playhead::an_instrument_with_no_rows_has_no_playhead ... ok
+test note_on_is_refused_outside_preview_mode_and_for_missing_instruments ... ok
+test playhead::speed_0_runs_a_row_per_tick_like_speed_1 ... ok
+test playhead::a_shorter_list_under_a_sounding_note_keeps_the_last_row_that_ran ... ok
+test playhead::a_retrigger_restarts_at_row_0_and_stamps_the_instrument ... ok
+test playhead::speed_1_runs_a_row_per_tick_from_the_first_tick_and_parks_on_the_last ... ok
+test playhead::speed_3_holds_each_row_for_three_ticks ... ok
+test playhead::jump_reports_the_row_that_ran_not_the_one_it_jumped_to ... ok
+test playhead::the_f_speed_command_stretches_the_rows_after_it ... ok
+test a_preview_player_is_silent_until_a_note_is_played ... ok
+test the_preview_voice_is_centred ... ok
+test playhead::note_off_keeps_the_rows_running_until_the_release_is_over_then_reports_none ... ok
+test playhead::song_mode_reports_nothing_whatever_its_voices_are_doing ... ok
+test velocity_scales_the_level ... ok
+test playhead::the_player_getters_are_minus_one_and_zero_for_none_and_the_pair_otherwise ... ok
+test pitch_follows_the_note_an_octave_up_doubles_the_frequency ... ok
+test a_held_note_outlasts_the_envelope_and_a_released_one_does_not ... ok
+test hifi_is_locked_whichever_way_round_preview_and_hifi_are_switched_on ... ok
+test a_held_note_sustains_and_note_off_releases_to_silence ... ok
+test hifi_in_preview_mode_is_locked_at_once_and_note_on_prewarms_the_pressed_instrument ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.53s
+
+     Running tests/ahx_mix_lanes.rs (target/debug/build/audio_processor/0f439d3fac8bcb22/out/ahx_mix_lanes-0f439d3fac8bcb22)
+
+running 5 tests
+test mix_lanes_timing ... ignored, timing; run in --release with --nocapture
+test lanes_match_scalar_on_every_demo_hifi_off ... ok
+test lanes_match_scalar_with_voices_muted_and_soloed ... ok
+test lanes_match_scalar_at_ragged_block_sizes ... ok
+test lanes_match_scalar_on_every_demo_hifi_on has been running for over 60 seconds
+test lanes_match_scalar_on_every_demo_hifi_on ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 60.15s
+
+     Running tests/ahx_mute_solo.rs (target/debug/build/audio_processor/18fad155281832fc/out/ahx_mute_solo-18fad155281832fc)
+
+running 7 tests
+test soloing_a_voice_that_is_also_muted_is_silence_and_soloing_nothing_real_too ... ok
+test player_exposes_mute_solo ... ok
+test solo_one_is_exactly_that_voices_captured_contribution ... ok
+test a_solo_run_is_the_all_voices_run_minus_the_others_for_the_whole_song ... ok
+test muting_every_voice_is_digital_silence ... ok
+test unmuting_restores_identical_samples ... ok
+test nothing_muted_or_soloed_is_bit_identical ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+     Running tests/ahx_phase_continue.rs (target/debug/build/audio_processor/9e311472811c6c0a/out/ahx_phase_continue-9e311472811c6c0a)
+
+running 5 tests
+test the_player_exposes_the_flag_and_keeps_it_across_restart ... ok
+test flipping_the_flag_back_off_restores_the_reference_for_later_triggers ... ok
+test the_default_is_off_and_off_is_the_default_render ... ok
+test seek_stays_exact_with_the_flag_on ... ok
+test matrix_on_differs_from_off_and_is_deterministic ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.01s
+
+     Running tests/ahx_player.rs (target/debug/build/audio_processor/039b183a18d30b33/out/ahx_player-039b183a18d30b33)
+
+running 6 tests
+test garbage_input_is_an_error_not_a_panic ... ok
+test metadata_and_native_channel_count_are_exposed ... ok
+test gain_scales_and_restart_rewinds ... ok
+test paused_player_is_silent_and_does_not_advance ... ok
+test karma_planar_f32_round_trips_to_the_c_reference_hashes ... ok
+test set_hifi_on_prewarms_so_render_builds_nothing ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running tests/ahx_render_golden.rs (target/debug/build/audio_processor/4bdf283080227990/out/ahx_render_golden-4bdf283080227990)
+
+running 38 tests
+test corpus_reaches_both_song_end_paths ... ok
+test ahx_stereo_modes_produce_distinct_audio ... ok
+test hvl_ignores_the_defstereo_argument ... ok
+test manifest_covers_every_fixture ... FAILED
+test panning_tables_match_reference_bit_for_bit ... ok
+test drainage_proble_plays_all_seven_channels ... ok
+test default_pan_repeats_left_right_right_left_per_group_of_four ... ok
+test default_channel_count_follows_the_song ... ok
+test corpus_exercises_every_voice_feature ... ok
+test every_hvl_fixture_plays_its_native_channels_by_default ... ok
+test manifest_and_goldens_agree ... ok
+test zero_channel_cap_is_rejected ... ok
+test waves_table_matches_reference_bit_for_bit ... ok
+test karma_first_row_is_audible_and_not_clipped_flat ... ok
+test render_is_independent_of_block_size ... ok
+test melodious_matches_reference ... ok
+test a_new_beginning_matches_reference ... ok
+test luminous_matches_reference ... ok
+test i_love_holy_daze_matches_reference ... ok
+test blue_mazda_323_matches_reference ... ok
+test countdown_to_nil_matches_reference ... ok
+test wave_stepper_matches_reference ... ok
+test the_fugitive_matches_reference ... ok
+test brain_artifice_matches_reference ... ok
+test newsong_matches_reference ... ok
+test a_new_beginning_ii_matches_reference ... ok
+test robocop_iii_j_tel_matches_reference ... ok
+test thats_the_wave_it_is_matches_reference ... ok
+test blondie_matches_reference ... ok
+test depressed_matches_reference ... ok
+test get_to_the_chopper_matches_reference ... ok
+test illuminated_matches_reference ... ok
+test sliding_away_matches_reference ... ok
+test drainage_proble_matches_reference ... ok
+test sunspots_matches_reference ... ok
+test doobrey_gubbins_matches_reference ... ok
+test karma_ahx_matches_reference_across_rates_and_stereo_modes ... ok
+test moderate_sellotaping_matches_reference ... ok
+
+failures:
+
+---- manifest_covers_every_fixture stdout ----
+
+thread 'manifest_covers_every_fixture' (1339467) panicked at tests/ahx_render_golden.rs:419:5:
+assertion `left == right` failed: fixture corpus changed size: ["(iridion 0.5)q22.ahx", "64k_is_all_you_need.ahx", "8bit_fall.ahx", "a_little_cyberfunk.hvl", "a_new_beginning.ahx", "a_new_beginning_ii.ahx", "aces_high.ahx", "afternoon voyage iii.ahx", "afterstorm.hvl", "all_that_she_wants.ahx", "aufwiedersehenmonty.ahx", "bill_buys_a_hoover.ahx", "blondie.ahx", "blue_mazda_323.ahx", "brain_artifice.ahx", "bubble_bobble.ahx", "carpe_noctem_theme.ahx", "cats_on_the_catwalk.ahx", "classic_cracktro.ahx", "countdown_to_nil.ahx", "cruisin.ahx", "depressed.ahx", "digital_retribution.ahx", "disco_zax_drax.ahx", "doobrey_gubbins.hvl", "drainage_proble.hvl", "dreamer.ahx", "dreams_odyssee.ahx", "drop_table.hvl", "einlauf (outrun).ahx", "envy_of_myra.ahx", "epic.ahx", "everlasting_heroes_hey!.ahx", "explodingfist.ahx", "fame.ahx", "finalfantasy2.ahx", "forsaken.hvl", "galactic_emeralds.hvl", "gates.ahx", "get_to_the_chopper.ahx", "ghostbusters.ahx", "gone (filtered).ahx", "goodtimes.ahx", "hexplosion.hvl", "i_love_holy_daze.ahx", "illuminated.hvl", "incognito_crust.hvl", "joyous.ahx", "karma.ahx", "kids.ahx", "klisje paa klisje.ahx", "lanterns.hvl", "lets_go.ahx", "lightforce_trainer.ahx", "luminous.ahx", "magical shower.ahx", "magneto_crack.ahx", "master_cracker.ahx", "melodious.ahx", "meltwater_10ch.hvl", "mid day action.ahx", "mijikai_tobikomi.hvl", "moderate_sellotaping.hvl", "my frend is a dick because he told me 4th channel is a lie.ahx", "newsong.ahx", "nightmar3.ahx", "nyrmodian_cityscape.ahx", "outcast.ahx", "pilgrim.ahx", "platou.ahx", "purple-shades.ahx", "quite_classic.ahx", "ring_modulation_test_song.hvl", "robocop_iii_j_tel.ahx", "running.ahx", "shut_up_and_calculate.ahx", "sliding_away.hvl", "stormlord (hardcut).ahx", "streets.ahx", "strobulation.ahx", "sundown.ahx", "sunspots.hvl", "sweeties.hvl", "tattoo in the armpit.ahx", "thats_the_wave_it_is.ahx", "the floor is moving away.ahx", "the_chase.ahx", "the_fugitive.ahx", "the_magic_spoon.ahx", "therapie.ahx", "there_you_are.hvl", "top_gun_anthem.hvl", "unexpected_horse.hvl", "wave_stepper.ahx", "weekend.ahx", "winter_dreams.ahx", "yesterday_night.ahx", "yoake_no_myoujou.hvl", "zero impression.ahx"]
+  left: 99
+ right: 24
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    manifest_covers_every_fixture
+
+test result: FAILED. 37 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.04s
+
+error: test failed, to rerun pass `--test ahx_render_golden`
+     Running tests/ahx_replace.rs (target/debug/build/audio_processor/f8bae96923ff75df/out/ahx_replace-f8bae96923ff75df)
+
+running 15 tests
+test an_edit_of_an_instrument_no_step_triggers_is_recognised ... ok
+test a_preview_note_with_no_attack_and_no_decay_holds_at_silence ... ok
+test a_wire_form_of_the_wrong_length_is_refused_with_the_song_untouched ... ok
+test every_demo_instrument_survives_the_wire_form ... ok
+test an_edit_reaches_the_song_and_leaves_the_transport_where_it_was ... ok
+test a_single_instrument_edit_changes_only_what_plays_it ... ok
+test after_an_edit_the_preview_builds_what_the_new_instrument_reaches_and_never_in_render ... ok
+test an_edit_that_reaches_no_table_costs_a_hifi_song_player_no_rebuild ... ok
+test a_preview_envelope_edit_changes_the_decay_and_a_waveform_edit_changes_the_timbre ... ok
+test a_deferred_edit_the_song_refuses_owes_nothing_and_a_good_one_after_it_still_lands ... ok
+test prewarming_while_a_position_loops_ends_like_it_does_without_and_keeps_the_setting ... ok
+test the_prewarm_hold_is_reported_and_bounded ... ok
+test replacing_an_instrument_with_itself_changes_nothing_in_the_song ... ok
+test after_an_edit_a_hifi_song_player_has_the_new_instruments_tables_before_it_plays ... ok
+test a_batch_of_edits_is_one_walk_and_lands_where_one_by_one_edits_do ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.26s
+
+     Running tests/ahx_seek.rs (target/debug/build/audio_processor/cf1edb803df5a95b/out/ahx_seek-cf1edb803df5a95b)
+
+running 14 tests
+test seek_out_of_range_changes_nothing ... ok
+test seek_to_the_top_is_the_fresh_engine ... ok
+test seek_lands_on_the_first_sample_of_the_row ... ok
+test player_seek_keeps_the_play_state_and_reports_position ... ok
+test loop_position_off_again_moves_on ... ok
+test hifi_prewarm_does_not_change_which_subsong_a_seek_replays ... ok
+test seek_from_any_earlier_state_equals_seek_from_fresh ... ok
+test loop_position_is_the_reference_until_the_position_ends ... ok
+test seek_survives_mute_solo_hifi_and_capture_settings ... ok
+test pause_and_resume_is_only_a_gap ... ok
+test loop_position_repeats_one_position_on_a_running_clock ... ok
+test an_unreachable_row_starts_cold_at_that_row ... ok
+test seek_renders_exactly_what_a_full_run_renders_from_there ... ok
+test seek_is_exact_across_the_whole_corpus has been running for over 60 seconds
+test seek_is_exact_across_the_whole_corpus ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 138.44s
+
+     Running tests/automation_frame.rs (target/debug/build/audio_processor/0af83d049ad9c23e/out/automation_frame-0af83d049ad9c23e)
+
+running 1 test
+test frame_resizes_macro_buffers_for_block_length_changes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/engine_node_integration.rs (target/debug/build/audio_processor/96c3934ff37f1e4a/out/engine_node_integration-96c3934ff37f1e4a)
+
+running 5 tests
+test envelope_modulates_mixer_gain ... ok
+test glide_connection_does_not_disconnect_pitch ... ok
+test oscillator_through_mixer_and_filter_produces_audio ... ok
+test active_convolver_changes_signal ... ok
+test all_active_effects_pass_non_silent_input_without_panicking ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests/envelope_preview.rs (target/debug/build/audio_processor/d011c8bc3c0a569e/out/envelope_preview-d011c8bc3c0a569e)
+
+running 2 tests
+test envelope_preview_directly_matches_expected_shape ... ok
+test wasm_envelope_preview_contract_has_attack_decay_release ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+   Doc-tests audio_processor
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 1 target failed:
+    `--test ahx_render_golden`
+EXIT=101

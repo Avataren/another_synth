@@ -11,6 +11,7 @@ pub mod impulse_generator;
 pub mod macros;
 pub mod nodes;
 pub mod processing;
+pub mod sid;
 pub mod traits;
 pub mod utils;
 pub mod voice;

@@ -1,0 +1,23 @@
+$ rustfmt --edition 2021 --check rust-wasm/src/sid/*.rs
+error: 'rustfmt' is not installed for the toolchain 'nightly-x86_64-unknown-linux-gnu'.
+help: run `rustup component add rustfmt` to install it
+EXIT=1
+
+$ ls ~/.rustup/toolchains/*/bin/{rustfmt,cargo-clippy}
+(eval):5: no matches found: /home/openclaw/.rustup/toolchains/*/bin/rustfmt
+
+SKIPPED: rustfmt and clippy are not installed for the only toolchain (nightly-x86_64-unknown-linux-gnu).
+Not installed by this batch (environment change). Manual stand-ins below.
+
+$ awk "length > 100" rust-wasm/src/sid/*.rs   (rustfmt default max_width)
+(none above = clean)
+
+$ grep compiler warnings pointing into src/sid in the final cargo test log
+count: 0
+
+$ git diff --stat (tracked files changed outside rust-wasm/src/sid and .ai)
+ rust-wasm/src/lib.rs | 1 +
+ 1 file changed, 1 insertion(+)
+
+$ Cargo.toml / Cargo.lock untouched
+unchanged
