@@ -52,6 +52,7 @@ import {
   docFromSong,
   encodeAhxFile,
   entriesToTrack,
+  fileInstruments,
   instrumentGrowthRefusal,
   isBlankTrack,
   projectAhxPatterns,
@@ -1389,10 +1390,11 @@ export const useTrackerStore = defineStore('trackerStore', {
         );
       });
     },
-    /** What the size limit needs to know of the file besides the doc. */
+    /** What the size limit needs to know of the file besides the doc: the instruments the file will hold (an HVL doc's own). */
     ahxOpContext(): AhxOpContext {
-      const instruments = this.instrumentSlots.flatMap((slot) => (slot.ahxData ? [slot.ahxData] : []));
-      return { instrumentBytes: ahxInstrumentBytes(instruments, this.ahxDoc?.format ?? 'ahx') };
+      const doc = this.ahxDoc;
+      const instruments = doc === null ? this.instrumentSlots.flatMap((slot) => (slot.ahxData ? [slot.ahxData] : [])) : fileInstruments(doc, this.instrumentSlots);
+      return { instrumentBytes: ahxInstrumentBytes(instruments, doc?.format ?? 'ahx') };
     },
     /**
      * Writes every edited grid cell back into the doc. Idempotent, and safe to

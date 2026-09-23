@@ -1,4 +1,4 @@
-import type { AhxStep } from '@another-synth/tracker-playback';
+import type { AhxInstrument, AhxStep } from '@another-synth/tracker-playback';
 
 /** Channels of an AHX song. An HVL doc carries its own count (`docChannels`). */
 export const AHX_CHANNELS = 4;
@@ -40,9 +40,9 @@ export interface AhxDocPosition {
 
 /**
  * An AHX or HVL song's structure, as the file holds it: the model the editor
- * edits and the grid is a projection of. Instruments are not in it (they live
- * in the instrument slots, the single source of truth); `buildAhxFile` joins
- * the two.
+ * edits and the grid is a projection of. An AHX doc's instruments are not in
+ * it (they live in the instrument slots, the single source of truth);
+ * `buildAhxFile` joins the two. An HVL doc carries its own (`HvlDoc.instruments`).
  *
  * Immutable: every op returns a new doc that shares whatever it did not touch,
  * so an undo step is a reference swap. Every doc is `markRaw`-ed (Vue must not
@@ -67,6 +67,13 @@ export interface HvlDoc extends AhxDocFields {
   readonly mixgainRaw: number;
   /** Header byte 15, as stored: the stereo-separation preset (`ht_defstereo`, hvl_replay.c:407). */
   readonly defstereo: number;
+  /**
+   * The song's instruments as parsed, instrument `n` at index `n - 1`: an HVL
+   * song has no instrument slots, so `buildAhxFile` writes these. Read-only
+   * until plan-hvl-editing.md P3 decides on HVL slots (§6 risk 6: no HVL
+   * instrument editing before then); no op changes them.
+   */
+  readonly instruments: readonly AhxInstrument[];
 }
 
 interface AhxDocFields {

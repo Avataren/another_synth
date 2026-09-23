@@ -18,6 +18,8 @@ import { ahxSourceInfo, currentAhxSource, setCurrentAhxSource } from 'src/audio/
 import { ahxEditNotice, clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
   ahxEditRefusal,
+  ahxInstrumentBytes,
+  ahxUsedBytes,
   docChannels,
   HVL_NOTE_63_REASON,
   projectAhxPatterns,
@@ -182,8 +184,8 @@ for (const { file, channels } of FIXTURES) {
       expect([song.format, song.channels]).toEqual(['hvl', channels]);
       expect(song.tracks[song.positions[0]!.track[last]!]![1]).toMatchObject({ note: 27, instrument: 1 });
       // The song still has its instruments: a grid edit must not change them
-      // (RED at the P2 stop: HVL songs have no instrument slots, so
-      // `buildAhxFile` writes none — .ai/p2-stop-notes.md).
+      // (red at the P2 stop, .ai/p2-stop-notes.md: HVL songs have no instrument
+      // slots; green since the HVL doc carries its own, Option 1).
       expect(song.instrumentNr).toBe(parseAhx(bytes).instrumentNr);
       expect(song.instruments).toEqual(parseAhx(bytes).instruments);
       // Tagged as what it is: the instrument page reads HVL's own format from it.
@@ -310,6 +312,42 @@ for (const { file, channels } of FIXTURES) {
     });
   });
 }
+
+describe('an edited HVL song keeps its instruments (P2, Option 1: the doc carries them)', () => {
+  const nameOffsetOf = (b: Uint8Array): number => ((b[4] ?? 0) << 8) | (b[5] ?? 0);
+
+  it('meltwater_10ch.hvl after a grid edit on channel 10: all 10 instruments, and the file grows by the edit only', () => {
+    const bytes = demo('meltwater_10ch.hvl');
+    const source = parseAhx(bytes);
+    expect(source.instrumentNr).toBe(10);
+    const h = harness(bytes);
+    const original = h.doc();
+    // No instrument slot holds them: HVL instrument editing stays closed until P3 decides on slots.
+    expect(h.store.instrumentSlots.filter((slot) => slot.ahxData !== undefined)).toHaveLength(0);
+    // The size limit counts the doc's instruments (HVL has no slots): the source's nameOffset exactly.
+    const instrumentBytes = ahxInstrumentBytes(source.instruments.slice(1), 'hvl');
+    expect(h.store.ahxOpContext().instrumentBytes).toBe(instrumentBytes);
+    expect(ahxUsedBytes(original, instrumentBytes)).toBe(nameOffsetOf(bytes));
+
+    h.at(1, 9);
+    h.editing.handleNoteEntry(50);
+    h.store.syncAhxWriteBack();
+    const published = currentAhxSource()!;
+    expect(published).not.toBe(bytes);
+    const song = parseAhx(published);
+    expect(song.instrumentNr).toBe(10);
+    expect(song.instruments).toEqual(source.instruments);
+    // Growth = the edited track's bytes (the structure before the string
+    // table) and nothing else: the string table is the source's plus the one
+    // NUL the writer always adds after meltwater's last name (TRAILING_NAME_NUL,
+    // hvl-doc-corpus.test.ts).
+    const growth = ahxUsedBytes(h.doc(), instrumentBytes) - ahxUsedBytes(original, instrumentBytes);
+    expect(growth).toBeGreaterThan(0);
+    expect(nameOffsetOf(published) - nameOffsetOf(bytes)).toBe(growth);
+    expect(published.length - nameOffsetOf(published)).toBe(bytes.length - nameOffsetOf(bytes) + 1);
+    expect(published.length).toBe(bytes.length + 1 + growth);
+  });
+});
 
 describe('HVL edit rules leave AHX as it was', () => {
   it('an AHX step still refuses the second column and takes note 63; HVL takes the column and refuses the note', () => {

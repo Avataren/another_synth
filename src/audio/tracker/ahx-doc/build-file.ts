@@ -1,6 +1,6 @@
 import type { AhxInstrument } from '@another-synth/tracker-playback';
 import { AhxEncodeError, serializeAhx } from 'src/audio/tracker/song-export/ahx-writer';
-import { docToSong } from './doc';
+import { docToSong, PLACEHOLDER_INSTRUMENT } from './doc';
 import { toLatin1 } from './latin1';
 import type { AhxDoc } from './types';
 
@@ -27,25 +27,6 @@ export interface BuiltAhxFile {
   readonly instrumentNamesAltered: boolean;
 }
 
-const PLACEHOLDER: AhxInstrument = {
-  name: '',
-  volume: 0,
-  waveLength: 0,
-  filterLowerLimit: 0,
-  filterUpperLimit: 0,
-  filterSpeed: 0,
-  squareLowerLimit: 0,
-  squareUpperLimit: 0,
-  squareSpeed: 0,
-  vibratoDelay: 0,
-  vibratoSpeed: 0,
-  vibratoDepth: 0,
-  hardCutRelease: false,
-  hardCutReleaseFrames: 0,
-  envelope: { aFrames: 0, aVolume: 0, dFrames: 0, dVolume: 0, sFrames: 0, rFrames: 0, rVolume: 0 },
-  plist: { speed: 0, entries: [] },
-};
-
 /**
  * The name to write: the doc's own raw name when the title is still what the
  * import derived from it (trimmed, with the fallback), so edge whitespace
@@ -69,7 +50,7 @@ export function instrumentsFromSlots(slots: readonly AhxFileSlot[]): { instrumen
     if (slot.ahxData !== undefined) count = i + 1;
   });
   // Index 0 is the placeholder the parser leaves; the writer never reads it.
-  const instruments: AhxInstrument[] = [PLACEHOLDER];
+  const instruments: AhxInstrument[] = [PLACEHOLDER_INSTRUMENT];
   let namesAltered = false;
   for (let n = 1; n <= count; n++) {
     const data = slots[n - 1]?.ahxData;
@@ -84,7 +65,22 @@ export function instrumentsFromSlots(slots: readonly AhxFileSlot[]): { instrumen
 }
 
 /**
- * The file: the doc's structure, the slots' instruments and the title's name,
+ * Where the file's instruments come from: an AHX song's slots, or an HVL doc's
+ * own instruments (HVL songs have no slots until plan-hvl-editing.md P3 decides
+ * on them; the cores are wire-compatible, the writer widens the PList rows).
+ */
+export function fileInstrumentSlots(doc: AhxDoc, slots: readonly AhxFileSlot[]): readonly AhxFileSlot[] {
+  return doc.format === 'hvl' ? doc.instruments.map((ahxData) => ({ ahxData })) : slots;
+}
+
+/** The file's instruments, instrument `n` at index `n - 1`: what the size limit counts (`ahxInstrumentBytes`). */
+export function fileInstruments(doc: AhxDoc, slots: readonly AhxFileSlot[]): AhxInstrument[] {
+  return fileInstrumentSlots(doc, slots).flatMap((slot) => (slot.ahxData ? [slot.ahxData] : []));
+}
+
+/**
+ * The file: the doc's structure, the instruments (an AHX song's slots, an HVL
+ * doc's own: `fileInstrumentSlots`) and the title's name,
  * written by the one writer everything shares (Export, the `.cmod`'s `ahxFile`
  * and the engine's bytes), so they cannot disagree. A doc that came from a file
  * keeps that file's bytes as `base`, so an unedited song is written back to
@@ -92,7 +88,7 @@ export function instrumentsFromSlots(slots: readonly AhxFileSlot[]): { instrumen
  * cannot hold (a doc reached through the ops never does).
  */
 export function buildAhxFile({ doc, slots, title }: BuildAhxFileInput): BuiltAhxFile {
-  const { instruments, namesAltered } = instrumentsFromSlots(slots);
+  const { instruments, namesAltered } = instrumentsFromSlots(fileInstrumentSlots(doc, slots));
   const { name, altered } = songNameFor(doc, title);
   const song = docToSong({ ...doc, songName: name }, instruments);
   const bytes = serializeAhx(song, doc.base === undefined ? {} : { base: doc.base });
