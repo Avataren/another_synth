@@ -44,17 +44,34 @@ reads `doc.instruments` for HVL and **ignores slots**, so:
    `ahxData` = the parsed instrument, names seeded from the instrument's name.
    It needs no change — only the two format-gated call sites above drop the
    gate (`:1364` and `ahx-import.ts:56`).
-2. **Write edits through to the doc.** `updateAhxInstrument`
+2. **Write edits through to the doc, copy-on-write.** `updateAhxInstrument`
    (`tracker-store.ts:1054-1065`) writes `slot.ahxData = played` and records the
-   edit for the engine; for HVL it must *additionally* write the played
+   edit for the engine; for an HVL doc it must *additionally* get the played
    instrument into `doc.instruments[slotNumber-1]`, because the file builder
-   takes the doc's set. `HvlDoc.instruments` (`ahx-doc/types.ts:76`) is
-   `readonly` pending exactly this decision — relax it to a mutable
-   `AhxInstrument[]` and rewrite the comment (the "read-only until … P3
-   decides" text is the old deferral, now superseded).
+   takes the doc's set. The doc is immutable by design — `createSnapshot`
+   (`tracker-store.ts:585-613`, comment at :602 "a reference: it is immutable")
+   keeps the doc **by reference** and the editor pushes history *before* the
+   edit (`useAhxPListEditing.ts:75→79`), so any in-place mutation also corrupts
+   every undo snapshot. Every doc change therefore replaces the doc
+   copy-on-write: `this.ahxDoc = { ...doc, instruments:
+   doc.instruments.map((ins, i) => i === slotNumber-1 ? played : ins) }` with
+   the `ahxRevision` bump every doc change makes (all sites :634, :716, :1199,
+   :1579). `HvlDoc.instruments` (`ahx-doc/types.ts:76`) stays `readonly` — the
+   spread builds a new doc holding a new array, so the readonly type stands and
+   its comment gains the new decision. This replacement is quiet: it must NOT
+   call `publishAhxBytes`/`commitAhxDoc` — an instrument tweak is heard through
+   the recorded-edit hot apply (`recordAhxInstrumentEdit`, `ahx-player.ts:244`,
+   "without reloading the song"), exactly as AHX instrument edits are; a full
+   byte replacement would reload a playing song on every tweak. The rebuilt
+   file picks the edit up at the next flush point (`currentAhxBytes` →
+   `buildAhxFile` reads the doc).
 3. **Rename the same way.** `setInstrumentName` (`tracker-store.ts:882-891`)
    already mirrors a rename into `slot.ahxData.name` for AHX slots; for an HVL
-   doc it must also reach `doc.instruments[n-1]`, same reason.
+   doc it must also replace the doc copy-on-write with the renamed instrument
+   at `doc.instruments[n-1]` (same pattern, same quietness, same `ahxRevision`
+   bump), same reason as step 2. The rename composable also pushes history
+   before committing (`useTrackerInstruments.commitInstrumentRename`), so
+   copy-on-write is what makes rename undoable.
 4. **Growth guard against the file's real instruments.** `checkAhxInstrument`
    counts the slots' instruments (`tracker-store.ts:1100-1102`); for HVL the
    file's set is the doc's (`fileInstruments`, `build-file.ts:87-89`). Switch
@@ -103,12 +120,18 @@ edit does.
   AHX byte-identical pins (`ahx-exporter-store.test.ts`, corpus tests) must stay
   green with zero modification.
 
-### Undo/snapshot (MEASURED, P2 record + store code)
+### Undo/snapshot (MEASURED, corrected after the first coder stop)
 
-Snapshots clone `instrumentSlots` (`tracker-store.ts:647-648`) and carry
-`ahxDoc` by reference (`:612`, `:631-665`). After an undo the slot's `ahxData`
-and the doc's instrument are distinct copies with equal values; each later edit
-writes both again (steps 2-3), so they never disagree in value.
+Snapshots keep `ahxDoc` **by reference** (`tracker-store.ts:612`, immutability
+is the invariant the comment at :602 states) and deep-clone
+`instrumentSlots` (:608). The editor pushes history before the edit, so the
+snapshot's doc is the pre-edit doc — which copy-on-write replacement (steps 2-3)
+never touches. `applySnapshot` (:631-665) reinstates the pre-edit doc, clones
+the pre-edit slots back, and rebuilds/publishes the bytes from the doc
+(`publishAhxBytes({ resetEdits: true })`), so undo restores the instrument in
+the editor, the doc and the bytes together. In-place mutation (the plan's
+original step 2) would have corrupted exactly this; see the stopped first
+attempt in `.ai/hvl-inst-stop-notes.md` (kept, uncommitted, as the record).
 
 ## 3. Changed pins (deliberate, on Morten's instruction)
 
