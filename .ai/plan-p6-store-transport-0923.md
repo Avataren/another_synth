@@ -189,3 +189,31 @@ rerun outputs in `.ai/checks-p6-*-rerun.txt`, summary `.ai/checks-p6-rerun-summa
 Coder `modelUsage` resolved canonical `claude-opus-5-5` (firstParty), session
 `0318493d-30db-4eaa-8add-d2b78e79048f`. Owner marker cleared at completion; stopped on the
 branch — no push, no merge, no deploy.
+
+---
+
+## Landing record (2026-09-23, delegated landing run)
+
+- Merged `agent/p6-store-transport-0923a` into `main` with `git merge --no-ff` — no conflicts.
+  Merge sha: **`751f8ee7`** (main: 693dcfd7 → 751f8ee7, pushed to origin, no force).
+- Pre-merge state verified: main == origin/main == 693dcfd7; branch tip 5476759b; worktree clean; no owner marker / foreign writer.
+- Review PASS reference: PASS on tip `5476759b` — 694 moved lines byte-identical modulo `this.`/`this.deps.` stripping, 45 scaffolding-only additions, store API identical, worklet singletons behavior-preserving.
+- Gates re-run on merged main `751f8ee7` (real exit codes, deploy run):
+
+| Gate | Result |
+|---|---|
+| `npm run test:run` | 0 — 241 files / 3922 tests passed (70s) |
+| `npm run lint` | 0 |
+| `npx vue-tsc --noEmit` | 0 |
+| `gitleaks detect --no-git` | 0 — no leaks (4.85 GB scanned) |
+| `npm run check:artifacts` | 0 — worklets and wasm match sources |
+
+- Deploy: `bash scripts/deploy.sh` → `avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth` — exit 0, script self-verified (`Deployed and verified (cf7c9f23ce7e7b044fc14921ca1108c9)`).
+- Post-deploy md5 spot-check local↔remote, all identical:
+  - `index.html` `cf7c9f23ce7e7b044fc14921ca1108c9`
+  - `demos/index.json` `825c61177d02bdf7a5a837087146378c`
+  - `wasm/audio_processor_bg.wasm` `d4ebe3838d4185b06b0bf1f1bfb41407`
+  - `worklets/ahx-worklet.js` `0b1e28a2d692f80a2f9fc3a46d77f1e6`
+- Wasm byte drift: the deploy rebuild modified `public/wasm/audio_processor_bg.wasm` (same size, 1759732 bytes, content permutation), `public/wasm/SOURCE_HASH.json`, `public/demos/index.json` — known/benign wasm-bindgen nondeterminism per P4 precedent. Stashed, not committed: `stash@{0}` "p6-landing: rebuilt wasm artifacts (wasm-bindgen nondeterminism, benign)".
+- Evidence-file omission: the review-cited `.ai/checks-p6-*-rerun.txt` files (and `checks-p6-rerun-summary.txt`) are NOT present in the repo, the worktree, or `.ai/` — cited but never committed and not found on disk. Noted here instead of copying; the rerun gates were independently re-executed fresh on merged `751f8ee7` during this landing (table above).
+- Worktree owner marker: none present at landing start; nothing to clear.
