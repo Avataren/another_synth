@@ -76,6 +76,15 @@ function editCell(store: Store, channel: number): void {
   store.syncAhxWriteBack();
 }
 
+/** A saved blob's bytes (jsdom's `Blob` has no `arrayBuffer`). */
+const blobBytes = (blob: Blob): Promise<Uint8Array> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(blob);
+  });
+
 const embedded = (file: TrackerSongFile): Uint8Array => {
   const decoded = decodeAhxFile(file.data.ahxFile);
   if (!decoded.ok) throw new Error(`no usable ahxFile: ${decoded.reason}`);
@@ -134,7 +143,7 @@ describe('saving an HVL song with a doc (.cmod)', () => {
     expect(notify).not.toHaveBeenCalled();
     expect(saved).toHaveLength(1);
 
-    const cmod = new Uint8Array(await saved[0]!.arrayBuffer());
+    const cmod = await blobBytes(saved[0]!);
     setActivePinia(createPinia());
     setCurrentAhxSource(null);
     const after = useTrackerStore();
