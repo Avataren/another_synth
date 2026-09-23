@@ -180,6 +180,35 @@ it clearly used GT1's filter without a table in a way I cannot read; 5 pulse pro
 sweep; 2 command-6 rows). 7 of the 22 GT1 files import with nothing to report; the files with
 drops are aeuk/streets, cadaver/mw1 title example, cadaver/tarantula, shinobi/wod, yehar/b.o.f.h.
 
+### S5.5 follow-up: the GT1 conversion fixed against GT2's loader (branch agent/sid-gt1fix-0923a)
+
+Executed via Claude Code headless (claude-opus-5-5, acceptEdits + Bash); citations, per-bug
+red→green, count deltas and playback impact in `.ai/sid-gt1fix-verdict.md` (this branch). The
+DIFFERS/CONTRADICTED rows of the §2 table are now FIXED on the branch, each against the cited
+loader lines (facts only, no GPL code): filter set-row bytes (b0 = res<<4|channels, b1 =
+mode<<4|volume) and GT's sequential rows-1..numfilter algorithm (zero rows map to the current
+end, adjacency falls through, jumps via the map, row 0 excluded, OOB reads guarded and
+reported); zero-time modulation emits no rows; command 6 kept (set SR); command 7 <$F0 → F,
+≥$F0 → D (low nibble), $00 → E funktempo from filter row 0 bytes 2-3; arpeggio keyed per
+(instrument, param) with the instrument's wave lefts, then X, Y, 0, bit 7 a 1-frame delay per
+step, played by a cloned `0XY` instrument (command 8 only when slots run out), note-only rule
+(cleared parameters elsewhere); pulse bit 0 = no hard restart and out of the width, start 0
+makes no program, floored times, halve-and-double speed (odd bit lost, clamped ±127/128),
+GT's phase-3 loop-backs; note bytes outside $00-$5C rest like GT (it wraps them); wave lefts
+$08-$0F → $E0|$.
+
+**Counts (method disclosed):** the importer's `notes`, re-measured and re-pinned in
+`sid-sng-corpus.test.ts`, with the raw inputs cross-checked by the throwaway walker
+`.ai/gt1probe-s55.py` (output `.ai/checks-s55-probe.txt`). gt1-convert 55 → **77** (73
+arpeggio instruments, one per (instrument, param); 4 pulse speeds the halve-and-double
+changes), gt1-dropped 41 → **25** (21 filter pointers in the two files without a filter
+table — pointer-0 rows are silent A00s now, as GT's filtermap gives 0; 3 set-row losses in
+wod: voice-3-off ×2, master volume ×1; 1 next-row-past-63 in aeuk/jingle). The 5 "pulse no
+sweep" and 2 "command 6" drops are conversions now; **8 of the 22 GT1 files** import with
+nothing to report (tarantula joined the quiet list). §3's GTS! rows are superseded by this
+state. Round trip: still **83/83** doc-equal after import → export (GTS5) → import, and the
+re-import reports nothing. Rust untouched (cargo stays at the base's 384/1/1).
+
 ## 3. Per-file deviation list (every file with a note; MEASURED)
 
 | File | Variant | Notes | Kinds |
