@@ -55,6 +55,7 @@ import {
   instrumentGrowthRefusal,
   isBlankTrack,
   projectAhxPatterns,
+  projectDisplayPatterns,
   projectTracks,
   setTrack,
   setTranspose,
@@ -64,6 +65,7 @@ import {
   type AhxEditCheck,
   type AhxOpContext,
   type AhxPositionMap,
+  type HvlDoc,
 } from 'src/audio/tracker/ahx-doc';
 import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 
@@ -189,6 +191,8 @@ interface TrackerSnapshot {
   songPatches: Record<string, Patch>;
   /** The AHX doc of an editable AHX song (a reference: docs are immutable). */
   ahxDoc?: AhxDoc | null;
+  /** The display-only doc of an HVL song (a reference, like `ahxDoc`). */
+  hvlDoc?: HvlDoc | null;
 }
 
 interface TrackerStoreState {
@@ -268,6 +272,15 @@ interface TrackerStoreState {
   ahxDoc: AhxDoc | null;
   /** Counts every change of `ahxDoc`, including the one that clears it. */
   ahxRevision: number;
+  /**
+   * The structure of an HVL song whose bytes are known, read-only: the grid is
+   * its display projection (`projectDisplayPatterns`) and nothing writes to it.
+   * Deliberately not `ahxDoc`: every reader of `ahxDoc` is an edit, publish or
+   * save path that knows four channels and the AHX format only, and the song
+   * must play and save exactly as its file (plan-hvl-editing.md P1). P2 moves
+   * it into `ahxDoc` when those paths learn HVL.
+   */
+  hvlDoc: HvlDoc | null;
 }
 
 const DEFAULT_TRACK_COLORS = [
@@ -498,7 +511,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       undoStack: [],
       redoStack: [],
       ahxDoc: null,
-      ahxRevision: 0
+      ahxRevision: 0,
+      hvlDoc: null
     };
   },
   getters: {
@@ -594,7 +608,8 @@ export const useTrackerStore = defineStore('trackerStore', {
         activeInstrumentId: this.activeInstrumentId,
         currentInstrumentPage: this.currentInstrumentPage,
         songPatches: JSON.parse(JSON.stringify(this.songPatches)),
-        ahxDoc
+        ahxDoc,
+        hvlDoc: this.moduleFormat === 'ahx' ? this.hvlDoc : null
       };
     },
     /** Apply a snapshot back into the store state. */
@@ -617,6 +632,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       const previousDoc = this.ahxDoc;
       this.ahxDoc = ahxDoc;
       this.ahxRevision += 1;
+      // Display only: the grid comes from the snapshot's patterns either way.
+      this.hvlDoc = snapshot.moduleFormat === 'ahx' ? snapshot.hvlDoc ?? null : null;
       clearAhxEditNotice();
       this.patterns = ahxDoc ? projectAhxPatterns(ahxDoc) : JSON.parse(JSON.stringify(snapshot.patterns));
 
@@ -699,6 +716,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.redoStack = [];
       this.ahxDoc = null;
       this.ahxRevision += 1;
+      this.hvlDoc = null;
       ahxSyncCacheOf(this).cells = [];
       ahxSyncCacheOf(this).published = null;
       clearAhxEditNotice();
@@ -1082,7 +1100,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       const played = normalizeAhxInstrumentForVersion(clean, format, info?.version ?? 1);
       if (this.moduleFormat === 'ahx' && this.ahxDoc !== null) {
         const instruments = this.instrumentSlots.flatMap((s) => (s.ahxData ? [s.ahxData] : []));
-        const reason = instrumentGrowthRefusal(this.ahxDoc, ahxInstrumentBytes(instruments), slot.ahxData, played);
+        const reason = instrumentGrowthRefusal(this.ahxDoc, ahxInstrumentBytes(instruments, this.ahxDoc.format), slot.ahxData, played);
         if (reason !== null) return { reason, growth: true };
       }
       return { slot, played, format };
@@ -1158,9 +1176,11 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.redoStack = [];
 
       // The doc belongs to the song that is being replaced: whichever song this
-      // is, it starts without one (an editable AHX song sets its own below).
+      // is, it starts without one (an editable AHX song, or an HVL song's
+      // display doc, is set below).
       this.ahxDoc = null;
       this.ahxRevision += 1;
+      this.hvlDoc = null;
       clearAhxEditNotice();
 
       this.currentSong = {
@@ -1297,6 +1317,9 @@ export const useTrackerStore = defineStore('trackerStore', {
      * already holds every slot edit and name; the slots are rebuilt from it and
      * the row model and slots written beside it are ignored. The record is what a
      * fresh `.ahx` import (and an in-memory pre-v5 snapshot) has.
+     *
+     * An HVL song's record gets a display-only doc instead (`adoptHvlDoc`); an
+     * embedded file that turns out to be HVL stays refused, as before.
      */
     adoptAhxDoc(file: TrackerSongFile, data: TrackerSongFile['data']) {
       let bytes: Uint8Array | null = null;
@@ -1312,6 +1335,10 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
       if (bytes === null) {
         const record = ahxSourceRecordOf(file);
+        if (record?.format === 'hvl') {
+          this.adoptHvlDoc(record.bytes, data);
+          return;
+        }
         if (!record || record.format !== 'ahx') return;
         bytes = record.bytes;
       }
@@ -1337,6 +1364,31 @@ export const useTrackerStore = defineStore('trackerStore', {
       // them over): nothing is dirty until an edit (a flush of an unedited song
       // is a no-op).
       ahxSyncCacheOf(this).published = this.ahxPublishKey();
+    },
+    /**
+     * Gives the HVL song just loaded its doc, read-only (`hvlDoc`): the grid
+     * is rebuilt as the doc's display projection, which shows exactly the rows
+     * the import built (a test pins it for the corpus), now with stable
+     * position ids. Nothing else moves: the engine keeps the file's bytes (no
+     * publish), the song stays read-only, the slots stay as imported, and no
+     * write-back watches the grid. Bytes the parser rejects, or a song wider
+     * than the engine's 16 channels, keep the imported display as it is.
+     */
+    adoptHvlDoc(bytes: Uint8Array, data: TrackerSongFile['data']) {
+      let doc: HvlDoc;
+      try {
+        const parsed = docFromSong(parseAhx(bytes), bytes);
+        if (parsed.format !== 'hvl') return;
+        doc = parsed;
+      } catch (error) {
+        console.warn('[TrackerStore] HVL song shown from its import: its bytes have no doc', error);
+        return;
+      }
+      const oldIndex = (data.patterns ?? []).findIndex((pattern) => pattern.id === data.currentPatternId);
+      this.hvlDoc = doc;
+      this.patterns = projectDisplayPatterns(doc);
+      this.sequence = this.patterns.map((pattern) => pattern.id);
+      this.currentPatternId = stableIdOf(Math.max(0, Math.min(doc.positions.length - 1, oldIndex)));
     },
     /**
      * The song as an `.ahx` file, from the doc, the slots and the title (the
@@ -1377,7 +1429,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     /** What the size limit needs to know of the file besides the doc. */
     ahxOpContext(): AhxOpContext {
       const instruments = this.instrumentSlots.flatMap((slot) => (slot.ahxData ? [slot.ahxData] : []));
-      return { instrumentBytes: ahxInstrumentBytes(instruments) };
+      return { instrumentBytes: ahxInstrumentBytes(instruments, this.ahxDoc?.format ?? 'ahx') };
     },
     /**
      * Writes every edited grid cell back into the doc. Idempotent, and safe to

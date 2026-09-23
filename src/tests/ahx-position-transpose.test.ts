@@ -76,10 +76,10 @@ describe('the per-position per-channel transpose (plan-pos-transpose.md)', () =>
     ]);
   });
 
-  // plan-hvl-header-ux-0923.md BUG 1: an HVL never gets a doc (adoptAhxDoc
-  // early-returns for its 'hvl' source record), so its read-only header chip
-  // rides the pattern's own `positionTranspose` — which the real load path
-  // must keep intact, not sanitize away with unknown fields.
+  // plan-hvl-header-ux-0923.md BUG 1: an HVL never gets an editable doc (its
+  // `hvlDoc` is display-only, plan-hvl-editing.md P1), so its read-only header
+  // chip rides the pattern's own `positionTranspose` — which the real load path
+  // (the doc's display projection since P1) must keep intact.
   it('an HVL load keeps the per-pattern transpose the read-only chip reads', () => {
     const buf = fs.readFileSync(path.resolve(__dirname, '../../public/demos/ahx/doobrey_gubbins.hvl'));
     const raw = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);

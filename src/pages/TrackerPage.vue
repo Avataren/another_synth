@@ -1152,12 +1152,12 @@ const ahxPositionChannels = computed(() => {
 });
 /*
  * The read-only sibling (plan-hvl-header-ux-0923.md BUG 1): an HVL song, or an
- * AHX saved without its bytes, never gets a doc — `adoptAhxDoc` early-returns
- * for a non-'ahx' source record (`tracker-store.ts`'s format guard) — but the
- * format still carries the per-position transpose and the engine still
- * applies it (`formats/ahx.ts`'s position parse, `engine.rs`'s per-step
- * `v.transpose`). The import keeps those bytes on each pattern
- * (`positionTranspose`), so the header shows them read-only: same labels, a
+ * AHX saved without its bytes, has no editable doc (an HVL song's `hvlDoc` is
+ * display-only until plan-hvl-editing.md P2) — but the format still carries
+ * the per-position transpose and the engine still applies it
+ * (`formats/ahx.ts`'s position parse, `engine.rs`'s per-step `v.transpose`).
+ * The import, and an HVL doc's display projection, keep those bytes on each
+ * pattern (`positionTranspose`), so the header shows them read-only: same labels, a
  * title that does not promise a wheel edit, and a chip without the resize
  * cursor. Patterns are one per position in sequence order, so the position
  * index is the current pattern's sequence slot.
