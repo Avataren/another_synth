@@ -816,14 +816,15 @@ handler.sendFireAndForget(WorkletMessageBuilder.noteOn(60, 100));
 - [x] Create WASM engine adapter
 - [x] Create message handler
 
-### Phase 2: Update Worklet (✅ Foundation Complete, Migration In Progress)
+### Phase 2: Update Worklet (❌ Abandoned)
 
-- [x] Create `WasmEngineAdapter` with all required WASM methods
-- [x] Create message handler classes (`worklet-message-handlers.ts`)
-- [x] Create `WorkletHandlerRegistry` for routing messages
-- [ ] Migrate worklet to use `WasmEngineAdapter` (incremental)
-- [ ] Replace manual type conversions with `wasm-type-adapter` (incremental)
-- [ ] Add `operationResponse` messages for all mutations (incremental)
+The worklet was never migrated to `WasmEngineAdapter` / `WorkletHandlerRegistry`.
+Those files (`src/audio/adapters/wasm-engine-adapter.ts`,
+`src/audio/worklets/handlers/worklet-message-handlers.ts`) had no importers and
+were deleted in the P7 dead-code sweep. The live path is
+`src/audio/worklets/synth-worklet.ts` (message handling inline) plus
+`src/audio/pooled-instrument-factory.ts`; change those, not the adapter
+sections below, which describe the abandoned design.
 
 ### Phase 3: Update Instrument Class (✅ Complete)
 
@@ -1012,7 +1013,11 @@ The message handler preserves custom timeout values through the initialization q
 
 The worklet message handling has been refactored from a 30+ case switch statement into modular handler classes:
 
-**Handler Registry** (`src/audio/worklets/handlers/worklet-message-handlers.ts`):
+> **Abandoned** — this handler registry was never wired into the worklet and
+> was deleted in the P7 dead-code sweep. Message handling lives in
+> `src/audio/worklets/synth-worklet.ts`. Kept below for history only.
+
+**Handler Registry** (formerly `src/audio/worklets/handlers/worklet-message-handlers.ts`, deleted):
 
 - `BaseMessageHandler` - Base class with automatic error handling and response sending
 - Individual handlers for each message type (EnvelopeHandler, OscillatorHandler, etc.)
@@ -1181,9 +1186,9 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 
 - `src/audio/types/worklet-messages.ts` - Message protocol (442 lines)
 - `src/audio/adapters/wasm-type-adapter.ts` - Type conversions (395 lines)
-- `src/audio/adapters/wasm-engine-adapter.ts` - WASM wrapper (450+ lines)
+- ~~`src/audio/adapters/wasm-engine-adapter.ts`~~ - WASM wrapper (deleted in P7: never used)
 - `src/audio/adapters/message-handler.ts` - Request/response handler (376 lines)
-- `src/audio/worklets/handlers/worklet-message-handlers.ts` - Worklet message handlers (485 lines)
+- ~~`src/audio/worklets/handlers/worklet-message-handlers.ts`~~ - Worklet message handlers (deleted in P7: never wired in)
 - `src/audio/instrument-v2.ts` - Refactored Instrument class (600+ lines)
 
 ### Modified Files (Phase 3):
