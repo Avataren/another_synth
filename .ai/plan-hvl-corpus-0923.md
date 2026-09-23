@@ -93,3 +93,51 @@ them retroactively. This batch updates the pins in the same landing.
   imports through the store path and round-trips (`exporter-corpus`, `song-export-hvl`,
   `writer-corpus`), and corpus instruments render through the real wasm engine
   (`plist-row-core` oracle tests over the new corpus).
+
+## Landed (2026-09-23)
+
+Landed by main-agent landing run (session `agent:main:subagent:a59647fc-…`, 07:29–07:33).
+
+**Review: PASS** — independent review 2026-09-23 07:26–07:28: all 16 .hvl md5-verified
+(16/16), corpus pins re-probed, meltwater `TRAILING_NAME_NUL` exception verified narrow
+(exact one-byte delta + parse equivalence only), all gates fresh green pre-merge.
+
+**Merge:** no-ff `115989c5` → `main` = `e8041f0b` (push `7316ba9e..e8041f0b` to origin).
+Message: `merge: add 16 curated HVL songs — ring-mod feed + >4ch coverage (agent/hvl-corpus-0923a)`.
+
+**Per-file table:** see "The 16" table above (titles/authors/tiers/md5/measurements).
+
+**Corpus pins before → after:** files 84→100, instruments 1290→1542, .hvl corpus 7→23.
+
+**Post-merge gates on main (real exit codes, measured 07:29–07:32):**
+
+| Gate | Result | Exit |
+|------|--------|------|
+| `npm run test:run` | 235 files / 3831 tests, all passed (64.8 s) | 0 |
+| eslint (npx eslint .) | no findings | 0 |
+| `vue-tsc --noEmit` | clean | 0 |
+| `npm run check:artifacts` | worklets + wasm match sources | 0 |
+| `gitleaks detect --no-git` | no leaks (2.70 GB scanned) | 0 |
+
+**Deploy:** `scripts/deploy.sh` → `avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth`.
+Build succeeded (spa mode), rsync `-az --delete` of `dist/spa/` (demos carried as assets, so
+new .hvl files are included — same mechanism as the Pink batch; the old exclude-modules
+failure mode is gone per deploy.sh header). Script self-verification passed; deploy exit 0.
+Log: `.ai/deploy-hvl-corpus-20260923.log`.
+
+**Independent byte-match (md5, local `dist/spa` ↔ remote, all identical):**
+index.html, wasm/audio_processor_bg.wasm, wasm/audio_processor.js,
+worklets/ahx-worklet.js, worklets/effects-worklet.js, worklets/recording-worklet.js,
+worklets/synth-worklet.js, demos/index.json — 8/8.
+Remote .hvl spot-checks (3/3 identical): meltwater_10ch.hvl (9a009111…),
+ring_modulation_test_song.hvl (04afab6a…), hexplosion.hvl (a51da09f…).
+
+**meltwater_10ch.hvl documented exception:** `TRAILING_NAME_NUL` stays in force — source
+string table omits the final (empty) instrument name's terminator, so the canonical writer
+emits exactly one trailing NUL (8207→8208 bytes); `parse(parse(out))` deep-equals
+`parse(src)`, playback identical. Narrow per-file exception, verified by review.
+
+**chiprolled.hvl: no change.** Measured again at landing: index.json already carries the
+embedded title `never gonna give you up` (md5-proven correct, 0af72bfe). Only the filename
+is misleading; renaming is a separate decision for Morten (referenced by fixture name in
+~10 test files).
