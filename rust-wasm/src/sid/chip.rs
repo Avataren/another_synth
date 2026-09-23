@@ -1,0 +1,269 @@
+//! One SID chip: three voices, sync/ring coupling, the filter with its
+//! routing, master volume, OSC3/ENV3 readback, and the render loop that turns
+//! the cycle-counted digital core into output samples.
+//!
+//! Sources (GPL-free): MOS 6581/8580 datasheet register map and bit
+//! descriptions ($D400-$D41C); public hardware notes on sync timing.
+//!
+//! Register map (offsets from the chip base, write-only unless noted):
+//!   voice n (n = 0..2) at 7n: +0 FREQ LO, +1 FREQ HI, +2 PW LO,
+//!     +3 PW HI (bits 0-3), +4 CONTROL, +5 ATTACK/DECAY, +6 SUSTAIN/RELEASE
+//!   $15 FC LO (bits 0-2), $16 FC HI, $17 RES (bits 4-7) / FILTEX, FILT3-1
+//!   (bits 3..0), $18 3OFF (bit 7) / HP BP LP (bits 6-4) / VOL (bits 3-0)
+//!   read: $19 POTX, $1A POTY, $1B OSC3, $1C ENV3
+//!
+//! Per chip cycle (INFERRED ordering; the hardware does it all in one
+//! clock, and this is the order that gives the documented results):
+//!   1. every accumulator advances (or is held at 0 under TEST), and each
+//!      voice latches whether its MSB went 0 -> 1 this cycle;
+//!   2. sync: a voice with SYNC set is reset to 0 when its source's MSB rose
+//!      this cycle. Sources per the datasheet: voice 1 <- 3, 2 <- 1, 3 <- 2.
+//!      Only the rising edge counts. The source's own wrap (MSB 1 -> 0) does
+//!      not sync. INFERRED from public hardware notes: a source that is
+//!      itself being sync-reset this cycle does not propagate its MSB rise,
+//!      because its MSB never presents as 1;
+//!   3. noise clock, envelope clock, waveform latch (ring mod reads the
+//!      source accumulator after step 2).
+//! TEST on a sync source holds it at 0, so its MSB never rises and its
+//! destination runs free (oscillator lockout). TEST on a destination holds
+//! it at 0, and sync resets are then no-ops.
+//!
+//! Routing (datasheet): FILTn = 1 sends voice n through the filter, else it
+//! goes straight to the output. The filter output is the sum of the selected
+//! LP/BP/HP taps; with no mode bit set the filtered voices vanish. 3OFF
+//! removes voice 3 from the direct path only (datasheet: "Setting Voice 3
+//! to bypass the Filter (FILT 3 = 0) and setting 3 OFF to a one prevents
+//! Voice 3 from reaching the audio output"). A filtered voice 3 is
+//! unaffected. FILTEX routes the external input, which is not modelled
+//! (silent). Master volume scales the mix linearly, VOL / 15 (INFERRED: 8580
+//! volume DAC treated as linear, no 6581-style volume DC step).
+//!
+//! Readback (datasheet): OSC3 = the upper 8 bits of voice 3's waveform
+//! output (including combined waveforms, ring mod and a held waveform 0),
+//! ENV3 = voice 3's envelope level. Both work whether or not voice 3 is
+//! audible. POTX/POTY and the write-only registers read 0 here (INFERRED
+//! simplification: the real chip returns paddle counts, or a decaying copy of
+//! the last bus value for write-only registers).
+//!
+//! Sample-rate model (plan §1.1): the digital core above is cycle-counted
+//! at PAL 985 248 Hz. Each output sample is the boxcar average of the ~22.34
+//! (44.1 kHz) or ~20.53 (48 kHz) cycles it spans, a cheap anti-alias
+//! decimator whose first null sits at the output rate. The filter,
+//! volume and output coupling then run at the output rate. Register writes
+//! land between chip cycles, but callers can only interleave them with
+//! `render` at sample boundaries. This is a sample-rate approximation of the
+//! analog path over an exact digital core, not cycle-exact audio.
+
+use super::filter::Filter;
+use super::voice::Voice;
+use super::waveform::SYNC;
+use super::{SidError, SidModel, DEFAULT_SAMPLE_RATE, PAL_CLOCK_HZ};
+
+/// Headroom constant: three full-scale voices at volume 15 peak at 3.0; the
+/// resonant filter can add ~+8 dB on top. INFERRED tuning (carried from S0).
+pub const CHIP_GAIN: f64 = 0.28;
+
+/// Corner of the output AC coupling (the C64's output capacitor), Hz.
+/// INFERRED tuning (carried from S0).
+pub const DC_BLOCK_HZ: f64 = 16.0;
+
+/// Register offsets.
+pub const REG_FC_LO: u8 = 0x15;
+pub const REG_FC_HI: u8 = 0x16;
+pub const REG_RES_FILT: u8 = 0x17;
+pub const REG_MODE_VOL: u8 = 0x18;
+pub const REG_POTX: u8 = 0x19;
+pub const REG_POTY: u8 = 0x1A;
+pub const REG_OSC3: u8 = 0x1B;
+pub const REG_ENV3: u8 = 0x1C;
+
+/// $18 bit 7.
+pub const VOICE3_OFF: u8 = 0x80;
+
+/// Sync/ring source of voice `i`.
+#[inline]
+pub const fn source_of(i: usize) -> usize {
+    (i + 2) % 3
+}
+
+#[derive(Debug, Clone)]
+pub struct Chip {
+    model: SidModel,
+    sample_rate: f64,
+    voices: [Voice; 3],
+    filter: Filter,
+    fc: u16,
+    res_filt: u8,
+    mode_vol: u8,
+    cycles_per_sample: f64,
+    cycle_frac: f64,
+    cycles: u64,
+    dc_x: f64,
+    dc_y: f64,
+    dc_r: f64,
+}
+
+impl Chip {
+    /// A powered-on chip at 44.1 kHz output.
+    pub fn new(model: SidModel) -> Result<Chip, SidError> {
+        Chip::with_sample_rate(model, DEFAULT_SAMPLE_RATE)
+    }
+
+    /// A powered-on chip rendering at `sample_rate` Hz. Refuses the 6581
+    /// until the S2 character pass lands (see `SidModel::Sid6581`).
+    pub fn with_sample_rate(model: SidModel, sample_rate: f64) -> Result<Chip, SidError> {
+        if let Some(reason) = model.unimplemented_reason() {
+            return Err(SidError::ModelNotImplemented { model, reason });
+        }
+        if !(sample_rate.is_finite() && (8_000.0..=192_000.0).contains(&sample_rate)) {
+            return Err(SidError::UnsupportedSampleRate(sample_rate));
+        }
+        Ok(Chip {
+            model,
+            sample_rate,
+            voices: [Voice::default(); 3],
+            filter: Filter::new(sample_rate),
+            fc: 0,
+            res_filt: 0,
+            mode_vol: 0,
+            cycles_per_sample: PAL_CLOCK_HZ / sample_rate,
+            cycle_frac: 0.0,
+            cycles: 0,
+            dc_x: 0.0,
+            dc_y: 0.0,
+            dc_r: (-2.0 * std::f64::consts::PI * DC_BLOCK_HZ / sample_rate).exp(),
+        })
+    }
+
+    pub fn model(&self) -> SidModel {
+        self.model
+    }
+
+    pub fn sample_rate(&self) -> f64 {
+        self.sample_rate
+    }
+
+    /// Voice `i` (0..=2), read-only.
+    pub fn voice(&self, i: usize) -> &Voice {
+        &self.voices[i]
+    }
+
+    pub fn filter(&self) -> &Filter {
+        &self.filter
+    }
+
+    /// Chip cycles clocked since power-on.
+    pub fn cycles(&self) -> u64 {
+        self.cycles
+    }
+
+    /// Write a register (offset 0x00..=0x18 from the chip base; higher bits
+    /// of `reg` are ignored, read-only offsets are ignored).
+    pub fn write(&mut self, reg: u8, val: u8) {
+        let reg = reg & 0x1F;
+        match reg {
+            0x00..=0x14 => {
+                let v = &mut self.voices[(reg / 7) as usize];
+                match reg % 7 {
+                    0 => v.set_freq_lo(val),
+                    1 => v.set_freq_hi(val),
+                    2 => v.set_pw_lo(val),
+                    3 => v.set_pw_hi(val),
+                    4 => v.set_control(val),
+                    5 => v.set_ad(val),
+                    _ => v.set_sr(val),
+                }
+            }
+            REG_FC_LO => {
+                self.fc = (self.fc & 0x7F8) | (val & 0x07) as u16;
+                self.filter.set(self.fc, self.res_filt >> 4);
+            }
+            REG_FC_HI => {
+                self.fc = (self.fc & 0x007) | ((val as u16) << 3);
+                self.filter.set(self.fc, self.res_filt >> 4);
+            }
+            REG_RES_FILT => {
+                self.res_filt = val;
+                self.filter.set(self.fc, val >> 4);
+            }
+            REG_MODE_VOL => {
+                self.mode_vol = val;
+                self.filter.set_mode(val);
+            }
+            _ => {}
+        }
+    }
+
+    /// Read a register. Only OSC3 and ENV3 carry chip state here.
+    pub fn read(&self, reg: u8) -> u8 {
+        match reg & 0x1F {
+            REG_OSC3 => (self.voices[2].waveform() >> 4) as u8,
+            REG_ENV3 => self.voices[2].envelope_level(),
+            _ => 0,
+        }
+    }
+
+    /// Advance the digital core by one chip cycle.
+    #[inline]
+    pub fn clock(&mut self) {
+        for v in self.voices.iter_mut() {
+            v.clock_accumulator();
+        }
+        let raw: [bool; 3] = std::array::from_fn(|i| {
+            self.voices[i].has_control(SYNC) && self.voices[source_of(i)].msb_rising()
+        });
+        for (i, &sync) in raw.iter().enumerate() {
+            if sync && !raw[source_of(i)] {
+                self.voices[i].sync_reset();
+            }
+        }
+        let accs: [u32; 3] = std::array::from_fn(|i| self.voices[i].accumulator());
+        let model = self.model;
+        for (i, v) in self.voices.iter_mut().enumerate() {
+            v.finish_cycle(model, accs[source_of(i)]);
+        }
+        self.cycles += 1;
+    }
+
+    /// Advance the digital core by `n` chip cycles (no audio produced).
+    pub fn clock_cycles(&mut self, n: u64) {
+        for _ in 0..n {
+            self.clock();
+        }
+    }
+
+    /// Fill `out` with samples at the chip's sample rate, clocking the core
+    /// through the cycles each sample spans.
+    pub fn render(&mut self, out: &mut [f32]) {
+        let filt_bits = self.res_filt & 0x07;
+        let voice3_direct = self.mode_vol & VOICE3_OFF == 0;
+        let volume = (self.mode_vol & 0x0F) as f64 / 15.0;
+        for o in out.iter_mut() {
+            self.cycle_frac += self.cycles_per_sample;
+            let n = self.cycle_frac as u32;
+            self.cycle_frac -= n as f64;
+            let mut sum = [0.0f64; 3];
+            for _ in 0..n {
+                self.clock();
+                for (s, v) in sum.iter_mut().zip(self.voices.iter()) {
+                    *s += v.output();
+                }
+            }
+            let mut filt_in = 0.0;
+            let mut direct = 0.0;
+            for (i, s) in sum.iter().enumerate() {
+                let x = s / n.max(1) as f64;
+                if filt_bits & (1 << i) != 0 {
+                    filt_in += x;
+                } else if i != 2 || voice3_direct {
+                    direct += x;
+                }
+            }
+            let x = (self.filter.process(filt_in) + direct) * volume * CHIP_GAIN;
+            let y = x - self.dc_x + self.dc_r * self.dc_y;
+            self.dc_x = x;
+            self.dc_y = y;
+            *o = y as f32;
+        }
+    }
+}
