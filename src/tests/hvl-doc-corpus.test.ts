@@ -59,9 +59,9 @@ const withoutBase = (doc: HvlDoc): HvlDoc => docFromSong(docToSong(doc, [])) as 
 const withoutId = <T extends { id: string }>({ id: _id, ...rest }: T): Omit<T, 'id'> => rest;
 
 describe('HVL docs over the corpus', () => {
-  it('reads the 23 HVL files', () => {
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 23 .hvl files, 2026-09-23)
-    expect(corpus.length).toBe(23);
+  it('reads the 22 HVL files', () => {
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 22 .hvl files, 2026-09-23)
+    expect(corpus.length).toBe(22);
   });
 
   it('every file gets an HVL doc with its header fields: format, channels, mix gain, default stereo', () => {
@@ -81,14 +81,14 @@ describe('HVL docs over the corpus', () => {
     }
   });
 
-  it('is lossless at model level: docToSong(docFromSong(parse)) is the parse, all 23', () => {
+  it('is lossless at model level: docToSong(docFromSong(parse)) is the parse, all 22', () => {
     for (const { name, bytes } of corpus) {
       const song = parseAhx(bytes);
       expect(docToSong(docFromSong(song, bytes), song.instruments), name).toEqual(song);
     }
   });
 
-  it('doc -> serialize with base writes the source bytes (meltwater pinned), all 23', () => {
+  it('doc -> serialize with base writes the source bytes (meltwater pinned), all 22', () => {
     let checked = 0;
     for (const { name, bytes } of corpus) {
       const song = parseAhx(bytes);
@@ -96,10 +96,10 @@ describe('HVL docs over the corpus', () => {
       expectSource(name, serializeAhx(docToSong(doc, song.instruments), { base: bytes }), bytes);
       checked++;
     }
-    expect(checked).toBe(23);
+    expect(checked).toBe(22);
   });
 
-  it('doc -> buildAhxFile (the one writer the app shares) writes the source bytes, all 23', () => {
+  it('doc -> buildAhxFile (the one writer the app shares) writes the source bytes, all 22', () => {
     for (const { name, bytes } of corpus) {
       const song = parseAhx(bytes);
       const slots = song.instruments.slice(1).map((ahxData) => ({ ahxData }));
@@ -111,7 +111,7 @@ describe('HVL docs over the corpus', () => {
     }
   });
 
-  it('doc -> serialize -> parse is the parse, with and without base, all 23', () => {
+  it('doc -> serialize -> parse is the parse, with and without base, all 22', () => {
     for (const { name, bytes } of corpus) {
       const song = parseAhx(bytes);
       const doc = docFromSong(song, bytes);
@@ -145,7 +145,7 @@ describe('HVL docs over the corpus', () => {
     expect(ahxInstrumentBytes(one, 'hvl')).toBe(27);
   });
 
-  it('the display projection is the import\'s grid, with stable ids and each position\'s transpose, all 23', () => {
+  it('the display projection is the import\'s grid, with stable ids and each position\'s transpose, all 22', () => {
     for (const { name, bytes } of corpus) {
       const imported = importAhxToTrackerSong(bytes.slice().buffer).data.patterns;
       const projected = projectDisplayPatterns(hvlDoc(bytes));
