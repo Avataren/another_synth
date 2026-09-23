@@ -141,4 +141,44 @@ review documents (line drift −15, explained by the P5 landing on main). No sto
 
 ## 7. Addendum
 
-(filled after implementation — deviations honestly described, file:line citations)
+Implemented 2026-09-23 on `agent/p6-store-transport-0923a`.
+
+- New `src/audio/tracker/ahx-song-transport.ts` (785 lines): `AhxSongTransport` :113,
+  deps interface `AhxSongTransportDeps`, constructor :162 (the three subscriptions, same
+  order as the store factory had them), `isActive` getter :191. Store 1551 → 919 lines
+  (+61/−693); instance built at `tracker-playback-store.ts:396`, `stopSampleEngine` stays
+  in the store (:381, moved above the construction so it reads next to its injection).
+- Verbatim check: every removed store line, with indentation, `this.` and `this.deps.`
+  stripped, is found in the new file except declaration lines (`function x` → method /
+  arrow field) and the verb branches that now delegate.
+
+Deviations / judgement calls:
+
+1. **Worklet singletons stay module-level, in the new module** (`ahx-song-transport.ts:79-95`),
+   not instance fields. They were module-level in the store and outlive a Pinia: a new
+   store (every test `beforeEach` makes one) cancels the previous one's source / structure /
+   edit subscriptions and `dispose` frees the previous transport. As instance fields, an
+   old store's subscriptions would stay live after a Pinia swap — a behavior change. The
+   per-store `let`s (:201-233) became instance fields, as the plan said.
+   `ahxScopesWanted` / `ahxScopeViews` (store :93-94, outside the plan's :82-92 range)
+   moved too: only moved code touches them.
+2. **`PlaybackMode` is defined in the new module** and re-exported by the store
+   (`export type { PlaybackMode }`), so the transport never imports the store (no
+   Pinia, no cycle, not even type-only). Consumers still import it from the store.
+3. **Extra deps found by the capture audit** (plan §3 UNVERIFIED): `hasSongLoaded`,
+   `playbackMode`, `applyPosition`, `resolveStartSequenceIndex`, `recordLastSong`,
+   `sanitizeMuteSoloState`, `stopSampleEngine`, `songEndListeners`. `broadcastPosition`
+   is reached only via `applyPosition`, which stays in the store.
+4. Callbacks handed to other objects (`handleAhxPosition`/`SongEnd`/`Waveforms`/
+   `SeekKind`/`StructureChange`, `sendAhxInstrumentEdits`, `ahxPlayheadTiming`) are
+   arrow-function fields so `this` binds; a few methods destructure `this.deps` in one
+   added line to keep the body lines verbatim. `errorText` moved to module scope.
+5. The store verbs keep their `if (ahx.isActive)` shape (Step 2 removes it). The
+   AHX `syncAhxMuteSolo` moved into the class (it reads the transport handle); the store
+   calls `ahx.syncAhxMuteSolo()` from `applyAudibilityChange` and `sanitizeMuteSoloState`.
+   `setLoopSong` calls `ahx.setLoopSong(loop)` (the old `setStopAtEnd(!loop)` line).
+   The store's preview/scope functions are one-line pass-throughs with the same signatures.
+
+No test edits; no `rust-wasm/`, `public/` changes. Gates on the branch tip (outputs in
+`.ai/checks-p6-*.txt`): test:run 0 (241 files / 3922 tests), lint 0, vue-tsc 0,
+gitleaks 0, check:artifacts 0.
