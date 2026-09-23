@@ -155,13 +155,21 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
   /**
    * Ordered by track index, for the spectrum analyzer's per-channel mode --
    * which only applies to the classic 4-channel Amiga layout.
+   *
+   * AHX/HVL songs offer no taps at all: their slots carry no patches
+   * (ahx-import.ts -- the worklet's file engine plays the bytes), so the bank
+   * has no per-track instruments and every tap would be permanently null.
+   * Handing the analyzer four nulls would lock it in its sticky quad mode
+   * with four dead channels; no taps at all resolves its stereo mode against
+   * the master output, which does carry the file engine's audio.
    */
-  const spectrumTrackNodes = computed<(AudioNode | null)[]>(() =>
-    Array.from(
+  const spectrumTrackNodes = computed<(AudioNode | null)[]>(() => {
+    if (moduleFormat.value === 'ahx') return [];
+    return Array.from(
       { length: trackCount.value },
       (_, i) => trackAudioNodes.value[i] ?? null,
-    ),
-  );
+    );
+  });
 
   function setTrackAudioNodeForInstrument(
     trackIndex: number,

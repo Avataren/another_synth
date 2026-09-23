@@ -1,0 +1,26 @@
+=== npm run lint ===
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 lint
+npm notice run eslint --ext .js,.ts,.vue ./
+EXIT:0
+=== vue-tsc ===
+npm notice run 'vue-tsc' --noEmit
+src/tests/jukebox-spectrum-ahx.test.ts(51,24): error TS2379: Argument of type '{ from: FakeEndpoint; to: unknown; output: number | undefined; }' is not assignable to parameter of type '{ from: FakeEndpoint; to: unknown; output?: number; }' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'output' are incompatible.
+    Type 'number | undefined' is not assignable to type 'number'.
+      Type 'undefined' is not assignable to type 'number'.
+EXIT:0
+=== gitleaks ===
+
+[90m12:35PM[0m [32mINF[0m [1mscanned ~197533007 bytes (197.53 MB) in 18.1s[0m
+[90m12:35PM[0m [32mINF[0m [1mno leaks found[0m
+EXIT:0
+=== check:artifacts ===
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 check:artifacts
+npm notice run node scripts/check-artifacts.cjs
+✓ public/worklets and public/wasm match their sources
+EXIT:0
