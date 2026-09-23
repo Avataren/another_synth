@@ -63,3 +63,60 @@ missing fixture. Fixes, all test-hygiene, no engine (`src/`) changes:
 
 Recorded after the gates run (cargo before/after failure lists + JS gate table)
 in the landing report for this branch.
+## Landing record (2026-09-23, agent/chiprolled-remove-0923a)
+
+Merge: `6d02f6d2` (`git merge --no-ff` into main, message: "Merge chiprolled.hvl removal
+(byte-identical dupe of 'never gonna give you up.hvl', discarded per Morten 08:50)").
+Branch tip reviewed: `023c7c53` (delta re-review PASS; base `6123b5f4`); main pre-merge
+`6123b5f4` = `origin/main`, worktree clean, no `.ai/worktree-owner` claim, no other writer.
+
+### Review reference
+
+Delta re-review **PASS** on fix commit `023c7c53` (dropped/retargeted chiprolled pins).
+Cargo gates pre-existing state: 267 pass / 1 fail, the single failure being the known
+pre-existing `manifest_covers_every_fixture` (cases.manifest covers only the original
+fixture set, not the 16-song curated batch) — not introduced by this branch.
+
+### Post-merge gates on main (real exit codes, this run)
+
+| Gate | Result | Exit |
+|---|---|---|
+| vitest (full) | 235 files / 3834 tests passed (62.5s) | 0 |
+| eslint | no findings | 0 |
+| vue-tsc --noEmit | clean | 0 |
+| gitleaks detect --no-git | no leaks (3.43 GB scanned, 1m24s) | 0 |
+| npm run check:artifacts | worklets + wasm match sources | 0 |
+
+Note: `npm run gitleaks` has no package script in this repo ("Missing script: gitleaks");
+the direct `gitleaks detect --no-git` was used, which is clean.
+
+### Push
+
+`git push origin main`: `6123b5f4..6d02f6d2 main -> main`, exit 0, no force.
+
+### Deploy
+
+`scripts/deploy.sh` (repo-root `deploy.sh` does not exist; the script lives at
+`scripts/deploy.sh` with the exact same defaults) →
+`avatar@192.168.50.161:~/repos/docker-info-ws-server/html/synth`.
+Build succeeded (spa mode); wasm rebuilt per script design (bytes vary run-to-run is
+benign; freshness via `SOURCE_HASH.json`); script self-verification
+`Deployed and verified (2f5ed95176293785eb615b5725a68487)` (index.html md5); deploy exit 0.
+
+**Fresh md5 spot-check (local `dist/spa` ↔ remote, all identical): 4/4**
+
+| File | md5 |
+|---|---|
+| index.html | `2f5ed95176293785eb615b5725a68487` |
+| demos/index.json | `1af2ad61f3036704122cfb3fd97c4d0a` |
+| wasm/audio_processor_bg.wasm | `178c2b860fdf34c6e17b5afd817bfaae` |
+| worklets/ahx-worklet.js | `0b1e28a2d692f80a2f9fc3a46d77f1e6` |
+
+### Remote chiprolled.hvl absence proof (this run)
+
+- `grep -c chiprolled ~/…/html/synth/demos/index.json` → **0** references.
+- `test -e demos/ahx/chiprolled.hvl` on the remote → **absent** (`REMOTE_CHIPROLLED_ABSENT`).
+
+### Worktree
+
+`.ai/worktrees/chiprolled-remove`: clean at merge time; no owner marker present to clear.
