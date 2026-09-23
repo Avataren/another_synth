@@ -1319,6 +1319,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       let slots: InstrumentSlot[] | null = null;
       try {
         const song = parseAhx(bytes);
+        if (song.format !== 'ahx') throw new Error('Only AHX songs have an editable doc; HVL songs stay read-only.');
         doc = docFromSong(song, bytes);
         if (fromFile) slots = buildAhxSlots(song);
       } catch (error) {

@@ -1,6 +1,6 @@
 import { buildAhxTrackerPatterns, type TrackerEntryData, type TrackerPattern } from '@another-synth/tracker-playback';
-import { docToSong, makeAhxDoc } from './doc';
-import { AHX_CHANNELS, type AhxDoc } from './types';
+import { docChannels, docToSong, makeAhxDoc } from './doc';
+import type { AhxDoc } from './types';
 
 const PROJECTION = { latchInstruments: false, stableIds: true, clampNotes: false } as const;
 
@@ -15,6 +15,21 @@ export function projectAhxPatterns(doc: AhxDoc): TrackerPattern[] {
 }
 
 /**
+ * The grid of a doc that is shown, not edited (an HVL song until the store's
+ * write-back knows its width, plan-hvl-editing.md P2): exactly the rows the
+ * file's display import builds (`importAhxToTrackerSong`: instruments latched
+ * per channel, notes as the engine plays them), so reading them from the doc
+ * changes nothing on screen, with the stable ids of the editable projection
+ * and each position's transpose beside its rows for the read-only header chip.
+ */
+export function projectDisplayPatterns(doc: AhxDoc): TrackerPattern[] {
+  return buildAhxTrackerPatterns(docToSong(doc, []), { stableIds: true }).map((pattern, index) => {
+    const transpose = doc.positions[index]?.transpose;
+    return transpose === undefined ? pattern : { ...pattern, positionTranspose: transpose.slice() };
+  });
+}
+
+/**
  * The rows of the given tracks, as a grid cell shows them (each a fresh array,
  * keyed by track number). The projection has no state across tracks (no latch),
  * so a track is projected on its own; done through the same builder as
@@ -22,18 +37,19 @@ export function projectAhxPatterns(doc: AhxDoc): TrackerPattern[] {
  */
 export function projectTracks(doc: AhxDoc, tracks: readonly number[]): Map<number, TrackerEntryData[]> {
   const wanted = [...new Set(tracks)];
+  const channels = docChannels(doc);
   const positions = [];
-  for (let i = 0; i < wanted.length; i += AHX_CHANNELS) {
-    const track = wanted.slice(i, i + AHX_CHANNELS);
-    while (track.length < AHX_CHANNELS) track.push(track[0] as number);
-    positions.push({ track, transpose: [0, 0, 0, 0] });
+  for (let i = 0; i < wanted.length; i += channels) {
+    const track = wanted.slice(i, i + channels);
+    while (track.length < channels) track.push(track[0] as number);
+    positions.push({ track, transpose: new Array<number>(channels).fill(0) });
   }
   const rows = new Map<number, TrackerEntryData[]>();
   if (positions.length === 0) return rows;
   const scratch = makeAhxDoc({ ...doc, positions, restart: 0, subsongs: [] });
   buildAhxTrackerPatterns(docToSong(scratch, []), PROJECTION).forEach((pattern, k) => {
     pattern.tracks.forEach((cell, j) => {
-      const track = wanted[k * AHX_CHANNELS + j];
+      const track = wanted[k * channels + j];
       if (track !== undefined && !rows.has(track)) rows.set(track, cell.entries);
     });
   });

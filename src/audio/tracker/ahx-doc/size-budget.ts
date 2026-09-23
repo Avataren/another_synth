@@ -1,10 +1,18 @@
-import type { AhxInstrument } from '@another-synth/tracker-playback';
-import { omitsFirstTrack } from './doc';
-import { AHX_SIZE_LIMIT, type AhxDoc } from './types';
+import type { AhxInstrument, AhxSongFormat } from '@another-synth/tracker-playback';
+import { docChannels, isBlankStep, omitsFirstTrack } from './doc';
+import { AHX_SIZE_LIMIT, type AhxDoc, type AhxDocTrack } from './types';
 
 const AHX_HEADER_BYTES = 14;
+/** HVL adds the mix gain and default stereo bytes. */
+const HVL_HEADER_BYTES = 16;
 const INSTRUMENT_CORE_BYTES = 22;
-const PLIST_ENTRY_BYTES = 4;
+/** A PList entry: 4 bytes in AHX, 5 in HVL (the wider command set). */
+const plistEntryBytes = (format: AhxSongFormat): number => (format === 'hvl' ? 5 : 4);
+/** An AHX step is always 3 bytes. */
+const AHX_STEP_BYTES = 3;
+/** An HVL step is 5 bytes, or the 1-byte `0x3f` escape when it is all zero. */
+const HVL_STEP_BYTES = 5;
+const HVL_BLANK_STEP_BYTES = 1;
 
 export interface AhxSizeBudget {
   /** The bytes before the string table: what the 16-bit `nameOffset` counts. */
@@ -13,28 +21,37 @@ export interface AhxSizeBudget {
   readonly remaining: number;
 }
 
-/** What an instrument takes in the file, apart from its name (which sits in the string table). */
-export const ahxInstrumentBytes = (instruments: readonly Pick<AhxInstrument, 'plist'>[]): number =>
-  instruments.reduce((sum, ins) => sum + INSTRUMENT_CORE_BYTES + PLIST_ENTRY_BYTES * ins.plist.entries.length, 0);
+/**
+ * What an instrument takes in the file, apart from its name (which sits in the
+ * string table). `format` is the song's: HVL's PList entries are a byte wider.
+ */
+export const ahxInstrumentBytes = (instruments: readonly Pick<AhxInstrument, 'plist'>[], format: AhxSongFormat = 'ahx'): number =>
+  instruments.reduce((sum, ins) => sum + INSTRUMENT_CORE_BYTES + plistEntryBytes(format) * ins.plist.entries.length, 0);
+
+/** What an HVL track takes: 1 byte per blank step, 5 per other. */
+const hvlTrackBytes = (track: AhxDocTrack): number =>
+  track.reduce((sum, step) => sum + (isBlankStep(step) ? HVL_BLANK_STEP_BYTES : HVL_STEP_BYTES), 0);
 
 /**
- * `14 + 2*subsongs + 8*positions + 3*trackLength*(tracks - omitted) + instrumentBytes`,
- * where `omitted` is 1 when the file leaves track 0 out. It equals the
- * serialized file's `nameOffset` exactly (a test compares).
+ * AHX: `14 + 2*subsongs + 8*positions + 3*trackLength*(tracks - omitted) + instrumentBytes`.
+ * HVL: `16 + 2*subsongs + 2*channels*positions + (the stored tracks' steps: 1
+ * byte blank, 5 otherwise) + instrumentBytes`. `omitted` is track 0 when the
+ * file leaves it out. It equals the serialized file's `nameOffset` exactly (a
+ * test compares, for the whole corpus).
  */
 export function ahxUsedBytes(doc: AhxDoc, instrumentBytes = 0): number {
-  const stored = doc.tracks.length - (omitsFirstTrack(doc) ? 1 : 0);
-  return (
-    AHX_HEADER_BYTES +
-    2 * doc.subsongs.length +
-    8 * doc.positions.length +
-    3 * doc.trackLength * stored +
-    instrumentBytes
-  );
+  const omitted = omitsFirstTrack(doc) ? 1 : 0;
+  const shared = 2 * doc.subsongs.length + 2 * docChannels(doc) * doc.positions.length + instrumentBytes;
+  if (doc.format === 'ahx') {
+    return AHX_HEADER_BYTES + shared + AHX_STEP_BYTES * doc.trackLength * (doc.tracks.length - omitted);
+  }
+  let trackBytes = 0;
+  for (let t = omitted; t < doc.tracks.length; t++) trackBytes += hvlTrackBytes(doc.tracks[t] as AhxDocTrack);
+  return HVL_HEADER_BYTES + shared + trackBytes;
 }
 
 export function ahxSizeBudget(doc: AhxDoc, instruments: readonly Pick<AhxInstrument, 'plist'>[]): AhxSizeBudget {
-  const used = ahxUsedBytes(doc, ahxInstrumentBytes(instruments));
+  const used = ahxUsedBytes(doc, ahxInstrumentBytes(instruments, doc.format));
   return { used, max: AHX_SIZE_LIMIT, remaining: AHX_SIZE_LIMIT - used };
 }
 
@@ -58,7 +75,8 @@ function growthRefusal(before: number, after: number, what: string): string | nu
 /**
  * Why `next` cannot take the place of `prev` in the song, when the swap grows
  * the file past the limit; `null` otherwise. `instrumentBytes` is what every
- * instrument of the song takes now (`ahxInstrumentBytes`, `prev` included).
+ * instrument of the song takes now (`ahxInstrumentBytes` for the doc's
+ * format, `prev` included).
  * Only PList rows change an instrument's size, so the growth is said in rows.
  * As with `sizeRefusal`, an edit that does not grow the file is never refused.
  */
@@ -69,7 +87,7 @@ export function instrumentGrowthRefusal(
   next: Pick<AhxInstrument, 'plist'>,
 ): string | null {
   const before = ahxUsedBytes(doc, instrumentBytes);
-  const after = ahxUsedBytes(doc, instrumentBytes - ahxInstrumentBytes([prev]) + ahxInstrumentBytes([next]));
-  const rows = (after - before) / PLIST_ENTRY_BYTES;
+  const after = ahxUsedBytes(doc, instrumentBytes - ahxInstrumentBytes([prev], doc.format) + ahxInstrumentBytes([next], doc.format));
+  const rows = (after - before) / plistEntryBytes(doc.format);
   return growthRefusal(before, after, rows === 1 ? 'a PList row' : `${formatBytes(rows)} PList rows`);
 }

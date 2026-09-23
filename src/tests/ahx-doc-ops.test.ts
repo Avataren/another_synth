@@ -34,6 +34,7 @@ import {
   trackUsage,
   tracksEqual,
   type AhxDoc,
+  type AhxFormatDoc,
   type AhxOpContext,
   type AhxOpResult,
 } from 'src/audio/tracker/ahx-doc';
@@ -58,7 +59,7 @@ const refusal = (r: AhxOpResult<object>): string => {
 };
 
 /** A doc built directly, for boundary cases no corpus file has. */
-function synthetic(fields: Partial<AhxDoc> & Pick<AhxDoc, 'tracks' | 'positions'>): AhxDoc {
+function synthetic(fields: Partial<AhxFormatDoc> & Pick<AhxFormatDoc, 'tracks' | 'positions'>): AhxDoc {
   return makeAhxDoc({
     format: 'ahx',
     version: 1,
@@ -94,10 +95,10 @@ describe('the doc', () => {
     expect(d.base).toBe(file('outcast.ahx').bytes);
   });
 
-  it('refuses an HVL song', () => {
+  it('gives an HVL song an HVL doc (display-only until P2; covered in hvl-doc-corpus.test.ts)', () => {
     const dir = resolve(__dirname, '../../public/demos/ahx');
     const hvl = readdirSync(dir).find((n) => n.endsWith('.hvl'))!;
-    expect(() => docFromBytes(new Uint8Array(readFileSync(resolve(dir, hvl))))).toThrow(/HVL/);
+    expect(docFromBytes(new Uint8Array(readFileSync(resolve(dir, hvl)))).format).toBe('hvl');
   });
 });
 

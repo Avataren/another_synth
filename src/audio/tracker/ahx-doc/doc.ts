@@ -5,7 +5,14 @@ import {
   type AhxSong,
   type AhxStep,
 } from '@another-synth/tracker-playback';
-import { AHX_CHANNELS, type AhxDoc, type AhxDocStep, type AhxDocTrack } from './types';
+import {
+  AHX_CHANNELS,
+  HVL_MAX_CHANNELS,
+  HVL_MIN_CHANNELS,
+  type AhxDoc,
+  type AhxDocStep,
+  type AhxDocTrack,
+} from './types';
 
 /** The one all-zero step. Shared by every blank cell of every track. */
 export const BLANK_STEP: AhxDocStep = Object.freeze({
@@ -41,14 +48,16 @@ export function makeAhxDoc(fields: AhxDoc): AhxDoc {
   return Object.freeze(markRaw({ ...fields }));
 }
 
+/** How many channels every position of `doc` has: 4 for AHX, the header's count for HVL. */
+export const docChannels = (doc: AhxDoc): number => (doc.format === 'hvl' ? doc.channels : AHX_CHANNELS);
+
 /**
- * The doc of a parsed AHX song. `base`, when given, must be the bytes `song`
- * was parsed from. Throws for an HVL song: nothing constructs an HVL doc.
+ * The doc of a parsed AHX or HVL song. `base`, when given, must be the bytes
+ * `song` was parsed from. Throws for an HVL song wider than the engine plays
+ * (`HVL_MAX_CHANNELS`): a doc would hold channels nobody hears.
  */
 export function docFromSong(song: AhxSong, base?: Uint8Array): AhxDoc {
-  if (song.format !== 'ahx') throw new Error('Only AHX songs have an editable doc; HVL songs stay read-only.');
-  const doc: AhxDoc = {
-    format: 'ahx',
+  const fields = {
     version: song.version,
     songName: song.name,
     speedMultiplier: song.speedMultiplier,
@@ -59,7 +68,17 @@ export function docFromSong(song: AhxSong, base?: Uint8Array): AhxDoc {
     tracks: song.tracks.map((track) => track.map((step) => ({ ...step }))),
     ...(base === undefined ? {} : { base }),
   };
-  return makeAhxDoc(doc);
+  if (song.format === 'ahx') return makeAhxDoc({ format: 'ahx', ...fields });
+  if (!Number.isInteger(song.channels) || song.channels < HVL_MIN_CHANNELS || song.channels > HVL_MAX_CHANNELS) {
+    throw new Error(`An HVL doc has ${HVL_MIN_CHANNELS} to ${HVL_MAX_CHANNELS} channels (this song has ${String(song.channels)}).`);
+  }
+  return makeAhxDoc({
+    format: 'hvl',
+    channels: song.channels,
+    mixgainRaw: song.mixgainRaw ?? 0,
+    defstereo: song.defstereo ?? 0,
+    ...fields,
+  });
 }
 
 /** Parses `bytes` (throwing what `parseAhx` throws) and keeps them as the doc's `base`. */
@@ -74,10 +93,10 @@ export function docFromBytes(bytes: Uint8Array): AhxDoc {
  */
 export function docToSong(doc: AhxDoc, instruments: readonly AhxInstrument[]): AhxSong {
   return {
-    format: 'ahx',
+    format: doc.format,
     version: doc.version,
     name: doc.songName,
-    channels: AHX_CHANNELS,
+    channels: docChannels(doc),
     positionNr: doc.positions.length,
     restart: doc.restart,
     speedMultiplier: doc.speedMultiplier,
@@ -89,6 +108,8 @@ export function docToSong(doc: AhxDoc, instruments: readonly AhxInstrument[]): A
     positions: doc.positions as unknown as AhxSong['positions'],
     tracks: doc.tracks as unknown as AhxStep[][],
     instruments: instruments as AhxInstrument[],
+    // AHX has no room for these: the key is left out, as `parseAhx` leaves it.
+    ...(doc.format === 'hvl' ? { mixgainRaw: doc.mixgainRaw, defstereo: doc.defstereo } : {}),
   };
 }
 
