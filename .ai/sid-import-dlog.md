@@ -17,6 +17,9 @@ what evidence it rests on.
   GoatTracker or reSID source, and also `validate.py` / `validate.json` (the curator's
   validator is described in REPORT.md as "pinned to loadsong.c", i.e. a transcription of the
   GPL loader, so I treated it as off-limits too).
+- **S5 follow-up** (branch agent/sid-crosscheck-0923a): the GT2 C source (leafo/goattracker2)
+  and `goat_tracker_commands.pdf` were then READ for facts, to cross-check the INFERRED items of
+  §2 and §6; citations are file:line, nothing was copied. See `.ai/sid-crosscheck-verdict.md`.
 - **Copied**: no GT code, no GT table. The only numbers taken from GT's documentation are
   format facts (offsets, byte meanings) and the old-parameter conversion examples of §3.4.4.
 
@@ -125,6 +128,51 @@ Conversion rules (all INFERRED unless marked):
   6 → dropped (2 uses, both `$00`); 7 → F, same parameter.
 - Trailing empty instruments not referenced by any pattern are trimmed (31 → as few as 1).
 
+### S5 follow-up: the rules above checked against GT2's own GT1 loader
+
+GT2 source (leafo/goattracker2, read for facts only, nothing copied) converts GT1 in
+`gsong.c:329-845` (the `GTS!` branch of `loadsong`, plus the post-load passes it shares with old
+GT2 files). `betaconv.c` is NOT a GT1 converter: it reads only `GTS2` (betaconv.c:83) and
+converts early GT2 betas with 47 instruments (betaconv.c:46), so it says nothing about GTS!.
+`gfile.c` has no song loader. Per decision (full citations in `.ai/sid-crosscheck-verdict.md`):
+
+| Decision | Verdict | GT2 source |
+|---|---|---|
+| Notes $00-$5C, $5E key off, $5F rest, $FF end | CONFIRMED | gsong.c:556-573 (note + $60; OLDKEYOFF/OLDREST = gcommon.h:53-54) |
+| $5D refused | DIFFERS | gsong.c:559-560: $5D + $60 > $BC becomes a rest. None in the corpus |
+| Instrument layout (AD, SR, pulse, speed, low, high, filter, wave length, name) | CONFIRMED | gsong.c:369-384; 31 instruments (loop 1..31) |
+| Pulse start/limits = top 8 bits | CONFIRMED | gsong.c:437-438, 444-447 (×16) |
+| Pulse byte bit 0 | **MISSED** | gsong.c:381-382: bit 0 is a "no hard restart" flag (gate timer \|= $80), masked out of the width. We keep it in the width and always set HR on. 16 instruments in 3 files (galwaytest, wod, b.o.f.h.) |
+| Wave: GT2 encoding, jumps 1-based and relocated | CONFIRMED | gsong.c:385-398 (copy verbatim, $FF jump += start − 1) |
+| Wave left $08-$0F | CONFIRMED (none in corpus) | gsong.c:396-397 turns them into $E8-$EF (§1.1 note 7) |
+| Wave programs shared when identical | DIFFERS, benign | GT shares only identical pulse settings (gsong.c:423-432), never wave programs; also drops a 1-row empty program (gsong.c:407-416) |
+| Pulse sweep: start → high, then high ↔ low | CONFIRMED in shape | gsong.c:441-530; GT's loop returns to the start when it lies inside the limits (same trajectory), otherwise jumps to the high→low leg. Times: GT floors, we ceil |
+| Pulse speed ×1 | CONFIRMED (net) | GT writes speed / 2 (gsong.c:458, 477, 496, 519), then its pre-v2.4 pass doubles every pulse speed and clamps to 127/−128 (gsong.c:816-830; GTS! < '4'). Net ×1 with the low bit lost, clamped at $7F exactly as ours |
+| Pulse with start 0 | DIFFERS | GT makes no pulse program when the start byte is 0 (gsong.c:419); we make one when start or speed is non-zero |
+| Filter table: byte 0 bits 0-2 passband, 4-6 channels; byte 1 = res<<4\|volume | **CONTRADICTED** | gsong.c:621-625: GT2 row left = $80 + (byte 1 & $70), right = byte 0. So byte 0 = resonance<<4 \| channel mask ($D417 layout), byte 1 = mode<<4 \| volume ($D418 layout). The corpus agrees with GT (604 set rows are `80 0F`; the others are e.g. `F1 1F` = res F, ch 1, LP). Our converter routes the wrong channels and takes resonance from the mode nibble |
+| Filter modulation rows (byte 1 time, byte 2 speed, split at $7F) | CONFIRMED | gsong.c:633-647 |
+| Cutoff row after a set row | CONFIRMED (GT omits it when byte 2 = 0) | gsong.c:626-631 |
+| `next` byte = jump, fall-through when adjacent | CONFIRMED | gsong.c:649-665 |
+| Zero-time modulation | DIFFERS | GT emits no row (gsong.c:638 loop skipped); we emit one still frame |
+| Filter row 0 | DIFFERS (unreached in practice) | GT converts rows 1..n only (gsong.c:614) and reads bytes 2-3 of row 0 as the funk tempo (gsong.c:698) |
+| Filter table optional at end | INFERRED (ours) | GT reads 256 bytes unconditionally (gsong.c:602) into an uninitialised buffer (gsong.c:341); it does not detect a missing table |
+| Defaults first wave $09, gate timer 2 | CONFIRMED | gsong.c:347 clearsong → ginstr.c:210-221 (gate timer 2 × multiplier, multiplier 1 = goattrk2.c:48; first wave $09) |
+| Hard restart on | DIFFERS for 16 instruments | see pulse bit 0 above |
+| Instrument/command packing (instrument<<3 \| command) | CONFIRMED | gsong.c:553-554 |
+| 0XY arpeggio → looping wave program | CONFIRMED in kind, **DIFFERS in detail** | gsong.c:700-803: only on rows with a note (else the parameter is zeroed, gsong.c:800-802; 2149 corpus rows carry 0XY without a note); order X, Y, 0 (ours 0, X, Y); bit 7 is a 1-frame delay per step, i.e. half speed (2139 rows in 10 files), which we mask off; the program first replays the instrument's wave left column; it is reached by a cloned instrument, command 8 only when slots run out |
+| 1/2/3 → speed row of 4 × param; 3 00 stays tie-note | CONFIRMED | gsong.c:681-686 → gtable.c:881-883 (×4); gtable.c:862 (param 0 → no row, stays 0) |
+| 4XY → speed row (X, Y<<4) | CONFIRMED | gsong.c:687-688 → gtable.c:866-868 |
+| 5 → A | CONFIRMED | gsong.c:576-578, 690-692 (through the filter-row map) |
+| 6 dropped | **CONTRADICTED** | GT keeps it as command 6 = set SR (gsong.c:574-590 has no case for 6). 2 corpus rows, both `6 00` |
+| 7 → F, same parameter | **PARTLY CONTRADICTED** | gsong.c:581-589: $F0-$FF → D (master volume, low nibble; 10 rows in wod); gsong.c:695-699: 7 00 → E funk tempo from filter-table row 0 (11 rows in 2 files) |
+| Trailing-instrument trim | CONFIRMED in kind | GT trims on save to the highest instrument used by a pattern or with any non-zero AD/SR/pointer/vibrato byte (gsong.c:46-53, 1333), ignoring the name; we also keep a named instrument |
+
+Nothing here changed code: the S5 follow-up batch was documentation only. The contradicted rows
+(filter bytes, arpeggio bit 7 / note-only / order, command 6, command 7 $F0+/$00, pulse bit 0)
+change how GT1 songs sound (arpeggio bit 7 alone touches 10 of the 22 files) and are the
+should-fix list for a GT1 conversion pass. Corpus counts in this table are from a throwaway raw
+GTS! walker (`/tmp/gt1probe.py`, not committed).
+
 GTS! notes (MEASURED, pinned in `sid-sng-corpus.test.ts`): `gt1-convert` 55 (49 arpeggio
 programs, 5 pulse clamps, 1 zero-time filter modulation), `gt1-dropped` 41 (26 filter-pointer
 commands and 8 instrument filter bytes in files with no filter table: b.o.f.h. has 25+6 of them,
@@ -188,7 +236,23 @@ and the loaded song stays (tested).
 - **3XY with $00 is tie-note** — "$00 for "tie-note" effect (move pitch instantly to target
   note)" (§3.2). The S3 player read parameter 0 as "no speed row" and never moved the pitch, so a
   tied note kept the previous pitch. **MEASURED: 4791 rows in 56 of the 61 GTS5 files** are
-  `3 00` with a note. Fixed in `player.rs` `read_row` (pitch set at once, no trigger);
+  `3 00` with a real note ($60-$BC). Method (disclosed in the S5 follow-up,
+  `.ai/sid-crosscheck-verdict.md`): raw pattern rows, every pattern in the file once, NOT
+  orderlist-expanded, counted twice independently (the landed `importGtSong` doc, and a separate
+  raw-byte walker) with identical results. Breakdown: all `3 00` rows 5406 / 57 files; with a
+  real note 4791 / 56; with a note or key-off 4930 / 56 (139 key-offs, 8 files). The pin matters
+  where there is a note to glide to, so the real-note figure is the headline. The review's
+  walker (1755 real notes / 1883 non-rest / 56 files) does **not** reproduce: the 56-file count
+  agrees, the row counts do not, and no lens tried (referenced patterns only 4764, distinct row
+  tuples 1501, orderlist-expanded 7787) lands near 1755. The original 4791 stands.
+  **CONFIRMED against GT2 source** (S5 follow-up): gplay.c:354 (new-note init skips the wave/
+  pulse/filter/ADSR reload when the command is 3), gplay.c:922 (no gate-off/hard restart before a
+  command-3 note), gplay.c:807-811 (param 0: frequency = the new note's, at once); commands PDF
+  p.1 "3ST … ST = 00 slides instantly". Two frame-level details differ, recorded, not changed:
+  GT's default realtime optimisation (goattrk2.c:55, gplay.c:728) makes the jump on tick 1 not
+  tick 0, and GT re-asserts the pitch every tick while `3 00` stands but lets wave-table note rows
+  through (gplay.c:714-722); our `wave_note` suppresses them under any portamento.
+  Fixed in `player.rs` `read_row` (pitch set at once, no trigger);
   `rust-wasm/src/sid/tests_s5.rs` (2 of its 3 tests: the tie, and the glide control); header comment
   updated. `npm run build:wasm && npm run build:worklets` rebuilt `public/wasm`
   (`audio_processor_bg.wasm`, `SOURCE_HASH.json`); the worklet bundles came out unchanged.
@@ -200,9 +264,14 @@ and the loaded song stays (tested).
   478 delay rows in 36 of the 61 GTS5 files** (at least 301 of them, in 21 files, move the note
   away from the base). Fixed in `wave_step` (the note helper `wave_note` is shared with the other
   rows); test `a_delayed_wave_step_waits_then_sets_its_note_the_readme_minor_chord` plays the
-  readme's example. **INFERRED phase**: the note comes AFTER the wait (not on the row's first
-  frame), from §1.1 note 5 ("Using delayed wavetable … in the first step … may result in missing
-  notes", which only happens if the note waits).
+  readme's example. **Phase CONFIRMED against GT2 source** (S5 follow-up; was INFERRED from
+  §1.1 note 5): the note comes AFTER the wait. gplay.c:693-700: a left value $01-$0F
+  (WAVELASTDELAY = $0F, gcommon.h:57) increments the wait counter and jumps straight to the tick
+  effects while the counter differs from the value, so the row's note is not read; gplay.c:703-722:
+  on frame value+1 the counter resets, the pointer advances and the right column sets the note.
+  That is our `left + 1` frames with the note on the last. Commands PDF p.1 (wave table column):
+  "01-0F Delay step by 1-15 frames" (the PDF is a one-page card; the minor-chord example is only
+  in the readme, §3.4.1).
 - Red controls RC7 and RC8 (`.ai/checks-s5-red-controls.txt`) revert each pin and watch its test
   go red. `cargo test` for the whole crate is in `.ai/checks-s5-cargo.txt`: +3 passed vs baseline.
 

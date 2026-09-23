@@ -519,8 +519,10 @@ impl SidSongPlayer {
                 ch.base_note = note;
                 if row.param == 0 {
                     // Tie-note: "$00 ... move pitch instantly to target note"
-                    // (GT readme §3.2 3XY). Pinned in S5: 4791 rows of 56 of
-                    // the 61 GTS5 corpus songs are `3 00` legato notes.
+                    // (GT readme §3.2 3XY; GT2 gplay.c:354,922 no retrigger,
+                    // :807-811 instant pitch). Pinned in S5: 4791 raw pattern
+                    // rows (not orderlist-expanded) in 56 of the 61 GTS5 corpus
+                    // songs are `3 00` with a real note (4930 with key-offs).
                     ch.freq = target;
                     ch.target = None;
                 } else {
@@ -693,8 +695,9 @@ impl SidSongPlayer {
                     // then the step's note on the next, so the row lasts
                     // left + 1 frames (GT readme §3.4.1's "02 03 ... Each step
                     // takes 3 ticks"). Note after the wait, not before:
-                    // INFERRED from §1.1 note 5 (a delay as a program's first
-                    // step "may result in missing notes").
+                    // CONFIRMED by GT2 gplay.c:693-722 (the delay branch skips
+                    // to the tick effects until the wait ends, then the row's
+                    // note is applied as the pointer advances).
                     if ch.wave_wait == 0 {
                         ch.wave_wait = row.left + 1;
                     }
