@@ -12,6 +12,8 @@ import { canEditSlot, isAhxSlot } from 'src/audio/tracker/instrument-types';
  */
 export function ahxSlotRedirect(slotNumber: number): RouteLocationRaw | null {
   const slot = useTrackerStore().instrumentSlots.find((s) => s.slot === slotNumber);
+  // A SID slot has no patch either: its instrument is the song doc's (S4).
+  if (slot?.instrumentFormat === 'sid') return { name: 'sid-instrument-editor', params: { slot: slotNumber } };
   if (!slot || !isAhxSlot(slot)) return null;
   return canEditSlot(slot)
     ? { name: 'ahx-instrument-display', params: { slot: slotNumber } }

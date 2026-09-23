@@ -118,11 +118,12 @@ describe('editor routing table', () => {
       xm: 'sampler-patch',
       s3m: 'sampler-patch',
       ahx: 'ahx-display',
-      // plan-sid-tracking.md S3: a SID instrument's page is S4, so no editor yet.
-      sid: null,
+      // plan-sid-tracking.md S4: the SID instrument editor.
+      sid: 'sid-editor',
     });
-    expect(resolveInstrumentEditor({ instrumentFormat: 'sid' })).toBeNull();
-    expect(canEditSlot({ instrumentFormat: 'sid' })).toBe(false);
+    expect(resolveInstrumentEditor({ instrumentFormat: 'sid' })).toBe('sid-editor');
+    expect(canEditSlot({ instrumentFormat: 'sid' })).toBe(true);
+    expect(resolveInstrumentEditorRoute({ instrumentFormat: 'sid' })).toBe('sid-instrument-editor');
     expect(instrumentBadgeLabel({ instrumentFormat: 'sid' })).toBe('SID');
   });
 
