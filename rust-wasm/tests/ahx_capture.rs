@@ -47,7 +47,7 @@ const BLOCKS: [usize; 5] = [128, 1, 333, 882, 4096];
 #[test]
 fn capture_never_changes_mixed_samples() {
     // Every kind of song: 4-voice AHX, and native 8-voice HVL (ring mod etc.).
-    for name in ["karma.ahx", "sunspots.hvl", "chiprolled.hvl"] {
+    for name in ["karma.ahx", "sunspots.hvl"] {
         let frames = RATE as usize * 6;
         let plain = render(&mut engine(name, None), frames, &BLOCKS);
 

@@ -24,7 +24,6 @@ fn load(name: &str) -> Vec<u8> {
 fn looks_like_ahx_or_hvl_sniffs_every_fixture() {
     for name in [
         "karma.ahx",
-        "chiprolled.hvl",
         "doobrey_gubbins.hvl",
         "drainage_proble.hvl",
         "illuminated.hvl",
@@ -154,43 +153,52 @@ fn karma_ahx_every_instrument_has_a_plist() {
     }
 }
 
+// Retargeted 2026-09-23 from chiprolled.hvl (removed from the corpus as a
+// byte-identical dupe of Xeron's "never gonna give you up.hvl", user decision;
+// see .ai/plan-chiprolled-remove-0923.md). sunspots.hvl holds the same
+// coverage class: a 6-channel HVL, so the header still contradicts the
+// "AHX is always 4 channels" framing for the HVL half of the format family.
+// Values re-measured via the parser.
 #[test]
-fn chiprolled_hvl_header_decodes() {
-    let bytes = load("chiprolled.hvl");
-    let song = format::parse(&bytes).expect("chiprolled.hvl should parse");
+fn sunspots_hvl_header_decodes() {
+    let bytes = load("sunspots.hvl");
+    let song = format::parse(&bytes).expect("sunspots.hvl should parse");
 
     assert_eq!(song.format, SongFormat::Hvl);
     assert_eq!(song.version, 0);
-    assert_eq!(song.name, "never gonna give you up");
+    assert_eq!(song.name, "sunspots");
     // HVL packs a channel count into the header and it is not always 4 --
-    // this fixture alone contradicts `verdict.md`'s "AHX is always 4
-    // channels" framing for the HVL half of the format family. See
-    // `.ai/p0-report.md`.
+    // see the comment above.
     assert_eq!(song.channels, 6);
-    assert_eq!(song.position_nr, 196);
+    assert_eq!(song.position_nr, 12);
     assert_eq!(song.restart, 0);
-    assert_eq!(song.speed_multiplier, 2);
-    assert_eq!(song.track_length, 16);
-    assert_eq!(song.track_nr, 84);
-    assert_eq!(song.instrument_nr, 11);
+    assert_eq!(song.speed_multiplier, 1);
+    assert_eq!(song.track_length, 32);
+    assert_eq!(song.track_nr, 29);
+    assert_eq!(song.instrument_nr, 7);
     assert_eq!(song.subsong_nr, 0);
-    assert_eq!(song.mixgain_raw, Some(86));
-    assert_eq!(song.defstereo, Some(2));
+    assert_eq!(song.mixgain_raw, Some(64));
+    assert_eq!(song.defstereo, Some(0));
 
     let pos0 = &song.positions[0];
-    assert_eq!(pos0.track, vec![1, 3, 0, 0, 6, 45]);
+    assert_eq!(pos0.track, vec![1, 2, 0, 22, 23, 0]);
     assert_eq!(pos0.transpose, vec![0, 0, 0, 0, 0, 0]);
 }
 
 #[test]
-fn chiprolled_hvl_instrument_one_decodes() {
-    let bytes = load("chiprolled.hvl");
+fn sunspots_hvl_instrument_one_decodes() {
+    let bytes = load("sunspots.hvl");
     let song = format::parse(&bytes).unwrap();
 
     let ins = &song.instruments[1];
-    assert_eq!(ins.name, "i think i just");
-    assert_eq!(ins.volume, 64);
-    assert_eq!(ins.wave_length, 5);
+    // Retargeted 2026-09-23 from chiprolled.hvl (removed as a byte-identical
+    // dupe); values re-measured on sunspots.hvl, whose instrument 1 PList
+    // keeps the same coverage class: HVL's direct 4-bit FX codes (fx=4 needs
+    // no 6/7 remap the way AHX's 3-bit encoding would), here in the second
+    // column of entry 0.
+    assert_eq!(ins.name, "#  xeron / IRIS  #");
+    assert_eq!(ins.volume, 54);
+    assert_eq!(ins.wave_length, 4);
     assert_eq!(
         ins.envelope,
         format::Envelope {
@@ -199,38 +207,59 @@ fn chiprolled_hvl_instrument_one_decodes() {
             d_frames: 1,
             d_volume: 64,
             s_frames: 1,
-            r_frames: 12,
+            r_frames: 6,
             r_volume: 0,
         }
     );
     assert_eq!(ins.filter_lower_limit, 1);
-    assert_eq!(ins.filter_upper_limit, 31);
+    assert_eq!(ins.filter_upper_limit, 3);
     assert_eq!(ins.square_lower_limit, 32);
     assert_eq!(ins.square_upper_limit, 63);
-    assert_eq!(ins.square_speed, 3);
+    assert_eq!(ins.square_speed, 4);
 
-    // PList: 2 entries, speed 1 -- HVL's direct 4-bit FX codes (fx=4 needs
-    // no 6/7 remap the way AHX's 3-bit encoding would).
-    assert_eq!(ins.plist.speed, 1);
-    assert_eq!(ins.plist.entries.len(), 2);
+    // PList: 4 entries, speed 3 -- HVL's direct 4-bit FX codes (fx=4 in the
+    // second column of entry 0 needs no 6/7 remap the way AHX's 3-bit
+    // encoding would).
+    assert_eq!(ins.plist.speed, 3);
+    assert_eq!(ins.plist.entries.len(), 4);
     assert_eq!(
         ins.plist.entries[0],
         format::PListEntry {
             note: 1,
             waveform: 3,
             fixed: false,
-            fx: [4, 0],
-            fx_param: [0, 17],
+            fx: [3, 4],
+            fx_param: [32, 0],
         }
     );
     assert_eq!(
         ins.plist.entries[1],
         format::PListEntry {
+            note: 1,
+            waveform: 2,
+            fixed: false,
+            fx: [0, 0],
+            fx_param: [0, 17],
+        }
+    );
+    assert_eq!(
+        ins.plist.entries[2],
+        format::PListEntry {
+            note: 0,
+            waveform: 3,
+            fixed: false,
+            fx: [0, 0],
+            fx_param: [0, 33],
+        }
+    );
+    assert_eq!(
+        ins.plist.entries[3],
+        format::PListEntry {
             note: 0,
             waveform: 0,
             fixed: false,
-            fx: [3, 0],
-            fx_param: [32, 0],
+            fx: [0, 0],
+            fx_param: [0, 49],
         }
     );
 }
@@ -243,7 +272,6 @@ fn chiprolled_hvl_instrument_one_decodes() {
 #[test]
 fn hvl_corpus_decodes_with_matching_names() {
     let expected = [
-        ("chiprolled.hvl", "never gonna give you up", 6usize),
         ("doobrey_gubbins.hvl", "doobrey gubbins", 11),
         ("drainage_proble.hvl", "drainage problem", 7),
         ("illuminated.hvl", "illuminated", 6),

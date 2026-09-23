@@ -10,7 +10,8 @@
 #                  every channel, so cap 0 is the default path)
 # The golden for a row is <fixture>.<freq>.s<defstereo>.cap<channel_cap>.txt
 # (so that triple must be unique). defstereo only affects AHX songs; HVL
-# carries its own, so the chiprolled 48000 rows differ only in it on purpose.
+# carries its own, so the sunspots 48000 rows differ only in it on purpose
+# (retargeted from chiprolled.hvl, removed 2026-09-23 as a byte-identical dupe).
 
 # --- karma.ahx: 4-channel AHX; all five stereo modes, four sample rates ---
 karma.ahx               44100 2 3000 50 0
@@ -28,26 +29,22 @@ karma.ahx               96000 2 1500 50 0
 # illuminated runs 3200 frames: past its first natural wrap at tick 2880
 # (pos_nr == position_nr -> restart), the only golden on that branch.
 # sunspots reaches song end via its Bxx loop-back well inside 3000 frames.
-chiprolled.hvl          44100 2 3000 50 4
 doobrey_gubbins.hvl     44100 2 3000 50 4
 drainage_proble.hvl     44100 2 3000 50 4
 illuminated.hvl         44100 2 3200 50 4
 moderate_sellotaping.hvl 44100 2 3000 50 4
 sliding_away.hvl        44100 2 3000 50 4
 sunspots.hvl            44100 2 3000 50 4
-chiprolled.hvl          48000 2 1500 50 4
 doobrey_gubbins.hvl     48000 2 1500 50 4
 drainage_proble.hvl     48000 2 1500 50 4
 illuminated.hvl         48000 2 1500 50 4
 moderate_sellotaping.hvl 48000 2 1500 50 4
 sliding_away.hvl        48000 2 1500 50 4
 sunspots.hvl            48000 2 1500 50 4
-chiprolled.hvl          96000 2 1500 50 4
 doobrey_gubbins.hvl     96000 2 1500 50 4
 sunspots.hvl            96000 2 1500 50 4
 
-# --- HVL, every native channel (6/6/7/6/8/6/11) ---
-chiprolled.hvl          44100 2 3000 50 0
+# --- HVL, every native channel (11/7/6/8/6/6) ---
 doobrey_gubbins.hvl     44100 2 3000 50 0
 drainage_proble.hvl     44100 2 3000 50 0
 illuminated.hvl         44100 2 3000 50 0
@@ -56,7 +53,6 @@ sliding_away.hvl        44100 2 3000 50 0
 sunspots.hvl            44100 2 3000 50 0
 # speed-multiplier-2 songs at 22050: 441 samples/frame / 2 ticks = 220 per
 # tick, so a frame is 440 samples, not 441 (integer division in DecodeFrame).
-chiprolled.hvl          22050 2 1500 50 0
 doobrey_gubbins.hvl     22050 2 1500 50 0
 drainage_proble.hvl     22050 2 1500 50 0
 sliding_away.hvl        22050 2 1500 50 0
@@ -67,8 +63,8 @@ moderate_sellotaping.hvl 44100 2 1500 50 6
 doobrey_gubbins.hvl     44100 2 1500 50 8
 
 # --- HVL ignores the defstereo argument (uses the song's own) ---
-chiprolled.hvl          48000 0 1500 50 4
-chiprolled.hvl          48000 4 1500 50 4
+sunspots.hvl            48000 0 1500 50 4
+sunspots.hvl            48000 4 1500 50 4
 
 # --- AHX corpus songs added with the demo jukebox (Task 3): 4-channel AHX, native
 # channels, 60 s at the default stereo mode. No cap/rate variants: the engine

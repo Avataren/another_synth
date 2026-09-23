@@ -73,7 +73,9 @@ describe('the exporter registry', () => {
       xm: notYet,
       s3m: notYet,
     });
-    expect(rows(importAhxToTrackerSong(demo('chiprolled.hvl')))).toEqual({
+    // chiprolled.hvl left the corpus 2026-09-23 (byte-identical dupe);
+    // illuminated.hvl is the replacement wide-HVL fixture (also reaches track 6).
+    expect(rows(importAhxToTrackerSong(demo('illuminated.hvl')))).toEqual({
       ahx: { state: 'unavailable', reason: 'AHX files have 4 tracks; this song reaches track 6. Export it as HVL instead.' },
       hvl: { state: 'enabled' },
       mod: notYet,
@@ -92,7 +94,7 @@ describe('the exporter registry', () => {
       ahx: { state: 'unavailable', reason: 'This song has no original file to export from.' },
       hvl: { state: 'unavailable', reason: 'This song has no original file to export from.' },
     });
-    expect(rows(withoutSource(importAhxToTrackerSong(demo('chiprolled.hvl'))))).toMatchObject({
+    expect(rows(withoutSource(importAhxToTrackerSong(demo('illuminated.hvl'))))).toMatchObject({
       ahx: { state: 'unavailable', reason: 'This song has no original file to export from.' },
       hvl: { state: 'unavailable', reason: 'This song has no original file to export from.' },
     });
@@ -109,7 +111,7 @@ describe('the exporter registry', () => {
       reason: "XM songs can't be saved as AHX.",
     });
 
-    expect(describeSongExporter(ahxExporter, importAhxToTrackerSong(demo('chiprolled.hvl')))).toEqual({
+    expect(describeSongExporter(ahxExporter, importAhxToTrackerSong(demo('illuminated.hvl')))).toEqual({
       state: 'unavailable',
       reason: 'AHX files have 4 tracks; this song reaches track 6. Export it as HVL instead.',
     });
