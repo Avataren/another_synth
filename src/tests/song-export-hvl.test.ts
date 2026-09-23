@@ -150,19 +150,26 @@ describe('HVL songs and the editor store', () => {
     setCurrentAhxSource(null);
   });
 
-  it('an HVL song has no instrument slots, so no instrument edit can exist to be exported or lost', () => {
+  it('an HVL song lists its instruments in slots, and an instrument edit is exported', () => {
     // chiprolled.hvl left the corpus 2026-09-23 (byte-identical dupe);
     // illuminated.hvl is the replacement generic-HVL fixture.
+    // Flipped by plan-hvl-instruments-0923: HVL instruments are editable.
     const bytes = demo('illuminated.hvl');
+    const parsed = parseAhx(bytes);
     const store = useTrackerStore();
     store.loadSongFile(importAhxToTrackerSong(bytes.slice().buffer));
     setCurrentAhxSource(bytes.slice(), ahxSourceInfoOf(bytes));
-    expect(store.instrumentSlots.filter((slot) => slot.ahxData !== undefined)).toEqual([]);
-    const instrument = parseAhx(bytes).instruments[1]!;
-    expect(store.updateAhxInstrument(1, { ...instrument, volume: 5 })).toBe('rejected');
+    expect(store.instrumentSlots.filter((slot) => slot.ahxData !== undefined)).toHaveLength(parsed.instrumentNr);
+    expect(hvlExporter.serialize(snapshotEditorSong(store))).toEqual(bytes);
 
-    const out = hvlExporter.serialize(snapshotEditorSong(store));
-    expect(out).toEqual(bytes);
+    const instrument = parsed.instruments[1]!;
+    const volume = instrument.volume === 5 ? 6 : 5;
+    expect(store.updateAhxInstrument(1, { ...instrument, volume })).toBe('applied');
+
+    const back = parseAhx(hvlExporter.serialize(snapshotEditorSong(store)));
+    expect(back.instrumentNr).toBe(parsed.instrumentNr);
+    expect(back.instruments[1]!.volume).toBe(volume);
+    expect(back.instruments.slice(2)).toEqual(parsed.instruments.slice(2));
   });
 
   it('an HVL song read back from the store keeps author and BPM at their import values, so no warning shows', () => {
@@ -346,8 +353,12 @@ describe('the AHX exporter on an HVL song that fits', () => {
 
   it('is written from the converted model alone: it needs no instrument slots, and a base would be refused as an HVL file', () => {
     const { model, song } = importFitting();
-    expect(song.data.instrumentSlots).toEqual([]);
-    expect(() => ahxExporter.serialize(song)).not.toThrow();
+    // The import lists the instruments (plan-hvl-instruments-0923), but the
+    // export does not read them: it is the same without any slot.
+    expect(song.data.instrumentSlots.filter((slot) => slot.ahxData !== undefined)).toHaveLength(model.instrumentNr);
+    const withSlots = ahxExporter.serialize(song);
+    song.data.instrumentSlots = [];
+    expect(ahxExporter.serialize(song)).toEqual(withSlots);
     const converted = convertHvlToAhx(model);
     if (!converted.ok) throw new Error(converted.reason);
     const base = new Uint8Array(hvlBytesOf(model));

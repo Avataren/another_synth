@@ -1211,11 +1211,11 @@ const ahxChannelsHint = computed(() =>
   hvlDocChannels.value === null ? 'AHX songs have exactly 4 channels' : `This HVL song has ${hvlDocChannels.value} channels, set by its file`
 );
 const ahxLengthHint = 'All the tracks of an AHX or HVL song have the same length';
-// HVL instruments stay in the song's doc: plan-hvl-editing.md P3 deferred HVL slots and instrument editing to a later pass.
+// HVL instruments are listed and edited like AHX ones (plan-hvl-instruments-0923).
 const ahxInstrumentsHint = computed(() =>
   hvlDocChannels.value === null
     ? 'AHX instruments are numbered in order and edited in their own editor'
-    : 'HVL instruments come from the song\'s file and cannot be edited yet'
+    : 'HVL instruments are numbered in order and edited in their own editor'
 );
 /** What the edit composables ask before an edit an AHX step has no home for (see `AhxEditGate`). */
 const ahxEditGate: AhxEditGate = {

@@ -73,8 +73,9 @@ export function instrumentsFromSlots(slots: readonly AhxFileSlot[]): { instrumen
 
 /**
  * Where the file's instruments come from: an AHX song's slots, or an HVL doc's
- * own instruments (HVL songs have no slots until plan-hvl-editing.md P3 decides
- * on them; the cores are wire-compatible, the writer widens the PList rows).
+ * own instruments (an HVL song's slots mirror them for the list and the editor,
+ * whose edits replace the doc's; the cores are wire-compatible, the writer
+ * widens the PList rows).
  */
 export function fileInstrumentSlots(doc: AhxDoc, slots: readonly AhxFileSlot[]): readonly AhxFileSlot[] {
   return doc.format === 'hvl' ? doc.instruments.map((ahxData) => ({ ahxData })) : slots;

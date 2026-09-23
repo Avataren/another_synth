@@ -172,4 +172,103 @@ attempt in `.ai/hvl-inst-stop-notes.md` (kept, uncommitted, as the record).
 
 ## 7. Deviations and implementation record
 
-(filled at completion)
+Implemented 2026-09-23 on `agent/hvl-instruments-0923a` (second coder pass,
+revision-2 copy-on-write design). Plan premises checked against the code
+before any edit; none were contradicted.
+
+### What changed (file:line at the implementation commit)
+
+- Step 1, slots for HVL: `src/stores/tracker-store.ts:1390` (`adoptAhxDoc`,
+  `slots = buildAhxSlots(song)`) and `src/audio/tracker/ahx-import.ts:57`
+  (`instrumentSlots: buildAhxSlots(song)`). Doc comments updated (adoptAhxDoc
+  header, ahx-import module header).
+- Steps 2-3, copy-on-write write-through: new store action
+  `replaceHvlDocInstrument` (`tracker-store.ts:906`). For an HVL doc it sets
+  `this.ahxDoc = { ...doc, instruments: doc.instruments.map(...) }` and bumps
+  `ahxRevision`. It is quiet: no `commitAhxDoc`/`publishAhxBytes`. AHX docs
+  are a no-op. It is called from `updateAhxInstrument` after
+  `slot.ahxData = played` (`:1086`) and from `setInstrumentName`'s rename
+  mirror (`:892`). The docstring of `updateAhxInstrument` now covers HVL.
+- Step 4, growth guard: `checkAhxInstrument` counts
+  `fileInstruments(this.ahxDoc, this.instrumentSlots)` (`:1125`); the stale
+  "HVL has no slots" doc line was replaced.
+- Step 5, UI hint: `src/pages/TrackerPage.vue:1218` "HVL instruments are
+  numbered in order and edited in their own editor".
+- `HvlDoc.instruments` stays `readonly` (`ahx-doc/types.ts:78`); its comment
+  records the copy-on-write decision. Comment-only updates:
+  `ahx-doc/build-file.ts` (`fileInstrumentSlots`),
+  `song-export/ahx-exporter.ts` and `song-export/hvl-exporter.ts` headers
+  (they said an HVL song has no slots). Exporter code is unchanged.
+- No `rust-wasm/`, `public/demos/`, `ModuleFormat` or badge change. HVL slots
+  keep `instrumentFormat: 'ahx'`.
+
+### Tests
+
+- Flipped (§3): `song-export-hvl.test.ts:156`. `updateAhxInstrument` on HVL
+  now returns `'applied'`, the exported file carries the edited volume, and
+  the other instruments are unchanged. `hvl-edit-matrix.test.ts:335`:
+  meltwater lists slots 1-10 with the file's names (or the import's
+  "Instrument NN" fallback for an empty name), `ahx`/`ahx`, `canEditSlot`
+  true, and `ahxData` equal to the parse.
+- Also flipped, found by the §6 sweep (the sweep's rg pattern missed them;
+  the full test run found them). Each asserted HVL songs have no slots:
+  - `ahx-import.test.ts` "leaves HVL songs without instrument slots" now
+    asserts one `ahx`/`ahx` slot per instrument.
+  - `ahx-store-persistence.test.ts:210` and `hvl-save-export.test.ts:155`
+    now assert the listed instruments equal the file's.
+  - `song-export-hvl.test.ts` "is written from the converted model alone":
+    `instrumentSlots` is no longer `[]`. The test now proves the slots are
+    ignored: the export is identical after the slots are cleared.
+- New: `hvl-edit-matrix.test.ts:376` "an HVL instrument edit
+  (meltwater_10ch.hvl)" has two tests:
+  1. Edit test. After `pushHistory` then `updateAhxInstrument(1, volume)`:
+     - it returns `'applied'` and the doc is a new object;
+     - the snapshot's doc is the untouched original;
+     - quiet: `currentAhxInstrumentEdits` grows by one, `currentAhxSource()`
+       is still the source array (same identity) and `onAhxStructureChange`
+       never fires;
+     - `currentAhxBytes()` re-parses with `instrumentNr` 10, instrument 1
+       equals source + volume, and instruments 2-10 are equal both as
+       serialized wire bytes and as parsed objects;
+     - the HVL export of the saved song equals that rebuild;
+     - undo restores the doc (same reference as the original), the slot
+       (equal to the parse) and the engine bytes.
+  2. Rename test: `setInstrumentName(2, ...)` replaces the doc copy-on-write,
+     the rebuilt file carries the name, and undo restores doc and slot name.
+- Red check: with `replaceHvlDocInstrument` stubbed to return early, the two
+  new matrix tests and the flipped `song-export-hvl` edit test fail (3
+  failed); they pass with it in place.
+- AHX pins untouched and green, unmodified: `ahx-exporter-store.test.ts`,
+  `hvl-doc-corpus.test.ts`, `plist-canvas-parity.test.ts`,
+  `ahx-instrument-page-plist-edit.test.ts`.
+
+### Gates (branch tip, full output in `.ai/checks-hvli-*.txt`)
+
+| gate | exit |
+|---|---|
+| `npm run test:run` (241 files, 3924 tests passed) | 0 |
+| `npm run lint` | 0 |
+| `npx vue-tsc --noEmit` | 0 |
+| `gitleaks detect --no-git --source .` ("no leaks found") | 0 |
+| `npm run check:artifacts` | 0 |
+
+The first full test run exited 1 with the 3 extra "no slots" pins listed
+above. They were flipped per §3 and every gate was rerun; the table shows
+the rerun.
+
+### Deviations
+
+1. The doc gets a shallow copy of the instrument (`{ ...instrument }`), not
+   `played` itself. Reason: `setInstrumentName` renames by writing
+   `slot.ahxData.name` in place (the only in-place write to `ahxData` in
+   `src/`). If the doc held the same object as the slot, a later rename would
+   also rename the doc instrument, and with it every undo snapshot that holds
+   that doc. This is the same invariant the plan protects. `name` is the only
+   field written in place, so a shallow copy is enough. The design is
+   otherwise exactly as planned.
+2. The write-through is one shared action (`replaceHvlDocInstrument`), not
+   two inline copies. The behaviour is the one planned.
+3. The four extra pin flips listed under Tests. Plan §3 allowed for them;
+   they are recorded here.
+4. Still unverified (§6): no test listens to a real worklet, so hot-applying
+   HVL-width PList rows is exercised only at the record level.

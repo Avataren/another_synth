@@ -199,7 +199,7 @@ describe('a file with a bad ahxFile falls back to a read-only display (no throw)
     expect(after.serializeSong().data.ahxFile).toBeUndefined();
   });
 
-  it('an HVL file is no longer a bad one (plan-hvl-editing.md P3): it is the song, an editable HVL doc with no slots', () => {
+  it('an HVL file is no longer a bad one (plan-hvl-editing.md P3): it is the song, an editable HVL doc with its instruments in slots', () => {
     const hvl = demo('meltwater_10ch.hvl');
     const saved = viaJson(openKarma().serializeSong());
     saved.data.ahxFile = encodeAhxFile(hvl);
@@ -207,7 +207,8 @@ describe('a file with a bad ahxFile falls back to a read-only display (no throw)
     applyLikeFileIO(after, saved);
     expect(after.ahxDoc?.format).toBe('hvl');
     expect(after.isAhxEditable).toBe(true);
-    expect(after.instrumentSlots).toEqual([]);
+    // Flipped by plan-hvl-instruments-0923 (was: no slots): the file's 10 instruments are listed.
+    expect(after.instrumentSlots.filter((slot) => slot.ahxData !== undefined).map((slot) => slot.ahxData)).toEqual(parseAhx(hvl).instruments.slice(1));
     expect(currentAhxSource()).toEqual(hvl);
     const again = decodeAhxFile(after.serializeSong().data.ahxFile);
     expect(again.ok && again.format).toBe('hvl');

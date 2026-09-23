@@ -18,8 +18,9 @@ import {
  *
  * An AHX song lists its instruments as name-only slots (`ahx`/`ahx`, no
  * patch) that keep the parsed instrument for the display editor. An HVL song
- * keeps no slots for now: it needs an `instrumentFormat` of its own, and
- * stamping it `ahx` would be wrong.
+ * lists its instruments the same way (plan-hvl-instruments-0923): the slots
+ * are stamped `ahx`, the cores' lineage (`ModuleFormat` has no `hvl`), and the
+ * file's instruments stay the doc's own (`fileInstrumentSlots`).
  */
 export const looksLikeAhxModule = looksLikeAhxInternal;
 
@@ -53,7 +54,7 @@ export function importAhxToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
       patterns,
       sequence: sequenceIds,
       currentPatternId: sequenceIds[0] ?? null,
-      instrumentSlots: song.format === 'ahx' ? buildAhxSlots(song) : [],
+      instrumentSlots: buildAhxSlots(song),
       activeInstrumentId: null,
       currentInstrumentPage: 0,
       songPatches: {},
