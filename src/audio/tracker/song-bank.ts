@@ -65,6 +65,7 @@ import {
 import { SongBankRecorder } from './recorder';
 import { isSamplerInstrumentType } from './instrument-types';
 import { TrackVoiceRegistry } from './track-voice-registry';
+import type { BankInstrument } from './bank-instrument';
 
 export interface SongBankSlot {
   instrumentId: string;
@@ -124,7 +125,7 @@ function idleYield(timeoutMs: number): Promise<void> {
 }
 
 export interface ActiveInstrument {
-  instrument: InstrumentV2 | ModInstrument | PooledInstrument;
+  instrument: BankInstrument;
   patchId: string;
   patchReuseKey: string | null;
   hasPortamento: boolean;
@@ -380,11 +381,20 @@ export class TrackerSongBank implements TrackerSink {
   }
 
   /** Get the InstrumentV2 instance for a specific instrument (for live editing) */
+  /**
+   * Get the instrument for a specific instrument id (for live editing).
+   *
+   * Editor-facing boundary: callers (IndexPage.vue) do concrete-class checks
+   * (instanceof ModInstrument) we cannot retype, so this keeps returning the
+   * concrete union exactly as before. The bank's INTERNAL handling is typed
+   * through `BankInstrument` (ActiveInstrument.instrument); this single cast
+   * is the boundary, not a capability probe.
+   */
   getInstrument(
     instrumentId: string,
   ): InstrumentV2 | ModInstrument | PooledInstrument | null {
     const active = this.instruments.get(instrumentId);
-    return active?.instrument ?? null;
+    return (active?.instrument as InstrumentV2 | ModInstrument | PooledInstrument) ?? null;
   }
 
   /** Get WorkletPool statistics (for debugging and monitoring) */
@@ -982,7 +992,7 @@ export class TrackerSongBank implements TrackerSink {
 
   /** Return a small lead time (seconds) to drop the gate before retriggering. */
   private getGateLeadTime(
-    instrument: InstrumentV2 | ModInstrument | PooledInstrument,
+    instrument: BankInstrument,
   ): number {
     // Ensure at least one quantum of gate-low so the automation frame sees the edge.
     // Fallback to ~5ms if we don't know the block size.
@@ -1650,10 +1660,11 @@ export class TrackerSongBank implements TrackerSink {
     );
     if (!target) return;
 
-    const envelopes = target.active.instrument as {
-      setEnvelopePositionAtTime?: (v: number, t: number, when: number) => void;
-    };
-    envelopes.setEnvelopePositionAtTime?.(target.voiceIndex, tick, time);
+    target.active.instrument.setEnvelopePositionAtTime?.(
+      target.voiceIndex,
+      tick,
+      time,
+    );
   }
 
   /**
@@ -2094,9 +2105,7 @@ export class TrackerSongBank implements TrackerSink {
     await this.eventQueue.flushPendingScheduledEvents(instrumentId);
   }
 
-  private normalizeVoiceGain(
-    instrument: InstrumentV2 | ModInstrument | PooledInstrument,
-  ) {
+  private normalizeVoiceGain(instrument: BankInstrument) {
     // Ensure voice gains aren't left at a previous automation value (e.g. 0)
     instrument.setGainForAllVoices(1);
   }

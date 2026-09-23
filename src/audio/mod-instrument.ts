@@ -22,6 +22,7 @@ import {
   type TrackerSamplerConfig,
   type TrackerSampleLoop,
 } from '@another-synth/tracker-playback';
+import type { BankInstrument } from './tracker/bank-instrument';
 
 /** The app's serialised loop enum, as the library's loop vocabulary. */
 function toTrackerLoop(mode: SamplerLoopMode): TrackerSampleLoop {
@@ -62,7 +63,9 @@ function toSamplerConfig(state: SamplerState): TrackerSamplerConfig {
   };
 }
 
-export default class ModInstrument extends TrackerSamplerInstrument {
+export default class ModInstrument extends TrackerSamplerInstrument
+  implements BankInstrument
+{
   /**
    * Load this app's sampler patch.
    *
