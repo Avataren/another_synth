@@ -32,8 +32,11 @@ import {
  * not play back exactly like in v1.xx", the arpeggio command becomes
  * wavetable programs) and §3.4.4 gives the old-parameter conversions for
  * vibrato ($34 -> speed 03, depth 40) and portamento (4 x the old value).
- * Everything else here is INFERRED from the 22 corpus files' bytes (the D-log
- * lists each inference); no GoatTracker source was read.
+ * The conversion follows GT2's own GT1 loader, gsong.c:329-845 (read for its
+ * facts only; the file:line cites below point there): its tables, commands
+ * and arpeggio instruments, byte for byte, except where GT reads memory it
+ * never wrote (each such place says what stands in instead). Our tables
+ * share identical programs where GT lays copies.
  *
  * Layout (measured, every corpus GTS! file consumes exactly):
  *   +0 'GTS!', +4/+36/+68 name/author/copyright (32 each), +100 subtunes,
@@ -71,7 +74,11 @@ class TableBuilder {
     if (found !== undefined) return found;
     const start = this.rows.length + 1;
     for (const row of program) {
-      this.rows.push(row.left === JUMP && row.right !== 0 ? { left: JUMP, right: start + row.right - 1 } : row);
+      this.rows.push(
+        row.left === JUMP && row.right !== 0
+          ? { left: JUMP, right: start + row.right - 1 }
+          : row,
+      );
     }
     this.check();
     this.seen.set(key, start);
@@ -79,7 +86,9 @@ class TableBuilder {
   }
   check(): void {
     if (this.rows.length > SID_MAX_TABLE_ROWS) {
-      throw new GtFormatError(`converted to GoatTracker 2 tables, its ${this.name} table needs ${this.rows.length} rows; a table holds ${SID_MAX_TABLE_ROWS}`);
+      throw new GtFormatError(
+        `converted to GoatTracker 2 tables, its ${this.name} table needs ${this.rows.length} rows; a table holds ${SID_MAX_TABLE_ROWS}`,
+      );
     }
   }
 }
@@ -87,7 +96,8 @@ class TableBuilder {
 /** Splits a modulation of `time` frames at `speed` into rows of at most $7F frames (GT2's time range). */
 function timedRows(time: number, speed: number): SidTableRow[] {
   const out: SidTableRow[] = [];
-  for (let left = time; left > 0; left -= 0x7f) out.push({ left: Math.min(left, 0x7f), right: speed & 0xff });
+  for (let left = time; left > 0; left -= 0x7f)
+    out.push({ left: Math.min(left, 0x7f), right: speed & 0xff });
   return out;
 }
 
@@ -107,7 +117,10 @@ export function readGt1Song(
 ): SidDoc {
   const r = new GtReader(bytes, GT_SUBTUNE_COUNT_OFFSET);
   const subtunes = r.byte('the song header');
-  if (subtunes < 1 || subtunes > SID_MAX_SUBSONGS) throw new GtFormatError(`it declares ${subtunes} subtunes; a song has 1-${SID_MAX_SUBSONGS}`);
+  if (subtunes < 1 || subtunes > SID_MAX_SUBSONGS)
+    throw new GtFormatError(
+      `it declares ${subtunes} subtunes; a song has 1-${SID_MAX_SUBSONGS}`,
+    );
   const rawLists = readGtOrderlists(r, subtunes);
 
   const raw: Gt1Instrument[] = [];
@@ -119,11 +132,21 @@ export function readGt1Song(
   let gtWaveRows = 0;
   for (let i = 0; i < GT1_INSTRUMENTS; i++) {
     const h = r.take(GT1_INSTRUMENT_HEADER, `instrument ${i + 1}`);
-    const name = gtText(r.take(GT_INSTRUMENT_NAME_LENGTH, `instrument ${i + 1}`));
+    const name = gtText(
+      r.take(GT_INSTRUMENT_NAME_LENGTH, `instrument ${i + 1}`),
+    );
     const pairs = h[7]! >> 1;
     const w = r.take(pairs * 2, `instrument ${i + 1}'s wavetable`);
-    const wave = Array.from({ length: pairs }, (_, k) => ({ left: w[k * 2]!, right: w[k * 2 + 1]! }));
-    const empty = name === '' && h.subarray(0, 7).every((b) => b === 0) && wave.every((row) => row.left === 0 || (row.left === JUMP && row.right === 0));
+    const wave = Array.from({ length: pairs }, (_, k) => ({
+      left: w[k * 2]!,
+      right: w[k * 2 + 1]!,
+    }));
+    const empty =
+      name === '' &&
+      h.subarray(0, 7).every((b) => b === 0) &&
+      wave.every(
+        (row) => row.left === 0 || (row.left === JUMP && row.right === 0),
+      );
     gtWaveRows = Math.min(SID_MAX_TABLE_ROWS, gtWaveRows + pairs);
     const noWave = pairs === 2 && wave[0]!.left === 0 && wave[0]!.right === 0;
     if (noWave) gtWaveRows -= 2;
@@ -131,25 +154,36 @@ export function readGt1Song(
   }
 
   const patternCount = r.byte('the pattern count');
-  if (patternCount < 1 || patternCount > SID_MAX_PATTERNS) throw new GtFormatError(`it declares ${patternCount} patterns; a song has 1-${SID_MAX_PATTERNS}`);
+  if (patternCount < 1 || patternCount > SID_MAX_PATTERNS)
+    throw new GtFormatError(
+      `it declares ${patternCount} patterns; a song has 1-${SID_MAX_PATTERNS}`,
+    );
   const rawPatterns: Uint8Array[] = [];
   for (let p = 0; p < patternCount; p++) {
     const len = r.byte(`pattern ${p}`);
-    if (len % 3 !== 0) throw new GtFormatError(`pattern ${p} is ${len} bytes long, not a whole number of 3-byte rows`);
+    if (len % 3 !== 0)
+      throw new GtFormatError(
+        `pattern ${p} is ${len} bytes long, not a whole number of 3-byte rows`,
+      );
     rawPatterns.push(r.take(len, `pattern ${p}`));
   }
   // The trailing filter table is optional on disk (measured: 5 of 22 corpus files end here).
   let filterTable: Uint8Array | null = null;
-  if (r.left === GT1_FILTER_TABLE_BYTES) filterTable = r.take(GT1_FILTER_TABLE_BYTES, 'the filter table');
+  if (r.left === GT1_FILTER_TABLE_BYTES)
+    filterTable = r.take(GT1_FILTER_TABLE_BYTES, 'the filter table');
   else if (r.left !== 0) {
-    throw new GtFormatError(`${r.left} bytes follow the last pattern; a GoatTracker 1 song ends there or after a ${GT1_FILTER_TABLE_BYTES}-byte filter table`);
+    throw new GtFormatError(
+      `${r.left} bytes follow the last pattern; a GoatTracker 1 song ends there or after a ${GT1_FILTER_TABLE_BYTES}-byte filter table`,
+    );
   }
 
   const wave = new TableBuilder('wave');
   const pulse = new TableBuilder('pulse');
   const speed = new TableBuilder('speed');
-  const convert = (message: string) => notes.push({ kind: 'gt1-convert', message });
-  const drop = (message: string) => notes.push({ kind: 'gt1-dropped', message });
+  const convert = (message: string) =>
+    notes.push({ kind: 'gt1-convert', message });
+  const drop = (message: string) =>
+    notes.push({ kind: 'gt1-dropped', message });
 
   // --- The filter table: 64 rows of (b0, b1, b2, next row), converted as
   // GT2's loader does (gsong.c:602-669). Rows 1..n are laid out in order,
@@ -159,22 +193,31 @@ export function readGt1Song(
   // at most 63 (gsong.c:612). Row 0 is never laid: its bytes 2-3 are the
   // funktempo (command 7 00).
   let filterRowCount = 0;
-  for (const ins of raw) filterRowCount = Math.max(filterRowCount, ins.header[6]!);
+  for (const ins of raw)
+    filterRowCount = Math.max(filterRowCount, ins.header[6]!);
   for (const data of rawPatterns) {
-    for (let k = 0; k + 2 < data.length; k += 3) if ((data[k + 1]! & 0x07) === 5) filterRowCount = Math.max(filterRowCount, data[k + 2]!);
+    for (let k = 0; k + 2 < data.length; k += 3)
+      if ((data[k + 1]! & 0x07) === 5)
+        filterRowCount = Math.max(filterRowCount, data[k + 2]!);
   }
   const filterRows: SidTableRow[] = [];
   /** GT1 row -> 1-based GT2 row (gsong.c:616); 0 stays 0. */
   const filterMap = new Array<number>(GT1_FILTER_ROWS).fill(0);
   if (filterTable !== null) {
-    for (let c = 0; c < GT1_FILTER_ROWS; c++) filterRowCount = Math.max(filterRowCount, filterTable[c * 4 + 3]!);
+    for (let c = 0; c < GT1_FILTER_ROWS; c++)
+      filterRowCount = Math.max(filterRowCount, filterTable[c * 4 + 3]!);
     filterRowCount = Math.min(filterRowCount, GT1_FILTER_ROWS - 1);
     const jumps: { at: number; to: number }[] = [];
     for (let c = 1; c <= filterRowCount; c++) {
       // Every row maps to where the output stands, an all-zero one (which
       // lays nothing) to whatever is laid next.
       filterMap[c] = filterRows.length + 1;
-      const [b0, b1, b2, next] = [filterTable[c * 4]!, filterTable[c * 4 + 1]!, filterTable[c * 4 + 2]!, filterTable[c * 4 + 3]!];
+      const [b0, b1, b2, next] = [
+        filterTable[c * 4]!,
+        filterTable[c * 4 + 1]!,
+        filterTable[c * 4 + 2]!,
+        filterTable[c * 4 + 3]!,
+      ];
       if ((b0 | b1 | b2 | next) === 0) continue;
       if (b0 !== 0) {
         // Set (gsong.c:621-631): b0 is SID $D417 as is (resonance<<4 |
@@ -183,8 +226,14 @@ export function readGt1Song(
         // cutoff b2 when it is not 0.
         filterRows.push({ left: 0x80 | (b1 & 0x70), right: b0 });
         if (b2 !== 0) filterRows.push({ left: 0x00, right: b2 });
-        const lost = [(b1 & 0x0f) !== 0x0f ? `master volume ${b1 & 0x0f}` : '', (b1 & 0x80) !== 0 ? 'voice 3 off' : ''].filter(Boolean);
-        if (lost.length > 0) drop(`filter table row ${c}: ${lost.join(' and ')} has no filter-table equivalent`);
+        const lost = [
+          (b1 & 0x0f) !== 0x0f ? `master volume ${b1 & 0x0f}` : '',
+          (b1 & 0x80) !== 0 ? 'voice 3 off' : '',
+        ].filter(Boolean);
+        if (lost.length > 0)
+          drop(
+            `filter table row ${c}: ${lost.join(' and ')} has no filter-table equivalent`,
+          );
       } else {
         // Modulation (gsong.c:633-647): b1 frames at signed b2, in rows of at
         // most 127 frames. 0 frames lays no row.
@@ -195,16 +244,21 @@ export function readGt1Song(
         let to = next;
         if (to >= GT1_FILTER_ROWS) {
           // GT indexes its 64-entry map with it (gsong.c:664): out of bounds.
-          drop(`filter table row ${c}: next row $${hex(next)} is past the table; the jump stops instead`);
+          drop(
+            `filter table row ${c}: next row $${hex(next)} is past the table; the jump stops instead`,
+          );
           to = 0;
         }
         jumps.push({ at: filterRows.length, to });
         filterRows.push({ left: JUMP, right: 0 });
       }
     }
-    for (const { at, to } of jumps) filterRows[at] = { left: JUMP, right: filterMap[to]! };
+    for (const { at, to } of jumps)
+      filterRows[at] = { left: JUMP, right: filterMap[to]! };
     if (filterRows.length > SID_MAX_TABLE_ROWS) {
-      throw new GtFormatError(`converted to GoatTracker 2 tables, its filter table needs ${filterRows.length} rows; a table holds ${SID_MAX_TABLE_ROWS}`);
+      throw new GtFormatError(
+        `converted to GoatTracker 2 tables, its filter table needs ${filterRows.length} rows; a table holds ${SID_MAX_TABLE_ROWS}`,
+      );
     }
   }
   /**
@@ -216,11 +270,15 @@ export function readGt1Song(
   const mapFilter = (ptr: number, where: string): number | null => {
     if (ptr === 0) return 0;
     if (filterTable === null) {
-      drop(`${where}: filter pointer $${hex(ptr)} with no filter table in the file; dropped`);
+      drop(
+        `${where}: filter pointer $${hex(ptr)} with no filter table in the file; dropped`,
+      );
       return null;
     }
     if (ptr >= GT1_FILTER_ROWS) {
-      drop(`${where}: filter pointer $${hex(ptr)} is past the filter table; dropped`);
+      drop(
+        `${where}: filter pointer $${hex(ptr)} is past the filter table; dropped`,
+      );
       return 0;
     }
     return filterMap[ptr]!;
@@ -228,7 +286,10 @@ export function readGt1Song(
 
   // --- Instruments.
   let usedInstruments = 0;
-  for (const data of rawPatterns) for (let k = 0; k + 2 < data.length; k += 3) if (data[k] !== GT1_PATTERN_END) usedInstruments = Math.max(usedInstruments, data[k + 1]! >> 3);
+  for (const data of rawPatterns)
+    for (let k = 0; k + 2 < data.length; k += 3)
+      if (data[k] !== GT1_PATTERN_END)
+        usedInstruments = Math.max(usedInstruments, data[k + 1]! >> 3);
   let count = GT1_INSTRUMENTS;
   while (count > usedInstruments && raw[count - 1]!.empty) count -= 1;
 
@@ -241,11 +302,14 @@ export function readGt1Song(
     // (INFERRED); jumps are 1-based within the instrument's own program.
     const program = ins.wave.map((row) => {
       if (row.left === JUMP && row.right > ins.wave.length) {
-        drop(`${where}: its wavetable jumps to row ${row.right} of ${ins.wave.length}; the jump stops instead`);
+        drop(
+          `${where}: its wavetable jumps to row ${row.right} of ${ins.wave.length}; the jump stops instead`,
+        );
         return { left: JUMP, right: 0 };
       }
       // Lefts $08-$0F are pre-2.18 delays, GT2's $E8-$EF (gsong.c:396-397).
-      if (row.left >= 0x08 && row.left <= 0x0f) return { left: row.left | 0xe0, right: row.right };
+      if (row.left >= 0x08 && row.left <= 0x0f)
+        return { left: row.left | 0xe0, right: row.right };
       return row;
     });
     if (program.at(-1)?.left !== JUMP) {
@@ -254,7 +318,11 @@ export function readGt1Song(
     }
     // GT copies the left bytes and leaves the right ones blank (gsong.c:740).
     const head = program.findIndex((row) => row.left === JUMP);
-    arpeggioHeads.push(ins.noWave ? [] : program.slice(0, head).map((row) => ({ left: row.left, right: 0 })));
+    arpeggioHeads.push(
+      ins.noWave
+        ? []
+        : program.slice(0, head).map((row) => ({ left: row.left, right: 0 })),
+    );
     // Pulse (gsong.c:375-382, 418-538): +2 start, +3 speed, +4/+5 low/high
     // limit, the width's top 8 bits. Bit 0 of the start is GT1's "no hard
     // restart" flag, not width (gsong.c:381-382); a start of 0 makes no
@@ -274,12 +342,17 @@ export function readGt1Song(
     const [add, low, high] = [h[3]!, h[4]! << 4, h[5]! << 4];
     let pulsePtr = 0;
     if (start !== 0) {
-      const steps: SidTableRow[] = [{ left: 0x80 | (start >> 4), right: (start << 4) & 0xff }];
+      const steps: SidTableRow[] = [
+        { left: 0x80 | (start >> 4), right: (start << 4) & 0xff },
+      ];
       if (add === 0) steps.push({ left: JUMP, right: 0 });
       else {
         const twice = (add >> 1) * 2;
         const [up, down] = [Math.min(0x7f, twice), -Math.min(0x80, twice)];
-        if (twice !== add || twice > 0x7f) convert(`${where}: pulse speed $${hex(add)} becomes +${up}/${down} per frame (GoatTracker halves and doubles it)`);
+        if (twice !== add || twice > 0x7f)
+          convert(
+            `${where}: pulse speed $${hex(add)} becomes +${up}/${down} per frame (GoatTracker halves and doubles it)`,
+          );
         /** A leg of `dist` (> 0) at `speed`; the distance it covers. */
         const leg = (dist: number, speed: number): number => {
           const time = Math.floor(dist / add);
@@ -326,7 +399,8 @@ export function readGt1Song(
   });
 
   // --- Patterns.
-  const speedRow = (left: number, right: number) => speed.add([{ left, right }]);
+  const speedRow = (left: number, right: number) =>
+    speed.add([{ left, right }]);
   /**
    * Funktempo's speed row (gsong.c:698): GT packs filter row 0's bytes 2-3
    * as b2<<4 | (b3 & 15) and splits that as bits 4-7 / 0-3 (gtable.c:876-878),
@@ -335,7 +409,8 @@ export function readGt1Song(
    * zeros stand in for them.
    */
   const funktempo = (): number => {
-    const [b2, b3] = filterTable === null ? [0, 0] : [filterTable[2]!, filterTable[3]!];
+    const [b2, b3] =
+      filterTable === null ? [0, 0] : [filterTable[2]!, filterTable[3]!];
     if (((b2 << 4) | (b3 & 0x0f)) === 0) return 0;
     return speedRow(b2 & 0x0f, b3 & 0x0f);
   };
@@ -351,7 +426,11 @@ export function readGt1Song(
    */
   const arpeggios = new Map<string, { clone: boolean; value: number } | null>();
   let nextSlot = usedInstruments + 1;
-  const arpeggio = (ins: number, param: number, where: string): { clone: boolean; value: number } | null => {
+  const arpeggio = (
+    ins: number,
+    param: number,
+    where: string,
+  ): { clone: boolean; value: number } | null => {
     const key = `${ins},${param}`;
     let arp = arpeggios.get(key);
     if (arp === undefined) {
@@ -373,38 +452,63 @@ export function readGt1Song(
           const slot = nextSlot++;
           const replaced = instruments[slot - 1];
           if (replaced !== undefined && !raw[slot - 1]!.empty) {
-            convert(`instrument ${slot} ("${replaced.name}"), which no pattern plays, is replaced by an arpeggio instrument (as GoatTracker does)`);
+            convert(
+              `instrument ${slot} ("${replaced.name}"), which no pattern plays, is replaced by an arpeggio instrument (as GoatTracker does)`,
+            );
           }
           // GT appends "0XY" when the name has room (gsong.c:769-774).
-          const name = source.name.length < SID_MAX_INSTRUMENT_NAME_LENGTH - 3 ? `${source.name}0${hex(param & 0x7f)}` : source.name;
+          const name =
+            source.name.length < SID_MAX_INSTRUMENT_NAME_LENGTH - 3
+              ? `${source.name}0${hex(param & 0x7f)}`
+              : source.name;
           instruments[slot - 1] = { ...source, name, wavePtr: ptr };
           arp = { clone: true, value: slot };
-          convert(`arpeggio $${hex(param)} of instrument ${ins} became wave program ${ptr}, played by instrument ${slot}`);
+          convert(
+            `arpeggio $${hex(param)} of instrument ${ins} became wave program ${ptr}, played by instrument ${slot}`,
+          );
         } else {
           arp = { clone: false, value: ptr };
-          convert(`arpeggio $${hex(param)} of instrument ${ins} became wave program ${ptr} (command 8: no instrument slot left)`);
+          convert(
+            `arpeggio $${hex(param)} of instrument ${ins} became wave program ${ptr} (command 8: no instrument slot left)`,
+          );
         }
       }
       arpeggios.set(key, arp);
     }
-    if (arp === null) drop(`${where}: arpeggio $${hex(param)} of instrument ${ins} does not fit the wave table; dropped`);
+    if (arp === null)
+      drop(
+        `${where}: arpeggio $${hex(param)} of instrument ${ins} does not fit the wave table; dropped`,
+      );
     return arp;
   };
   const patterns: SidDocPattern[] = rawPatterns.map((data, p) => {
     const n = data.length / 3;
-    if (n < 2 || data[(n - 1) * 3] !== GT1_PATTERN_END) throw new GtFormatError(`pattern ${p} does not end with the pattern-end row`);
-    if (n - 1 > SID_MAX_PATTERN_ROWS) throw new GtFormatError(`pattern ${p} has ${n - 1} rows; a pattern has at most ${SID_MAX_PATTERN_ROWS}`);
+    if (n < 2 || data[(n - 1) * 3] !== GT1_PATTERN_END)
+      throw new GtFormatError(
+        `pattern ${p} does not end with the pattern-end row`,
+      );
+    if (n - 1 > SID_MAX_PATTERN_ROWS)
+      throw new GtFormatError(
+        `pattern ${p} has ${n - 1} rows; a pattern has at most ${SID_MAX_PATTERN_ROWS}`,
+      );
     const rows: SidDocRow[] = [];
     // The instrument the pattern last named (gsong.c:675, 678).
     let current = 0;
     for (let i = 0; i < n - 1; i++) {
       const where = `pattern ${p} row ${i}`;
-      const [nb, packed, param] = [data[i * 3]!, data[i * 3 + 1]!, data[i * 3 + 2]!];
+      const [nb, packed, param] = [
+        data[i * 3]!,
+        data[i * 3 + 1]!,
+        data[i * 3 + 2]!,
+      ];
       let note: number;
       if (nb <= GT1_NOTE_LAST) note = nb + 1;
       else if (nb === GT1_NOTE_KEY_OFF) note = SID_NOTE_KEY_OFF;
       else if (nb === GT1_NOTE_REST) note = SID_NOTE_NONE;
-      else if (nb === GT1_PATTERN_END) throw new GtFormatError(`${where}: note byte $${hex(nb)} is not a GoatTracker 1 note`);
+      else if (nb === GT1_PATTERN_END)
+        throw new GtFormatError(
+          `${where}: note byte $${hex(nb)} is not a GoatTracker 1 note`,
+        );
       else {
         // Any other byte is a rest: GT adds GT2's first note, $60, and rests
         // what lands past its last, $BC (gsong.c:559-560). Its note byte is 8
@@ -412,7 +516,10 @@ export function readGt1Song(
         // its first note. Not a note either way: rested here, and reported.
         note = SID_NOTE_NONE;
         const wrapped = (nb + 0x60) & 0xff;
-        if (nb + 0x60 >= GT1_PATTERN_END) convert(`${where}: note byte $${hex(nb)} becomes GoatTracker 2's $${hex(wrapped)}, ${wrapped === GT1_PATTERN_END ? 'its pattern end' : 'no note'}; rested`);
+        if (nb + 0x60 >= GT1_PATTERN_END)
+          convert(
+            `${where}: note byte $${hex(nb)} becomes GoatTracker 2's $${hex(wrapped)}, ${wrapped === GT1_PATTERN_END ? 'its pattern end' : 'no note'}; rested`,
+          );
       }
       let instrument = packed >> 3;
       if (instrument !== 0) current = instrument;
@@ -428,7 +535,9 @@ export function readGt1Song(
             // starts loops on, so a later row's clearing loses nothing.
             if (nb > GT1_NOTE_LAST) break;
             if (current === 0) {
-              drop(`${where}: arpeggio $${hex(param)} before the pattern names an instrument; dropped`);
+              drop(
+                `${where}: arpeggio $${hex(param)} before the pattern names an instrument; dropped`,
+              );
               break;
             }
             const arp = arpeggio(current, param, where);
@@ -492,9 +601,16 @@ export function readGt1Song(
 
   const subsongs: SidSubsong[] = rawLists.map((lists, sub) => ({
     orderlists: lists.map((data, c) => {
-      const { list, loopDiffers } = decodeGtOrderlist(data, `subtune ${sub} channel ${c + 1}`, patterns.length);
+      const { list, loopDiffers } = decodeGtOrderlist(
+        data,
+        `subtune ${sub} channel ${c + 1}`,
+        patterns.length,
+      );
       if (loopDiffers) {
-        notes.push({ kind: 'loop-transpose', message: `subtune ${sub} channel ${c + 1}: its loop replays with a running transpose/repeat the doc cannot hold; the first pass's is kept` });
+        notes.push({
+          kind: 'loop-transpose',
+          message: `subtune ${sub} channel ${c + 1}: its loop replays with a running transpose/repeat the doc cannot hold; the first pass's is kept`,
+        });
       }
       return list;
     }),
@@ -502,8 +618,14 @@ export function readGt1Song(
 
   // An all-zero last row maps one past what was laid: GT2's table is 255
   // rows, blank past its content, so the doc gets that blank row.
-  let filterEnd = Math.max(0, ...instruments.map((ins) => ins.filterPtr), ...filterRows.map((row) => (row.left === JUMP ? row.right : 0)));
-  for (const pattern of patterns) for (const row of pattern.rows) if (row.command === 0xa) filterEnd = Math.max(filterEnd, row.param);
+  let filterEnd = Math.max(
+    0,
+    ...instruments.map((ins) => ins.filterPtr),
+    ...filterRows.map((row) => (row.left === JUMP ? row.right : 0)),
+  );
+  for (const pattern of patterns)
+    for (const row of pattern.rows)
+      if (row.command === 0xa) filterEnd = Math.max(filterEnd, row.param);
   while (filterRows.length < filterEnd) filterRows.push({ left: 0, right: 0 });
 
   return {
@@ -511,6 +633,11 @@ export function readGt1Song(
     subsongs,
     patterns,
     instruments,
-    tables: { wave: wave.rows, pulse: pulse.rows, filter: filterRows, speed: speed.rows },
+    tables: {
+      wave: wave.rows,
+      pulse: pulse.rows,
+      filter: filterRows,
+      speed: speed.rows,
+    },
   };
 }

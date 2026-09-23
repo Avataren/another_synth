@@ -32,9 +32,12 @@ import {
 const ROOT = resolve(__dirname, 'fixtures/gt-songs');
 const files = readdirSync(ROOT, { withFileTypes: true })
   .filter((d) => d.isDirectory())
-  .flatMap((d) => readdirSync(resolve(ROOT, d.name)).map((f) => `${d.name}/${f}`))
+  .flatMap((d) =>
+    readdirSync(resolve(ROOT, d.name)).map((f) => `${d.name}/${f}`),
+  )
   .sort();
-const bytesOf = (name: string) => new Uint8Array(readFileSync(resolve(ROOT, name)));
+const bytesOf = (name: string) =>
+  new Uint8Array(readFileSync(resolve(ROOT, name)));
 const imports = new Map<string, Extract<GtSongImport, { ok: true }>>();
 for (const name of files) {
   const r = importGtSong(bytesOf(name), gtSongHintsFromName(name));
@@ -43,7 +46,14 @@ for (const name of files) {
 const magic = (b: Uint8Array) => String.fromCharCode(...b.subarray(0, 4));
 
 /** GT2 note byte -> doc note, per readme §6.1.6 (re-derived here, independently of the reader). */
-const gt2Note = (b: number) => (b === 0xbd ? SID_NOTE_NONE : b === 0xbe ? SID_NOTE_KEY_OFF : b === 0xbf ? SID_NOTE_KEY_ON : b - 0x5f);
+const gt2Note = (b: number) =>
+  b === 0xbd
+    ? SID_NOTE_NONE
+    : b === 0xbe
+      ? SID_NOTE_KEY_OFF
+      : b === 0xbf
+        ? SID_NOTE_KEY_ON
+        : b - 0x5f;
 
 /** Walks a GTS5 file by §6.1's byte counts. */
 function rawGts5(b: Uint8Array) {
@@ -56,12 +66,17 @@ function rawGts5(b: Uint8Array) {
     p += n + 1;
   }
   const ni = b[p++]!;
-  const instruments = Array.from({ length: ni }, (_, i) => b.subarray(p + i * 25, p + i * 25 + 25));
+  const instruments = Array.from({ length: ni }, (_, i) =>
+    b.subarray(p + i * 25, p + i * 25 + 25),
+  );
   p += ni * 25;
   const tables: { left: number[]; right: number[] }[] = [];
   for (let t = 0; t < 4; t++) {
     const n = b[p++]!;
-    tables.push({ left: Array.from(b.subarray(p, p + n)), right: Array.from(b.subarray(p + n, p + 2 * n)) });
+    tables.push({
+      left: Array.from(b.subarray(p, p + n)),
+      right: Array.from(b.subarray(p + n, p + 2 * n)),
+    });
     p += 2 * n;
   }
   const np = b[p++]!;
@@ -84,12 +99,15 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
   });
 
   it('every file imports, as the variant its magic names', () => {
-    const refused = files.filter((f) => !imports.has(f)).map((f) => {
-      const r = importGtSong(bytesOf(f), gtSongHintsFromName(f));
-      return `${f}: ${r.ok ? '' : r.reason}`;
-    });
+    const refused = files
+      .filter((f) => !imports.has(f))
+      .map((f) => {
+        const r = importGtSong(bytesOf(f), gtSongHintsFromName(f));
+        return `${f}: ${r.ok ? '' : r.reason}`;
+      });
     expect(refused).toEqual([]);
-    for (const [name, r] of imports) expect(r.variant, name).toBe(magic(bytesOf(name)));
+    for (const [name, r] of imports)
+      expect(r.variant, name).toBe(magic(bytesOf(name)));
   });
 
   it('GTS5: every row, instrument, table byte and orderlist pattern is where the doc says', () => {
@@ -105,7 +123,10 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
         const rows = doc.patterns[p]!.rows;
         expect(rows.length, `${name} pattern ${p}`).toBe(data.length / 4 - 1);
         rows.forEach((row, i) => {
-          expect([row.note, row.instrument, row.command, row.param], `${name} p${p} r${i}`).toEqual([
+          expect(
+            [row.note, row.instrument, row.command, row.param],
+            `${name} p${p} r${i}`,
+          ).toEqual([
             gt2Note(data[i * 4]!),
             data[i * 4 + 1],
             data[i * 4 + 2],
@@ -117,25 +138,56 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
       raw.instruments.forEach((b, i) => {
         const ins = doc.instruments[i]!;
         const where = `${name} instrument ${i + 1}`;
-        expect([(ins.attack << 4) | ins.decay, (ins.sustain << 4) | ins.release], where).toEqual([b[0], b[1]]);
-        expect([ins.wavePtr, ins.pulsePtr, ins.filterPtr, ins.speedPtr, ins.vibratoDelay, ins.firstWave], where).toEqual([b[2], b[3], b[4], b[5], b[6], b[8]]);
+        expect(
+          [(ins.attack << 4) | ins.decay, (ins.sustain << 4) | ins.release],
+          where,
+        ).toEqual([b[0], b[1]]);
+        expect(
+          [
+            ins.wavePtr,
+            ins.pulsePtr,
+            ins.filterPtr,
+            ins.speedPtr,
+            ins.vibratoDelay,
+            ins.firstWave,
+          ],
+          where,
+        ).toEqual([b[2], b[3], b[4], b[5], b[6], b[8]]);
         expect(ins.hardRestart, where).toBe((b[7]! & 0x80) === 0);
         // $40 (no gate-off) has no doc flag: the timer is 0 then (`no-gateoff`).
-        expect(ins.gateTimer, where).toBe((b[7]! & 0x40) === 0 ? b[7]! & 0x3f : 0);
-        expect(ins.name, where).toBe(String.fromCharCode(...b.subarray(9, 25)).replace(/\0.*$/s, ''));
+        expect(ins.gateTimer, where).toBe(
+          (b[7]! & 0x40) === 0 ? b[7]! & 0x3f : 0,
+        );
+        expect(ins.name, where).toBe(
+          String.fromCharCode(...b.subarray(9, 25)).replace(/\0.*$/s, ''),
+        );
       });
       (['wave', 'pulse', 'filter', 'speed'] as const).forEach((t, k) => {
         const table = doc.tables[t];
         const { left, right } = raw.tables[k]!;
         // The stored rows, then only blank padding (`table-padded`).
-        expect(table.slice(0, left.length).map((row) => row.left), `${name} ${t}`).toEqual(left);
-        expect(table.slice(0, left.length).map((row) => row.right), `${name} ${t}`).toEqual(right);
-        expect(table.slice(left.length).every((row) => row.left === 0 && row.right === 0), `${name} ${t} padding`).toBe(true);
+        expect(
+          table.slice(0, left.length).map((row) => row.left),
+          `${name} ${t}`,
+        ).toEqual(left);
+        expect(
+          table.slice(0, left.length).map((row) => row.right),
+          `${name} ${t}`,
+        ).toEqual(right);
+        expect(
+          table
+            .slice(left.length)
+            .every((row) => row.left === 0 && row.right === 0),
+          `${name} ${t} padding`,
+        ).toBe(true);
       });
       doc.subsongs.forEach((sub, s) =>
         sub.orderlists.forEach((list, c) => {
           const data = raw.lists[s * 3 + c]!;
-          expect(list.entries.map((e) => e.pattern), `${name} s${s} c${c}`).toEqual(data.slice(0, -2).filter((v) => v < 0xd0));
+          expect(
+            list.entries.map((e) => e.pattern),
+            `${name} s${s} c${c}`,
+          ).toEqual(data.slice(0, -2).filter((v) => v < 0xd0));
         }),
       );
       checked += 1;
@@ -164,25 +216,47 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
       let highest = 0;
       for (let k = 0, q = p; k < np; k++) {
         const len = b[q++]!;
-        for (let i = 0; i < len / 3 - 1; i++) highest = Math.max(highest, b[q + i * 3 + 1]! >> 3);
+        for (let i = 0; i < len / 3 - 1; i++)
+          highest = Math.max(highest, b[q + i * 3 + 1]! >> 3);
         q += len;
       }
-      const sameBut = (ins: SidInstrument) => ({ ...ins, name: '', wavePtr: 0 });
+      const sameBut = (ins: SidInstrument) => ({
+        ...ins,
+        name: '',
+        wavePtr: 0,
+      });
       for (let k = 0; k < np; k++) {
         const len = b[p++]!;
         const rows = r.doc.patterns[k]!.rows;
         expect(rows.length, `${name} pattern ${k}`).toBe(len / 3 - 1);
         let current = 0;
         rows.forEach((row, i) => {
-          const [nb, packed, param] = [b[p + i * 3]!, b[p + i * 3 + 1]!, b[p + i * 3 + 2]!];
+          const [nb, packed, param] = [
+            b[p + i * 3]!,
+            b[p + i * 3 + 1]!,
+            b[p + i * 3 + 2]!,
+          ];
           const where = `${name} p${k} r${i}`;
           if (packed >> 3 !== 0) current = packed >> 3;
-          const note = nb <= 0x5c ? nb + 1 : nb === 0x5e ? SID_NOTE_KEY_OFF : SID_NOTE_NONE;
+          const note =
+            nb <= 0x5c
+              ? nb + 1
+              : nb === 0x5e
+                ? SID_NOTE_KEY_OFF
+                : SID_NOTE_NONE;
           expect(row.note, where).toBe(note);
-          if ((packed & 7) === 0 && param !== 0 && nb <= 0x5c && row.instrument !== packed >> 3) {
+          if (
+            (packed & 7) === 0 &&
+            param !== 0 &&
+            nb <= 0x5c &&
+            row.instrument !== packed >> 3
+          ) {
             expect(row.instrument, where).toBeGreaterThan(highest);
             expect([row.command, row.param], where).toEqual([0, 0]);
-            expect(sameBut(r.doc.instruments[row.instrument - 1]!), where).toEqual(sameBut(r.doc.instruments[current - 1]!));
+            expect(
+              sameBut(r.doc.instruments[row.instrument - 1]!),
+              where,
+            ).toEqual(sameBut(r.doc.instruments[current - 1]!));
           } else {
             expect(row.instrument, where).toBe(packed >> 3);
           }
@@ -192,7 +266,10 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
       expect([0, 256], name).toContain(b.length - p);
       r.doc.subsongs.forEach((sub, s) =>
         sub.orderlists.forEach((list, c) => {
-          expect(list.entries.map((e) => e.pattern), `${name} s${s} c${c}`).toEqual(lists[s * 3 + c]!.slice(0, -2).filter((v) => v < 0xd0));
+          expect(
+            list.entries.map((e) => e.pattern),
+            `${name} s${s} c${c}`,
+          ).toEqual(lists[s * 3 + c]!.slice(0, -2).filter((v) => v < 0xd0));
         }),
       );
       checked += 1;
@@ -213,7 +290,9 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
       // Nothing is left to report on a file the writer made.
       expect(again.notes, name).toEqual([]);
       const twice = exportGtSong(again.doc);
-      expect(twice.ok && Array.from(twice.bytes), name).toEqual(Array.from(out.bytes));
+      expect(twice.ok && Array.from(twice.bytes), name).toEqual(
+        Array.from(out.bytes),
+      );
       equal += 1;
     }
     expect(equal).toBe(83);
@@ -228,15 +307,28 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
         (filesOf[n.kind] ??= new Set()).add(name);
       }
     }
-    expect(byKind).toEqual({ 'table-padded': 2, 'no-gateoff': 1, 'loop-transpose': 3, 'gt1-convert': 55, 'gt1-dropped': 41 });
-    expect([...filesOf['table-padded']!].sort()).toEqual(['mch/balcony_princess.sng', 'mch/in_a_rush.sng']);
+    expect(byKind).toEqual({
+      'table-padded': 2,
+      'no-gateoff': 1,
+      'loop-transpose': 3,
+      'gt1-convert': 77,
+      'gt1-dropped': 25,
+    });
+    expect([...filesOf['table-padded']!].sort()).toEqual([
+      'mch/balcony_princess.sng',
+      'mch/in_a_rush.sng',
+    ]);
     expect([...filesOf['no-gateoff']!]).toEqual(['stinsen/upsandowns.sng']);
     expect([...filesOf['loop-transpose']!]).toEqual(['stinsen/game_tune.sng']);
     // Every GTS5 file other than those four imports with nothing to report.
-    const quiet = [...imports].filter(([, r]) => r.variant === 'GTS5' && r.notes.length === 0);
+    const quiet = [...imports].filter(
+      ([, r]) => r.variant === 'GTS5' && r.notes.length === 0,
+    );
     expect(quiet).toHaveLength(57);
-    // GTS! is a conversion: seven of the 22 GT1 files have nothing to report.
-    const gt1Quiet = [...imports].filter(([, r]) => r.variant === 'GTS!' && r.notes.length === 0).map(([n]) => n);
+    // GTS! is a conversion: eight of the 22 GT1 files have nothing to report.
+    const gt1Quiet = [...imports]
+      .filter(([, r]) => r.variant === 'GTS!' && r.notes.length === 0)
+      .map(([n]) => n);
     expect(gt1Quiet.sort()).toEqual([
       'ansgaros/metal_warrior_4_forest_encounter.sng',
       'barfington/barfington_s_nintendometal.sng',
@@ -245,21 +337,52 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
       'cadaver/goattracker_drum_example.sng',
       'cadaver/metal_warrior_4_the_chosen_path.sng',
       'cadaver/nintendo_style.sng',
-    ]);
-    expect([...filesOf['gt1-dropped']!].sort()).toEqual([
-      'aeuk/metal_warrior_4_streets.sng',
-      'cadaver/goattracker_example_mw1_title.sng',
       'cadaver/tarantula.sng',
+    ]);
+    // GT2's loader converts GTS! (gsong.c:329-845): 73 of the conversions are
+    // arpeggio instruments (one per instrument and parameter), 4 are pulse
+    // speeds its halve-and-double loses a bit of or clamps.
+    expect([...filesOf['gt1-convert']!].sort()).toEqual([
+      'aeuk/metal_warrior_4_streets.sng',
+      'aeuk/metal_warrior_4_unused_jingle.sng',
+      'barfington/metal_warrior_4_research_facility.sng',
+      'cadaver/covert_ops_in_2d_funktempo.sng',
+      'cadaver/dojo.sng',
+      'cadaver/goattracker_example_mw1_title.sng',
+      'cadaver/maximum_rastertime_test.sng',
+      'cadaver/metal_warrior_4_covert_ops_in_2d.sng',
+      'cadaver/metal_warrior_4_investigations.sng',
+      'cadaver/mw_title_remix.sng',
+      'cadaver/mw_title_remix_2x_speed.sng',
+      'cadaver/warlord.sng',
+      'shinobi/wod.sng',
+      'yehar/b_o_f_h_ingame_death_victory.sng',
+    ]);
+    // Drops: 21 filter pointers in two files without a filter table, 3 filter
+    // volume / voice-3-off bits (wod), 1 filter next row past 63 (jingle).
+    expect([...filesOf['gt1-dropped']!].sort()).toEqual([
+      'aeuk/metal_warrior_4_unused_jingle.sng',
+      'cadaver/goattracker_example_mw1_title.sng',
       'shinobi/wod.sng',
       'yehar/b_o_f_h_ingame_death_victory.sng',
     ]);
   });
 
   it('the hints a name carries: 6581 for one file, 2x for four, the defaults for the rest', () => {
-    const chips = [...imports].filter(([, r]) => r.doc.chipModel === '6581').map(([n]) => n);
+    const chips = [...imports]
+      .filter(([, r]) => r.doc.chipModel === '6581')
+      .map(([n]) => n);
     expect(chips).toEqual(['stinsen/defunkt_final_fv_po_ro_6581_ffff.sng']);
-    const fast = [...imports].filter(([, r]) => r.doc.speedMultiplier === 2).map(([n]) => n).sort();
-    expect(fast).toEqual(['cadaver/mw_title_remix_2x_speed.sng', 'stinsen/double_rainbow_2x.sng', 'stinsen/quaralline_2x.sng', 'stinsen/space_2x.sng']);
+    const fast = [...imports]
+      .filter(([, r]) => r.doc.speedMultiplier === 2)
+      .map(([n]) => n)
+      .sort();
+    expect(fast).toEqual([
+      'cadaver/mw_title_remix_2x_speed.sng',
+      'stinsen/double_rainbow_2x.sng',
+      'stinsen/quaralline_2x.sng',
+      'stinsen/space_2x.sng',
+    ]);
     expect([...imports.values()].every((r) => r.doc.tempo === 6)).toBe(true);
     // The export says what the .sng cannot carry.
     const space = exportGtSong(imports.get('stinsen/space_2x.sng')!.doc);
@@ -270,9 +393,16 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
   });
 
   it('refuses the corrupt-as-published sleepwalk.sng whole, with the reason, and never throws', () => {
-    const bad = new Uint8Array(readFileSync(resolve(__dirname, 'fixtures/gt-songs-corrupt/sleepwalk.sng')));
+    const bad = new Uint8Array(
+      readFileSync(
+        resolve(__dirname, 'fixtures/gt-songs-corrupt/sleepwalk.sng'),
+      ),
+    );
     const r = importGtSong(bad);
-    expect(r).toEqual({ ok: false, reason: 'pattern 2 is 26 bytes long, not a whole number of 3-byte rows' });
+    expect(r).toEqual({
+      ok: false,
+      reason: 'pattern 2 is 26 bytes long, not a whole number of 3-byte rows',
+    });
     expect('doc' in r).toBe(false);
   });
 
