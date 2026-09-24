@@ -457,8 +457,14 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     return sid.previewNoteOn(instrument, midi);
   }
 
-  function previewSidNoteOff(): void {
-    sid.previewNoteOff();
+  /** Let go of the SID preview note; with `midi`, only if that key is the one held (the voice is mono). */
+  function previewSidNoteOff(midi?: number): void {
+    sid.previewNoteOff(midi);
+  }
+
+  /** Make the SID preview voice ready for the first key (selecting a SID instrument). */
+  async function prepareSidPreview(): Promise<void> {
+    return sid.preparePreview();
   }
 
   /** The SID preview voice's output (the instrument page's analyzer), or null before its first note. */
@@ -1007,6 +1013,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // SID (plan-sid-tracking.md S4)
     previewSidNoteOn,
     previewSidNoteOff,
+    prepareSidPreview,
     sidPreviewOutput,
     onSidPreviewOutput,
     connectSidVoiceTaps,

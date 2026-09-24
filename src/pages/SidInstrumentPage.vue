@@ -48,10 +48,10 @@
     <template v-else>
       <div class="sid-sound-band" data-testid="sid-sound-band">
         <div class="sid-keys">
-          <q-btn flat dense icon="remove" :disable="octave <= 0" title="Octave down" @click="octave -= 1" />
+          <q-btn flat dense icon="remove" :disable="octave <= AHX_MIN_OCTAVE" title="Octave down (Shift+PageDown)" @click="play.setOctave(octave - 1)" />
           <span class="sid-dim">Octave {{ octave }}</span>
-          <q-btn flat dense icon="add" :disable="octave >= 6" title="Octave up" @click="octave += 1" />
-          <AhxPianoStrip :start="12 * (octave + 1)" :held="heldKeys" @down="keyDown" @up="keyUp" />
+          <q-btn flat dense icon="add" :disable="octave >= AHX_MAX_OCTAVE" title="Octave up (Shift+PageUp)" @click="play.setOctave(octave + 1)" />
+          <AhxPianoStrip :start="stripStart" :held="heldKeys" @down="play.pointerDown" @up="play.pointerUp" />
         </div>
         <div class="sid-analyzer" data-testid="sid-analyzer-row">
           <figure class="sid-analyzer__slot">
@@ -299,11 +299,18 @@
  * rows of note/waveform/two effects, while a SID instrument points into four
  * shared two-byte tables, so the tables are edited as byte rows here.
  */
-import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue';
+import { computed, onMounted, onUnmounted, shallowRef } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { formatInstrumentId } from '@another-synth/tracker-playback';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
+import {
+  AHX_DEFAULT_OCTAVE,
+  AHX_MAX_OCTAVE,
+  AHX_MIN_OCTAVE,
+  useAhxPlayInput,
+} from 'src/composables/useAhxPlayInput';
 import {
   SID_MAX_INSTRUMENTS,
   SID_MAX_TABLE_ROWS,
@@ -345,6 +352,7 @@ const route = useRoute();
 const router = useRouter();
 const trackerStore = useTrackerStore();
 const playbackStore = useTrackerPlaybackStore();
+const userSettings = useUserSettingsStore();
 
 const CHIP_OPTIONS = [
   { value: 0, label: '8580' },
@@ -459,21 +467,32 @@ const reached = computed(() => {
 });
 
 // Audition: the preview voice (its own SID worklet), and its output for the analyzer.
-const octave = ref(3);
-const heldKeys = ref<Set<number>>(new Set());
 const previewNode = shallowRef<AudioNode | null>(playbackStore.sidPreviewOutput());
 const stopPreviewWatch = playbackStore.onSidPreviewOutput((node) => {
   previewNode.value = node;
 });
-function keyDown(midi: number): void {
-  heldKeys.value = new Set([midi]);
-  void playbackStore.previewSidNoteOn(instrumentNumber.value, midi);
-}
-function keyUp(midi: number): void {
-  if (!heldKeys.value.has(midi)) return;
-  heldKeys.value = new Set();
-  playbackStore.previewSidNoteOff();
-}
+/**
+ * The on-screen keys, the computer keyboard and MIDI play through the AHX
+ * editor's input model (`useAhxPlayInput`): one voice, last key wins. The
+ * note-off names its key, so letting go of a key another has taken over from
+ * leaves the newer note sounding.
+ */
+const play = useAhxPlayInput({
+  slot: slotNumber,
+  audible: computed(() => instrument.value !== null),
+  sink: {
+    noteOn: (slotNo, midi) => void playbackStore.previewSidNoteOn(slotNo, midi),
+    noteOff: (midi) => playbackStore.previewSidNoteOff(midi),
+  },
+  autoMidi: computed(() => userSettings.settings.enableMidi),
+});
+const { heldKeys, octave } = play;
+/** The strip's lowest key follows the octave, so touch reaches what the keyboard does (Z is C-3 at octave 4). */
+const stripStart = computed(() => 48 + (octave.value - AHX_DEFAULT_OCTAVE) * 12);
+// Ready the preview voice, so the first key sounds at once.
+onMounted(() => {
+  if (instrument.value) void playbackStore.prepareSidPreview().catch(() => undefined);
+});
 
 function backToTracker(): void {
   void router.push('/tracker');

@@ -82,6 +82,10 @@ export class SidSongTransport {
   private preview: SidPlayerClient | null = null;
   private previewCreating: Promise<SidPlayerClient> | null = null;
   private previewDoc: SidDoc | null = null;
+  /** The key the preview voice is holding (asked for; its strike may still be on the way), or null. */
+  private previewHeld: number | null = null;
+  /** Bumped by every preview note-on and note-off: a strike still awaiting the voice goes only if nothing came after it. */
+  private previewSeq = 0;
   private previewOutputListeners = new Set<(node: AudioNode | null) => void>();
 
   constructor(private readonly deps: SidSongTransportDeps) {}
@@ -418,20 +422,48 @@ export class SidSongTransport {
     const doc = this.deps.trackerStore.sidDoc;
     const note = midi - SID_INDEX_TO_MIDI;
     if (!doc || note < 0 || note > 92) return false;
+    // Taken at once, before any await: a key-up that arrives while the voice
+    // is still being made must cancel this strike, not come before it.
+    const seq = ++this.previewSeq;
+    this.previewHeld = midi;
     const bank = this.deps.getSongBank();
     if (!(await bank.ensureAudioContextRunning())) return false;
     const client = await this.ensurePreview();
-    if (this.previewDoc !== doc) {
-      // Ordered on the port: the note lands on this load.
-      void client.loadSong(serializeSidFile(doc)).catch(() => undefined);
-      this.previewDoc = doc;
-    }
+    if (seq !== this.previewSeq) return false;
+    this.syncPreviewDoc(client, doc);
     client.previewNoteOn(instrument, note);
     return true;
   }
 
-  previewNoteOff(): void {
+  /**
+   * Let go of the preview note. With `midi`, only when that is the key being
+   * held: the voice is monophonic, so releasing a key another one has since
+   * taken over from must not silence the newer note.
+   */
+  previewNoteOff(midi?: number): void {
+    if (midi !== undefined && midi !== this.previewHeld) return;
+    this.previewHeld = null;
+    this.previewSeq++;
     this.preview?.previewNoteOff();
+  }
+
+  /**
+   * Make the preview voice and give it the song, so the first key sounds at
+   * once (selecting a SID instrument does this). Does not start a suspended
+   * context: that needs a gesture, which the key itself is.
+   */
+  async preparePreview(): Promise<void> {
+    const doc = this.deps.trackerStore.sidDoc;
+    if (!doc) return;
+    const client = await this.ensurePreview();
+    if (this.deps.trackerStore.sidDoc === doc) this.syncPreviewDoc(client, doc);
+  }
+
+  private syncPreviewDoc(client: SidPlayerClient, doc: SidDoc): void {
+    if (this.previewDoc === doc) return;
+    // Ordered on the port: a note sent after this lands on this load.
+    void client.loadSong(serializeSidFile(doc)).catch(() => undefined);
+    this.previewDoc = doc;
   }
 
   /** The preview voice's output (the page's analyzer), or null before its first note. */
@@ -448,6 +480,8 @@ export class SidSongTransport {
     this.preview?.dispose();
     this.preview = null;
     this.previewDoc = null;
+    this.previewHeld = null;
+    this.previewSeq++;
     for (const listener of this.previewOutputListeners) listener(null);
   }
 

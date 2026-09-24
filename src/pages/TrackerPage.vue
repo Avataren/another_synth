@@ -1696,13 +1696,15 @@ const {
   currentSequenceIndex,
 } = storeToRefs(playbackStore);
 
-// Selecting an AHX instrument gets its preview voice ready, so that the first
-// key sounds at once (an AHX song loading does the same, in the store).
+// Selecting an AHX or SID instrument gets its preview voice ready, so that the
+// first key sounds at once (an AHX song loading does the same, in the store).
 watch(
   [activeInstrumentId, instrumentSlots],
   ([instrumentId]) => {
     if (instrumentId && ahxInstrumentNumberFor(instrumentId) !== undefined) {
       void playbackStore.prepareAhxPreview();
+    } else if (instrumentId && sidInstrumentNumberFor(instrumentId) !== undefined) {
+      void playbackStore.prepareSidPreview().catch(() => undefined);
     }
   },
   { immediate: true },
@@ -1732,6 +1734,19 @@ watch(
         playbackStore.previewAhxNoteOff(midi);
       } else {
         void playbackStore.previewAhxNoteOn(ahxInstrument, midi, event.velocity);
+      }
+      return;
+    }
+
+    // A SID instrument is the song doc's, sounded by the SID preview voice.
+    // Its note-off names the key, so letting go of an earlier key does not cut
+    // the one that took over the (monophonic) voice.
+    const sidInstrument = sidInstrumentNumberFor(instrumentId);
+    if (sidInstrument !== undefined) {
+      if (event.velocity <= 0.0001) {
+        playbackStore.previewSidNoteOff(midi);
+      } else {
+        void playbackStore.previewSidNoteOn(sidInstrument, midi);
       }
       return;
     }
@@ -1885,6 +1900,15 @@ function ahxInstrumentNumberFor(instrumentId: string): number | undefined {
     (candidate) => formatInstrumentId(candidate.slot) === instrumentId,
   );
   return slot && isAhxSlot(slot) && slot.ahxData ? slot.slot : undefined;
+}
+
+/** The SID instrument number (1-based; the slot number) behind `instrumentId`, if it is a SID slot. */
+function sidInstrumentNumberFor(instrumentId: string): number | undefined {
+  if (!isSidSong.value) return undefined;
+  const slot = instrumentSlots.value.find(
+    (candidate) => formatInstrumentId(candidate.slot) === instrumentId,
+  );
+  return slot?.instrumentFormat === 'sid' ? slot.slot : undefined;
 }
 
 function hasPatchForInstrument(instrumentId: string): boolean {

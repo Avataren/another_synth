@@ -1,18 +1,22 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { enableAutoUnmount, mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { nextTick } from 'vue';
 
-const preview = vi.hoisted(() => ({ on: [] as Array<[number, number]>, off: 0 }));
+const preview = vi.hoisted(() => ({ on: [] as Array<[number, number]>, off: 0, offKeys: [] as Array<number | undefined>, prepared: 0 }));
 vi.mock('src/stores/tracker-playback-store', () => ({
   useTrackerPlaybackStore: () => ({
     previewSidNoteOn: async (instrument: number, midi: number) => {
       preview.on.push([instrument, midi]);
       return true;
     },
-    previewSidNoteOff: () => {
+    previewSidNoteOff: (midi?: number) => {
       preview.off += 1;
+      preview.offKeys.push(midi);
+    },
+    prepareSidPreview: async () => {
+      preview.prepared += 1;
     },
     sidPreviewOutput: () => null,
     onSidPreviewOutput: () => () => undefined,
@@ -72,12 +76,17 @@ function field(w: VueWrapper, component: typeof AhxSliderField | typeof AhxNumbe
 
 const sid = () => useTrackerStore().sidDoc as SidDoc;
 
+// Each page listens on `window` for the computer keyboard: one left mounted would play too.
+enableAutoUnmount(afterEach);
+
 describe('SidInstrumentPage', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     clearAhxEditNotice();
     preview.on.length = 0;
     preview.off = 0;
+    preview.offKeys.length = 0;
+    preview.prepared = 0;
     useTrackerStore().adoptSidDoc(buildSidChainSong());
   });
 
@@ -171,6 +180,30 @@ describe('SidInstrumentPage', () => {
     piano.vm.$emit('up', 57);
     expect(preview.on).toEqual([[4, 57]]);
     expect(preview.off).toBe(1);
+  });
+
+  it('the computer keyboard plays it too, as in the tracker (Q is C-4 at octave 4)', async () => {
+    await mountEditor(2);
+    expect(preview.prepared).toBe(1);
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyQ', key: 'q' }));
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyQ', key: 'q' }));
+    expect(preview.on).toEqual([[2, 60]]);
+    expect(preview.offKeys).toEqual([60]);
+    // Shift+PageUp is the octave up, as on the AHX page and in the tracker.
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'PageUp', key: 'PageUp', shiftKey: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyQ', key: 'q' }));
+    expect(preview.on.at(-1)).toEqual([2, 72]);
+  });
+
+  it('releasing an earlier key names it, so the voice keeps the newer note', async () => {
+    const { w } = await mountEditor(1);
+    const piano = w.findComponent(AhxPianoStrip);
+    piano.vm.$emit('down', 57);
+    piano.vm.$emit('down', 60);
+    piano.vm.$emit('up', 57);
+    expect(preview.on).toEqual([[1, 57], [1, 60]]);
+    // The transport ignores a note-off for a key that is not the one sounding.
+    expect(preview.offKeys).toEqual([57]);
   });
 
   it('page edits survive doc -> file -> doc; an unedited song still round-trips byte-exact', async () => {
