@@ -34,6 +34,7 @@ pub mod envelope;
 pub mod filter;
 pub mod noise;
 pub mod player;
+pub mod revision;
 pub mod song;
 pub mod voice;
 pub mod waveform;
@@ -53,6 +54,8 @@ mod tests_s5;
 mod tests_s510;
 #[cfg(test)]
 mod tests_s512;
+#[cfg(test)]
+mod tests_s515;
 
 pub use chip::Chip;
 pub use player::SidSongPlayer;

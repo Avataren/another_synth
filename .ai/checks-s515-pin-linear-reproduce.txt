@@ -1,0 +1,114 @@
+   Compiling audio_processor v0.1.0 (/home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-r4ar/rust-wasm)
+warning: unused import: `super::*`
+    --> src/audio_engine/native.rs:1537:9
+     |
+1537 |     use super::*;
+     |         ^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `Connection`, `ModulationTransformation`, and `ModulationType`
+    --> src/audio_engine/native.rs:1538:24
+     |
+1538 |     use crate::graph::{Connection, ModulationTransformation, ModulationType};
+     |                        ^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+
+warning: unused imports: `AnalogOscillator` and `Mixer`
+    --> src/audio_engine/native.rs:1539:24
+     |
+1539 |     use crate::nodes::{AnalogOscillator, Mixer};
+     |                        ^^^^^^^^^^^^^^^^  ^^^^^
+
+warning: unused import: `crate::PortId`
+    --> src/audio_engine/native.rs:1540:9
+     |
+1540 |     use crate::PortId;
+     |         ^^^^^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+    --> src/audio_engine/native.rs:1541:9
+     |
+1541 |     use uuid::Uuid;
+     |         ^^^^^^^^^^
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:119:35
+    |
+119 |         let safe_ms = ms.max(f32::EPSILON * 1000.0); // Ensure positive
+    |                                   ^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:286:32
+    |
+286 |             envelope_l += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:293:32
+    |
+293 |             envelope_r += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: function `port_id_from_u32` is never used
+  --> src/audio_engine/patch_loader.rs:25:8
+   |
+25 | pub fn port_id_from_u32(value: u32) -> PatchLoaderResult<PortId> {
+   |        ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `modulation_type_from_i32` is never used
+  --> src/audio_engine/patch_loader.rs:59:8
+   |
+59 | pub fn modulation_type_from_i32(value: i32) -> PatchLoaderResult<ModulationType> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `modulation_transform_from_i32` is never used
+  --> src/audio_engine/patch_loader.rs:69:8
+   |
+69 | pub fn modulation_transform_from_i32(value: i32) -> PatchLoaderResult<ModulationTransformation> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `filter_type_from_i32` is never used
+  --> src/audio_engine/patch_loader.rs:80:8
+   |
+80 | pub fn filter_type_from_i32(value: i32) -> PatchLoaderResult<FilterType> {
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `find_node_id` is never used
+  --> src/audio_engine/patch_loader.rs:96:8
+   |
+96 | pub fn find_node_id(voice_layout: &PatchVoiceLayout, node_type: &str) -> Option<String> {
+   |        ^^^^^^^^^^^^
+
+warning: methods `ensure_gate_buffer_len`, `ensure_frequency_buffer_len`, `set_gate_buffer`, and `set_frequency_buffer` are never used
+   --> src/automation.rs:205:8
+    |
+ 31 | impl AutomationFrame {
+    | -------------------- methods in this implementation
+...
+205 |     fn ensure_gate_buffer_len(&mut self, target_len: usize) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+...
+215 |     fn ensure_frequency_buffer_len(&mut self, target_len: usize) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+239 |     fn set_gate_buffer(&mut self, voice_index: usize, values: &[f32]) {
+    |        ^^^^^^^^^^^^^^^
+...
+273 |     fn set_frequency_buffer(&mut self, voice_index: usize, values: &[f32]) {
+    |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: `audio_processor` (lib test) generated 14 warnings (run `cargo fix --lib -p audio_processor --tests` to apply 5 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.75s
+     Running unittests src/lib.rs (target/debug/build/audio_processor/c2aa128425eb2c43/out/audio_processor-c2aa128425eb2c43)
+
+running 2 tests
+test sid::tests_s2::pin_8580_render_is_bit_identical_to_s1 ... ok
+test sid::tests_s2::pin_6581_render_is_bit_identical_to_s2 ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 255 filtered out; finished in 0.28s
+
+EXIT CODE: 0

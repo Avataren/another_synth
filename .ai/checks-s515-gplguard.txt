@@ -1,0 +1,5 @@
+cmd: git diff 4e1da056 38991b25 -- rust-wasm | grep -E "^\+.*\[(0x[0-9a-fA-F]+,\s*){16,}"
+grep-exit=1 (1 = no match, empty)
+cmd: git diff 4e1da056 38991b25 -- rust-wasm | grep -iE "^\+.*(resid|libsidplay|filter\.cpp|spline|GPL)"
++//! Sources (GPL-free; `.ai/sid-r4ar-research-notes.md`):
+grep-exit=0

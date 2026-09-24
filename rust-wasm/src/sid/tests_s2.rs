@@ -136,13 +136,19 @@ fn pin_8580_render_is_bit_identical_to_s1() {
 /// again in S5.12 R2 for the fitted combined-waveform levels and the
 /// measured-anchor cutoff map (the fc 0x305 write at 0 moves 773.5 Hz ->
 /// 1642.0 Hz, so every value changes); same disable-and-reproduce check.
-const PIN_6581_HASH: u64 = 0xffd4_c8a5_a72a_fed7;
+/// Re-captured in S5.15 for the R4AR volume DAC table (the program's VOL 10
+/// write at 22_050 now plays level 0.662069, not 10/15; values 0-26, before
+/// it, are unchanged). With the profile's bit weights set to the linear
+/// [1, 2, 4, 8] the old pin reproduced bit-exactly
+/// (`.ai/checks-s515-pin-linear-reproduce.txt`), so the table is the whole
+/// change.
+const PIN_6581_HASH: u64 = 0x2d13_44bc_eadb_4e1f;
 const PIN_6581_VALUES: [u32; 33] = [
     0x3dca67b2, 0x3befbbea, 0x3cddd8cd, 0x3e42cdc6, 0x3e68d0f0, 0xbdad0da8, 0xbe455549,
     0x3d82138f, 0x3e990a41, 0x3da4a948, 0xbc0520f5, 0xbe04e05e, 0xbd01f36c, 0xbcbd8bb0,
     0xbcbb2204, 0x3ce2f218, 0x3cc519f6, 0x3d089adc, 0xbc2d3190, 0x3d9109f0, 0x3c62e24a,
-    0x3d8f135a, 0x3e0556cb, 0x3cfaf9e0, 0x3c39bce7, 0x3b3f7d7a, 0x3a97a591, 0xbe5d17bd,
-    0xbd2052f9, 0xbc45b33b, 0xbbfc4246, 0xbbe4bc7f, 0xbbfc3e9f,
+    0x3d8f135a, 0x3e0556cb, 0x3cfaf9e0, 0x3c39bce7, 0x3b3f7d7a, 0x3a97a591, 0xbe5cf034,
+    0xbd200d68, 0xbc44d81b, 0xbbfaac70, 0xbbe32eac, 0xbbfa8232,
 ];
 
 #[test]
