@@ -1,0 +1,20 @@
+ ❯ src/tests/artifact-freshness.test.ts:79:22
+     77|     );
+     78|     const problems = freshness.checkWasm(read);
+     79|     expect(problems).toHaveLength(1);
+       |                      ^
+     80|     expect(problems[0]).toContain('public/wasm/audio_processor.js does…
+     81|     expect(problems[0]).toContain('npm run build:wasm');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed | 260 passed (261)
+      Tests  2 failed | 4203 passed (4205)
+   Start at  13:34:26
+   Duration  76.89s (transform 35.71s, setup 6.72s, collect 204.95s, tests 554.45s, environment 218.13s, prepare 55.45s)
+
+vitest-exit=1
+# Both failures are src/tests/artifact-freshness.test.ts (public/wasm stale vs SOURCE_HASH.json).
+# PRE-EXISTING at HEAD 8ad235ed: with the HEAD Rust sources restored, the same 2 tests fail
+# (R1 changed rust-wasm/src after the last wasm refresh 1a3c6c5c). R2 adds no other failure.
+# Remedy (out of R2 scope): npm run build:wasm + a "chore(sid): refresh wasm artifacts" commit.

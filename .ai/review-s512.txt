@@ -1,0 +1,133 @@
+S5.12 chip-comparison fixes — REVIEW (read-only + test/gate runs)
+Reviewer: subagent run b92f6082 (Joi), 2026-09-24 ~14:30 CEST
+Branch: agent/sid-chipfix-0924a, adc778b1 -> ecf96547 (2 commits: 8ad235ed R1, ecf96547 R2)
+Worktree: .ai/worktrees/sid-chipfix
+
+VERDICT: PASS-with-should-fix
+The code is verified. The should-fixes are documentation/artifact level, not code.
+
+=== 1. DIFF SCOPE — PASS ===
+12 files, +876/-364. rust-wasm: sid/filter.rs, sid/waveform.rs, sid/player.rs,
+sid/mod.rs, tests.rs, tests_s2.rs, tests_s3.rs, tests_s5.rs, tests_s512.rs (new),
+tests/sid_song_chain.rs. TS: src/audio/tracker/sid-instrument-visuals.ts,
+src/tests/fixtures/sid-visuals-parity.json.
+- Zero corpus changes (no corpus path in the diff).
+- Zero GPL table bytes: gplguard grep (no 16+ byte-sequence lines) plus my own
+  scan of the full diff for u8-table patterns — empty. waveform.rs's only numeric
+  data are the 6 disclosed pull thresholds and the 8 cutoff anchors.
+- Two files beyond the literal expected list, both justified:
+  * sid/mod.rs: 2 lines = the `mod tests_s512;` declaration.
+  * sid-instrument-visuals.ts: the TS mirror of waveform.rs/filter.rs visuals
+    logic, required by the shared parity fixture (which is pinned by
+    sid_visuals_parity test — green).
+
+=== 2. FIX SITES MATCH RECON — PASS ===
+- 4 kHz ceiling (R1, filter.rs): `fc = self.cutoff().min(CUTOFF_CEILING_DELTA_HZ)
+  .min(sample_rate * 0.49)` — after the model map, before the 0.49*fs clamp.
+  Maps stay unclamped: the test pins `cutoff() > 4000` AND `effective_cutoff()
+  == 4000` at 0x7FF on both models, both sample rates, plus the exact boundary
+  register. Doc disclosure cites reSID delta mode with code refs.
+- 6581 curve (R2, filter.rs): two-piece log-linear anchors
+  0:220 | 0x200:420, 0x300:1600, 0x3FF:6000 | 0x400:4600, 0x500:9500,
+  0x600:14500, 0x7FF:18000 — values match the comparison report §6.3 exactly;
+  the $80 discontinuity is asserted (0x400 < 0x3FF * 0.85) and per-piece
+  monotonicity is pinned. DERIVED-VALUE disclosure present at the anchor consts
+  (log-linear chords vs reSID's spline, expected ±5% anchors / ±15% between).
+  S2's logistic curve and F_HI_6581/K_6581 consts fully removed.
+- Tick-0 skip (R1, player.rs): `0x1 if !tick0`, `0x2 if !tick0`, and cmd-3 via
+  an empty `else if tick0` arm in the portamento branch ONLY. The `3 00` tie
+  branch is untouched (its own pre-existing `if self.tick != 0` guard, comment
+  block unchanged); S5.6 pin `tone_portamento_zero_is_gt_tie_note...` text
+  unmodified in the diff and passing (lib 250/0/0). tests_s3, tests_s5, and
+  sid_song_chain frame 168-175 updated to the tick-1 phase consistently.
+
+=== 3. RED-FIRST — PASS (spot-verified) ===
+- Artifacts: checks-s512-r1-red.txt (4 red), checks-s512-r2-red.txt (3 red:
+  2 filter + 1 waveform), red-s512r2-filter.txt / red-s512r2-wave.txt extracts.
+  Pre-fix values check out analytically: reg 0x200 = 383.63 Hz is exactly the
+  old logistic hand-calc; 8580 pulse+saw mean 127.5 is exactly the plain-AND
+  mean (saw mean >>4 with pulse held high).
+- SPOT VERIFICATION (throwaway clone /tmp/s512-redcheck at ecf96547, ONLY the
+  R1 player.rs hunk reverse-applied): all 3 tests_s512 tests FAIL with the exact
+  assertion values recorded in checks-s512-r1-red.txt ([4,8,...48] vs
+  [0,4,...,20,20,...40]). Independently reproduced.
+
+=== 4. GATES RERUN (mine, this review) — PASS with notes ===
+- cargo test --features native-host --no-fail-fast (rust-wasm): exit 101,
+  408 passed / 1 FAILED / 1 ignored. The only failure is the known baseline
+  `manifest_covers_every_fixture` (tests/ahx_render_golden.rs:419, corpus
+  manifest size), same test, same panic site as the baseline artifact
+  (which sums to exactly 402/1/1). Delta = +6 passed = exactly the 6 tests the
+  branch adds (R1: 3 tests_s512 + 1 ceiling pin; R2: means + recurrence pins).
+  No new failures.
+- vitest (full): 4203 passed / 2 failed (1 file). Both failures are
+  src/tests/artifact-freshness.test.ts (public/wasm stale vs SOURCE_HASH.json;
+  the second is the freshness-gate unit test seeing the real staleness as a
+  second problem). Matches checks-s512-r2-vitest.txt exactly. Verified
+  pre-existing-at-branch: public/wasm was last refreshed at 1a3c6c5c and
+  rust-wasm/src is UNCHANGED between 1a3c6c5c and the branch base adc778b1 —
+  the staleness is caused by the branch's own Rust changes with the wasm
+  deliberately not rebuilt yet (review brief: deploy/build happens main-side).
+  Disclosed in the artifact. Not a regression of R2; R2 adds no other failure.
+- eslint: exit 0 (real exit code captured; note my first attempt measured the
+  pipe, rerun is authoritative).
+- vue-tsc --noEmit: exit 2, but 11 errors, ALL pre-existing baseline noise
+  (identical error set to the standing checks-2-vuetsc baseline artifacts;
+  '#q-app/wrappers' module resolution in untouched files). Zero errors in
+  sid-instrument-visuals.ts — the only TS file the branch touches.
+- gitleaks: no leaks, exit 0. gplguard: no match.
+
+=== 5. AUDIBLE-FRAME BEHAVIOUR — PASS ===
+- tests_s512 pins the voice frequency register after each rendered frame (GT
+  semantics, tempo-1 steps per row); tests_s2 pins are audio-output render
+  hashes; tests_s3/s5 pin channel_freq frames; sid_song_chain pins register
+  values per frame. No test-only hooks, no fixture shims; the only API added is
+  `Filter::effective_cutoff()` (a getter for the value the coefficients were
+  computed from — legitimate, and the ceiling pin also asserts the map stays
+  unclamped). Parity fixture is generated and pinned by the Rust-side test.
+
+=== 6. GIT HYGIENE — PASS ===
+- Exactly 2 commits, linear adc778b1 -> 8ad235ed -> ecf96547; branch reflog
+  shows two plain `commit:` entries — no amend, no rewrite.
+- Marker .ai/worktree-owner absent (cleared). Worktree clean (git status
+  empty; my runs touched only gitignored target/ dirs and /tmp).
+- No remote refs contain ecf96547 (only the local branch ref);
+  `git branch -r --contains` empty, `git log --remotes` no hits.
+- R1 message: accurate and detailed. R2 message: one-line summary + trailer
+  only — accurate but thin (see should-fix #3).
+
+=== 7. PRE-EXISTING FAILURES — PASS ===
+- cargo: baseline known failure identical (same test, same assert); nothing
+  else failed. Baseline artifact sums 402/1/1; branch at 408/1/1.
+- vitest: only the 2 disclosed wasm-freshness failures, pre-existing at R1
+  and inherent to the deferred wasm build. No new failures.
+
+=== SHOULD-FIX (documentation/artifact level; none blocks landing) ===
+1. checks-s512-r2-cargo.txt is truncated: starts mid-run (first line is the
+   tail of an earlier binary), has no TOTALS line, and shows the
+   ahx_render_golden failure only as a bare `error: 1 target failed` with no
+   failure detail. My rerun confirms the substance, but the artifact alone
+   under-documents the cargo claim.
+2. The run-report phrasing "cargo with baseline known-failure 402/1/1 staying"
+   is subtly off: 402/1/1 is the PRE-branch baseline; at HEAD it is 408/1/1
+   because the branch adds 6 tests. The failed/ignored counts stay; read it as
+   "failure set unchanged", which is true.
+3. R2 commit message has no body — unlike R1 it does not describe the two
+   fixes or the disclosed derivations. The DERIVED-VALUE disclosures live in
+   the code comments (good), but the message could carry a summary.
+4. No R2 lint/vue-tsc artifacts were left in .ai (only cargo/vitest/gitleaks/
+   gplguard). This review's own runs cover them; a future run should persist
+   them for the audit trail.
+5. The 2 vitest artifact-freshness failures should be explicitly listed as
+   expected-and-deferred in the landing record (they clear at the main-side
+   `npm run build:wasm` + refresh commit).
+
+Honest caveats:
+- I did not re-derive the fitted thresholds against reSID's actual tables
+  (GPL, not consulted); verification is that the means match the disclosed
+  targets from the report by construction (±15% pin) and the mechanism is the
+  public neighbour-pull description, as the code itself discloses.
+- vue-tsc baseline is environment-dependent ('#q-app/wrappers' resolution);
+  I verified set-identity against the standing baseline artifacts and zero
+  errors in the touched file, not a from-scratch clean environment.
+- wasm NOT built (per brief); deploy/refresh is main-side work after PASS.

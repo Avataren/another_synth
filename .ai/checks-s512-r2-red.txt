@@ -1,0 +1,29 @@
+test sid::filter::tests::map_6581_endpoints_anchors_and_a_hand_point ... FAILED
+test sid::filter::tests::effective_cutoff_has_gts_4_khz_delta_mode_ceiling_on_both_models ... ok
+test sid::filter::tests::register_maps ... ok
+test sid::filter::tests::resonance_6581_is_weaker_than_the_8580 ... ok
+test sid::waveform::tests::combined_6581_pull_down_hand_values ... ok
+test sid::filter::tests::map_6581_is_monotonic_per_piece_with_the_fc_hi_step_and_unlike_the_8580 ... FAILED
+test sid::waveform::tests::no_waveform_selected_is_none ... ok
+test sid::waveform::tests::combined_waveforms_are_the_wired_and ... ok
+test sid::waveform::tests::combined_6581_only_removes_bits_and_only_for_combinations ... ok
+test sid::waveform::tests::pulse_compares_upper_bits_against_width ... ok
+test sid::waveform::tests::combined_waveform_means_match_the_measured_levels ... FAILED
+test sid::waveform::tests::ring_mod_truth_table ... ok
+test sid::waveform::tests::sawtooth_is_upper_twelve_bits ... ok
+test sid::waveform::tests::test_bit_forces_pulse_high_and_nothing_else ... ok
+test sid::waveform::tests::triangle_folds_on_msb_and_has_even_output ... ok
+test sid::waveform::tests::pulse_duty_cycle_over_a_full_sweep ... ok
+test sid::filter::tests::step_response_settles_to_unity_dc_gain ... ok
+test sid::filter::tests::no_mode_bit_is_silent_and_lp_plus_hp_notches ... ok
+test sid::filter::tests::slopes_are_twelve_and_six_db_per_octave ... ok
+test sid::filter::tests::filter_6581_small_signal_peak_is_q_and_compresses_with_level ... ok
+test sid::filter::tests::resonance_peak_grows_with_the_register ... ok
+test sid::filter::tests::filter_6581_is_stable_even_when_overdriven ... ok
+test sid::filter::tests::impulse_response_is_stable_and_decays_for_every_setting ... ok
+thread 'sid::filter::tests::map_6581_endpoints_anchors_and_a_hand_point' (2511676) panicked at src/sid/filter.rs:428:13:
+reg 0x200: 383.62607533408266 Hz, want 420
+thread 'sid::filter::tests::map_6581_is_monotonic_per_piece_with_the_fc_hi_step_and_unlike_the_8580' (2511677) panicked at src/sid/filter.rs:445:9:
+thread 'sid::waveform::tests::combined_waveform_means_match_the_measured_levels' (2511686) panicked at src/sid/waveform.rs:410:13:
+Sid8580 0x60: mean 127.500, want 62.000 ±15%
+test result: FAILED. 20 passed; 3 failed; 0 ignored; 0 measured; 226 filtered out; finished in 0.65s

@@ -1,0 +1,47 @@
+running 4 tests
+test sid::filter::tests::effective_cutoff_has_gts_4_khz_delta_mode_ceiling_on_both_models ... FAILED
+test sid::tests_s512::slide_up_skips_tick_0_of_every_row ... FAILED
+test sid::tests_s512::slide_down_skips_tick_0_of_every_row ... FAILED
+test sid::tests_s512::portamento_to_a_target_skips_tick_0_of_every_row ... FAILED
+
+failures:
+
+---- sid::filter::tests::effective_cutoff_has_gts_4_khz_delta_mode_ceiling_on_both_models stdout ----
+
+thread 'sid::filter::tests::effective_cutoff_has_gts_4_khz_delta_mode_ceiling_on_both_models' (2472982) panicked at src/sid/filter.rs:290:17:
+assertion `left == right` failed: Sid8580 sr 44100 reg 0x7FF
+  left: 12000.0
+ right: 4000.0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- sid::tests_s512::slide_up_skips_tick_0_of_every_row stdout ----
+
+thread 'sid::tests_s512::slide_up_skips_tick_0_of_every_row' (2472985) panicked at src/sid/tests_s512.rs:88:5:
+assertion `left == right` failed
+  left: [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48]
+ right: [0, 4, 8, 12, 16, 20, 20, 24, 28, 32, 36, 40]
+
+---- sid::tests_s512::slide_down_skips_tick_0_of_every_row stdout ----
+
+thread 'sid::tests_s512::slide_down_skips_tick_0_of_every_row' (2472984) panicked at src/sid/tests_s512.rs:98:5:
+assertion `left == right` failed
+  left: [-4, -8, -12, -16, -20, -24, -28, -32, -36, -40, -44, -48]
+ right: [0, -4, -8, -12, -16, -20, -20, -24, -28, -32, -36, -40]
+
+---- sid::tests_s512::portamento_to_a_target_skips_tick_0_of_every_row stdout ----
+
+thread 'sid::tests_s512::portamento_to_a_target_skips_tick_0_of_every_row' (2472983) panicked at src/sid/tests_s512.rs:111:5:
+assertion `left == right` failed
+  left: [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48]
+ right: [0, 4, 8, 12, 16, 20, 20, 24, 28, 32, 36, 40]
+
+
+failures:
+    sid::filter::tests::effective_cutoff_has_gts_4_khz_delta_mode_ceiling_on_both_models
+    sid::tests_s512::portamento_to_a_target_skips_tick_0_of_every_row
+    sid::tests_s512::slide_down_skips_tick_0_of_every_row
+    sid::tests_s512::slide_up_skips_tick_0_of_every_row
+
+test result: FAILED. 0 passed; 4 failed; 0 ignored; 0 measured; 244 filtered out; finished in 0.15s
+
+error: test failed, to rerun pass `--lib`

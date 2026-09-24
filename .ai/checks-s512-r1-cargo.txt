@@ -1,0 +1,42 @@
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/sid_gate_off.rs (target/debug/build/audio_processor/840692dd8a95e4e7/out/sid_gate_off-840692dd8a95e4e7)
+
+running 6 tests
+test e0_to_ef_rows_keep_the_low_nibble_gate_bit_included ... ok
+test a_gate_off_row_releases_and_a_later_gate_on_row_retriggers_while_the_channel_gate_is_on ... ok
+test a_gate_on_waveform_change_from_the_table_does_not_retrigger ... ok
+test after_a_key_off_no_table_byte_sets_the_gate_again ... ok
+test a_drum_tables_gate_off_rows_release_the_note_in_the_real_song ... ok
+test command_7_sets_the_whole_control_byte ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+     Running tests/sid_song_chain.rs (target/debug/build/audio_processor/ea4b7d1470ab96f6/out/sid_song_chain-ea4b7d1470ab96f6)
+
+running 4 tests
+test the_apps_file_round_trips_byte_exact_in_rust ... ok
+test subsong_one_plays_its_own_orderlists ... ok
+test the_song_plays_on_a_chip_of_its_own_model_frame_by_frame ... ok
+test both_chip_models_play_it_and_they_differ ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.44s
+
+     Running tests/sid_visuals_parity.rs (target/debug/build/audio_processor/7eb4ce1a1f692e13/out/sid_visuals_parity-7eb4ce1a1f692e13)
+
+running 1 test
+test sid_visuals_parity_fixture_is_what_the_rust_does ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+   Doc-tests audio_processor
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 1 target failed:
+    `--test ahx_render_golden`
+EXIT CODE: 101
+TOTALS: passed 406, failed 1 (manifest_covers_every_fixture, tests/ahx_render_golden.rs, known baseline), ignored 1
