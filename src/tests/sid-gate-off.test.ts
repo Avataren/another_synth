@@ -88,21 +88,23 @@ describe('S5.9 wave-table gate bit', () => {
     // Stinsen's "Forced Entry" through the real importer and codec, played
     // by the worklet's render core over the rebuilt wasm. Voice 2 strikes
     // instrument 16 "Crash-nofilt" (SR $CB; wave table 4C 71 DF, 4D 80 DF,
-    // 4E FF 4D: a loop on noise with the gate bit clear) at frame 3170 and
-    // plays nothing else until frame 6215. GoatTracker releases it on the
+    // 4E FF 4D: a loop on noise with the gate bit clear) at frame 1056 and
+    // plays nothing else until frame 2072 (S5.18: the song's funktempo rows
+    // are 10 and 6 frames, as GT plays them; at a flat 6 the strike was at
+    // frame 3170). GoatTracker releases it on the
     // $80 row (release $B, 2.4 s to zero on the chip's rates); the player
     // before S5.9 held the gate, and the noise stood at sustain $C for 61 s.
     const doc = importSong(resolve(__dirname, 'fixtures/gt-songs/stinsen/forced_entry.sng'));
     const core = new SidProcessorCore(SidPlayer as unknown as SidWasmPlayerCtor, SAMPLE_RATE, () => {});
     core.handle({ type: 'load-song', id: 1, bytes: serializeSidFile(doc) });
     core.handle({ type: 'play' });
-    render(core, 3168 * FRAME);
+    render(core, 1054 * FRAME);
     // The strike: noise on voice 2, loud.
     const strike = render(core, 50 * FRAME)[1]!;
     expect(peak(strike)).toBeGreaterThan(0.05);
-    // 5.6 s later (frame 3450 on) the release has run out: voice 2 is
+    // 5.6 s later (frame 1336 on) the release has run out: voice 2 is
     // silent for the next two seconds, where it used to hiss at sustain.
-    render(core, (3450 - 3218) * FRAME);
+    render(core, (1336 - 1104) * FRAME);
     const tail = render(core, 100 * FRAME)[1]!;
     expect(peak(tail)).toBeLessThan(1e-3);
   }, 60000);

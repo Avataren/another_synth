@@ -7,7 +7,10 @@
 //! plan's "PList rows at 50 Hz", GoatTracker's multispeed). INFERRED: exactly
 //! 50 Hz, not the PAL raster's 50.125 Hz (985 248 / 19 656); a 0.25 % tempo
 //! difference, kept for round numbers and to match the TS engine's clock
-//! (`sidDocTiming`). A row lasts `tempo` frames; the tempo is global. Frames
+//! (`sidDocTiming`). A row lasts `tempo` frames, the doc's start tempo, until a
+//! tempo command: each channel has GT's own tick counter and tempo (S5.18,
+//! `tick_step`), so funktempo (E) alternates two row lengths and F with bit 7
+//! sets one channel's alone. Frames
 //! land on output-sample boundaries (the chip's own write granularity,
 //! `chip.rs`), accumulated fractionally, so no frame drifts.
 //!
@@ -51,8 +54,11 @@
 //!   7 waveform = param (the whole byte, gate bit included, gplay.c:433);
 //!   8/9/A start the wave/pulse/filter table at row
 //!   `param`; B resonance/routing ($17) = param; C cutoff high byte = param;
-//!   D master volume = param & 15; E funktempo: not modelled (ignored);
-//!   F tempo = param & 0x7F when it is at least 1. A row with command 3 and
+//!   D master volume = param & 15; E funktempo: the two row lengths of speed
+//!   row `param` (minus 1: GT's `funktable`) alternate on every channel
+//!   (gplay.c:483-492); F tempo: from 3 up the row length minus 1, 0-2 as
+//!   they are (0 and 1 are funktempo), on all channels or, with bit 7, on this
+//!   one (gplay.c:494-508). A row with command 3 and
 //!   a note glides to it instead of triggering; with parameter 0 (GT's
 //!   tie-note, readme §3.2) the pitch jumps to it on the row's second frame
 //!   (tick 1; GT's realtime optimisation skips tick 0, goattrk2.c:55,
@@ -176,6 +182,19 @@ struct Channel {
     // `vibtime` (gplay.c:352, 615-640).
     vib_delay: u8,
     vib_time: u8,
+    // Timing (GT's per-channel `tick` and `tempo`, gplay.c:325-333). `tick`
+    // counts down; the frame it reaches 0 starts a row. `tempo` is GT's
+    // stored value (the row length minus 1; 0 and 1 are funktempo, which
+    // alternates the two `funk` lengths and flips the low bit each row).
+    tick: u8,
+    tempo: u8,
+    /// The doc's start tempo, literal frames per row until a tempo command
+    /// (E, F) takes the channel over: GT's stored tempo cannot say 1 or 2.
+    fixed: u8,
+    /// The frames the current row lasts (for `tempo()`).
+    period: u8,
+    /// This frame started a row.
+    at_row_start: bool,
 }
 
 /// Plays one subsong of a `SidSong` on a chip of the song's model.
@@ -185,8 +204,13 @@ pub struct SidSongPlayer {
     subsong: usize,
     chip: Chip,
     channels: [Channel; SID_CHANNELS],
-    tempo: u8,
-    tick: u8,
+    /// GT's `funktable`: the two row lengths minus 1 that funktempo alternates
+    /// (shared by every channel; command E sets it from a speed-table row).
+    funk: [u8; 2],
+    /// The channel whose rows the song row counts: the longest first pass.
+    ref_channel: usize,
+    /// The reference channel's row ended on the frame just played.
+    row_ended: bool,
     frames: u64,
     looped: bool,
     samples_per_frame: f64,
@@ -204,6 +228,17 @@ pub struct SidSongPlayer {
     rows_played: u64,
     loop_rows: Option<(u64, u64)>,
     preview: bool,
+}
+
+/// GT's stored tempo for a tempo value (gplay.c:496-498): the row length
+/// minus 1 from 3 up; 0-2 stay (0 and 1 select funktempo).
+fn gt_tempo(value: u8) -> u8 {
+    let t = value & 0x7F;
+    if t >= 3 {
+        t - 1
+    } else {
+        t
+    }
 }
 
 /// The note index of row note `note` under `transpose`, as GoatTracker
@@ -248,15 +283,22 @@ impl SidSongPlayer {
             Self::enter_order(ch, list, 0, &song);
         }
         let samples_per_frame = sample_rate / (FRAME_HZ * song.speed_multiplier as f64);
-        let tempo = song.tempo;
-        let song_rows = Self::first_pass_rows(&song, subsong);
+        let mult = song.speed_multiplier.max(1);
+        for ch in channels.iter_mut() {
+            // The first frame decrements to 0 and starts the first row.
+            ch.tick = 1;
+            ch.fixed = song.tempo.max(1);
+            ch.period = song.tempo;
+        }
+        let (song_rows, ref_channel) = Self::first_pass_rows(&song, subsong);
         Ok(SidSongPlayer {
             song,
             subsong,
             chip,
             channels,
-            tempo,
-            tick: 0,
+            funk: [9u8.wrapping_mul(mult).wrapping_sub(1), 6u8.wrapping_mul(mult).wrapping_sub(1)],
+            ref_channel,
+            row_ended: false,
             frames: 0,
             looped: false,
             samples_per_frame,
@@ -275,22 +317,25 @@ impl SidSongPlayer {
         })
     }
 
-    /// Rows of the longest channel's first pass through `subsong`'s orderlist.
-    fn first_pass_rows(song: &SidSong, subsong: usize) -> u64 {
-        song.subsongs[subsong]
-            .orderlists
-            .iter()
-            .map(|list| {
-                list.entries
-                    .iter()
-                    .map(|e| {
-                        let pattern = (e.pattern as usize).min(song.patterns.len() - 1);
-                        song.patterns[pattern].rows.len() as u64 * e.repeat as u64
-                    })
-                    .sum::<u64>()
-            })
-            .max()
-            .unwrap_or(0)
+    /// Rows of the longest channel's first pass through `subsong`'s orderlist,
+    /// and that channel (the first, on a tie): the one whose rows the song
+    /// row counts, since channels can run at their own tempo (command F $80+).
+    fn first_pass_rows(song: &SidSong, subsong: usize) -> (u64, usize) {
+        let mut best = (0u64, 0usize);
+        for (c, list) in song.subsongs[subsong].orderlists.iter().enumerate() {
+            let rows = list
+                .entries
+                .iter()
+                .map(|e| {
+                    let pattern = (e.pattern as usize).min(song.patterns.len() - 1);
+                    song.patterns[pattern].rows.len() as u64 * e.repeat as u64
+                })
+                .sum::<u64>();
+            if rows > best.0 {
+                best = (rows, c);
+            }
+        }
+        best
     }
 
     /// The song's length in rows: the longest channel's first pass, where the
@@ -411,8 +456,9 @@ impl SidSongPlayer {
         self.looped
     }
 
+    /// The frames the song row's current row lasts (funktempo alternates).
     pub fn tempo(&self) -> u8 {
-        self.tempo
+        self.channels[self.ref_channel].period
     }
 
     /// Channel `c`'s place: (orderlist entry, row) of the row it plays next
@@ -468,7 +514,7 @@ impl SidSongPlayer {
     fn frame_with_loop(&mut self) {
         self.frame_core();
         if let Some((start, end)) = self.loop_rows {
-            if self.tick == 0 && !self.preview && self.rows_played >= end {
+            if self.row_ended && !self.preview && self.rows_played >= end {
                 let carried = self.samples_to_frame;
                 self.seek_row(start);
                 self.samples_to_frame = carried;
@@ -485,10 +531,16 @@ impl SidSongPlayer {
     }
 
     fn frame_core(&mut self) {
-        if self.tick == 0 && !self.preview {
+        self.row_ended = false;
+        if !self.preview {
+            // GT's per-channel tick, in channel order (gplay.c:319-333): a
+            // command E/F on a row changes the tempo of channels after it in
+            // this very frame, and of earlier ones from their next reload.
             for c in 0..SID_CHANNELS {
-                let row = self.current_row(c);
-                self.read_row(c, row);
+                if self.tick_step(c) {
+                    let row = self.current_row(c);
+                    self.read_row(c, row);
+                }
             }
         }
         for c in 0..SID_CHANNELS {
@@ -510,14 +562,47 @@ impl SidSongPlayer {
         if self.preview {
             return;
         }
-        self.tick += 1;
-        if self.tick >= self.tempo {
-            self.tick = 0;
-            self.rows_played += 1;
-            for c in 0..SID_CHANNELS {
+        // A channel whose counter stands at 1 starts its next row on the next
+        // frame's decrement to 0: move it on to that row now.
+        for c in 0..SID_CHANNELS {
+            let ch = &mut self.channels[c];
+            // A literal one-frame row (the doc's tempo 1, which GT's counter
+            // cannot express) starts a row every frame.
+            let one_frame = ch.at_row_start && ch.fixed == 1;
+            if one_frame {
+                ch.tick = 1;
+            }
+            if ch.tick == 1 {
                 self.advance_row(c);
+                if c == self.ref_channel {
+                    self.rows_played += 1;
+                    self.row_ended = true;
+                }
             }
         }
+    }
+
+    /// GT's tick counter for channel `c` (gplay.c:319-333): counts down, and
+    /// the frame it reaches 0 starts a row (`true`). Below 0 (wrapped) it
+    /// reloads from the channel's tempo, or, under funktempo (tempo 0/1), from
+    /// the `funk` length its low bit picks, which it then flips.
+    fn tick_step(&mut self, c: usize) -> bool {
+        let funk = self.funk;
+        let ch = &mut self.channels[c];
+        ch.tick = ch.tick.wrapping_sub(1);
+        ch.at_row_start = ch.tick == 0;
+        if ch.tick >= 0x80 {
+            if ch.fixed != 0 {
+                ch.tick = ch.fixed - 1;
+            } else if ch.tempo >= 2 {
+                ch.tick = ch.tempo;
+            } else {
+                ch.tick = funk[ch.tempo as usize];
+                ch.tempo ^= 1;
+            }
+            ch.period = ch.tick.wrapping_add(1);
+        }
+        ch.at_row_start
     }
 
     fn current_row(&self, c: usize) -> Row {
@@ -649,9 +734,31 @@ impl SidSongPlayer {
             0xB => self.res_filt = p,
             0xC => self.cutoff = (p as u16) << 3,
             0xD => self.volume = p & 0x0F,
+            // Funktempo (gplay.c:483-492): a speed-table row's two lengths
+            // (each minus 1) become the alternating row lengths, and every
+            // channel switches to funktempo.
+            0xE => {
+                if let Some(r) = self.speed_row(p).filter(|_| p != 0) {
+                    self.funk = [r.left.wrapping_sub(1), r.right.wrapping_sub(1)];
+                }
+                for ch in self.channels.iter_mut() {
+                    ch.tempo = 0;
+                    ch.fixed = 0;
+                }
+            }
+            // Tempo (gplay.c:494-508): 3 and up is the row length minus 1,
+            // 0-2 as they stand (0 and 1 are funktempo); bit 7 sets this
+            // channel's alone, otherwise all three.
             0xF => {
-                if p & 0x7F >= 1 {
-                    self.tempo = p & 0x7F;
+                let t = gt_tempo(p);
+                if p >= 0x80 {
+                    self.channels[c].tempo = t;
+                    self.channels[c].fixed = 0;
+                } else {
+                    for ch in self.channels.iter_mut() {
+                        ch.tempo = t;
+                        ch.fixed = 0;
+                    }
                 }
             }
             _ => {}
@@ -763,7 +870,9 @@ impl SidSongPlayer {
         // every row (goattrk2.c:55, gplay.c:728): the vibratos (S5.10) and
         // the slides 1-2 and the portamento 3 (S5.12), so a slide steps
         // tempo - 1 times per row. The preview voice has no rows.
-        let tick0 = self.tick == 0 && !self.preview;
+        let tick0 = self.channels[c].at_row_start && !self.preview;
+        // Not on a row's first frame; and never in preview, which has no rows.
+        let ticking = !self.preview && !self.channels[c].at_row_start;
         match cmd {
             0x1 if !tick0 => {
                 if let Some(s) = speed {
@@ -791,7 +900,7 @@ impl SidSongPlayer {
                     // row wins its own frame (gplay.c:714-722 jumps past the
                     // effects); the wave step runs after this and overwrites
                     // the same way.
-                    if self.tick != 0 {
+                    if ticking {
                         ch.freq = gt_note_freq_reg(ch.base_note);
                     }
                 } else if tick0 {
@@ -1009,7 +1118,9 @@ impl SidSongPlayer {
         let Some((timer, hr)) = self.instrument(c).map(|i| (i.gate_timer, i.hard_restart)) else {
             return;
         };
-        if timer == 0 || timer >= self.tempo || self.tick != self.tempo - timer {
+        // GT compares its countdown with the gate timer (gplay.c:898):
+        // `timer` frames before the row ends.
+        if timer == 0 || self.preview || self.channels[c].tick != timer {
             return;
         }
         let next = self.next_row(c);

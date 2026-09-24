@@ -1713,3 +1713,10 @@ Things to know before touching any of it:
 - Wave-table commands $F5 (set AD) and $F6 (set SR) are modelled; the other $F0-$FE are not (they only advance). $F6 60 on that instrument drops the sustain 7 -> 6 for the last frame (the 7/6 level gap).
 - Compare AD/SR too, not just the control byte: control bytes matched GT on all frames while AD/SR did not. Voice-3 RMS vs GT after the fix: 0.98 (6581) / 0.99 (8580).
 - Still different, voice 3, 6581 only: the first frame after a note's gate opens is 0.875x GT's (8580: 0.99x); on a note-on GT's frequency register lags the new note by one frame (inaudible under the test bit).
+
+## SID player: per-channel tempo and funktempo (S5.18)
+
+- GT has no global tempo: every channel has its own down-counting `tick` and `tempo` (gplay.c:319-333). Command F sets the row length minus 1 from 3 up (0-2 stay as they are: 0 and 1 are funktempo, 2 is a 3-frame row) on all channels, or with bit 7 on the calling channel only; command E loads `funktable` from a speed row (left-1, right-1) and puts every channel on it, alternating, so a row is 10 then 6 frames. The player ignored E and masked bit 7 off F, so "Covert Ops in 2D" (funktempo, GT1 `7 00`) ran at a flat 6.
+- `player.rs`: `tick_step` per channel in channel order; a row is read on the frame the counter reaches 0 and the channel moves on when it stands at 1. The doc's header tempo stays a literal row length (`Channel::fixed`, 1 frame allowed) until a tempo command takes the channel over. `song_row` counts the longest channel's rows (`ref_channel`), `tempo()` is that channel's current row length.
+- Check the whole corpus, not one song: control bytes of all 3 voices against GT's playroutine over 84 songs, 4000 frames: 57 exact before, 81 after (121 587 -> 790 mismatching voice-frames). Still off: `stinsen_upsandowns` (768, voice 3 gate held by GT), `stinsen_unleash_the_cheese` (20, voice 2), `stinsen_coconut_conundrum` (2, first frame). None caused by tempo.
+- The TS side (`sidDocTiming`, the projected grid) still assumes one global tempo; the audio does not.
