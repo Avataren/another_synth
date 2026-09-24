@@ -1,4 +1,8 @@
-//! S5.16 tests: the pulse width carries across notes, as in GoatTracker.
+//! S5.16 tests: what GoatTracker leaves alone on a note, and two filter-table
+//! rows the player mis-read. Checked against GT's own playroutine (gplay.c) on
+//! "Coconut Conundrum", register by register.
+//!
+//! The pulse width carries across notes, as in GoatTracker.
 //!
 //! GT sets a channel's pulse width only from its pulse table (gplay.c:375-381,
 //! 868-873), never on a note, so an instrument with no pulse table plays at
@@ -93,4 +97,62 @@ fn the_first_note_of_a_song_still_starts_at_width_0() {
     // GT's channel starts at 0 and nothing has set it yet.
     let w = widths(&song(vec![row(49, 2)]), 6);
     assert_eq!(w[5], 0);
+}
+
+/// Like `song`, but with instrument 1's pulse table modulating for 16 frames
+/// (+0x10 a frame) and instrument 2 (no pulse table) on the second row.
+fn modulating_song(rows: Vec<Row>) -> SidSong {
+    let mut s = song(rows);
+    s.tables.pulse = vec![t(0x86, 0x40), t(0x10, 0x10), t(0xFF, 0x00)];
+    SidSong::parse(&s.to_bytes()).expect("parses")
+}
+
+#[test]
+fn an_instrument_without_a_pulse_table_leaves_the_running_one_going() {
+    // GT sets a channel's pulse pointer only from an instrument that has a
+    // table (gplay.c:375-378), so instrument 2's note keeps instrument 1's
+    // modulation running: the width goes on rising through row 1 (frames
+    // 6..11). Before S5.16 the pointer was cleared and the width froze.
+    let w = widths(&modulating_song(vec![row(49, 1), row(49, 2)]), 12);
+    assert!(w[5] >= 0x640, "instrument 1's table set the width and started modulating");
+    for f in 7..12 {
+        assert!(w[f] > w[f - 1], "frame {f}: the width keeps rising under instrument 2 ({:#x} -> {:#x})", w[f - 1], w[f]);
+    }
+}
+
+/// Instrument 1 with a filter table of `rows`; channel 1 plays it once.
+fn filter_song(rows: Vec<TableRow>) -> SidSong {
+    let mut s = song(vec![row(49, 1)]);
+    s.instruments[0].filter_ptr = 1;
+    s.tables.filter = rows;
+    SidSong::parse(&s.to_bytes()).expect("parses")
+}
+
+/// The filter's (cutoff register, resonance nibble, mode bits) after `frames`.
+fn filter_after(s: &SidSong, frames: usize) -> (u16, u8, u8) {
+    let mut p = SidSongPlayer::new(s.clone(), DEFAULT_SAMPLE_RATE).expect("player builds");
+    let mut out = vec![0.0f32; SPF];
+    for _ in 0..frames {
+        p.render(&mut out);
+    }
+    let f = p.chip().filter();
+    (f.cutoff_reg(), f.resonance(), f.mode())
+}
+
+#[test]
+fn a_filter_set_row_takes_any_left_byte_from_0x80_to_0xfe() {
+    // Only 0xFF is a jump (gplay.c:265). 0xF1 sets mode (0xF1 & 0x70 = LP+BP+HP)
+    // and resonance 3 / voice 1; the player used to skip it (its range ended at
+    // 0xF0), leaving the resonance of whatever instrument came before.
+    let (_, res, mode) = filter_after(&filter_song(vec![t(0xF1, 0x31), t(0xFF, 0x00)]), 1);
+    assert_eq!(res, 3);
+    assert_eq!(mode, 0x70);
+}
+
+#[test]
+fn a_cutoff_row_straight_after_a_set_row_is_taken_on_the_same_frame() {
+    // gplay.c:271-275 ("Can be combined with cutoff set"): set + cutoff in one
+    // frame, so the cutoff is 0x25 << 3 after frame 0, not a frame later.
+    let (cutoff, res, mode) = filter_after(&filter_song(vec![t(0x91, 0xF1), t(0x00, 0x25), t(0xFF, 0x00)]), 1);
+    assert_eq!((cutoff, res, mode), (0x25 << 3, 15, 0x10));
 }

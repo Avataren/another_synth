@@ -366,9 +366,11 @@ fn filter_table_and_instrument_filter_drive_the_chip_filter() {
         let f = p.chip().filter();
         cutoffs.push((f.cutoff_reg(), f.resonance(), f.mode() & 0x70));
     }
-    // Row 2 frame: the mode row (LP, res 10), cutoff still the old one; then
-    // set 0x200; then 0x208, 0x210; then the table has ended.
-    assert_eq!(cutoffs, vec![(0x123, 10, 0x10), (0x200, 10, 0x10), (0x208, 10, 0x10), (0x210, 10, 0x10)]);
+    // Row 2 frame: the mode row (LP, res 10) and the cutoff-set row after it
+    // together (GT combines them on one frame, gplay.c:271-275; S5.16 -- this
+    // used to be pinned a frame apart), so 0x200; then 0x208, 0x210; then the
+    // table has ended and the cutoff holds.
+    assert_eq!(cutoffs, vec![(0x200, 10, 0x10), (0x208, 10, 0x10), (0x210, 10, 0x10), (0x210, 10, 0x10)]);
 }
 
 #[test]

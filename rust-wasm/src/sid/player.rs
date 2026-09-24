@@ -84,7 +84,7 @@
 //!   pulse: left 0x80..=0xFE sets the width to (left & 0x0F)<<8 | right;
 //!     0x01..=0x7F adds the signed `right` to it for `left` frames;
 //!   filter: left 0x00 sets the cutoff high byte to `right`; 0x01..=0x7F
-//!     adds the signed `right` to it for `left` frames; 0x80..=0xF0 sets the
+//!     adds the signed `right` to it for `left` frames; 0x80..=0xFE sets the
 //!     mode to (left >> 4) & 7 (LP 1, BP 2, HP 4) and $17 (resonance<<4 |
 //!     routing) to `right`;
 //!   speed: data only, read by commands 1-4 and the instrument vibrato.
@@ -688,8 +688,13 @@ impl SidSongPlayer {
         ch.first_wave = ins.first_wave;
         ch.wave_ptr = ins.wave_ptr;
         ch.wave_wait = 0;
-        ch.pulse_ptr = ins.pulse_ptr;
-        ch.pulse_time = 0;
+        // Same rule for the pulse table pointer (gplay.c:375-378): an
+        // instrument with no pulse table leaves the running one going, so
+        // its width keeps modulating under the new note.
+        if ins.pulse_ptr != 0 {
+            ch.pulse_ptr = ins.pulse_ptr;
+            ch.pulse_time = 0;
+        }
         if ins.filter.enabled {
             self.res_filt |= bit;
         } else {
@@ -945,11 +950,25 @@ impl SidSongPlayer {
                     self.filter_speed = row.right as i8;
                     self.cutoff = bump(self.cutoff, self.filter_speed);
                 }
-                0x80..=0xF0 => {
+                // Every left byte 0x80..=0xFE sets the mode and the
+                // resonance/routing (only 0xFF is a jump, gplay.c:265), and a
+                // cutoff row straight after it is taken on the same frame
+                // (gplay.c:271-275).
+                0x80..=0xFE => {
                     self.mode = (row.left >> 4) & 0x07;
                     self.res_filt = row.right;
+                    self.filter_ptr = self.filter_ptr.wrapping_add(1);
+                    if let Some(next) = table_row(table, self.filter_ptr) {
+                        if next.left == 0x00 {
+                            self.cutoff = (next.right as u16) << 3;
+                            self.filter_ptr = self.filter_ptr.wrapping_add(1);
+                        }
+                    }
+                    if self.filter_ptr as usize > table.len() {
+                        self.filter_ptr = 0;
+                    }
+                    return;
                 }
-                _ => {}
             }
             self.filter_ptr = self.filter_ptr.wrapping_add(1);
             break;

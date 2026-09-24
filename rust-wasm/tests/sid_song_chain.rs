@@ -114,18 +114,19 @@ fn the_song_plays_on_a_chip_of_its_own_model_frame_by_frame() {
             _ => {}
         }
         // Row 10 = frame 60: voice 3 E-3 + 5 = A-3 on "Filt saw"; its filter
-        // table: LP, $17 = 0xC4 (resonance 12, voice 3 routed) on frame 60,
-        // cutoff 0x20<<3 on 61, then +2<<3 a frame for 64 frames (0x500 at
-        // 125), then the table stops.
+        // table: LP, $17 = 0xC4 (resonance 12, voice 3 routed) and, on the same
+        // frame 60, the cutoff-set row after it (GT combines them,
+        // gplay.c:271-275: 0x20<<3), then +2<<3 a frame for 64 frames from
+        // frame 61 (0x500 at 124), then the table stops.
         match f {
             60 => {
                 assert_eq!((v3.frequency(), v3.control()), (a3, 0x21));
                 let fl = chip.filter();
-                assert_eq!((fl.mode() & 0x70, fl.resonance(), fl.cutoff_reg()), (0x10, 12, 0));
+                assert_eq!((fl.mode() & 0x70, fl.resonance(), fl.cutoff_reg()), (0x10, 12, 0x100));
             }
-            61 => assert_eq!(chip.filter().cutoff_reg(), 0x100),
-            62..=63 => assert_eq!(chip.filter().cutoff_reg(), 0x100 + 0x10 * (f as u16 - 61)),
-            125 | 130 => assert_eq!(chip.filter().cutoff_reg(), 0x500, "frame {f}"),
+            61..=63 => assert_eq!(chip.filter().cutoff_reg(), 0x100 + 0x10 * (f as u16 - 60), "frame {f}"),
+            123 => assert_eq!(chip.filter().cutoff_reg(), 0x4F0),
+            124 | 125 | 130 => assert_eq!(chip.filter().cutoff_reg(), 0x500, "frame {f}"),
             _ => {}
         }
         // Row 16 = frame 96: key off; the envelope releases.

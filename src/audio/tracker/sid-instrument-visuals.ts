@@ -425,9 +425,19 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
         filterTime = r.left - 1;
         filterSpeed = i8(r.right);
         cutoff = bump(cutoff, filterSpeed);
-      } else if (r.left <= 0xf0) {
+      } else {
+        // Every left byte 0x80..0xfe sets the mode and resonance/routing (only
+        // 0xff is a jump), and a cutoff row straight after it is taken on the
+        // same frame, as GoatTracker does (gplay.c:265-275; player.rs).
         mode = (r.left >> 4) & 0x07;
         resFilt = r.right;
+        filterPtr = (filterPtr + 1) & 0xff;
+        const next = row(filter, filterPtr);
+        if (next && next.left === 0x00) {
+          cutoff = next.right << 3;
+          filterPtr = (filterPtr + 1) & 0xff;
+        }
+        break;
       }
       filterPtr = (filterPtr + 1) & 0xff;
       break;
