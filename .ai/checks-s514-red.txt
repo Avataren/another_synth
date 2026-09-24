@@ -1,0 +1,108 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 test:run
+npm notice run vitest run src/tests/sid-sng-corpus.test.ts
+
+ RUN  v2.1.8 /home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-corpus
+
+ ❯ src/tests/sid-sng-corpus.test.ts (9 tests | 4 failed) 4648ms
+   × the GoatTracker corpus (fixtures/gt-songs) > holds the 83 curated files: 61 GTS5 and 22 GTS! 6ms
+     → expected [ …(84) ] to have a length of 83 but got 84
+   × the GoatTracker corpus (fixtures/gt-songs) > GTS5: every row, instrument, table byte and orderlist pattern is where the doc says 2655ms
+     → expected 62 to be 61 // Object.is equality
+   ✓ the GoatTracker corpus (fixtures/gt-songs) > GTS!: every row keeps its note and instrument; every pattern its length; every orderlist its patterns 374ms
+   × the GoatTracker corpus (fixtures/gt-songs) > every file round-trips: import -> export (GTS5) -> import is the same doc, and the writer is at a fixed point 1605ms
+     → expected 84 to be 83 // Object.is equality
+   × the GoatTracker corpus (fixtures/gt-songs) > the deviations the import reports, per kind and per file (the D-log list; MEASURED 2026-09-23) 2ms
+     → expected { 'gt1-convert': 77, …(4) } to deeply equal { 'table-padded': 2, …(4) }
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/sid-sng-corpus.test.ts > the GoatTracker corpus (fixtures/gt-songs) > holds the 83 curated files: 61 GTS5 and 22 GTS!
+AssertionError: expected [ …(84) ] to have a length of 83 but got 84
+
+- Expected
++ Received
+
+- 83
++ 84
+
+ ❯ src/tests/sid-sng-corpus.test.ts:95:19
+     93|   it('holds the 83 curated files: 61 GTS5 and 22 GTS!', () => {
+     94|     // corpus-size constant: re-measure when fixtures/gt-songs changes…
+     95|     expect(files).toHaveLength(83);
+       |                   ^
+     96|     const magics = files.map((f) => magic(bytesOf(f)));
+     97|     expect(magics.filter((m) => m === 'GTS5')).toHaveLength(61);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/tests/sid-sng-corpus.test.ts > the GoatTracker corpus (fixtures/gt-songs) > GTS5: every row, instrument, table byte and orderlist pattern is where the doc says
+AssertionError: expected 62 to be 61 // Object.is equality
+
+- Expected
++ Received
+
+- 61
++ 62
+
+ ❯ src/tests/sid-sng-corpus.test.ts:195:21
+    193|       checked += 1;
+    194|     }
+    195|     expect(checked).toBe(61);
+       |                     ^
+    196|   });
+    197| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/tests/sid-sng-corpus.test.ts > the GoatTracker corpus (fixtures/gt-songs) > every file round-trips: import -> export (GTS5) -> import is the same doc, and the writer is at a fixed point
+AssertionError: expected 84 to be 83 // Object.is equality
+
+- Expected
++ Received
+
+- 83
++ 84
+
+ ❯ src/tests/sid-sng-corpus.test.ts:298:19
+    296|       equal += 1;
+    297|     }
+    298|     expect(equal).toBe(83);
+       |                   ^
+    299|   });
+    300| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/tests/sid-sng-corpus.test.ts > the GoatTracker corpus (fixtures/gt-songs) > the deviations the import reports, per kind and per file (the D-log list; MEASURED 2026-09-23)
+AssertionError: expected { 'gt1-convert': 77, …(4) } to deeply equal { 'table-padded': 2, …(4) }
+
+- Expected
++ Received
+
+  Object {
+    "gt1-convert": 77,
+    "gt1-dropped": 25,
+    "loop-transpose": 3,
+    "no-gateoff": 1,
+-   "table-padded": 2,
++   "table-padded": 3,
+  }
+
+ ❯ src/tests/sid-sng-corpus.test.ts:310:20
+    308|       }
+    309|     }
+    310|     expect(byKind).toEqual({
+       |                    ^
+    311|       'table-padded': 2,
+    312|       'no-gateoff': 1,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 5 passed (9)
+   Start at  13:18:11
+   Duration  5.87s (transform 275ms, setup 13ms, collect 382ms, tests 4.65s, environment 212ms, prepare 352ms)
+

@@ -1,0 +1,79 @@
+# S5.14 review — corpus +1 (Kalachnikov sid_warrior), agent/sid-corpus-0924a @ d741777e
+
+Reviewer: main subagent (read-only pass), 2026-09-24 ~13:40.
+Every gate rerun fresh in this review except noted; no writes, no push, no amend.
+
+## Verdict: PASS-with-should-fix
+
+The corpus change itself is verified end-to-end. One claim-vs-reality
+discrepancy on where the evidence files live (should-fix below).
+
+## Checked claims (all verified with evidence)
+
+1. Diff scope — MATCHES. `git show --stat d741777e`: exactly 7 files — 3 ×
+   sid_warrior.sng (fixtures/gt-songs, public/songs/goattracker,
+   public/demos/goattracker), public/demos/index.json, 2 READMEs,
+   src/tests/sid-sng-corpus.test.ts. No Rust, no .quasar/tsconfig.json, no
+   stray files.
+2. Magic + real-chain import — MATCHES. All 3 copies sha1-identical
+   (aafa25ca8268727369955a0260ec806f1b85c2bd), 10722 bytes, first 4 bytes
+   GTS5. Corpus test (which imports via importGtSongToTrackerSong's path and
+   independent-re-reads + round-trips every fixture) passes fresh:
+   `vitest run src/tests/sid-sng-corpus.test.ts` → 9/9, exit 0.
+3. Exclusion claims — SPOT-CHECKED, MATCH. 2 of the 10 GTS2 beta files show
+   magic GTS2 (od: `on a sanction from cia.sng`, `phobos.sng`, both 475453 32).
+   `cmp` byte-identical: b.o.f.h. staged file ==
+   fixtures/gt-songs/yehar/b_o_f_h_ingame_death_victory.sng; sleepwalk.sng ==
+   fixtures/gt-songs-corrupt/sleepwalk.sng. Staged files present in
+   .ai/s514-dl/ (16 files as the verdict table says).
+4. Manifest determinism — MATCHES. Reran
+   `node scripts/build-demo-manifest.mjs public/demos public/demos` myself:
+   output byte-identical to committed index.json modulo the `generated`
+   timestamp; 321 modules, exit 0. +1 entry (Sid-Warrior / 10722) sorted by
+   file path as the generator does; delta was timestamp + 7-line entry only.
+5. Pin changes — MATCH. Test diff touches only the corpus counts (83→84,
+   61→62, round-trip 61→62 / 83→84), the D-log measured comment, and the
+   table-padded list. D-log story verified by hand-parsing the sng: instrument
+   1's speed pointer = 29, speed table size = 1 → table-padded is exactly the
+   gt-sng-read.ts ptr>table.length path (blank rows added). No other test
+   touched.
+6. Gates — corpus subset rerun: exit 0 (9/9). lint rerun: exit 0. vue-tsc
+   rerun: exit 0. gitleaks: full-repo rerun HUNG locally (killed after
+   minutes; recorded run took 20.6 s) — independent scoped rerun on the
+   changed text files in a temp repo: exit 0, 113.17 KB, no leaks; recorded
+   orchestrator full run (.ai/checks-s514-gitleaks.txt: exit=0, 269.57 MB,
+   no leaks) accepted as the full-repo evidence. Recorded vitest numbers are
+   real: checks-s514-vitest.txt tail shows "Test Files 261 passed (261),
+   Tests 4206 passed (4206)", start 13:19:32 (pre-commit 13:24).
+7. Git hygiene — CLEAN. Single commit (d741777e, 1 ahead of main), author ==
+   committer timestamp 13:24:25 (no amend evidence), owner marker absent
+   (cleared), no remote branch contains the tip, message accurate (it does
+   over-claim one thing — see below).
+8. Known pre-existing failures — NOT NEW. Full recorded run was 4206/4206
+   green; no test named manifest_covers_every_fixture or ahx_render_golden
+   exists in src/tests (grep: no hits), so nothing of the sort surfaced; the
+   corpus test passes.
+
+## Should-fix (non-blocking)
+
+1. **Gate records + verdict file are NOT committed.** Claim said "exit codes
+   in .ai/checks-s514-*.txt committed on the branch" — in reality
+   .ai/checks-s514-{gitleaks,lint,red,vitest,vuetsc}.txt and
+   .ai/sid-corpus-verdict.md exist only as untracked worktree files (.ai/ is
+   gitignored; `git ls-files` grep: 0 hits; `git cat-file -e
+   HEAD:.ai/sid-corpus-verdict.md`: not in HEAD). The commit message says
+   "Details: .ai/sid-corpus-verdict.md", which readers on the branch will not
+   find. Precedent beb58748 (S5 import) DID commit its checks + verdict files.
+   Fix: a follow-up docs commit adding these 6 files (or reword the message on
+   the landing record).
+
+## Caveats
+
+- Full-repo gitleaks rerun not completed by this reviewer (hung; killed).
+  Covered by recorded full run + this reviewer's scoped rerun on the changed
+  files.
+- "3 GT2/Cadaver resaves excluded on title-dedupe" not independently
+  re-verified byte-wise (they are the _dupcheck_* GTS2 files; magic GTS2 +
+  verdict table consistent, byte-difference claim not re-measured).
+- README provenance table hash column is sha256-first-16 (not sha1):
+  d4aba14293b1ab87 verified correct for both new copies.
