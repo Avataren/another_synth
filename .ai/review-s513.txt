@@ -1,0 +1,98 @@
+S5.13 REVIEW — mono spectrum mirror
+Branch agent/sid-mirror-0924b tip 4326b0f6, base f8c7a8f2
+Worktree .ai/worktrees/sid-mirror | Reviewed 2026-09-24 (Joi, read-only review)
+
+VERDICT: PASS-with-should-fix (one minor, non-blocking note; claim holds as designed)
+
+EVIDENCE (all verified fresh in this run):
+
+1. Diff scope — CLEAN. `git diff --name-status f8c7a8f2..4326b0f6`: only
+   TrackerSpectrumAnalyzer.vue (+33/-9), src/tests/sid-spectrum-taps.test.ts (+143),
+   and 8 .ai/ artifacts (verdict + checks captures). Zero Rust, zero other
+   components, no public/ changes.
+
+2. Mirror geometry — CORRECT. buildMonoGraph creates ONE ChannelAnalyzer, connects
+   it once to the master, assigns `left.channels = [channel]; right.channels =
+   [channel]` (same object, not a duplicate). drawChannel anchors bars at the
+   inner edge: left side innerEdgeDirection=-1 draws bar i at
+   `innerX - (i+1)*barWidth` from the canvas's right edge; right side
+   innerEdgeDirection=+1 draws at `innerX + i*barWidth` from the left edge. Same
+   channel.smoothed/peaks arrays, so bar i (bass) starts at dead center on both
+   sides and fans outward — a true reflection about the screen center, not
+   duplication or offset. The new test asserts exact geometric equality
+   (`round(right.rects) == round(left.rects.map(reflect))`) and passes.
+
+3. Teardown safety — HARMLESS. teardownGraph runs disconnectChannel on the shared
+   channel once per side (twice total). Second call: connectChannel(channel, null)
+   early-returns (channel.sourceNode is already null and === the null argument),
+   and no-arg AnalyserNode.disconnect() is a spec no-op on an already-disconnected
+   node. The master is disconnected exactly once via connectChannel's guarded
+   sourceNode.disconnect(analyser). No double-disconnect throw path.
+
+4. Per-frame guard — CORRECT. updateChannelData(channel, numBars, time) early-
+   returns when (updatedAt === time && updatedBars === numBars). The shared
+   useAnimationLoop runs ONE rAF loop and passes the identical timestamp to all
+   callbacks in a tick, so both strips see the same `time`; the shared channel is
+   read (getByteFrequencyData) and smoothing/peaks advanced exactly once per
+   frame; the second strip reuses the first strip's update and draws identical
+   data. Stereo/quad channels exist in exactly one side's channels array, so the
+   guard cannot skip their legitimate once-per-frame updates. A numBars change
+   (canvas resize) re-updates correctly since the guard also keys on bar count.
+   Gutter-width remapping is unchanged (applyGutterWidths / numBars per side).
+
+   SHOULD-FIX (minor, non-blocking): the guard keys on (time, numBars). If the
+   two measured gutters ever differ persistently (asymmetric centered grid, odd
+   fallback layout), numBars differs left vs right, the guard never triggers on
+   the right side, and the shared channel double-advances smoothing/peaks every
+   frame — the exact failure mode the red-naive capture demonstrates (mirror
+   equality breaks by small height deltas). Normal centered layout yields equal
+   widths, so the designed path is fine; file as a follow-up hardening note
+   (e.g. update with max(left,right) numBars, or clamp both sides to the same
+   count in mono mode), do not hold the branch.
+
+5. Tests — RAN MYSELF. `npx vitest run src/tests/sid-spectrum-taps.test.ts`:
+   14/14 pass (10 pre-existing S5.7 tests untouched by the diff + 4 new:
+   mirrored-geometry, stereo-pair regression, quad-layout regression,
+   splitter-wiring regression — exactly as claimed).
+   Red verified INDEPENDENTLY, not just from the recording: throwaway shared
+   clone at f8c7a8f2 (base component) + the branch's new test file + worktree
+   node_modules/.quasar tsconfig → mirrored-geometry test FAILS
+   "expected 0 to be greater than 0" (right strip never painted under the base
+   left-only mono graph), 13 others pass. This matches the recorded
+   .ai/checks-s513-red.txt exactly (same assertion, same 1/13 split). The
+   recorded red-naive capture additionally fails the reflect-equality assertion
+   (line 441, double-smoothing deltas) — confirming the guard is load-bearing.
+
+6. Gates — RERUN IN THIS SESSION. lint exit=0, vue-tsc exit=0, gitleaks exit=0
+   (no leaks). Recorded .ai/checks-s513-*.txt files are consistent with these
+   (same commands, matching exit banners). Recorded full-suite vitest run:
+   261 files / 4209 tests, all pass, exit=0.
+
+7. Git hygiene — CLEAN. Single commit 4326b0f6, parent f8c7a8f2 (which is where
+   the branch reflog says it was created from main). Reflog shows exactly one
+   commit entry — no amend, no rewrite. The only ref containing 4326b0f6 is
+   refs/heads/agent/sid-mirror-0924b; no remote refs contain it (branch -r
+   --contains is empty). Commit message accurately describes the change
+   (mirrored mono trace, one AnalyserNode, per-frame update guard). Worktree
+   owner marker .ai/worktree-owner is in its cleared state ("cleared: ...
+   run complete, commit 4326b0f6").
+
+8. Per-source discrimination — UNCHANGED. Stereo mode still builds a
+   ChannelSplitter with two distinct analysers (regression test asserts the
+   splitter topology: master -> splitter -> [0]->analyser0, [1]->analyser1,
+   analysers distinct). Quad TRACK_LAYOUTS (3: L,R,L / 4: L,R,R,L... per
+   existing mapping) and syncGraph reconnect logic untouched by the diff. S5.7
+   tests pass unchanged. Jukebox inherits via `:mono="trackerStore.isSidSong"`
+   (JukeboxPage.vue:179) and TrackerPage `:mono="isSidSong"` — both pre-existing
+   props, unchanged by this commit.
+
+CAVEATS:
+- The final visual look is Morten's call — he verifies on PC. All geometric and
+  data-equality assertions pass, but aesthetics (min-bar floor, gradient opacity,
+  peak caps at the mirrored seam) are subjective and verified by ear/eye by him.
+- The asymmetric-gutter double-smoothing edge in (4) is theoretical under the
+  current centered layout; flagged as should-fix hardening, not a defect against
+  the claim.
+
+No push, no merge, no amend performed. This file is the only write made in the
+worktree.
