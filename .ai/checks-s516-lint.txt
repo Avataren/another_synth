@@ -1,0 +1,2 @@
+# S5.16 lint gate: npm run lint
+exit=0 (0 errors)

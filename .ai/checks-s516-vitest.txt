@@ -1,0 +1,10 @@
+# S5.16 vitest gate: npm run test:run
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed | 260 passed (261)
+      Tests  2 failed | 4208 passed (4210)
+
+ FAIL  src/tests/artifact-freshness.test.ts > committed build artifacts are fresh > public/wasm matches the Rust sources recorded in SOURCE_HASH.json
+ FAIL  src/tests/artifact-freshness.test.ts > the freshness gate fails, with a regenerate instruction > when a wasm output was replaced without rebuilding
+# The 2 failures are the pre-existing wasm-freshness pair (artifact-freshness.test.ts):
+# this is a wasm-deferred branch — npm run build:wasm NOT run (task scope).
+# sid-instrument-visuals.test.ts (the S5.16-relevant parity port): 7 passed against the regenerated fixture.

@@ -1,0 +1,14 @@
+# S5.16 gplguard (adapted: adopted spec tables are values-only, structure never copied)
+cmd: git diff 8d31dce6..HEAD -- rust-wasm src | grep -E '^\+' | grep ...
+
+16+-entry hex-table dumps in diff: 0
+GPL-keyword hits in added lines: 3 — all disclosure lines, no GPL text/tables:
+  +/// parameters, GPL structure not copied). The ladder sums to 1.0000 at
+  +//! Sources (GPL-free; `.ai/sid-r4ar-research-notes.md`,
+  +//! record carries NO R3-specific measured trait. reSID/reSIDfp have no
+
+  1) 'parameters, GPL structure not copied' (filter.rs f0_dac disclosure)
+  2) 'Sources (GPL-free; ...)' (revision.rs module header)
+  3) 'record carries NO R3-specific measured trait. reSID/reSIDfp have no' (revision.rs module header)
+# The kinked ladder is re-derived circuit math; the op-amp transfer table is NOT embedded;
+# adopted values: 2R/R 2.20, no-term, 6.65 V, 2.63 V, 1.31 V, 5.0 V (SPEC, traceability in research notes).
