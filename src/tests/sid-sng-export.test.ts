@@ -91,7 +91,7 @@ describe('the GTS5 writer', () => {
     expect(Array.from(b.subarray(b.length - 16, b.length - 4)).filter((_, i) => i % 4 === 0)).toEqual([0xbc, 0xbe, 0xbf]);
   });
 
-  it('encodes an orderlist as GT commands: a transpose when it changes, a repeat above 1 (R0 = 16), TRANSPOSE before REPEAT', () => {
+  it('encodes an orderlist as GT commands: a transpose when it changes, a repeat above 1 as $D0 + plays - 1 (gplay.c:977-986; $DF = 16), TRANSPOSE before REPEAT', () => {
     const doc = song({
       patterns: [{ rows: [BLANK_SID_ROW] }, { rows: [BLANK_SID_ROW] }],
       subsongs: [
@@ -105,7 +105,7 @@ describe('the GTS5 writer', () => {
       ],
     });
     const b = bytesOf(doc);
-    expect(Array.from(b.subarray(101, 101 + 12))).toEqual([11, 0xf2, 0xd3, 0x00, 0x01, 0xe0, 0xd0, 0x00, 0xfe, 0xd2, 0x01, 0xff]);
+    expect(Array.from(b.subarray(101, 101 + 12))).toEqual([11, 0xf2, 0xd2, 0x00, 0x01, 0xe0, 0xdf, 0x00, 0xfe, 0xd1, 0x01, 0xff]);
     expect(b[113]).toBe(0x00);
     const back = importGtSong(b);
     expect(back.ok && back.doc).toEqual(doc);
@@ -126,7 +126,7 @@ describe('the GTS5 writer', () => {
   it('points the restart at the restart entry\'s first command byte', () => {
     const doc = song({ subsongs: [{ orderlists: [list([once(0), { pattern: 0, transpose: 3, repeat: 2 }], 1), list([once(0)]), list([once(0)])] }] });
     const b = bytesOf(doc);
-    expect(Array.from(b.subarray(101, 101 + 7))).toEqual([5, 0x00, 0xf3, 0xd2, 0x00, 0xff, 0x01]);
+    expect(Array.from(b.subarray(101, 101 + 7))).toEqual([5, 0x00, 0xf3, 0xd1, 0x00, 0xff, 0x01]);
   });
 
   it('refuses a start tempo other than GoatTracker\'s 6: a .sng has no tempo field', () => {

@@ -5,7 +5,9 @@ import { SID_CHANNELS, type SidChipModel, type SidOrderEntry, type SidOrderlist 
  * S5). Written from GoatTracker v2.72's readme §6.1 (the format) and §3.1
  * (orderlist semantics) and from the bytes of the curated corpus; no
  * GoatTracker source was read (the D-log, `.ai/sid-import-dlog.md`, cites
- * each offset and marks what the readme does not say as INFERRED).
+ * each offset and marks what the readme does not say as INFERRED). S5.10
+ * corrected the repeat count against GT2's player source (gplay.c, read for
+ * its facts only).
  */
 
 /** Readme §6.1.1: the 4-byte identification string at +0. */
@@ -19,8 +21,18 @@ export const GT_TEXT_LENGTH = 32;
 export const GT_SUBTUNE_COUNT_OFFSET = 100;
 /** Readme §6.1.3: the instrument name is the last 16 of an instrument's 25 bytes. */
 export const GT_INSTRUMENT_NAME_LENGTH = 16;
-/** Readme §6.1.2: orderlist values. */
+/**
+ * Readme §6.1.2: orderlist values. A repeat byte $D0 + k plays the next
+ * pattern k + 1 times, $D0 once to $DF 16 times: GT stores k and replays the
+ * pattern while it counts down (gplay.c:977-986), and shows R((k + 1) & 15),
+ * so "R0" is 16 plays (gdisplay.c:265, readme §3.1). S5.10: S5 read it as
+ * `k || 16` plays, one short (and $D0 as 16).
+ */
 export const GT_ORDER_REPEAT = 0xd0;
+/** The doc's repeat (plays, 1..16) of repeat byte `v` ($D0-$DF). */
+export const gtRepeatPlays = (v: number): number => (v & 0x0f) + 1;
+/** The repeat byte of `plays` (2..16; 1 needs none). */
+export const gtRepeatByte = (plays: number): number => GT_ORDER_REPEAT + plays - 1;
 export const GT_ORDER_TRANSPOSE = 0xe0;
 export const GT_ORDER_END = 0xff;
 /** Readme §3.1: transpose 0 is $F0 (up 0-14 = $F0-$FE, down 1-15 = $EF-$E1; $E0 is -16, INFERRED). */
@@ -181,7 +193,7 @@ export function decodeGtOrderlist(
     if (v >= GT_ORDER_TRANSPOSE) {
       transpose = v - GT_TRANSPOSE_ZERO;
     } else if (v >= GT_ORDER_REPEAT) {
-      repeat = v & 0x0f || 16;
+      repeat = gtRepeatPlays(v);
     } else {
       if (v >= patternCount) throw new GtFormatError(`${where}'s orderlist plays pattern ${v}, but the song has ${patternCount}`);
       entries.push({ pattern: v, transpose, repeat });
@@ -201,7 +213,7 @@ export function decodeGtOrderlist(
   for (let k = restartByte; k < n - 1; k++) {
     const v = data[k]!;
     if (v >= GT_ORDER_TRANSPOSE) loopTranspose = v - GT_TRANSPOSE_ZERO;
-    else if (v >= GT_ORDER_REPEAT) loopRepeat = v & 0x0f || 16;
+    else if (v >= GT_ORDER_REPEAT) loopRepeat = gtRepeatPlays(v);
     else {
       const first = entries[e]!;
       if (first.transpose !== loopTranspose || first.repeat !== loopRepeat) loopDiffers = true;

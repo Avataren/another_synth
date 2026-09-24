@@ -1,0 +1,117 @@
+songs 83
+with transpose markers ($E0-$FE): 48 songs, 1041 markers
+with repeat markers ($D0-$DF): 5 songs, 43 markers
+row notes leaving C-0..G#7 under their transpose (old clamp): 0 songs, 0 row-plays
+wave steps old != new (per instrument x note pair): 54 songs, 2015 steps
+command 4 rows: 68 songs, 14084 row-plays; turn value <= 2: 54 songs, 11162; fine mode: 4 songs, 158
+instruments with vibrato (delay > 0 and speed row): 55 songs, 383 instruments
+rows with command 5-F (no note) under a running 4 (S5.10: vibrato continues): 23 songs, 182 row-plays
+wave diff kinds: [["absolute past G#7",1964],["relative past G#7",43],["lands on a zero entry (silence)",62],["down below C-0",3],["relative wraps past 127",8]]
+
+worst: most orderlist markers
+  aeuk/metal_warrior_4_streets.sng: 81 transpose, 13 repeat ($D2x4 $D3x5 $D5x2 $D8x1 $DAx1)
+  cadaver/metal_warrior_4_investigations.sng: 58 transpose, 16 repeat ($D1x4 $D2x4 $D3x6 $D7x2)
+  mch/balcony_princess.sng: 69 transpose, 0 repeat ()
+  mch/midnight_dream.sng: 60 transpose, 0 repeat ()
+  mch/pagans_mind.sng: 54 transpose, 0 repeat ()
+  mch/gubbdata_2016_invitation.sng: 51 transpose, 0 repeat ()
+  mch/on_the_road_once_again.sng: 48 transpose, 0 repeat ()
+  stinsen/bait.sng: 45 transpose, 0 repeat ()
+  ansgaros/metal_warrior_4_forest_encounter.sng: 41 transpose, 0 repeat ()
+  mch/alien_funk.sng: 39 transpose, 0 repeat ()
+worst: widest transpose range
+  mch/balcony_princess.sng: -12..+12
+  cadaver/metal_warrior_4_investigations.sng: -6..+8
+  aeuk/metal_warrior_4_streets.sng: -7..+5
+  ansgaros/metal_warrior_4_forest_encounter.sng: -7..+1
+  cadaver/warlord.sng: -5..+3
+  mch/alien_funk.sng: 0..+7
+  stinsen/relapse.sng: -7..+0
+  mch/gubbdata_2016_invitation.sng: -4..+2
+  mch/pagans_mind.sng: -1..+5
+  mch/on_the_road_once_again.sng: -4..+1
+
+per song: file | transpose markers | repeat markers (value x count) | range | notes out | wave diffs | cmd4 (small, fine) | ins vibrato | persist
+aeuk/metal_warrior_4_streets.sng | 81 | 13 $D2x4 $D3x5 $D5x2 $D8x1 $DAx1 | -7..+5 | 0 | 0 | 482 (196, 0) | 0 | 0
+aeuk/metal_warrior_4_unused_jingle.sng | 0 | 0  | 0..+0 | 0 | 0 | 41 (41, 0) | 0 | 0
+ansgaros/metal_warrior_4_forest_encounter.sng | 41 | 0  | -7..+1 | 0 | 0 | 830 (710, 0) | 0 | 0
+barfington/barfington_s_nintendometal.sng | 0 | 0  | 0..+0 | 0 | 0 | 533 (533, 0) | 0 | 0
+barfington/metal_warrior_4_research_facility.sng | 11 | 5 $D1x1 $D3x4 | 0..+3 | 0 | 0 | 332 (332, 0) | 0 | 0
+cadaver/covert_ops_in_2d_funktempo.sng | 0 | 0  | 0..+0 | 0 | 0 | 85 (0, 0) | 0 | 0
+cadaver/dojo.sng | 0 | 4 $D3x1 $D5x1 $D9x1 $DFx1 | 0..+0 | 0 | 0 | 137 (0, 0) | 0 | 0
+cadaver/galwaytest.sng | 0 | 0  | 0..+0 | 0 | 0 | 73 (0, 0) | 0 | 0
+cadaver/goattracker_classical_example.sng | 0 | 0  | 0..+0 | 0 | 0 | 262 (262, 0) | 0 | 0
+cadaver/goattracker_drum_example.sng | 0 | 0  | 0..+0 | 0 | 0 | 0 (0, 0) | 0 | 0
+cadaver/goattracker_example_mw1_title.sng | 0 | 0  | 0..+0 | 0 | 0 | 59 (59, 0) | 0 | 0
+cadaver/maximum_rastertime_test.sng | 0 | 0  | 0..+0 | 0 | 0 | 48 (48, 0) | 0 | 0
+cadaver/metal_warrior_4_covert_ops_in_2d.sng | 0 | 0  | 0..+0 | 0 | 0 | 85 (0, 0) | 0 | 0
+cadaver/metal_warrior_4_investigations.sng | 58 | 16 $D1x4 $D2x4 $D3x6 $D7x2 | -6..+8 | 0 | 0 | 168 (168, 0) | 0 | 0
+cadaver/metal_warrior_4_the_chosen_path.sng | 6 | 0  | 0..+3 | 0 | 0 | 381 (155, 0) | 0 | 0
+cadaver/mw_title_remix.sng | 0 | 0  | 0..+0 | 0 | 0 | 59 (59, 0) | 0 | 0
+cadaver/mw_title_remix_2x_speed.sng | 0 | 0  | 0..+0 | 0 | 0 | 59 (0, 0) | 0 | 0
+cadaver/nintendo_style.sng | 0 | 0  | 0..+0 | 0 | 0 | 98 (98, 0) | 0 | 0
+cadaver/tarantula.sng | 0 | 0  | 0..+0 | 0 | 0 | 311 (311, 0) | 0 | 0
+cadaver/warlord.sng | 25 | 5 $D3x3 $D7x2 | -5..+3 | 0 | 0 | 541 (541, 0) | 0 | 0
+mch/alien_funk.sng | 39 | 0  | 0..+7 | 0 | 14 | 58 (16, 28) | 1 | 0
+mch/attitude_14.sng | 15 | 0  | 0..+2 | 0 | 53 | 0 (0, 0) | 0 | 0
+mch/balcony_princess.sng | 69 | 0  | -12..+12 | 0 | 8 | 390 (385, 0) | 0 | 0
+mch/golden_moments.sng | 36 | 0  | 0..+0 | 0 | 51 | 82 (82, 0) | 2 | 0
+mch/graffiti_intro.sng | 15 | 0  | -2..+0 | 0 | 10 | 4 (0, 0) | 1 | 0
+mch/groove_machine.sng | 0 | 0  | 0..+0 | 0 | 28 | 57 (26, 0) | 2 | 0
+mch/gubbdata_2016_invitation.sng | 51 | 0  | -4..+2 | 0 | 0 | 53 (52, 0) | 1 | 0
+mch/homunculi_tune_1.sng | 27 | 0  | -2..+2 | 0 | 22 | 0 (0, 0) | 1 | 0
+mch/homunculi_tune_2.sng | 33 | 0  | -2..+1 | 0 | 16 | 0 (0, 0) | 1 | 0
+mch/hybrid_song.sng | 18 | 0  | 0..+1 | 0 | 11 | 60 (12, 0) | 1 | 24
+mch/in_a_rush.sng | 21 | 0  | 0..+4 | 0 | 42 | 70 (0, 0) | 3 | 0
+mch/midnight_dream.sng | 60 | 0  | -2..+1 | 0 | 34 | 80 (80, 0) | 1 | 0
+mch/on_the_road_once_again.sng | 48 | 0  | -4..+1 | 0 | 23 | 0 (0, 0) | 2 | 0
+mch/pagans_mind.sng | 54 | 0  | -1..+5 | 0 | 15 | 0 (0, 0) | 2 | 0
+mch/plasma_intro.sng | 15 | 0  | -4..+0 | 0 | 6 | 0 (0, 0) | 1 | 0
+mch/pocket_tomb.sng | 36 | 0  | -2..+0 | 0 | 18 | 27 (0, 0) | 0 | 0
+mch/sky_captain.sng | 15 | 0  | 0..+2 | 0 | 15 | 60 (60, 0) | 1 | 0
+mch/two_years_in_gp.sng | 12 | 0  | 0..+2 | 0 | 6 | 8 (0, 6) | 0 | 0
+shinobi/wod.sng | 0 | 0  | 0..+0 | 0 | 0 | 43 (43, 0) | 0 | 0
+stinsen/alcorythm_ffff.sng | 3 | 0  | 0..+1 | 0 | 49 | 177 (177, 0) | 5 | 11
+stinsen/archaic_groove.sng | 3 | 0  | 0..+1 | 0 | 1 | 446 (446, 0) | 12 | 4
+stinsen/arpling.sng | 30 | 0  | 0..+2 | 0 | 52 | 6 (6, 0) | 6 | 0
+stinsen/bait.sng | 45 | 0  | 0..+0 | 0 | 63 | 455 (454, 0) | 37 | 2
+stinsen/ballad.sng | 3 | 0  | -1..+0 | 0 | 20 | 118 (0, 118) | 0 | 1
+stinsen/christmas_boogie.sng | 0 | 0  | 0..+0 | 0 | 4 | 0 (0, 0) | 6 | 0
+stinsen/classical.sng | 0 | 0  | 0..+0 | 0 | 0 | 0 (0, 0) | 1 | 0
+stinsen/coconut_conundrum.sng | 3 | 0  | 0..+1 | 0 | 12 | 9 (9, 0) | 5 | 0
+stinsen/defunkt_final_fv_po_ro_6581_ffff.sng | 27 | 0  | 0..+3 | 0 | 47 | 365 (349, 0) | 16 | 18
+stinsen/diminishing_returns.sng | 3 | 0  | 0..+4 | 0 | 108 | 262 (262, 0) | 16 | 13
+stinsen/double_rainbow_2x.sng | 12 | 0  | 0..+3 | 0 | 60 | 624 (0, 0) | 15 | 4
+stinsen/endless_summer.sng | 0 | 0  | 0..+0 | 0 | 8 | 34 (34, 0) | 8 | 1
+stinsen/failedfunk.sng | 0 | 0  | 0..+0 | 0 | 0 | 5 (0, 0) | 1 | 0
+stinsen/feeling_pink.sng | 0 | 0  | 0..+0 | 0 | 18 | 103 (103, 0) | 12 | 0
+stinsen/flumbos_keps.sng | 0 | 0  | 0..+0 | 0 | 0 | 49 (49, 0) | 7 | 0
+stinsen/forced_entry.sng | 0 | 0  | 0..+0 | 0 | 4 | 54 (54, 0) | 14 | 0
+stinsen/game_tune.sng | 3 | 0  | 0..+2 | 0 | 0 | 25 (25, 0) | 2 | 2
+stinsen/gremlinfunk.sng | 3 | 0  | 0..+1 | 0 | 21 | 64 (64, 0) | 6 | 4
+stinsen/iguana.sng | 3 | 0  | 0..+1 | 0 | 39 | 4 (4, 0) | 12 | 0
+stinsen/jeroenimo.sng | 0 | 0  | 0..+0 | 0 | 142 | 135 (100, 0) | 9 | 4
+stinsen/jogeir.sng | 0 | 0  | 0..+0 | 0 | 15 | 70 (70, 0) | 9 | 0
+stinsen/lethargic.sng | 3 | 0  | 0..+3 | 0 | 113 | 193 (192, 0) | 19 | 6
+stinsen/lolo_sawtooth_only.sng | 0 | 0  | 0..+0 | 0 | 0 | 40 (40, 0) | 6 | 2
+stinsen/nordic_scene_review.sng | 39 | 0  | 0..+0 | 0 | 102 | 1110 (1110, 0) | 7 | 9
+stinsen/pirate.sng | 0 | 0  | 0..+0 | 0 | 0 | 0 (0, 0) | 3 | 0
+stinsen/premonition_fv_po_ro_ffff.sng | 0 | 0  | 0..+0 | 0 | 77 | 337 (337, 0) | 16 | 16
+stinsen/quaralline_2x.sng | 3 | 0  | -1..+0 | 0 | 24 | 6 (0, 6) | 11 | 0
+stinsen/relapse.sng | 3 | 0  | -7..+0 | 0 | 29 | 31 (31, 0) | 10 | 0
+stinsen/reverb.sng | 0 | 0  | 0..+0 | 0 | 8 | 0 (0, 0) | 2 | 0
+stinsen/running_on_empty_ffff.sng | 3 | 0  | -3..+0 | 0 | 18 | 686 (686, 0) | 6 | 15
+stinsen/safari.sng | 0 | 0  | 0..+0 | 0 | 17 | 0 (0, 0) | 2 | 0
+stinsen/scarabaeus_0f00_fv_po_ro.sng | 3 | 0  | 0..+1 | 0 | 56 | 8 (8, 0) | 18 | 0
+stinsen/shadow.sng | 6 | 0  | 0..+2 | 0 | 34 | 90 (90, 0) | 7 | 0
+stinsen/sidetracked.sng | 3 | 0  | -1..+0 | 0 | 1 | 238 (211, 0) | 8 | 3
+stinsen/sniff.sng | 0 | 0  | 0..+0 | 0 | 0 | 0 (0, 0) | 5 | 0
+stinsen/space_2x.sng | 36 | 0  | 0..+0 | 0 | 90 | 399 (1, 0) | 6 | 3
+stinsen/sunset_shuffle_po_ro_ffff.sng | 0 | 0  | 0..+0 | 0 | 142 | 60 (60, 0) | 5 | 0
+stinsen/trainwreck.sng | 3 | 0  | 0..+1 | 0 | 36 | 876 (853, 0) | 7 | 26
+stinsen/tribal.sng | 0 | 0  | 0..+0 | 0 | 6 | 0 (0, 0) | 3 | 0
+stinsen/tribal18.sng | 0 | 0  | 0..+0 | 0 | 5 | 43 (43, 0) | 5 | 0
+stinsen/tribal_tribunal.sng | 3 | 0  | 0..+2 | 0 | 1 | 0 (0, 0) | 10 | 0
+stinsen/unleash_the_cheese.sng | 6 | 0  | 0..+5 | 0 | 1 | 499 (497, 0) | 8 | 10
+stinsen/upsandowns.sng | 6 | 0  | -4..+0 | 0 | 160 | 529 (528, 0) | 0 | 3
+yehar/b_o_f_h_ingame_death_victory.sng | 0 | 0  | 0..+0 | 0 | 60 | 358 (0, 0) | 0 | 1

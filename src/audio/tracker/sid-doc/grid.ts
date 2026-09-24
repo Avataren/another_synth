@@ -127,9 +127,12 @@ export function sidGridLayout(doc: SidDoc, subsong = 0): SidGridLayout {
 }
 
 /**
- * The SID note table index (0 = C-0 .. 92 = G#7) a row note plays at under
- * `transpose`: clamped into the table, as the Rust player clamps it
- * (`player.rs`, `note_index`). `undefined` for a row with no note.
+ * The SID note table index (0 = C-0 .. 92 = G#7) a row note SHOWS at under
+ * `transpose`: clamped into the grid's note range, for display and editing
+ * only. The Rust player does not clamp (S5.10, `player.rs` `note_index`): it
+ * wraps as GoatTracker does, so a cell pinned at C-0 or G#7 here may sound
+ * elsewhere (above G#7 a higher note or silence, below C-0 silence).
+ * `undefined` for a row with no note.
  */
 export function sidNoteIndex(note: number, transpose: number): number | undefined {
   if (note < SID_NOTE_FIRST || note > SID_NOTE_LAST) return undefined;

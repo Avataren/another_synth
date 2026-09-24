@@ -1,0 +1,110 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 build:wasm
+npm notice run node build-wasm.cjs
+🦀 Building Rust WebAssembly...
+⚙️  Skipping wasm-opt (set ENABLE_WASM_OPT=1 to enable).
+[INFO]: 🎯  Checking for the Wasm target...
+[INFO]: 🌀  Compiling to Wasm...
+   Compiling proc-macro2 v1.0.101
+   Compiling unicode-ident v1.0.19
+   Compiling wasm-bindgen-shared v0.2.104
+   Compiling autocfg v1.5.0
+   Compiling rustversion v1.0.22
+   Compiling log v0.4.28
+   Compiling bumpalo v3.19.0
+   Compiling once_cell v1.21.3
+   Compiling cfg-if v1.0.3
+   Compiling serde_core v1.0.226
+   Compiling strength_reduce v0.2.4
+   Compiling getrandom v0.3.3
+   Compiling serde v1.0.226
+   Compiling byteorder v1.5.0
+   Compiling thiserror v1.0.69
+   Compiling zerocopy v0.8.22
+   Compiling anyhow v1.0.100
+   Compiling serde_json v1.0.145
+   Compiling itoa v1.0.15
+   Compiling memchr v2.7.5
+   Compiling ryu v1.0.20
+   Compiling base64 v0.22.1
+   Compiling dasp_sample v0.11.0
+   Compiling rustc-hash v2.1.1
+   Compiling hound v3.5.1
+   Compiling num-traits v0.2.19
+   Compiling wasm-bindgen v0.2.104
+   Compiling quote v1.0.40
+   Compiling syn v2.0.106
+   Compiling num-integer v0.1.46
+   Compiling num-complex v0.4.6
+   Compiling primal-check v0.3.4
+   Compiling transpose v0.2.3
+   Compiling num-bigint v0.4.6
+   Compiling num-iter v0.1.45
+   Compiling rustfft v6.4.1
+   Compiling serde_path_to_error v0.1.20
+   Compiling num-rational v0.4.2
+   Compiling num v0.4.3
+   Compiling wasm-bindgen-backend v0.2.104
+   Compiling zerocopy-derive v0.7.35
+   Compiling serde_derive v1.0.226
+   Compiling thiserror-impl v1.0.69
+   Compiling zerocopy v0.7.35
+   Compiling realfft v3.5.0
+   Compiling rubato v0.16.2
+   Compiling wasm-bindgen-macro-support v0.2.104
+   Compiling fft-convolver v0.2.0
+   Compiling ppv-lite86 v0.2.20
+   Compiling wasm-bindgen-macro v0.2.104
+   Compiling js-sys v0.3.81
+   Compiling rand_core v0.9.3
+   Compiling uuid v1.18.1
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.9.0
+   Compiling web-sys v0.3.81
+   Compiling serde-wasm-bindgen v0.6.5
+   Compiling audio_processor v0.1.0 (/home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-transpose/rust-wasm)
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:119:35
+    |
+119 |         let safe_ms = ms.max(f32::EPSILON * 1000.0); // Ensure positive
+    |                                   ^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:286:32
+    |
+286 |             envelope_l += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:293:32
+    |
+293 |             envelope_r += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: `audio_processor` (lib) generated 3 warnings
+    Finished `release` profile [optimized] target(s) in 29.24s
+[INFO]: ⬇️  Installing wasm-bindgen...
+[INFO]: License key is set in Cargo.toml but no LICENSE file(s) were found; Please add the LICENSE file(s) to your project directory
+[INFO]: ✨   Done in 29.53s
+[INFO]: 📦   Your wasm pkg is ready to publish at pkg.
+[WARN]: ⚠️   There's a newer version of wasm-pack available, the new version is: 0.15.0, you are using: 0.13.1. To update, navigate to: https://rustwasm.github.io/wasm-pack/installer/
+🔏 Wrote public/wasm/SOURCE_HASH.json (sources bfb3013d4412)
+✅ WebAssembly build complete!
+EXIT CODE (npm run build:wasm): 0
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 build:worklets
+npm notice run node build-worklets.cjs
+
+  public/worklets/synth-worklet.js    165.8kb
+  public/worklets/ahx-worklet.js      114.6kb
+  public/worklets/sid-worklet.js      108.2kb
+  public/worklets/effects-worklet.js   10.7kb
+
+⚡ Done in 11ms
+EXIT CODE (npm run build:worklets): 0

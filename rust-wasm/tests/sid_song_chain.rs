@@ -134,23 +134,32 @@ fn the_song_plays_on_a_chip_of_its_own_model_frame_by_frame() {
             assert_eq!(v1.envelope_stage(), Stage::Release);
         }
         // Row 20 = frame 120: C-5 on "Vib lead": first-frame waveform 0x09
-        // (test + gate), then triangle + gate. Its vibrato waits 10 frames
-        // (121-130), then swings 0x28 a frame, half-swings of 4 with the first
-        // centred: +40, +80, +40, 0, -40, -80.
+        // (test + gate), then triangle + gate. S5.10, GoatTracker's vibrato
+        // (gplay.c:767-800): delay 10 counts down on the tick-N frames only
+        // (121-125, 127-130; 126 is tick 0), swings from 131 at 0x28 a frame,
+        // turn value 4: 3 frames up, then 6 each way, tick-0 frames (132,
+        // 138) holding. (S3 pinned its own model: 10 frames, then centred
+        // half-swings of 4.)
         match f {
             120 => assert_eq!((v1.frequency(), v1.control()), (c5, 0x09)),
             121..=130 => assert_eq!((v1.frequency(), v1.control()), (c5, 0x11), "frame {f}"),
-            131..=136 => {
-                let off = [40i32, 80, 40, 0, -40, -80][f - 131];
+            131..=141 => {
+                let off = [40i32, 40, 80, 120, 80, 40, 0, 0, -40, -80, -120][f - 131];
                 assert_eq!(v1.frequency() as i32, c5 as i32 + off, "frame {f}");
             }
             _ => {}
         }
         // Row 28 = frame 168: porta up at speed-table row 2 (0x0040) for the
-        // row's 6 frames, then held (row 29 has no command).
+        // row's 6 frames, from where the vibrato left the register (S5.10:
+        // GT's vibrato moves the frequency itself; -40 at frame 167). Row 29
+        // has command 0: tick 0 (174) holds, then the instrument vibrato
+        // runs on (GT's command 0 falls through to it, gplay.c:767-772; the
+        // portamento restarted its phase, gplay.c:413): +0x28 at 175.
+        let slid = c5 - 40 + 0x40 * 6;
         match f {
-            168..=173 => assert_eq!(p.channel_freq(0), c5 + 0x40 * (f as u16 - 167), "frame {f}"),
-            174 | 185 => assert_eq!(p.channel_freq(0), c5 + 0x40 * 6),
+            168..=173 => assert_eq!(p.channel_freq(0), c5 - 40 + 0x40 * (f as u16 - 167), "frame {f}"),
+            174 => assert_eq!(p.channel_freq(0), slid),
+            175 => assert_eq!(p.channel_freq(0), slid + 0x28),
             _ => {}
         }
         // Row 31, tick 6 - 2 = frame 190: "Vib lead"'s gate timer (2) sees

@@ -20,7 +20,7 @@
  * port: it is the ideal 2-pole response at the mapped cutoff and Q (the
  * 6581's saturation and the sample-rate warping are not drawn), labelled so.
  */
-import { sidNoteFreqReg } from '@another-synth/tracker-playback';
+import { sidTableFreqReg } from '@another-synth/tracker-playback';
 import type { SidChipModel, SidDoc, SidTableRow } from 'src/audio/tracker/sid-doc';
 
 // ---------------------------------------------------------------------------
@@ -232,7 +232,6 @@ export function sidFilterResponseDb(model: SidChipModel, cutoffReg: number, res:
 export type SidInstrumentFrame = readonly [number, number, number, number, number, number];
 
 const i8 = (v: number): number => (v << 24) >> 24;
-const noteReg = (index: number): number => sidNoteFreqReg(Math.max(0, Math.min(92, index)));
 
 /**
  * The first `frames` frames of instrument `instrument` (1-based) of `doc`
@@ -249,7 +248,8 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
 
   // trigger(0, note)
   const base = Math.max(0, Math.min(92, note));
-  let freq = noteReg(base);
+  let freq = sidTableFreqReg(base);
+  let lastNote = base;
   const gate = true;
   let firstFrame = true;
   const firstWave = ins.firstWave;
@@ -263,9 +263,7 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
   let pulseTime = 0;
   let pulseSpeed = 0;
   let vibDelay = ins.vibratoDelay;
-  let vibCount = 0;
-  let vibUp = true;
-  let vibOffset = 0;
+  let vibTime = 0;
   let resFilt = ins.filter.enabled ? 0x01 : 0;
   let cutoff = 0;
   let mode = 0;
@@ -280,50 +278,66 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
     mode = ins.filter.mode;
   }
 
-  const vibrato = (speedLeft: number, depth: number) => {
-    const half = Math.max(1, speedLeft);
-    if (vibCount === 0 && vibOffset === 0 && vibUp) vibCount = half >> 1;
-    vibOffset += vibUp ? depth : -depth;
-    vibCount += 1;
-    if (vibCount >= half) {
-      vibCount = 0;
-      vibUp = !vibUp;
+  // vibrato(): GoatTracker's u8 vibtime (gplay.c:615-640); a left of $80 up
+  // is the fine mode, the step the gap to the next note shifted by `right`.
+  const vibrato = (r: SidTableRow) => {
+    let turn = r.left;
+    let step = r.right;
+    if (turn >= 0x80) {
+      turn &= 0x7f;
+      const at = (i: number) => (i < 0x80 ? sidTableFreqReg(i) : 0);
+      step = r.right >= 32 ? 0 : ((at(lastNote + 1) - at(lastNote)) & 0xffff) >>> r.right;
     }
+    if (vibTime < 0x80 && vibTime > turn) vibTime ^= 0xff;
+    vibTime = (vibTime + 2) & 0xff;
+    freq = (vibTime & 1 ? freq - step : freq + step) & 0xffff;
   };
 
-  const waveStep = () => {
-    if (firstFrame && firstWave !== 0) return;
+  // wave_note(): GT's mod-128 note column (gplay.c:714-721); false for $80.
+  const waveNote = (right: number): boolean => {
+    if (right === 0x80) return false;
+    const n = (right < 0x80 ? base + right : right) & 0x7f;
+    freq = sidTableFreqReg(n);
+    vibTime = 0;
+    lastNote = n;
+    return true;
+  };
+
+  /** wave_step(): `true` when a step set a note (or ran a table command), ending the frame before the tick effects. */
+  const waveStep = (): boolean => {
+    if (firstFrame && firstWave !== 0) return false;
     let jumped = false;
+    let noted = false;
     for (;;) {
       const r = row(wave, wavePtr);
       if (!r) break;
       if (r.left === 0xff) {
         if (jumped || r.right === 0 || r.right > wave.length) {
           wavePtr = 0;
-          return;
+          return false;
         }
         wavePtr = r.right;
         jumped = true;
         continue;
       }
       if (r.left >= 0x01 && r.left <= 0x0f) {
-        if (waveWait === 0) waveWait = r.left;
+        // A delayed step: `left` frames of waiting, then its note (S5 pin).
+        if (waveWait === 0) waveWait = r.left + 1;
         waveWait -= 1;
-        if (waveWait === 0) wavePtr = (wavePtr + 1) & 0xff;
+        if (waveWait === 0) {
+          noted = waveNote(r.right);
+          wavePtr = (wavePtr + 1) & 0xff;
+        }
       } else {
         if (r.left >= 0x10 && r.left <= 0xdf) waveform = r.left;
         else if (r.left >= 0xe0 && r.left <= 0xef) waveform = r.left & 0x0f;
-        let n: number | undefined;
-        if (r.right === 0x80) n = undefined;
-        else if (r.right <= 0x5f) n = base + r.right;
-        else if (r.right <= 0x7f) n = base + r.right - 0x80;
-        else n = r.right & 0x7f;
-        if (n !== undefined) freq = noteReg(n);
+        noted = r.left >= 0xf0 ? true : waveNote(r.right);
         wavePtr = (wavePtr + 1) & 0xff;
       }
       break;
     }
     if (wavePtr > wave.length) wavePtr = 0;
+    return noted;
   };
 
   const pulseStep = () => {
@@ -397,20 +411,19 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
 
   const out: SidInstrumentFrame[] = [];
   for (let f = 0; f < frames; f++) {
-    // continuous(): no command on a preview note, so only the instrument vibrato.
-    if (!firstFrame) {
-      const vib = row(speed, ins.speedPtr);
-      if (vib) {
-        if (vibDelay > 0) vibDelay -= 1;
-        else vibrato(vib.left, vib.right);
-      }
+    // The wave table first; a step that set a note ends the frame before
+    // continuous(): no command on a preview note, so only the instrument
+    // vibrato (command 0's: delay 0 never, above 1 counts down, at 1 swings;
+    // the preview voice has no tick 0 to skip).
+    const noted = waveStep();
+    if (!noted && !firstFrame && ins.speedPtr !== 0 && vibDelay !== 0) {
+      if (vibDelay > 1) vibDelay -= 1;
+      else vibrato(row(speed, ins.speedPtr) ?? { left: 0, right: 0 });
     }
-    waveStep();
     pulseStep();
     filterStep();
-    const written = Math.max(0, Math.min(0xffff, freq + vibOffset));
     const control = firstFrame && firstWave !== 0 ? firstWave : waveform & (gate ? 0xff : 0xfe);
-    out.push([written, pw & 0xfff, control, cutoff & 0x7ff, resFilt >> 4, mode & 0x07]);
+    out.push([freq, pw & 0xfff, control, cutoff & 0x7ff, resFilt >> 4, mode & 0x07]);
     firstFrame = false;
   }
   return out;

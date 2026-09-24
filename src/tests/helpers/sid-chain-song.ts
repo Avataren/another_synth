@@ -25,7 +25,7 @@ import {
  *
  *   tempo 6, 50 Hz, one frame = 882 samples at 44.1 kHz, row r = frame 6r
  *   voice 1 (P0, 32 rows): r0 A-4 "Tri lead"; r16 key off; r20 C-5 "Vib lead"
- *     (first-frame 0x09, vibrato after 10 frames); r28 porta up at speed row 2
+ *     (first-frame 0x09, vibrato delay 10); r28 porta up at speed row 2
  *   voice 2 (P1, 32 rows): r8 C-4 "Arp pulse" (wave table C/E/G arpeggio,
  *     pulse table 0x400 then +/-0x10 sweeps); r24 key off
  *   voice 3 (P2, 16 rows, twice, transpose +5): r10 E-3 -> A-3 "Filt saw"
@@ -92,7 +92,7 @@ export function buildSidChainSong(): SidDoc {
     ['filter', 0x00, 0x20],
     ['filter', 0x40, 0x02],
     ['filter', 0xff, 0x00],
-    // speed: row 1 vibrato (4 frames a half-swing, 0x28 a frame); row 2 portamento 0x0040
+    // speed: row 1 vibrato (turn value 4, 0x28 a frame); row 2 portamento 0x0040
     ['speed', 0x04, 0x28],
     ['speed', 0x00, 0x40],
   ];

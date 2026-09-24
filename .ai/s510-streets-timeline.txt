@@ -1,0 +1,164 @@
+old total rows 1760 positions 99
+ pos 73 row 1312: e24 p0e t+0 r0 off0 | e41 p21 t+0 r0 off16 | e15 p02 t+0 r0 off0
+ pos 74 row 1344: e24 p0e t+0 r0 off32 | e41 p21 t+0 r0 off48 | e16 p02 t+0 r0 off0
+ pos 75 row 1360: e24 p0e t+0 r0 off48 | e42 p06 t+0 r0 off0 | e16 p02 t+0 r0 off16
+ pos 76 row 1376: e25 p22 t+0 r0 off0 | e42 p06 t+0 r0 off16 | e17 p0f t+0 r0 off0
+ pos 77 row 1392: e25 p22 t+0 r0 off16 | e43 p0d t-2 r0 off0 | e17 p0f t+0 r0 off16
+ pos 78 row 1408: e25 p22 t+0 r0 off32 | e44 p0d t+5 r0 off0 | e17 p0f t+0 r0 off32
+ pos 79 row 1424: e25 p22 t+0 r0 off48 | e45 p06 t+0 r0 off0 | e17 p0f t+0 r0 off48
+ pos 80 row 1440: e26 p0e t+3 r0 off0 | e45 p06 t+0 r0 off16 | e18 p11 t+0 r0 off0
+ pos 81 row 1456: e26 p0e t+3 r0 off16 | e46 p0d t-2 r0 off0 | e18 p11 t+0 r0 off16
+ pos 82 row 1472: e26 p0e t+3 r0 off32 | e47 p0d t-5 r0 off0 | e18 p11 t+0 r0 off32
+ pos 83 row 1488: e26 p0e t+3 r0 off48 | e48 p06 t+3 r0 off0 | e18 p11 t+0 r0 off48
+ pos 84 row 1504: e27 p10 t+3 r0 off0 | e48 p06 t+3 r0 off16 | e19 p0f t+3 r0 off0
+ pos 85 row 1520: e27 p10 t+3 r0 off16 | e49 p0d t+1 r0 off0 | e19 p0f t+3 r0 off16
+ pos 86 row 1536: e27 p10 t+3 r0 off32 | e50 p0d t-4 r0 off0 | e19 p0f t+3 r0 off32
+ pos 87 row 1552: e27 p10 t+3 r0 off48 | e51 p06 t+3 r0 off0 | e19 p0f t+3 r0 off48
+ pos 88 row 1568: e28 p12 t+3 r0 off0 | e51 p06 t+3 r0 off16 | e20 p11 t+3 r0 off0
+ pos 89 row 1584: e28 p12 t+3 r0 off16 | e52 p0d t+1 r0 off0 | e20 p11 t+3 r0 off16
+ pos 90 row 1600: e28 p12 t+3 r0 off32 | e53 p0d t-2 r0 off0 | e20 p11 t+3 r0 off32
+ pos 91 row 1616: e28 p12 t+3 r0 off48 | e54 p0d t-1 r0 off0 | e20 p11 t+3 r0 off48
+ pos 92 row 1632: e29 p14 t+3 r0 off0 | e55 p0d t+1 r0 off0 | e21 p13 t+3 r0 off0
+ pos 93 row 1648: e29 p14 t+3 r0 off16 | e56 p06 t-4 r0 off0 | e21 p13 t+3 r0 off16
+ pos 94 row 1680: e29 p14 t+3 r0 off48 | e57 p0d t-1 r0 off0 | e21 p13 t+3 r0 off48
+ pos 95 row 1696: e0 p01 t+0 r0 off0 | e58 p0d t+1 r0 off0 | e22 p15 t+3 r0 off0
+new total rows 1824 positions 71
+ pos 48 row 1312: e20 p19 t+0 r2 off0 | e39 p1a t-4 r0 off0 | e14 p20 t+0 r0 off0
+ pos 49 row 1344: e21 p1c t+0 r0 off0 | e40 p1d t-2 r0 off0 | e14 p20 t+0 r0 off32
+ pos 50 row 1376: e22 p01 t+0 r0 off0 | e41 p21 t+0 r0 off0 | e15 p02 t+0 r0 off0
+ pos 51 row 1408: e23 p01 t+0 r0 off0 | e41 p21 t+0 r0 off32 | e16 p02 t+0 r0 off0
+ pos 52 row 1440: e24 p0e t+0 r0 off0 | e42 p06 t+0 r0 off0 | e17 p0f t+0 r0 off0
+ pos 53 row 1472: e24 p0e t+0 r0 off32 | e43 p0d t-2 r0 off0 | e17 p0f t+0 r0 off32
+ pos 54 row 1488: e24 p0e t+0 r0 off48 | e44 p0d t+5 r0 off0 | e17 p0f t+0 r0 off48
+ pos 55 row 1504: e25 p22 t+0 r0 off0 | e45 p06 t+0 r0 off0 | e18 p11 t+0 r0 off0
+ pos 56 row 1536: e25 p22 t+0 r0 off32 | e46 p0d t-2 r0 off0 | e18 p11 t+0 r0 off32
+ pos 57 row 1552: e25 p22 t+0 r0 off48 | e47 p0d t-5 r0 off0 | e18 p11 t+0 r0 off48
+ pos 58 row 1568: e26 p0e t+3 r0 off0 | e48 p06 t+3 r0 off0 | e19 p0f t+3 r0 off0
+ pos 59 row 1600: e26 p0e t+3 r0 off32 | e49 p0d t+1 r0 off0 | e19 p0f t+3 r0 off32
+ pos 60 row 1616: e26 p0e t+3 r0 off48 | e50 p0d t-4 r0 off0 | e19 p0f t+3 r0 off48
+ pos 61 row 1632: e27 p10 t+3 r0 off0 | e51 p06 t+3 r0 off0 | e20 p11 t+3 r0 off0
+ pos 62 row 1664: e27 p10 t+3 r0 off32 | e52 p0d t+1 r0 off0 | e20 p11 t+3 r0 off32
+ pos 63 row 1680: e27 p10 t+3 r0 off48 | e53 p0d t-2 r0 off0 | e20 p11 t+3 r0 off48
+ pos 64 row 1696: e28 p12 t+3 r0 off0 | e54 p0d t-1 r0 off0 | e21 p13 t+3 r0 off0
+
+=== channel timelines, subtune 0: entry: pattern transpose plays -> start row (old | GT) ===
+channel 1 (30 entries)
+  e00 p01 +0  plays  8| 9  start    0|   0
+  e01 p07 +0  plays  1| 1  start  256| 288
+  e02 p08 +0  plays  1| 1  start  288| 320
+  e03 p01 +0  plays  1| 1  start  320| 352
+  e04 p01 +0  plays  1| 1  start  352| 384
+  e05 p07 +0  plays  1| 1  start  384| 416
+  e06 p08 +0  plays  1| 1  start  416| 448
+  e07 p01 +0  plays  1| 1  start  448| 480
+  e08 p01 +0  plays  1| 1  start  480| 512
+  e09 p0e +0  plays  1| 1  start  512| 544
+  e10 p10 +0  plays  1| 1  start  576| 608
+  e11 p12 +0  plays  1| 1  start  640| 672
+  e12 p14 +0  plays  1| 1  start  704| 736
+  e13 p01 +0  plays  1| 1  start  768| 800
+  e14 p01 +0  plays  1| 1  start  800| 832
+  e15 p07 +0  plays  1| 1  start  832| 864
+  e16 p08 +0  plays  1| 1  start  864| 896
+  e17 p01 +0  plays  5| 6  start  896| 928
+  e18 p19 +0  plays  2| 3  start 1056|1120
+  e19 p1c +0  plays  1| 1  start 1120|1216
+  e20 p19 +0  plays  2| 3  start 1152|1248
+  e21 p1c +0  plays  1| 1  start 1216|1344
+  e22 p01 +0  plays  1| 1  start 1248|1376
+  e23 p01 +0  plays  1| 1  start 1280|1408
+  e24 p0e +0  plays  1| 1  start 1312|1440
+  e25 p22 +0  plays  1| 1  start 1376|1504
+  e26 p0e +3  plays  1| 1  start 1440|1568
+  e27 p10 +3  plays  1| 1  start 1504|1632
+  e28 p12 +3  plays  1| 1  start 1568|1696
+  e29 p14 +3  plays  1| 1  start 1632|1760
+  end 1696|1824
+channel 2 (61 entries)
+  e00 p02 +0  plays  1| 1  start    0|   0
+  e01 p03 +0  plays  1| 1  start   32|  32
+  e02 p04 +0  plays  1| 1  start   96|  96
+  e03 p00 +0  plays  2| 3  start  160| 160
+  e04 p05 +0  plays  1| 1  start  192| 208
+  e05 p06 +0  plays  1| 1  start  208| 224
+  e06 p06 -7  plays  1| 1  start  240| 256
+  e07 p06 -4  plays  1| 1  start  272| 288
+  e08 p06 -2  plays  1| 1  start  304| 320
+  e09 p06 +0  plays  1| 1  start  336| 352
+  e10 p06 -7  plays  1| 1  start  368| 384
+  e11 p06 -4  plays  1| 1  start  400| 416
+  e12 p06 -2  plays  1| 1  start  432| 448
+  e13 p06 +0  plays  1| 1  start  464| 480
+  e14 p0c +0  plays  1| 1  start  496| 512
+  e15 p06 +0  plays  1| 1  start  528| 544
+  e16 p0d -2  plays  1| 1  start  560| 576
+  e17 p0d +5  plays  1| 1  start  576| 592
+  e18 p06 +0  plays  1| 1  start  592| 608
+  e19 p0d -2  plays  1| 1  start  624| 640
+  e20 p0d -5  plays  1| 1  start  640| 656
+  e21 p0d -4  plays  1| 1  start  656| 672
+  e22 p0d -2  plays  1| 1  start  672| 688
+  e23 p06 +5  plays  1| 1  start  688| 704
+  e24 p0d -4  plays  1| 1  start  720| 736
+  e25 p0d -2  plays  1| 1  start  736| 752
+  e26 p0d -5  plays  1| 1  start  752| 768
+  e27 p05 +0  plays  1| 1  start  768| 784
+  e28 p06 +0  plays  1| 1  start  784| 800
+  e29 p06 -7  plays  1| 1  start  816| 832
+  e30 p06 -4  plays  1| 1  start  848| 864
+  e31 p06 -2  plays  1| 1  start  880| 896
+  e32 p16 +0  plays  2| 3  start  912| 928
+  e33 p1a +0  plays  1| 1  start 1040|1120
+  e34 p1a -7  plays  1| 1  start 1072|1152
+  e35 p1a -4  plays  1| 1  start 1104|1184
+  e36 p1d -2  plays  1| 1  start 1136|1216
+  e37 p1a +0  plays  1| 1  start 1168|1248
+  e38 p1a -7  plays  1| 1  start 1200|1280
+  e39 p1a -4  plays  1| 1  start 1232|1312
+  e40 p1d -2  plays  1| 1  start 1264|1344
+  e41 p21 +0  plays  1| 1  start 1296|1376
+  e42 p06 +0  plays  1| 1  start 1360|1440
+  e43 p0d -2  plays  1| 1  start 1392|1472
+  e44 p0d +5  plays  1| 1  start 1408|1488
+  e45 p06 +0  plays  1| 1  start 1424|1504
+  e46 p0d -2  plays  1| 1  start 1456|1536
+  e47 p0d -5  plays  1| 1  start 1472|1552
+  e48 p06 +3  plays  1| 1  start 1488|1568
+  e49 p0d +1  plays  1| 1  start 1520|1600
+  e50 p0d -4  plays  1| 1  start 1536|1616
+  e51 p06 +3  plays  1| 1  start 1552|1632
+  e52 p0d +1  plays  1| 1  start 1584|1664
+  e53 p0d -2  plays  1| 1  start 1600|1680
+  e54 p0d -1  plays  1| 1  start 1616|1696
+  e55 p0d +1  plays  1| 1  start 1632|1712
+  e56 p06 -4  plays  1| 1  start 1648|1728
+  e57 p0d -1  plays  1| 1  start 1680|1760
+  e58 p0d +1  plays  1| 1  start 1696|1776
+  e59 p0d -2  plays  1| 1  start 1712|1792
+  e60 p05 +0  plays  1| 1  start 1728|1808
+  end 1744|1824
+channel 3 (23 entries)
+  e00 p02 +0  plays 10|11  start    0|   0
+  e01 p09 +0  plays  1| 1  start  320| 352
+  e02 p0a +0  plays  1| 1  start  384| 416
+  e03 p0b +0  plays  1| 1  start  448| 480
+  e04 p0f +0  plays  1| 1  start  512| 544
+  e05 p11 +0  plays  1| 1  start  576| 608
+  e06 p13 +0  plays  1| 1  start  640| 672
+  e07 p15 +0  plays  1| 1  start  704| 736
+  e08 p02 +0  plays  5| 6  start  768| 800
+  e09 p17 +0  plays  1| 1  start  928| 992
+  e10 p18 +0  plays  1| 1  start  992|1056
+  e11 p1b +0  plays  1| 1  start 1056|1120
+  e12 p1e +0  plays  1| 1  start 1120|1184
+  e13 p1f +0  plays  1| 1  start 1184|1248
+  e14 p20 +0  plays  1| 1  start 1248|1312
+  e15 p02 +0  plays  1| 1  start 1312|1376
+  e16 p02 +0  plays  1| 1  start 1344|1408
+  e17 p0f +0  plays  1| 1  start 1376|1440
+  e18 p11 +0  plays  1| 1  start 1440|1504
+  e19 p0f +3  plays  1| 1  start 1504|1568
+  e20 p11 +3  plays  1| 1  start 1568|1632
+  e21 p13 +3  plays  1| 1  start 1632|1696
+  e22 p15 +3  plays  1| 1  start 1696|1760
+  end 1760|1824

@@ -710,6 +710,22 @@ const SID_MAX_PERIOD = (SID_NOTE_COUNT - 1) * SID_UNITS_PER_SEMITONE;
  */
 export function sidNoteFreqReg(index: number): number {
   const i = Math.max(0, Math.min(SID_NOTE_COUNT - 1, Math.round(index)));
+  return sidTableFreqReg(i);
+}
+
+/** Notes in the SID player's frequency table: C-0..B-7 (0..95), then zeros up to 127. */
+export const SID_TABLE_NOTES = 96;
+
+/**
+ * The register the SID player reads for note index `index` (an integer):
+ * GoatTracker's table shape, which a transpose or a wave-table step can reach
+ * past G#7 (S5.10, `gt_note_freq_reg` in `rust-wasm/src/sid/mod.rs`): the
+ * index is 7 bits (`& 0x7f`), 0..95 are the equal-tempered notes above (B-7
+ * clamps to $FFFF), 96..127 are 0.
+ */
+export function sidTableFreqReg(index: number): number {
+  const i = index & 0x7f;
+  if (i >= SID_TABLE_NOTES) return 0;
   const hz = 440 * Math.pow(2, (i - 57) / 12);
   return Math.min(0xffff, Math.round((hz * 16777216) / SID_PAL_CLOCK));
 }

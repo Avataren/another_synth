@@ -49,6 +49,8 @@ mod tests_s3;
 mod tests_s4;
 #[cfg(test)]
 mod tests_s5;
+#[cfg(test)]
+mod tests_s510;
 
 pub use chip::Chip;
 pub use player::SidSongPlayer;
@@ -123,16 +125,31 @@ pub fn note_to_freq_reg(midi: i32) -> u16 {
     hz_to_freq_reg(440.0 * 2f64.powf((midi - 69) as f64 / 12.0))
 }
 
-/// Notes in a SID song's note table: C-0 (index 0) to G#7 (index 92). B-7
-/// would need register 67 277, past 16 bits, so the table stops at G#7, as
-/// GoatTracker's range does.
+/// Notes a SID song's rows can hold: C-0 (index 0) to G#7 (index 92),
+/// GoatTracker's pattern range ($60-$BC). A transpose or a wave-table step
+/// can reach past it (see `gt_note_freq_reg`).
 pub const GT_NOTE_COUNT: u8 = 93;
 
-/// The frequency register of note table index `index` (0 = C-0, 57 = A-4,
-/// clamped to 92 = G#7): equal temperament from A-4 = 440 Hz at the PAL
-/// clock, rounded, i.e. `note_to_freq_reg` with C-0 at MIDI 12. The app's
-/// `sidNoteFreqReg` computes the same numbers; both sides pin 278, 7493 and
-/// 56576 for C-0, A-4 and G#7.
+/// Notes in the player's frequency table: C-0..B-7 (0..95). GoatTracker's
+/// table has 128 entries, these 96 and then 32 zeros (gplay.c:9-35), and it
+/// indexes it with `note & 0x7f` (gplay.c:720). S5.10.
+pub const GT_TABLE_NOTES: u8 = 96;
+
+/// The frequency register of note index `index` as GoatTracker's player
+/// reads it (S5.10): the index is 7 bits (`note &= 0x7f`, gplay.c:720, so a
+/// transpose that wraps below C-0 lands high); 0..95 are notes, equal
+/// temperament from A-4 = 440 Hz at the PAL clock, rounded, i.e.
+/// `note_to_freq_reg` with C-0 at MIDI 12, B-7 clamped to $FFFF; 96..127 are
+/// 0, silence, as GT's zero entries are. The entries are DERIVED, not GT's
+/// (plan §3 rule 3: no GT table is copied): 64 of GT's 96 differ from them by
+/// 1-16 register units, under 0.5 cent except C-0 (279 vs 278, 6 cents). The
+/// app's `sidNoteFreqReg` computes the same numbers over 0..92; both sides
+/// pin 278, 7493 and 56576 for C-0, A-4 and G#7.
 pub fn gt_note_freq_reg(index: u8) -> u16 {
-    note_to_freq_reg(index.min(GT_NOTE_COUNT - 1) as i32 + 12)
+    let i = index & 0x7F;
+    if i >= GT_TABLE_NOTES {
+        0
+    } else {
+        note_to_freq_reg(i as i32 + 12)
+    }
 }
