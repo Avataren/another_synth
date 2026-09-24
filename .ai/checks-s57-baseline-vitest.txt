@@ -1,0 +1,563 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 test:run
+npm notice run vitest run
+▲ [WARNING] Cannot find base config file "./.quasar/tsconfig.json" [tsconfig.json]
+
+    tsconfig.json:2:13:
+      2 │   "extends": "./.quasar/tsconfig.json",
+        ╵              ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+ RUN  v2.1.8 /home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-chipui
+
+ ❯ src/tests/pattern-canvas.test.ts (0 test)
+ ❯ src/tests/ahx-writeback.test.ts (0 test)
+ ❯ src/tests/pattern-draw.test.ts (0 test)
+ ❯ src/tests/pattern-canvas-bright-row-text.test.ts (0 test)
+ ❯ src/tests/plist-canvas-edit.test.ts (0 test)
+ ❯ src/tests/xm-volume-envelope.test.ts (0 test)
+ ❯ src/tests/sid-playback-chain.test.ts (0 test)
+ ❯ src/tests/raw-effect-bytes.test.ts (0 test)
+ ❯ src/tests/xm-autovibrato.test.ts (0 test)
+ ❯ src/tests/sid-sng-gt1-fix.test.ts (0 test)
+ ❯ src/tests/ahx-exporter-store.test.ts (0 test)
+ ❯ src/tests/boot-suspended-context.test.ts (0 test)
+ ❯ src/tests/hvl-edit-matrix.test.ts (0 test)
+ ❯ tests/macro-routing.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/effect-processor.spec.ts (0 test)
+ ❯ src/tests/ahx-store-persistence.test.ts (0 test)
+ ❯ src/tests/mod-effect-depths.test.ts (0 test)
+ ❯ src/tests/sid-grid-writeback.test.ts (0 test)
+ ❯ src/tests/sid-format-chain.test.ts (0 test)
+ ❯ tests/patch-serializer.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/postfx-stage.spec.ts (0 test)
+ ❯ src/tests/ahx-instrument-page-plist-edit.test.ts (0 test)
+ ❯ src/tests/worklet-graph-sync.test.ts (0 test)
+ ❯ src/tests/sid-sng-import.test.ts (0 test)
+ ❯ src/tests/song-export-hvl.test.ts (0 test)
+ ❯ src/tests/pitch-model.test.ts (0 test)
+ ❯ src/tests/sid-sng-corpus.test.ts (0 test)
+ ❯ src/tests/ahx-play-input.test.ts (0 test)
+ ❯ src/tests/reference-effect-audit.test.ts (0 test)
+ ❯ src/tests/song-export-dialog.test.ts (0 test)
+ ❯ src/tests/s3m-import.test.ts (0 test)
+ ❯ src/tests/xm-import.test.ts (0 test)
+ ❯ src/tests/playback-store-replay.test.ts (0 test)
+ ❯ src/tests/plist-canvas-parity.test.ts (0 test)
+ ❯ src/tests/hvl-save-export.test.ts (0 test)
+ ❯ src/tests/postfx-store.test.ts (0 test)
+ ❯ src/tests/plist-canvas.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-page-b2.test.ts (0 test)
+ ❯ src/tests/sample-loop.test.ts (0 test)
+ ❯ src/tests/pattern-draw-bright-row-text.test.ts (0 test)
+ ❯ src/tests/s3m-engine.test.ts (0 test)
+ ❯ tests/song-bank-normalization.test.ts (0 test)
+ ❯ src/tests/jukebox-spectrum-ahx.test.ts (0 test)
+ ❯ src/tests/pattern-canvas-transpose-chip.test.ts (0 test)
+ ❯ src/tests/stores/tracker-store-plist-guard.test.ts (0 test)
+ ❯ src/tests/sid-spectrum-taps.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/ahx-effect-semantics.spec.ts (0 test)
+ ❯ tests/tracker-state.test.ts (0 test)
+ ❯ src/tests/s3m-corpus.test.ts (0 test)
+ ❯ src/tests/bug-report.test.ts (0 test)
+ ❯ src/tests/mod-channel-volume-carry.test.ts (0 test)
+ ❯ src/tests/s3m-parser.test.ts (0 test)
+ ❯ src/tests/mod-import-sample-number-volume-reset.test.ts (0 test)
+ ❯ src/tests/effect-reference-audit-2.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-page-ux.test.ts (0 test)
+ ❯ src/tests/format-profile.test.ts (0 test)
+ ❯ src/tests/tracker-channel-monophony.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-page-ux2.test.ts (0 test)
+ ❯ src/tests/playback-diagnostics.test.ts (0 test)
+ ❯ src/tests/tracker-playback-event-stream.test.ts (0 test)
+ ❯ src/tests/xm-volume-column.test.ts (0 test)
+ ❯ src/tests/sample-conditioning.test.ts (0 test)
+ ❯ tests/patch-node-edit-persistence.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/amiga-filter-math.spec.ts (0 test)
+ ❯ src/tests/stores/tracker-store-ahx-edit.test.ts (0 test)
+ ❯ src/tests/s3m-volume-slide.test.ts (0 test)
+ ❯ src/tests/parser-hostile-input.test.ts (0 test)
+ ❯ src/tests/tracker-file-io-ahx.test.ts (0 test)
+ ❯ src/tests/song-export-registry.test.ts (0 test)
+ ❯ src/tests/xm-panning-envelope.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-page-plist-playhead.test.ts (0 test)
+ ❯ src/tests/hvl-doc-channels.test.ts (0 test)
+ ❯ src/tests/pattern-window.test.ts (0 test)
+ ❯ src/tests/sid-sng-export.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/sampler-voice-teardown.spec.ts (0 test)
+ ❯ src/tests/sid-instrument-page.test.ts (0 test)
+ ❯ src/tests/e0x-filter-toggle.test.ts (0 test)
+ ❯ src/tests/tracker-channel-voice-addressing.test.ts (0 test)
+ ❯ src/tests/mod-import.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/sample-conditioning-bitexact.spec.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/sampler-mip-levels.spec.ts (0 test)
+ ❯ src/tests/tracker-pattern-buffer.test.ts (0 test)
+ ❯ src/tests/ahx-transport.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/standalone-sink.spec.ts (0 test)
+ ❯ src/tests/turbulence-s3m-pitch-slide.test.ts (0 test)
+ ❯ src/tests/xm-parser.test.ts (0 test)
+ ❯ src/tests/butterfly-syndrome-pump.test.ts (0 test)
+ ❯ src/tests/pattern-diff.test.ts (0 test)
+ ❯ src/tests/instrument-types.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-page.test.ts (0 test)
+ ❯ src/tests/main-layout-playback-indicator.test.ts (0 test)
+ ❯ src/tests/tracker-song-end.test.ts (0 test)
+ ❯ src/tests/tracker-pattern-row-text.test.ts (0 test)
+ ❯ src/tests/ahx-patterns.test.ts (0 test)
+ ❯ src/tests/jukebox-handover.test.ts (0 test)
+ ❯ src/tests/tracker-corpus-voice-addressing.test.ts (0 test)
+ ❯ src/tests/tracker-clear-selection-outside.test.ts (0 test)
+ ❯ src/tests/mod-extended-period-range.test.ts (0 test)
+ ❯ src/tests/hvl-writeback-10ch.test.ts (0 test)
+ ❯ src/tests/tracker-sequence-walk.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-edit.test.ts (0 test)
+ ❯ src/tests/ahx-position-transpose.test.ts (0 test)
+ ❯ src/tests/tracker-song-bank-master-volume.test.ts (0 test)
+ ❯ src/tests/mod-parser-multichannel.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-page-layout.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/limiter.spec.ts (0 test)
+ ❯ src/tests/xm-sample-panning.test.ts (0 test)
+ ❯ src/tests/ahx-envelope-editor.test.ts (0 test)
+ ❯ src/tests/pattern-prerender.test.ts (0 test)
+ ❯ src/tests/stores/tracker-store-instrument-tags.test.ts (0 test)
+ ❯ src/tests/xm-global-volume-and-period-limits.test.ts (0 test)
+ ❯ src/tests/tracker-note-delay-without-volume.test.ts (0 test)
+ ❯ src/tests/useAhxDrag.test.ts (0 test)
+ ❯ src/tests/ahx-parser.test.ts (0 test)
+ ❯ src/tests/postfx-path.test.ts (0 test)
+ ❯ src/tests/xm-arpeggio-tick-order.test.ts (0 test)
+ ❯ src/tests/pattern-bitmap.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/sampler-load-mono-fastpath.spec.ts (0 test)
+ ❯ src/tests/stores/jukebox-store.test.ts (0 test)
+ ❯ src/tests/ft2-effect-details.test.ts (0 test)
+ ❯ src/tests/pattern-layout.test.ts (0 test)
+ ❯ src/tests/visualizer-alignment.test.ts (0 test)
+ ❯ src/tests/tracker-position-sync.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/engine-load-caches.spec.ts (0 test)
+ ❯ src/tests/mod-ultimate-soundtracker.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-page-plist-canvas.test.ts (0 test)
+ ❯ src/tests/user-settings-migration.test.ts (0 test)
+ ❯ src/tests/pattern-hit-test.test.ts (0 test)
+ ❯ src/tests/xm-amiga-frequency-table.test.ts (0 test)
+ ❯ src/tests/ahx-slot-guard.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-page-play.test.ts (0 test)
+ ❯ src/tests/tracker-set-volume-is-instant.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/engine-speed-change-tick-timing.spec.ts (0 test)
+ ❯ src/tests/deep-link-suspended-load.test.ts (0 test)
+ ❯ src/tests/stores/conncetion.test.ts (0 test)
+ ❯ src/tests/tracker-module-format-plumbing.test.ts (0 test)
+ ❯ src/tests/sid-sng-load-chain.test.ts (0 test)
+ ❯ src/tests/demo-collection.test.ts (0 test)
+ ❯ src/tests/tracker-song-bank-patch-signature.test.ts (0 test)
+ ❯ src/tests/mod-import-volslide-retrigger.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/engine-pattern-delay.spec.ts (0 test)
+ ❯ src/tests/pattern-touch.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-page-analyzer.test.ts (0 test)
+ ❯ src/tests/mod-vblank-timing.test.ts (0 test)
+ ❯ src/tests/mod-import-sample-latch.test.ts (0 test)
+ ❯ src/tests/ahx-exporter-corpus.test.ts (0 test)
+ ❯ src/tests/tracker-volume-row-without-instrument.test.ts (0 test)
+ ❯ src/tests/tracker-monophonic-channels.test.ts (0 test)
+ ❯ src/tests/mod-import-sample-offset.test.ts (0 test)
+ ❯ src/tests/dope-mod-tuning.test.ts (0 test)
+ ❯ src/tests/track-accents.test.ts (0 test)
+ ❯ src/tests/mod-instrument-sample-offset.test.ts (0 test)
+ ❯ src/tests/ahx-play-input-suspended.test.ts (0 test)
+ ❯ src/tests/device-profile.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/engine-retrigger.spec.ts (0 test)
+ ❯ src/tests/mod-instrument-pitch-automation.test.ts (0 test)
+ ❯ src/tests/mod-toneporta-pattern-boundary.test.ts (0 test)
+ ❯ src/tests/ahx-audition-bar.test.ts (0 test)
+ ❯ src/tests/tracker-song-bank-instrument-build-slicing.test.ts (0 test)
+ ❯ src/tests/pattern-bands.test.ts (0 test)
+ ❯ src/tests/xm-keyoff-no-sustain.test.ts (0 test)
+ ❯ src/tests/tracker-song-builder-volume-reset.test.ts (0 test)
+ ❯ src/tests/mod-import-toneporta-instrument.test.ts (0 test)
+ ❯ src/tests/sid-demo-load-chain.test.ts (0 test)
+ ❯ src/tests/tracker-track-monitor.test.ts (0 test)
+ ❯ src/tests/tracker-song-bank.test.ts (0 test)
+ ❯ src/tests/derive-bright-text.test.ts (0 test)
+ ❯ src/tests/demo-deep-link.test.ts (0 test)
+ ❯ src/tests/tracker-midsong-instrument-latch.test.ts (0 test)
+ ❯ src/tests/mod-sample-offset-playback.test.ts (0 test)
+ ❯ src/tests/oscilloscope-mono.test.ts (0 test)
+ ❯ src/tests/sid-instrument-visuals.test.ts (0 test)
+ ❯ src/tests/bug-report-context.test.ts (0 test)
+ ❯ src/tests/demo-filter.test.ts (0 test)
+ ❯ src/tests/mod-parser.test.ts (0 test)
+ ❯ src/tests/postfx-control.test.ts (0 test)
+ ❯ src/tests/mod-toneporta-volslide-speed.test.ts (0 test)
+ ❯ src/tests/pattern-buffering.test.ts (0 test)
+ ❯ src/tests/level-meter-math.test.ts (0 test)
+ ❯ tests/patch-roundtrip-fixed-point.test.ts (0 test)
+ ❯ src/tests/tracker-break-position-lag.test.ts (0 test)
+ ❯ src/tests/stores/tracker-store-pattern-rows.test.ts (0 test)
+ ❯ src/tests/tracker-song-bank-cross-track-volume.test.ts (0 test)
+ ❯ src/tests/demo-deep-link-router.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/engine-display-latency.spec.ts (0 test)
+ ❯ src/tests/track-metrics.test.ts (0 test)
+ ❯ src/tests/tracker-porta-target-carry.test.ts (0 test)
+ ❯ src/tests/xm-tone-portamento-keyoff.test.ts (0 test)
+ ❯ src/tests/tracker-song-bank-mono-track-gate.test.ts (0 test)
+ ❯ src/tests/ahx-editor-ux-edit.test.ts (0 test)
+ ❯ packages/tracker-playback/src/__tests__/engine-pattern-length-loop-wrap.spec.ts (0 test)
+ ❯ src/tests/tracker-restart-timing.test.ts (0 test)
+ ❯ src/tests/stores/jukebox-editor-song-snapshot.test.ts (0 test)
+ ❯ src/tests/tracker-song-restart.test.ts (0 test)
+ ❯ src/tests/mod-pal-tuning.test.ts (0 test)
+ ❯ src/tests/stores/tracker-store-module-format.test.ts (0 test)
+ ❯ src/tests/scope-trace.test.ts (0 test)
+ ❯ src/tests/stores/tracker-playback-ahx-routing.test.ts (0 test)
+ ❯ src/tests/audio-latency-hint.test.ts (0 test)
+ ❯ src/tests/mod-pan-effects.test.ts (0 test)
+ ❯ tests/voice-count.test.ts (0 test)
+ ❯ src/tests/tracker-initial-speed.test.ts (0 test)
+ ❯ src/tests/stores/patch-store-dirty-tracking.test.ts (0 test)
+ ❯ src/tests/track-monitoring.test.ts (0 test)
+ ❯ src/tests/page-window.test.ts (0 test)
+ ❯ src/tests/plist-edit.test.ts (0 test)
+ ❯ src/tests/tracker-playback-engine.test.ts (0 test)
+ ❯ src/tests/ahx-worklet-core.test.ts (0 test)
+ ❯ src/tests/ahx-doc-ops.test.ts (0 test)
+ ❯ src/tests/ahx-player-client.test.ts (0 test)
+ ❯ src/tests/ahx-engine-sync.test.ts (0 test)
+ ❯ src/tests/ahx-writer.test.ts (0 test)
+ ❯ src/tests/ahx-doc-corpus.test.ts (0 test)
+ ❯ src/tests/ahx-plist-row-core.test.ts (0 test)
+ ❯ src/tests/ahx-runtime-reload.test.ts (0 test)
+ ❯ src/tests/stores/tracker-playback-ahx-edits.test.ts (0 test)
+ ❯ src/tests/theme-palette.test.ts (0 test)
+ ❯ src/tests/tracker-engine-pattern-length.test.ts (0 test)
+ ❯ src/tests/hvl-engine-sync.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-visuals.test.ts (0 test)
+ ❯ src/tests/hvl-doc-corpus.test.ts (0 test)
+ ❯ src/tests/tracker-instrument-rename.test.ts (0 test)
+ ❯ src/tests/ahx-preview.test.ts (0 test)
+ ❯ src/tests/plist-edit-input.test.ts (0 test)
+ ❯ src/tests/analyzer-complement-setting.test.ts (0 test)
+ ❯ src/tests/plist-playhead-clock.test.ts (0 test)
+ ❯ src/tests/ahx-plist-row-client.test.ts (0 test)
+ ❯ src/tests/tracker-selection-readonly.test.ts (0 test)
+ ❯ src/tests/sid-doc.test.ts (0 test)
+ ❯ src/tests/ahx-worklet-replace.test.ts (0 test)
+ ❯ src/tests/tracker-song-bank-voice-reassign.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-sync.test.ts (0 test)
+ ❯ src/tests/mod-sample-conversion.test.ts (0 test)
+ ❯ src/tests/diagnostics/debug-log.test.ts (0 test)
+ ❯ src/tests/ahx-worklet-shell.test.ts (0 test)
+ ❯ src/tests/plist-track.test.ts (0 test)
+ ❯ src/tests/ahx-doc-entries.test.ts (0 test)
+ ❯ src/tests/sid-worklet-core.test.ts (0 test)
+ ❯ src/tests/ahx-import.test.ts (0 test)
+ ❯ src/tests/ahx-plain-language.test.ts (0 test)
+ ❯ src/tests/synth-worklet-pooled-scoping.test.ts (0 test)
+ ❯ src/tests/ahx-keyboard-pitch.test.ts (0 test)
+ ❯ src/tests/ahx-scope-gain-setting.test.ts (0 test)
+ ❯ src/tests/ahx-preview-output.test.ts (0 test)
+ ❯ src/tests/ahx-new-song.test.ts (0 test)
+ ❯ src/tests/synth-worklet-truncated-wav.test.ts (0 test)
+ ❯ src/tests/sid-gate-off.test.ts (0 test)
+ ❯ src/tests/ahx-plist-playhead-driver.test.ts (0 test)
+ ❯ src/tests/ahx-envelope-sim.test.ts (0 test)
+ ❯ src/tests/ahx-writer-corpus.test.ts (0 test)
+ ❯ src/tests/ahx-envelope-nodes.test.ts (0 test)
+ ❯ src/tests/plist-track-identity.test.ts (0 test)
+ ❯ src/tests/artifact-freshness.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-codec.test.ts (0 test)
+ ❯ src/tests/ahx-instrument-display.test.ts (0 test)
+ ❯ src/tests/keyboard-note-maps.test.ts (0 test)
+ ❯ src/tests/ahx-speed-multiplier.test.ts (0 test)
+ ❯ src/tests/ahx-readonly-audit.test.ts (0 test)
+
+⎯⎯⎯⎯⎯ Failed Suites 258 ⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/macro-routing.test.ts [ tests/macro-routing.test.ts ]
+ FAIL  tests/patch-node-edit-persistence.test.ts [ tests/patch-node-edit-persistence.test.ts ]
+ FAIL  tests/patch-roundtrip-fixed-point.test.ts [ tests/patch-roundtrip-fixed-point.test.ts ]
+ FAIL  tests/patch-serializer.test.ts [ tests/patch-serializer.test.ts ]
+ FAIL  tests/song-bank-normalization.test.ts [ tests/song-bank-normalization.test.ts ]
+ FAIL  tests/tracker-state.test.ts [ tests/tracker-state.test.ts ]
+ FAIL  tests/voice-count.test.ts [ tests/voice-count.test.ts ]
+ FAIL  src/tests/ahx-audition-bar.test.ts [ src/tests/ahx-audition-bar.test.ts ]
+ FAIL  src/tests/ahx-doc-corpus.test.ts [ src/tests/ahx-doc-corpus.test.ts ]
+ FAIL  src/tests/ahx-doc-entries.test.ts [ src/tests/ahx-doc-entries.test.ts ]
+ FAIL  src/tests/ahx-doc-ops.test.ts [ src/tests/ahx-doc-ops.test.ts ]
+ FAIL  src/tests/ahx-editor-ux-edit.test.ts [ src/tests/ahx-editor-ux-edit.test.ts ]
+ FAIL  src/tests/ahx-engine-sync.test.ts [ src/tests/ahx-engine-sync.test.ts ]
+ FAIL  src/tests/ahx-envelope-editor.test.ts [ src/tests/ahx-envelope-editor.test.ts ]
+ FAIL  src/tests/ahx-envelope-nodes.test.ts [ src/tests/ahx-envelope-nodes.test.ts ]
+ FAIL  src/tests/ahx-envelope-sim.test.ts [ src/tests/ahx-envelope-sim.test.ts ]
+ FAIL  src/tests/ahx-exporter-corpus.test.ts [ src/tests/ahx-exporter-corpus.test.ts ]
+ FAIL  src/tests/ahx-exporter-store.test.ts [ src/tests/ahx-exporter-store.test.ts ]
+ FAIL  src/tests/ahx-import.test.ts [ src/tests/ahx-import.test.ts ]
+ FAIL  src/tests/ahx-instrument-codec.test.ts [ src/tests/ahx-instrument-codec.test.ts ]
+ FAIL  src/tests/ahx-instrument-display.test.ts [ src/tests/ahx-instrument-display.test.ts ]
+ FAIL  src/tests/ahx-instrument-edit.test.ts [ src/tests/ahx-instrument-edit.test.ts ]
+ FAIL  src/tests/ahx-instrument-page-analyzer.test.ts [ src/tests/ahx-instrument-page-analyzer.test.ts ]
+ FAIL  src/tests/ahx-instrument-page-b2.test.ts [ src/tests/ahx-instrument-page-b2.test.ts ]
+ FAIL  src/tests/ahx-instrument-page-layout.test.ts [ src/tests/ahx-instrument-page-layout.test.ts ]
+ FAIL  src/tests/ahx-instrument-page-play.test.ts [ src/tests/ahx-instrument-page-play.test.ts ]
+ FAIL  src/tests/ahx-instrument-page-plist-canvas.test.ts [ src/tests/ahx-instrument-page-plist-canvas.test.ts ]
+ FAIL  src/tests/ahx-instrument-page-plist-edit.test.ts [ src/tests/ahx-instrument-page-plist-edit.test.ts ]
+ FAIL  src/tests/ahx-instrument-page-plist-playhead.test.ts [ src/tests/ahx-instrument-page-plist-playhead.test.ts ]
+ FAIL  src/tests/ahx-instrument-page-ux.test.ts [ src/tests/ahx-instrument-page-ux.test.ts ]
+ FAIL  src/tests/ahx-instrument-page-ux2.test.ts [ src/tests/ahx-instrument-page-ux2.test.ts ]
+ FAIL  src/tests/ahx-instrument-page.test.ts [ src/tests/ahx-instrument-page.test.ts ]
+ FAIL  src/tests/ahx-instrument-sync.test.ts [ src/tests/ahx-instrument-sync.test.ts ]
+ FAIL  src/tests/ahx-instrument-visuals.test.ts [ src/tests/ahx-instrument-visuals.test.ts ]
+ FAIL  src/tests/ahx-keyboard-pitch.test.ts [ src/tests/ahx-keyboard-pitch.test.ts ]
+ FAIL  src/tests/ahx-new-song.test.ts [ src/tests/ahx-new-song.test.ts ]
+ FAIL  src/tests/ahx-parser.test.ts [ src/tests/ahx-parser.test.ts ]
+ FAIL  src/tests/ahx-patterns.test.ts [ src/tests/ahx-patterns.test.ts ]
+ FAIL  src/tests/ahx-plain-language.test.ts [ src/tests/ahx-plain-language.test.ts ]
+ FAIL  src/tests/ahx-play-input-suspended.test.ts [ src/tests/ahx-play-input-suspended.test.ts ]
+ FAIL  src/tests/ahx-play-input.test.ts [ src/tests/ahx-play-input.test.ts ]
+ FAIL  src/tests/ahx-player-client.test.ts [ src/tests/ahx-player-client.test.ts ]
+ FAIL  src/tests/ahx-plist-playhead-driver.test.ts [ src/tests/ahx-plist-playhead-driver.test.ts ]
+ FAIL  src/tests/ahx-plist-row-client.test.ts [ src/tests/ahx-plist-row-client.test.ts ]
+ FAIL  src/tests/ahx-plist-row-core.test.ts [ src/tests/ahx-plist-row-core.test.ts ]
+ FAIL  src/tests/ahx-position-transpose.test.ts [ src/tests/ahx-position-transpose.test.ts ]
+ FAIL  src/tests/ahx-preview-output.test.ts [ src/tests/ahx-preview-output.test.ts ]
+ FAIL  src/tests/ahx-preview.test.ts [ src/tests/ahx-preview.test.ts ]
+ FAIL  src/tests/ahx-readonly-audit.test.ts [ src/tests/ahx-readonly-audit.test.ts ]
+ FAIL  src/tests/ahx-runtime-reload.test.ts [ src/tests/ahx-runtime-reload.test.ts ]
+ FAIL  src/tests/ahx-scope-gain-setting.test.ts [ src/tests/ahx-scope-gain-setting.test.ts ]
+ FAIL  src/tests/ahx-slot-guard.test.ts [ src/tests/ahx-slot-guard.test.ts ]
+ FAIL  src/tests/ahx-speed-multiplier.test.ts [ src/tests/ahx-speed-multiplier.test.ts ]
+ FAIL  src/tests/ahx-store-persistence.test.ts [ src/tests/ahx-store-persistence.test.ts ]
+ FAIL  src/tests/ahx-transport.test.ts [ src/tests/ahx-transport.test.ts ]
+ FAIL  src/tests/ahx-worklet-core.test.ts [ src/tests/ahx-worklet-core.test.ts ]
+ FAIL  src/tests/ahx-worklet-replace.test.ts [ src/tests/ahx-worklet-replace.test.ts ]
+ FAIL  src/tests/ahx-worklet-shell.test.ts [ src/tests/ahx-worklet-shell.test.ts ]
+ FAIL  src/tests/ahx-writeback.test.ts [ src/tests/ahx-writeback.test.ts ]
+ FAIL  src/tests/ahx-writer-corpus.test.ts [ src/tests/ahx-writer-corpus.test.ts ]
+ FAIL  src/tests/ahx-writer.test.ts [ src/tests/ahx-writer.test.ts ]
+ FAIL  src/tests/analyzer-complement-setting.test.ts [ src/tests/analyzer-complement-setting.test.ts ]
+ FAIL  src/tests/artifact-freshness.test.ts [ src/tests/artifact-freshness.test.ts ]
+ FAIL  src/tests/audio-latency-hint.test.ts [ src/tests/audio-latency-hint.test.ts ]
+ FAIL  src/tests/boot-suspended-context.test.ts [ src/tests/boot-suspended-context.test.ts ]
+ FAIL  src/tests/bug-report-context.test.ts [ src/tests/bug-report-context.test.ts ]
+ FAIL  src/tests/bug-report.test.ts [ src/tests/bug-report.test.ts ]
+ FAIL  src/tests/butterfly-syndrome-pump.test.ts [ src/tests/butterfly-syndrome-pump.test.ts ]
+ FAIL  src/tests/deep-link-suspended-load.test.ts [ src/tests/deep-link-suspended-load.test.ts ]
+ FAIL  src/tests/demo-collection.test.ts [ src/tests/demo-collection.test.ts ]
+ FAIL  src/tests/demo-deep-link-router.test.ts [ src/tests/demo-deep-link-router.test.ts ]
+ FAIL  src/tests/demo-deep-link.test.ts [ src/tests/demo-deep-link.test.ts ]
+ FAIL  src/tests/demo-filter.test.ts [ src/tests/demo-filter.test.ts ]
+ FAIL  src/tests/derive-bright-text.test.ts [ src/tests/derive-bright-text.test.ts ]
+ FAIL  src/tests/device-profile.test.ts [ src/tests/device-profile.test.ts ]
+ FAIL  src/tests/dope-mod-tuning.test.ts [ src/tests/dope-mod-tuning.test.ts ]
+ FAIL  src/tests/e0x-filter-toggle.test.ts [ src/tests/e0x-filter-toggle.test.ts ]
+ FAIL  src/tests/effect-reference-audit-2.test.ts [ src/tests/effect-reference-audit-2.test.ts ]
+ FAIL  src/tests/format-profile.test.ts [ src/tests/format-profile.test.ts ]
+ FAIL  src/tests/ft2-effect-details.test.ts [ src/tests/ft2-effect-details.test.ts ]
+ FAIL  src/tests/hvl-doc-channels.test.ts [ src/tests/hvl-doc-channels.test.ts ]
+ FAIL  src/tests/hvl-doc-corpus.test.ts [ src/tests/hvl-doc-corpus.test.ts ]
+ FAIL  src/tests/hvl-edit-matrix.test.ts [ src/tests/hvl-edit-matrix.test.ts ]
+ FAIL  src/tests/hvl-engine-sync.test.ts [ src/tests/hvl-engine-sync.test.ts ]
+ FAIL  src/tests/hvl-save-export.test.ts [ src/tests/hvl-save-export.test.ts ]
+ FAIL  src/tests/hvl-writeback-10ch.test.ts [ src/tests/hvl-writeback-10ch.test.ts ]
+ FAIL  src/tests/instrument-types.test.ts [ src/tests/instrument-types.test.ts ]
+ FAIL  src/tests/jukebox-handover.test.ts [ src/tests/jukebox-handover.test.ts ]
+ FAIL  src/tests/jukebox-spectrum-ahx.test.ts [ src/tests/jukebox-spectrum-ahx.test.ts ]
+ FAIL  src/tests/keyboard-note-maps.test.ts [ src/tests/keyboard-note-maps.test.ts ]
+ FAIL  src/tests/level-meter-math.test.ts [ src/tests/level-meter-math.test.ts ]
+ FAIL  src/tests/main-layout-playback-indicator.test.ts [ src/tests/main-layout-playback-indicator.test.ts ]
+ FAIL  src/tests/mod-channel-volume-carry.test.ts [ src/tests/mod-channel-volume-carry.test.ts ]
+ FAIL  src/tests/mod-effect-depths.test.ts [ src/tests/mod-effect-depths.test.ts ]
+ FAIL  src/tests/mod-extended-period-range.test.ts [ src/tests/mod-extended-period-range.test.ts ]
+ FAIL  src/tests/mod-import-sample-latch.test.ts [ src/tests/mod-import-sample-latch.test.ts ]
+ FAIL  src/tests/mod-import-sample-number-volume-reset.test.ts [ src/tests/mod-import-sample-number-volume-reset.test.ts ]
+ FAIL  src/tests/mod-import-sample-offset.test.ts [ src/tests/mod-import-sample-offset.test.ts ]
+ FAIL  src/tests/mod-import-toneporta-instrument.test.ts [ src/tests/mod-import-toneporta-instrument.test.ts ]
+ FAIL  src/tests/mod-import-volslide-retrigger.test.ts [ src/tests/mod-import-volslide-retrigger.test.ts ]
+ FAIL  src/tests/mod-import.test.ts [ src/tests/mod-import.test.ts ]
+ FAIL  src/tests/mod-instrument-pitch-automation.test.ts [ src/tests/mod-instrument-pitch-automation.test.ts ]
+ FAIL  src/tests/mod-instrument-sample-offset.test.ts [ src/tests/mod-instrument-sample-offset.test.ts ]
+ FAIL  src/tests/mod-pal-tuning.test.ts [ src/tests/mod-pal-tuning.test.ts ]
+ FAIL  src/tests/mod-pan-effects.test.ts [ src/tests/mod-pan-effects.test.ts ]
+ FAIL  src/tests/mod-parser-multichannel.test.ts [ src/tests/mod-parser-multichannel.test.ts ]
+ FAIL  src/tests/mod-parser.test.ts [ src/tests/mod-parser.test.ts ]
+ FAIL  src/tests/mod-sample-conversion.test.ts [ src/tests/mod-sample-conversion.test.ts ]
+ FAIL  src/tests/mod-sample-offset-playback.test.ts [ src/tests/mod-sample-offset-playback.test.ts ]
+ FAIL  src/tests/mod-toneporta-pattern-boundary.test.ts [ src/tests/mod-toneporta-pattern-boundary.test.ts ]
+ FAIL  src/tests/mod-toneporta-volslide-speed.test.ts [ src/tests/mod-toneporta-volslide-speed.test.ts ]
+ FAIL  src/tests/mod-ultimate-soundtracker.test.ts [ src/tests/mod-ultimate-soundtracker.test.ts ]
+ FAIL  src/tests/mod-vblank-timing.test.ts [ src/tests/mod-vblank-timing.test.ts ]
+ FAIL  src/tests/oscilloscope-mono.test.ts [ src/tests/oscilloscope-mono.test.ts ]
+ FAIL  src/tests/page-window.test.ts [ src/tests/page-window.test.ts ]
+ FAIL  src/tests/parser-hostile-input.test.ts [ src/tests/parser-hostile-input.test.ts ]
+ FAIL  src/tests/pattern-bands.test.ts [ src/tests/pattern-bands.test.ts ]
+ FAIL  src/tests/pattern-bitmap.test.ts [ src/tests/pattern-bitmap.test.ts ]
+ FAIL  src/tests/pattern-buffering.test.ts [ src/tests/pattern-buffering.test.ts ]
+ FAIL  src/tests/pattern-canvas-bright-row-text.test.ts [ src/tests/pattern-canvas-bright-row-text.test.ts ]
+ FAIL  src/tests/pattern-canvas-transpose-chip.test.ts [ src/tests/pattern-canvas-transpose-chip.test.ts ]
+ FAIL  src/tests/pattern-canvas.test.ts [ src/tests/pattern-canvas.test.ts ]
+ FAIL  src/tests/pattern-diff.test.ts [ src/tests/pattern-diff.test.ts ]
+ FAIL  src/tests/pattern-draw-bright-row-text.test.ts [ src/tests/pattern-draw-bright-row-text.test.ts ]
+ FAIL  src/tests/pattern-draw.test.ts [ src/tests/pattern-draw.test.ts ]
+ FAIL  src/tests/pattern-hit-test.test.ts [ src/tests/pattern-hit-test.test.ts ]
+ FAIL  src/tests/pattern-layout.test.ts [ src/tests/pattern-layout.test.ts ]
+ FAIL  src/tests/pattern-prerender.test.ts [ src/tests/pattern-prerender.test.ts ]
+ FAIL  src/tests/pattern-touch.test.ts [ src/tests/pattern-touch.test.ts ]
+ FAIL  src/tests/pattern-window.test.ts [ src/tests/pattern-window.test.ts ]
+ FAIL  src/tests/pitch-model.test.ts [ src/tests/pitch-model.test.ts ]
+ FAIL  src/tests/playback-diagnostics.test.ts [ src/tests/playback-diagnostics.test.ts ]
+ FAIL  src/tests/playback-store-replay.test.ts [ src/tests/playback-store-replay.test.ts ]
+ FAIL  src/tests/plist-canvas-edit.test.ts [ src/tests/plist-canvas-edit.test.ts ]
+ FAIL  src/tests/plist-canvas-parity.test.ts [ src/tests/plist-canvas-parity.test.ts ]
+ FAIL  src/tests/plist-canvas.test.ts [ src/tests/plist-canvas.test.ts ]
+ FAIL  src/tests/plist-edit-input.test.ts [ src/tests/plist-edit-input.test.ts ]
+ FAIL  src/tests/plist-edit.test.ts [ src/tests/plist-edit.test.ts ]
+ FAIL  src/tests/plist-playhead-clock.test.ts [ src/tests/plist-playhead-clock.test.ts ]
+ FAIL  src/tests/plist-track-identity.test.ts [ src/tests/plist-track-identity.test.ts ]
+ FAIL  src/tests/plist-track.test.ts [ src/tests/plist-track.test.ts ]
+ FAIL  src/tests/postfx-control.test.ts [ src/tests/postfx-control.test.ts ]
+ FAIL  src/tests/postfx-path.test.ts [ src/tests/postfx-path.test.ts ]
+ FAIL  src/tests/postfx-store.test.ts [ src/tests/postfx-store.test.ts ]
+ FAIL  src/tests/raw-effect-bytes.test.ts [ src/tests/raw-effect-bytes.test.ts ]
+ FAIL  src/tests/reference-effect-audit.test.ts [ src/tests/reference-effect-audit.test.ts ]
+ FAIL  src/tests/s3m-corpus.test.ts [ src/tests/s3m-corpus.test.ts ]
+ FAIL  src/tests/s3m-engine.test.ts [ src/tests/s3m-engine.test.ts ]
+ FAIL  src/tests/s3m-import.test.ts [ src/tests/s3m-import.test.ts ]
+ FAIL  src/tests/s3m-parser.test.ts [ src/tests/s3m-parser.test.ts ]
+ FAIL  src/tests/s3m-volume-slide.test.ts [ src/tests/s3m-volume-slide.test.ts ]
+ FAIL  src/tests/sample-conditioning.test.ts [ src/tests/sample-conditioning.test.ts ]
+ FAIL  src/tests/sample-loop.test.ts [ src/tests/sample-loop.test.ts ]
+ FAIL  src/tests/scope-trace.test.ts [ src/tests/scope-trace.test.ts ]
+ FAIL  src/tests/sid-demo-load-chain.test.ts [ src/tests/sid-demo-load-chain.test.ts ]
+ FAIL  src/tests/sid-doc.test.ts [ src/tests/sid-doc.test.ts ]
+ FAIL  src/tests/sid-format-chain.test.ts [ src/tests/sid-format-chain.test.ts ]
+ FAIL  src/tests/sid-gate-off.test.ts [ src/tests/sid-gate-off.test.ts ]
+ FAIL  src/tests/sid-grid-writeback.test.ts [ src/tests/sid-grid-writeback.test.ts ]
+ FAIL  src/tests/sid-instrument-page.test.ts [ src/tests/sid-instrument-page.test.ts ]
+ FAIL  src/tests/sid-instrument-visuals.test.ts [ src/tests/sid-instrument-visuals.test.ts ]
+ FAIL  src/tests/sid-playback-chain.test.ts [ src/tests/sid-playback-chain.test.ts ]
+ FAIL  src/tests/sid-sng-corpus.test.ts [ src/tests/sid-sng-corpus.test.ts ]
+ FAIL  src/tests/sid-sng-export.test.ts [ src/tests/sid-sng-export.test.ts ]
+ FAIL  src/tests/sid-sng-gt1-fix.test.ts [ src/tests/sid-sng-gt1-fix.test.ts ]
+ FAIL  src/tests/sid-sng-import.test.ts [ src/tests/sid-sng-import.test.ts ]
+ FAIL  src/tests/sid-sng-load-chain.test.ts [ src/tests/sid-sng-load-chain.test.ts ]
+ FAIL  src/tests/sid-spectrum-taps.test.ts [ src/tests/sid-spectrum-taps.test.ts ]
+ FAIL  src/tests/sid-worklet-core.test.ts [ src/tests/sid-worklet-core.test.ts ]
+ FAIL  src/tests/song-export-dialog.test.ts [ src/tests/song-export-dialog.test.ts ]
+ FAIL  src/tests/song-export-hvl.test.ts [ src/tests/song-export-hvl.test.ts ]
+ FAIL  src/tests/song-export-registry.test.ts [ src/tests/song-export-registry.test.ts ]
+ FAIL  src/tests/synth-worklet-pooled-scoping.test.ts [ src/tests/synth-worklet-pooled-scoping.test.ts ]
+ FAIL  src/tests/synth-worklet-truncated-wav.test.ts [ src/tests/synth-worklet-truncated-wav.test.ts ]
+ FAIL  src/tests/theme-palette.test.ts [ src/tests/theme-palette.test.ts ]
+ FAIL  src/tests/track-accents.test.ts [ src/tests/track-accents.test.ts ]
+ FAIL  src/tests/track-metrics.test.ts [ src/tests/track-metrics.test.ts ]
+ FAIL  src/tests/track-monitoring.test.ts [ src/tests/track-monitoring.test.ts ]
+ FAIL  src/tests/tracker-break-position-lag.test.ts [ src/tests/tracker-break-position-lag.test.ts ]
+ FAIL  src/tests/tracker-channel-monophony.test.ts [ src/tests/tracker-channel-monophony.test.ts ]
+ FAIL  src/tests/tracker-channel-voice-addressing.test.ts [ src/tests/tracker-channel-voice-addressing.test.ts ]
+ FAIL  src/tests/tracker-clear-selection-outside.test.ts [ src/tests/tracker-clear-selection-outside.test.ts ]
+ FAIL  src/tests/tracker-corpus-voice-addressing.test.ts [ src/tests/tracker-corpus-voice-addressing.test.ts ]
+ FAIL  src/tests/tracker-engine-pattern-length.test.ts [ src/tests/tracker-engine-pattern-length.test.ts ]
+ FAIL  src/tests/tracker-file-io-ahx.test.ts [ src/tests/tracker-file-io-ahx.test.ts ]
+ FAIL  src/tests/tracker-initial-speed.test.ts [ src/tests/tracker-initial-speed.test.ts ]
+ FAIL  src/tests/tracker-instrument-rename.test.ts [ src/tests/tracker-instrument-rename.test.ts ]
+ FAIL  src/tests/tracker-midsong-instrument-latch.test.ts [ src/tests/tracker-midsong-instrument-latch.test.ts ]
+ FAIL  src/tests/tracker-module-format-plumbing.test.ts [ src/tests/tracker-module-format-plumbing.test.ts ]
+ FAIL  src/tests/tracker-monophonic-channels.test.ts [ src/tests/tracker-monophonic-channels.test.ts ]
+ FAIL  src/tests/tracker-note-delay-without-volume.test.ts [ src/tests/tracker-note-delay-without-volume.test.ts ]
+ FAIL  src/tests/tracker-pattern-buffer.test.ts [ src/tests/tracker-pattern-buffer.test.ts ]
+ FAIL  src/tests/tracker-pattern-row-text.test.ts [ src/tests/tracker-pattern-row-text.test.ts ]
+ FAIL  src/tests/tracker-playback-engine.test.ts [ src/tests/tracker-playback-engine.test.ts ]
+ FAIL  src/tests/tracker-playback-event-stream.test.ts [ src/tests/tracker-playback-event-stream.test.ts ]
+ FAIL  src/tests/tracker-porta-target-carry.test.ts [ src/tests/tracker-porta-target-carry.test.ts ]
+ FAIL  src/tests/tracker-position-sync.test.ts [ src/tests/tracker-position-sync.test.ts ]
+ FAIL  src/tests/tracker-restart-timing.test.ts [ src/tests/tracker-restart-timing.test.ts ]
+ FAIL  src/tests/tracker-selection-readonly.test.ts [ src/tests/tracker-selection-readonly.test.ts ]
+ FAIL  src/tests/tracker-sequence-walk.test.ts [ src/tests/tracker-sequence-walk.test.ts ]
+ FAIL  src/tests/tracker-set-volume-is-instant.test.ts [ src/tests/tracker-set-volume-is-instant.test.ts ]
+ FAIL  src/tests/tracker-song-bank-cross-track-volume.test.ts [ src/tests/tracker-song-bank-cross-track-volume.test.ts ]
+ FAIL  src/tests/tracker-song-bank-instrument-build-slicing.test.ts [ src/tests/tracker-song-bank-instrument-build-slicing.test.ts ]
+ FAIL  src/tests/tracker-song-bank-master-volume.test.ts [ src/tests/tracker-song-bank-master-volume.test.ts ]
+ FAIL  src/tests/tracker-song-bank-mono-track-gate.test.ts [ src/tests/tracker-song-bank-mono-track-gate.test.ts ]
+ FAIL  src/tests/tracker-song-bank-patch-signature.test.ts [ src/tests/tracker-song-bank-patch-signature.test.ts ]
+ FAIL  src/tests/tracker-song-bank-voice-reassign.test.ts [ src/tests/tracker-song-bank-voice-reassign.test.ts ]
+ FAIL  src/tests/tracker-song-bank.test.ts [ src/tests/tracker-song-bank.test.ts ]
+ FAIL  src/tests/tracker-song-builder-volume-reset.test.ts [ src/tests/tracker-song-builder-volume-reset.test.ts ]
+ FAIL  src/tests/tracker-song-end.test.ts [ src/tests/tracker-song-end.test.ts ]
+ FAIL  src/tests/tracker-song-restart.test.ts [ src/tests/tracker-song-restart.test.ts ]
+ FAIL  src/tests/tracker-track-monitor.test.ts [ src/tests/tracker-track-monitor.test.ts ]
+ FAIL  src/tests/tracker-volume-row-without-instrument.test.ts [ src/tests/tracker-volume-row-without-instrument.test.ts ]
+ FAIL  src/tests/turbulence-s3m-pitch-slide.test.ts [ src/tests/turbulence-s3m-pitch-slide.test.ts ]
+ FAIL  src/tests/useAhxDrag.test.ts [ src/tests/useAhxDrag.test.ts ]
+ FAIL  src/tests/user-settings-migration.test.ts [ src/tests/user-settings-migration.test.ts ]
+ FAIL  src/tests/visualizer-alignment.test.ts [ src/tests/visualizer-alignment.test.ts ]
+ FAIL  src/tests/worklet-graph-sync.test.ts [ src/tests/worklet-graph-sync.test.ts ]
+ FAIL  src/tests/xm-amiga-frequency-table.test.ts [ src/tests/xm-amiga-frequency-table.test.ts ]
+ FAIL  src/tests/xm-arpeggio-tick-order.test.ts [ src/tests/xm-arpeggio-tick-order.test.ts ]
+ FAIL  src/tests/xm-autovibrato.test.ts [ src/tests/xm-autovibrato.test.ts ]
+ FAIL  src/tests/xm-global-volume-and-period-limits.test.ts [ src/tests/xm-global-volume-and-period-limits.test.ts ]
+ FAIL  src/tests/xm-import.test.ts [ src/tests/xm-import.test.ts ]
+ FAIL  src/tests/xm-keyoff-no-sustain.test.ts [ src/tests/xm-keyoff-no-sustain.test.ts ]
+ FAIL  src/tests/xm-panning-envelope.test.ts [ src/tests/xm-panning-envelope.test.ts ]
+ FAIL  src/tests/xm-parser.test.ts [ src/tests/xm-parser.test.ts ]
+ FAIL  src/tests/xm-sample-panning.test.ts [ src/tests/xm-sample-panning.test.ts ]
+ FAIL  src/tests/xm-tone-portamento-keyoff.test.ts [ src/tests/xm-tone-portamento-keyoff.test.ts ]
+ FAIL  src/tests/xm-volume-column.test.ts [ src/tests/xm-volume-column.test.ts ]
+ FAIL  src/tests/xm-volume-envelope.test.ts [ src/tests/xm-volume-envelope.test.ts ]
+ FAIL  src/tests/diagnostics/debug-log.test.ts [ src/tests/diagnostics/debug-log.test.ts ]
+ FAIL  src/tests/stores/conncetion.test.ts [ src/tests/stores/conncetion.test.ts ]
+ FAIL  src/tests/stores/jukebox-editor-song-snapshot.test.ts [ src/tests/stores/jukebox-editor-song-snapshot.test.ts ]
+ FAIL  src/tests/stores/jukebox-store.test.ts [ src/tests/stores/jukebox-store.test.ts ]
+ FAIL  src/tests/stores/patch-store-dirty-tracking.test.ts [ src/tests/stores/patch-store-dirty-tracking.test.ts ]
+ FAIL  src/tests/stores/tracker-playback-ahx-edits.test.ts [ src/tests/stores/tracker-playback-ahx-edits.test.ts ]
+ FAIL  src/tests/stores/tracker-playback-ahx-routing.test.ts [ src/tests/stores/tracker-playback-ahx-routing.test.ts ]
+ FAIL  src/tests/stores/tracker-store-ahx-edit.test.ts [ src/tests/stores/tracker-store-ahx-edit.test.ts ]
+ FAIL  src/tests/stores/tracker-store-instrument-tags.test.ts [ src/tests/stores/tracker-store-instrument-tags.test.ts ]
+ FAIL  src/tests/stores/tracker-store-module-format.test.ts [ src/tests/stores/tracker-store-module-format.test.ts ]
+ FAIL  src/tests/stores/tracker-store-pattern-rows.test.ts [ src/tests/stores/tracker-store-pattern-rows.test.ts ]
+ FAIL  src/tests/stores/tracker-store-plist-guard.test.ts [ src/tests/stores/tracker-store-plist-guard.test.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/ahx-effect-semantics.spec.ts [ packages/tracker-playback/src/__tests__/ahx-effect-semantics.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/amiga-filter-math.spec.ts [ packages/tracker-playback/src/__tests__/amiga-filter-math.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/effect-processor.spec.ts [ packages/tracker-playback/src/__tests__/effect-processor.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/engine-display-latency.spec.ts [ packages/tracker-playback/src/__tests__/engine-display-latency.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/engine-load-caches.spec.ts [ packages/tracker-playback/src/__tests__/engine-load-caches.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/engine-pattern-delay.spec.ts [ packages/tracker-playback/src/__tests__/engine-pattern-delay.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/engine-pattern-length-loop-wrap.spec.ts [ packages/tracker-playback/src/__tests__/engine-pattern-length-loop-wrap.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/engine-retrigger.spec.ts [ packages/tracker-playback/src/__tests__/engine-retrigger.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/engine-speed-change-tick-timing.spec.ts [ packages/tracker-playback/src/__tests__/engine-speed-change-tick-timing.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/limiter.spec.ts [ packages/tracker-playback/src/__tests__/limiter.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/postfx-stage.spec.ts [ packages/tracker-playback/src/__tests__/postfx-stage.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/sample-conditioning-bitexact.spec.ts [ packages/tracker-playback/src/__tests__/sample-conditioning-bitexact.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/sampler-load-mono-fastpath.spec.ts [ packages/tracker-playback/src/__tests__/sampler-load-mono-fastpath.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/sampler-mip-levels.spec.ts [ packages/tracker-playback/src/__tests__/sampler-mip-levels.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/sampler-voice-teardown.spec.ts [ packages/tracker-playback/src/__tests__/sampler-voice-teardown.spec.ts ]
+ FAIL  packages/tracker-playback/src/__tests__/standalone-sink.spec.ts [ packages/tracker-playback/src/__tests__/standalone-sink.spec.ts ]
+TSConfckParseError: failed to resolve "extends":"./.quasar/tsconfig.json" in /home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-chipui/tsconfig.json
+  Plugin: vite:esbuild
+  File: /home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-chipui/tests/setup.ts
+ ❯ resolveExtends ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18845:8
+ ❯ parseExtends ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18780:24
+ ❯ parse$e ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18638:23
+ ❯ loadTsconfigJsonForFile ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:19433:20
+ ❯ transformWithEsbuild ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:19194:30
+ ❯ TransformPluginContext.transform ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:19297:24
+ ❯ PluginContainer.transform ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18
+ ❯ loadAndTransform ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27
+
+Caused by: Error: Cannot find module './.quasar/tsconfig.json'
+Require stack:
+- /home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-chipui/tsconfig.json
+ ❯ resolveExtends ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18833:14
+ ❯ parseExtends ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18780:24
+ ❯ parse$e ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18638:23
+ ❯ loadTsconfigJsonForFile ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:19433:20
+ ❯ transformWithEsbuild ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:19194:30
+ ❯ TransformPluginContext.transform ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:19297:24
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/258]⎯
+
+ Test Files  258 failed (258)
+      Tests  no tests
+   Start at  08:34:56
+   Duration  14.94s (transform 106ms, setup 0ms, collect 0ms, tests 0ms, environment 179.85s, prepare 78.86s)
+
+vitest exit: 1

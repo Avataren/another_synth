@@ -1,0 +1,271 @@
+   Compiling unicode-ident v1.0.19
+   Compiling proc-macro2 v1.0.101
+   Compiling autocfg v1.5.0
+   Compiling wasm-bindgen-shared v0.2.104
+   Compiling cfg-if v1.0.3
+   Compiling rustversion v1.0.22
+   Compiling libc v0.2.176
+   Compiling bumpalo v3.19.0
+   Compiling log v0.4.28
+   Compiling serde_core v1.0.226
+   Compiling getrandom v0.3.3
+   Compiling strength_reduce v0.2.4
+   Compiling once_cell v1.21.3
+   Compiling byteorder v1.5.0
+   Compiling serde v1.0.226
+   Compiling zerocopy v0.8.22
+   Compiling thiserror v1.0.69
+   Compiling serde_json v1.0.145
+   Compiling itoa v1.0.15
+   Compiling anyhow v1.0.100
+   Compiling memchr v2.7.5
+   Compiling ryu v1.0.20
+   Compiling rustc-hash v2.1.1
+   Compiling hound v3.5.1
+   Compiling base64 v0.22.1
+   Compiling dasp_sample v0.11.0
+   Compiling num-traits v0.2.19
+   Compiling wasm-bindgen v0.2.104
+   Compiling quote v1.0.40
+   Compiling syn v2.0.106
+   Compiling num-integer v0.1.46
+   Compiling num-complex v0.4.6
+   Compiling rand_core v0.9.3
+   Compiling primal-check v0.3.4
+   Compiling transpose v0.2.3
+   Compiling num-bigint v0.4.6
+   Compiling num-iter v0.1.45
+   Compiling rustfft v6.4.1
+   Compiling num-rational v0.4.2
+   Compiling serde_path_to_error v0.1.20
+   Compiling num v0.4.3
+   Compiling wasm-bindgen-backend v0.2.104
+   Compiling zerocopy-derive v0.7.35
+   Compiling serde_derive v1.0.226
+   Compiling thiserror-impl v1.0.69
+   Compiling zerocopy v0.7.35
+   Compiling wasm-bindgen-macro-support v0.2.104
+   Compiling ppv-lite86 v0.2.20
+   Compiling wasm-bindgen-macro v0.2.104
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.9.0
+   Compiling realfft v3.5.0
+   Compiling rubato v0.16.2
+   Compiling fft-convolver v0.2.0
+   Compiling js-sys v0.3.81
+   Compiling uuid v1.18.1
+   Compiling web-sys v0.3.81
+   Compiling serde-wasm-bindgen v0.6.5
+   Compiling audio_processor v0.1.0 (/home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-chipui/rust-wasm)
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:119:35
+    |
+119 |         let safe_ms = ms.max(f32::EPSILON * 1000.0); // Ensure positive
+    |                                   ^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: unused import: `super::*`
+    --> src/audio_engine/native.rs:1537:9
+     |
+1537 |     use super::*;
+     |         ^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:286:32
+    |
+286 |             envelope_l += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:293:32
+    |
+293 |             envelope_r += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: unused imports: `Connection`, `ModulationTransformation`, and `ModulationType`
+    --> src/audio_engine/native.rs:1538:24
+     |
+1538 |     use crate::graph::{Connection, ModulationTransformation, ModulationType};
+     |                        ^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+
+warning: unused imports: `AnalogOscillator` and `Mixer`
+    --> src/audio_engine/native.rs:1539:24
+     |
+1539 |     use crate::nodes::{AnalogOscillator, Mixer};
+     |                        ^^^^^^^^^^^^^^^^  ^^^^^
+
+warning: unused import: `crate::PortId`
+    --> src/audio_engine/native.rs:1540:9
+     |
+1540 |     use crate::PortId;
+     |         ^^^^^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+    --> src/audio_engine/native.rs:1541:9
+     |
+1541 |     use uuid::Uuid;
+     |         ^^^^^^^^^^
+
+warning: methods `ensure_gate_buffer_len`, `ensure_frequency_buffer_len`, `set_gate_buffer`, and `set_frequency_buffer` are never used
+   --> src/automation.rs:205:8
+    |
+ 31 | impl AutomationFrame {
+    | -------------------- methods in this implementation
+...
+205 |     fn ensure_gate_buffer_len(&mut self, target_len: usize) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+...
+215 |     fn ensure_frequency_buffer_len(&mut self, target_len: usize) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+239 |     fn set_gate_buffer(&mut self, voice_index: usize, values: &[f32]) {
+    |        ^^^^^^^^^^^^^^^
+...
+273 |     fn set_frequency_buffer(&mut self, voice_index: usize, values: &[f32]) {
+    |        ^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `audio_processor` (lib) generated 4 warnings
+error[E0432]: unresolved import `audio_processor::audio_engine::native`
+  --> tests/envelope_preview.rs:1:36
+   |
+ 1 | use audio_processor::audio_engine::native::AudioEngine;
+   |                                    ^^^^^^ could not find `native` in `audio_engine`
+   |
+note: found an item that was configured out
+  --> src/audio_engine/mod.rs:10:9
+   |
+ 9 | #[cfg(any(feature = "native-host", test))]
+   |          ------------------------------- the item is gated here
+10 | pub mod native;
+   |         ^^^^^^
+
+error[E0432]: unresolved import `audio_processor::audio_engine::native`
+  --> tests/engine_node_integration.rs:2:36
+   |
+ 2 | use audio_processor::audio_engine::native::{AudioEngine, EFFECT_NODE_ID_OFFSET};
+   |                                    ^^^^^^ could not find `native` in `audio_engine`
+   |
+note: found an item that was configured out
+  --> src/audio_engine/mod.rs:10:9
+   |
+ 9 | #[cfg(any(feature = "native-host", test))]
+   |          ------------------------------- the item is gated here
+10 | pub mod native;
+   |         ^^^^^^
+
+warning: unused import: `audio_processor::biquad::FilterType`
+ --> tests/engine_node_integration.rs:3:5
+  |
+3 | use audio_processor::biquad::FilterType;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `AnalogOscillatorStateUpdate`, `FilterSlope`, and `Waveform`
+ --> tests/engine_node_integration.rs:5:5
+  |
+5 |     AnalogOscillatorStateUpdate, FilterSlope, Waveform,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^
+
+warning: unused imports: `ModulationTransformation` and `ModulationType`
+ --> tests/engine_node_integration.rs:7:30
+  |
+7 | use audio_processor::graph::{ModulationTransformation, ModulationType};
+  |                              ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+
+warning: unused import: `audio_processor::traits::PortId`
+ --> tests/engine_node_integration.rs:8:5
+  |
+8 | use audio_processor::traits::PortId;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `audio_processor` (test "envelope_preview") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+warning: `audio_processor` (test "engine_node_integration") generated 4 warnings
+error: could not compile `audio_processor` (test "engine_node_integration") due to 1 previous error; 4 warnings emitted
+warning: variable does not need to be mutable
+   --> tests/ahx_replace.rs:218:10
+    |
+218 |     let (mut a, mut b, mut c) = (
+    |          ----^
+    |          |
+    |          help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `audio_processor` (test "ahx_replace") generated 1 warning (run `cargo fix --test "ahx_replace" -p audio_processor` to apply 1 suggestion)
+warning: `audio_processor` (lib test) generated 9 warnings (4 duplicates) (run `cargo fix --lib -p audio_processor --tests` to apply 5 suggestions)
+warning: unused dependency `anyhow`
+  --> Cargo.toml:46:1
+   |
+46 | anyhow = "1.0.93"
+   | ^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::unused_dependencies` is set to `warn` by default
+help: consider removing the dependency on `anyhow`
+warning: unused dependency `base64`
+  --> Cargo.toml:41:1
+   |
+41 | base64 = "0.22"
+   | ^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `base64`
+warning: unused dependency `dasp_sample`
+  --> Cargo.toml:47:1
+   |
+47 | dasp_sample = "0.11.0"
+   | ^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `dasp_sample`
+warning: unused dependency `hound`
+  --> Cargo.toml:39:1
+   |
+39 | hound = "3.5.1"
+   | ^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `hound`
+help: to still use for development builds, move to `dev-dependencies`
+warning: unused dependency `rubato`
+  --> Cargo.toml:51:1
+   |
+51 | rubato = "0.16.2"
+   | ^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `rubato`
+warning: unused dependency `serde_json`
+  --> Cargo.toml:35:1
+   |
+35 | serde_json = "1.0.145"
+   | ^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `serde_json`
+help: to still use for development builds, move to `dev-dependencies`
+warning: unused dependency `serde_path_to_error`
+  --> Cargo.toml:36:1
+   |
+36 | serde_path_to_error = "0.1.16"
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `serde_path_to_error`
+warning: unused dependency `serde-wasm-bindgen`
+  --> Cargo.toml:33:1
+   |
+33 | serde-wasm-bindgen = { version = "0.6.5", optional = true }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `serde-wasm-bindgen`
+warning: unused dependency `web-sys`
+  --> Cargo.toml:32:1
+   |
+32 | web-sys = { version = "0.3.81", features = ["Window", "Crypto", "console", "Performance"], optional = true }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `web-sys`
+warning: `audio_processor` (manifest) generated 9 warnings
+cargo(native-host) exit: 101

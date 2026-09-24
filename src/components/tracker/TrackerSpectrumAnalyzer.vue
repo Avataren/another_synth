@@ -20,12 +20,18 @@ interface Props {
    *  tracks 1 & 2 in the right strip. */
   trackNodes?: (AudioNode | null)[];
   isPlaying: boolean;
+  /** The source is mono (a SID chip, plan-sid-tracking.md S5.7): ONE trace
+   *  of the master mix in the left strip, instead of an L/R pair (its mix
+   *  output is stereo with identical sides) or voices spread over both
+   *  strips as if the chip panned them. */
+  mono?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   node: null,
   trackNodes: () => [],
-  isPlaying: false
+  isPlaying: false,
+  mono: false
 });
 
 const leftCanvasRef = ref<HTMLCanvasElement | null>(null);
@@ -59,7 +65,7 @@ interface Side {
   resizeObserver: ResizeObserver | null;
 }
 
-type Mode = 'none' | 'quad' | 'stereo';
+type Mode = 'none' | 'quad' | 'stereo' | 'mono';
 
 let currentMode: Mode = 'none';
 let splitter: ChannelSplitterNode | null = null;
@@ -284,6 +290,7 @@ function trackLayout() {
 }
 
 function resolveMode(): Mode {
+  if (props.mono) return props.node ? 'mono' : 'none';
   // Once already in quad mode, stay there as long as the track count still
   // has a per-track layout -- don't bounce out to 'stereo' (tearing
   // down/rebuilding the whole graph) just because every trackNode is
@@ -319,11 +326,14 @@ function syncGraph() {
       }
     } else if (mode === 'stereo' && props.node) {
       buildStereoGraph(props.node);
+    } else if (mode === 'mono' && props.node) {
+      buildMonoGraph(props.node);
     }
-  } else if (mode === 'stereo' && props.node && props.node !== connectedMasterNode) {
+  } else if ((mode === 'stereo' || mode === 'mono') && props.node && props.node !== connectedMasterNode) {
     teardownGraph();
-    currentMode = 'stereo';
-    buildStereoGraph(props.node);
+    currentMode = mode;
+    if (mode === 'stereo') buildStereoGraph(props.node);
+    else buildMonoGraph(props.node);
   }
 
   if (mode === 'quad') {
@@ -360,6 +370,15 @@ function buildStereoGraph(sourceNode: AudioNode) {
   splitter.connect(r.analyser, 1);
   left.channels = [l];
   right.channels = [r];
+}
+
+/** One analyser straight on the master (no splitter), drawn in the left strip only. */
+function buildMonoGraph(sourceNode: AudioNode) {
+  const channel = createChannelAnalyzer(sourceNode.context);
+  connectChannel(channel, sourceNode);
+  connectedMasterNode = sourceNode;
+  left.channels = [channel];
+  right.channels = [];
 }
 
 function updateChannelData(channel: ChannelAnalyzer, numBars: number) {
@@ -548,6 +567,7 @@ onUnmounted(() => {
 
 watch(() => props.node, syncGraph);
 watch(() => props.trackNodes, syncGraph);
+watch(() => props.mono, syncGraph);
 </script>
 
 <style scoped>

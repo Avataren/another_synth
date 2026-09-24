@@ -392,6 +392,68 @@ describe('a SID song plays through the playback store, the SID transport and the
   }, 30000);
 });
 
+/** The worklet client's last `song-loaded` info (the Rust player's own report). */
+function loadedChip(h: Awaited<ReturnType<typeof setup>>): string | undefined {
+  return h.playbackStore.sidTransport().player?.song?.chipModel;
+}
+
+describe('S5.7: switching the chip model mid-session rebuilds the player with it', () => {
+  it('while playing: the doc is retagged, the worklet reloads the 8580 file, seeks back to the row it was on and plays on', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const h = await setup();
+    const node = await startPlaying(h);
+    await until(() => loadedChip(h) === '6581', 'the song\'s own 6581 load');
+    node.pump(3 * ROW + 500);
+    await settle();
+    const loadsBefore = node.received.filter((c) => c.type === 'load-song').length;
+
+    expect(h.trackerStore.setSidChip('8580')).toBe(true);
+    expect(h.trackerStore.sidDoc?.chipModel).toBe('8580');
+    await new Promise((r) => setTimeout(r, SID_RELOAD_IDLE_MS + 60));
+    await until(() => loadedChip(h) === '8580', 'the 8580 load');
+
+    expect(node.received.filter((c) => c.type === 'load-song').length).toBe(loadsBefore + 1);
+    expect(node.received.slice(-3).map((c) => c.type)).toEqual(['load-song', 'seek', 'play']);
+    const load = node.received.at(-3) as Extract<SidCommand, { type: 'load-song' }>;
+    // Header byte 5 (after 'ASID' and the version): the chip code, 0 = 8580.
+    expect(new Uint8Array(load.bytes as ArrayBuffer)[5]).toBe(0);
+    // Resumed, not restarted: the seek is the row the song had reached.
+    expect((node.received.at(-2) as Extract<SidCommand, { type: 'seek' }>).row).toBe(3);
+    expect(h.playbackStore.isPlaying).toBe(true);
+    expect(peak(node.pump(4 * ROW).mix)).toBeGreaterThan(0.05);
+
+    // Undo is a doc edit too: back to the song's own 6581.
+    h.trackerStore.undo();
+    await new Promise((r) => setTimeout(r, SID_RELOAD_IDLE_MS + 60));
+    await until(() => loadedChip(h) === '6581', 'the 6581 reload after undo');
+  }, 30000);
+
+  it('paused: the switch waits for the resume, which loads the new chip at the paused row', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const h = await setup();
+    const node = await startPlaying(h);
+    node.pump(2 * ROW + 500);
+    await settle();
+    h.playbackStore.pause();
+    const loadsBefore = node.received.filter((c) => c.type === 'load-song').length;
+    h.trackerStore.setSidChip('8580');
+    await new Promise((r) => setTimeout(r, SID_RELOAD_IDLE_MS + 60));
+    expect(node.received.filter((c) => c.type === 'load-song').length).toBe(loadsBefore);
+    await h.playbackStore.resume();
+    expect(node.received.slice(-3).map((c) => c.type)).toEqual(['load-song', 'seek', 'play']);
+    expect((node.received.at(-2) as Extract<SidCommand, { type: 'seek' }>).row).toBe(2);
+    await until(() => loadedChip(h) === '8580', 'the 8580 load on resume');
+  }, 30000);
+
+  it('stopped: the next Play loads the retagged song (the chain song is tagged 6581, the switch makes it 8580)', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const h = await setup();
+    h.trackerStore.setSidChip('8580');
+    await startPlaying(h);
+    await until(() => loadedChip(h) === '8580', 'the 8580 load');
+  }, 30000);
+});
+
 function sidReg(index: number): number {
   return Math.round((440 * 2 ** ((index + 12 - 69) / 12) * 2 ** 24) / 985248);
 }
