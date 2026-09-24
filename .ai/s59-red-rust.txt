@@ -1,0 +1,39 @@
+   Compiling audio_processor v0.1.0 (/home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-gateoff/rust-wasm)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s
+     Running tests/sid_gate_off.rs (target/debug/build/audio_processor/840692dd8a95e4e7/out/sid_gate_off-840692dd8a95e4e7)
+running 6 tests
+test e0_to_ef_rows_keep_the_low_nibble_gate_bit_included ... FAILED
+test a_gate_off_row_releases_and_a_later_gate_on_row_retriggers_while_the_channel_gate_is_on ... FAILED
+test a_gate_on_waveform_change_from_the_table_does_not_retrigger ... ok
+test command_7_sets_the_whole_control_byte ... FAILED
+test after_a_key_off_no_table_byte_sets_the_gate_again ... ok
+test a_drum_tables_gate_off_rows_release_the_note_in_the_real_song ... FAILED
+failures:
+---- e0_to_ef_rows_keep_the_low_nibble_gate_bit_included stdout ----
+thread 'e0_to_ef_rows_keep_the_low_nibble_gate_bit_included' (2245416) panicked at tests/sid_gate_off.rs:156:5:
+assertion `left == right` failed
+  left: [9, 65, 9, 9]
+ right: [9, 65, 8, 8]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+---- a_gate_off_row_releases_and_a_later_gate_on_row_retriggers_while_the_channel_gate_is_on stdout ----
+thread 'a_gate_off_row_releases_and_a_later_gate_on_row_retriggers_while_the_channel_gate_is_on' (2245412) panicked at tests/sid_gate_off.rs:127:5:
+assertion `left == right` failed
+  left: [65, 65, 65, 65, 65, 65]
+ right: [65, 65, 64, 64, 65, 65]
+---- command_7_sets_the_whole_control_byte stdout ----
+thread 'command_7_sets_the_whole_control_byte' (2245415) panicked at tests/sid_gate_off.rs:169:5:
+assertion `left == right` failed
+  left: [65, 65, 65, 65, 65, 65, 65, 65, 129, 129]
+ right: [65, 65, 65, 65, 65, 65, 65, 65, 128, 128]
+---- a_drum_tables_gate_off_rows_release_the_note_in_the_real_song stdout ----
+thread 'a_drum_tables_gate_off_rows_release_the_note_in_the_real_song' (2245411) panicked at tests/sid_gate_off.rs:63:5:
+assertion `left == right` failed
+  left: [9, 129, 65, 65, 64, 64, 9, 129, 129, 129, 128, 128]
+ right: [9, 129, 65, 64, 64, 64, 9, 129, 128, 128, 128, 128]
+failures:
+    a_drum_tables_gate_off_rows_release_the_note_in_the_real_song
+    a_gate_off_row_releases_and_a_later_gate_on_row_retriggers_while_the_channel_gate_is_on
+    command_7_sets_the_whole_control_byte
+    e0_to_ef_rows_keep_the_low_nibble_gate_bit_included
+test result: FAILED. 2 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+error: test failed, to rerun pass `--test sid_gate_off`

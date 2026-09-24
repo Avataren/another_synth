@@ -1,0 +1,57 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 npx
+npm notice run 'vitest' run src/tests/sid-gate-off.test.ts
+
+ RUN  v2.1.8 /home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-gateoff
+
+   × S5.9 wave-table gate bit > the instrument page draws what the player plays: the hi-hat releases on its $80 row 6ms
+     → expected [ 9, 129, 129, 129, 129 ] to deeply equal [ 9, 129, 128, 128, 128 ]
+   × S5.9 wave-table gate bit > SidProcessorCore over the real wasm: a crash cymbal on a $80 loop releases instead of hissing for a minute 2134ms
+     → expected 0.24495425820350647 to be less than 0.001
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/sid-gate-off.test.ts > S5.9 wave-table gate bit > the instrument page draws what the player plays: the hi-hat releases on its $80 row
+AssertionError: expected [ 9, 129, 129, 129, 129 ] to deeply equal [ 9, 129, 128, 128, 128 ]
+
+- Expected
++ Received
+
+  Array [
+    9,
+    129,
+-   128,
+-   128,
+-   128,
++   129,
++   129,
++   129,
+  ]
+
+     82|     const doc = importSong(SONG);
+     83|     const controls = simulateSidInstrument(doc, 3, 48, 5).map((f) => f…
+     84|     expect(controls).toEqual([0x09, 0x81, 0x80, 0x80, 0x80]);
+       |                      ^
+     85|   });
+     86| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/tests/sid-gate-off.test.ts > S5.9 wave-table gate bit > SidProcessorCore over the real wasm: a crash cymbal on a $80 loop releases instead of hissing for a minute
+AssertionError: expected 0.24495425820350647 to be less than 0.001
+    105|     render(core, (3450 - 3218) * FRAME);
+    106|     const tail = render(core, 100 * FRAME)[1]!;
+    107|     expect(peak(tail)).toBeLessThan(1e-3);
+       |                        ^
+    108|   }, 60000);
+    109| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed (3)
+   Start at  07:33:29
+   Duration  3.13s (transform 297ms, setup 13ms, collect 366ms, tests 2.15s, environment 0ms, prepare 239ms)
+

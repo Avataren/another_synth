@@ -24,8 +24,19 @@
 //!   3. the hard restart: `gate_timer` frames before a row that triggers a
 //!      note, the gate is cleared, and with `hard_restart` AD/SR go to 0;
 //!   4. every register is written: per voice frequency (+ vibrato), pulse
-//!      width, AD, SR, then control (waveform | gate); then cutoff,
-//!      resonance/routing and mode/volume.
+//!      width, AD, SR, then control (`waveform & gate mask`, below); then
+//!      cutoff, resonance/routing and mode/volume.
+//!
+//! The control byte (S5.9, GT2 source): the waveform is a whole control
+//! byte, gate bit included, as GoatTracker keeps it (`cptr->wave`), and the
+//! channel's gate is a MASK over it, 0xFF on, 0xFE off (gplay.c:129, 148,
+//! 362, 916, 918, 926); the register is `waveform & mask` (gplay.c:945). So
+//! a wave-table row or command 7 with the gate bit clear releases the note
+//! even while the channel's gate is on (the classic drum ending, `$80` noise
+//! or `$40` pulse), a gate-set row after it retriggers, and after a key off
+//! no waveform byte raises the gate. An instrument's own `waveform` is the
+//! doc's gate-clear control byte (`song.rs`): a trigger stores it with the
+//! gate bit set, so it sounds as it always has.
 //!
 //! Commands (the row's command nibble and parameter; GoatTracker's command
 //! set, from its format documentation, interpreted here, not copied):
@@ -33,7 +44,8 @@
 //!   register speed held in speed-table row `param` (left<<8 | right);
 //!   4 vibrato with speed-table row `param` (left = frames per half-swing,
 //!   right = register step per frame); 5 AD = param; 6 SR = param;
-//!   7 waveform = param; 8/9/A start the wave/pulse/filter table at row
+//!   7 waveform = param (the whole byte, gate bit included, gplay.c:433);
+//!   8/9/A start the wave/pulse/filter table at row
 //!   `param`; B resonance/routing ($17) = param; C cutoff high byte = param;
 //!   D master volume = param & 15; E funktempo: not modelled (ignored);
 //!   F tempo = param & 0x7F when it is at least 1. A row with command 3 and
@@ -50,9 +62,9 @@
 //! jump per frame):
 //!   wave: left 0x01..=0x0F waits that many frames, then sets the row's note
 //!     (the row lasts left + 1 frames; pinned in S5); 0x10..=0xDF
-//!     sets the waveform, 0xE0..=0xEF the waveform `left & 0x0F`, 0x00 keeps
-//!     it, 0xF0..=0xFE (GT's table commands) is not modelled and only
-//!     advances. right: 0x00..=0x5F note up from the triggered note,
+//!     sets the waveform to `left` whole, 0xE0..=0xEF to `left & 0x0F`, the
+//!     gate bit kept in both (gplay.c:525, 527; S5.9), 0x00 keeps it,
+//!     0xF0..=0xFE (GT's table commands) is not modelled and only advances. right: 0x00..=0x5F note up from the triggered note,
 //!     0x60..=0x7F down (right - 0x80), 0x80 no change, 0x81..=0xDF the
 //!     absolute note `right & 0x7F`. This right column is the arpeggio;
 //!   pulse: left 0x80..=0xFE sets the width to (left & 0x0F)<<8 | right;
@@ -548,7 +560,8 @@ impl SidSongPlayer {
         match row.command {
             0x5 => ch.ad = p,
             0x6 => ch.sr = p,
-            0x7 => ch.waveform = p & !GATE,
+            // CMD_SETWAVE (gcommon.h:11): the whole byte (gplay.c:433).
+            0x7 => ch.waveform = p,
             0x8 => {
                 ch.wave_ptr = p;
                 ch.wave_wait = 0;
@@ -591,7 +604,13 @@ impl SidSongPlayer {
         };
         ch.ad = ins.ad();
         ch.sr = ins.sr();
-        ch.waveform = ins.waveform & !GATE;
+        // The doc's instrument waveform has no gate bit (`song.rs`); under the
+        // AND-mask write it carries one, so the note sounds until a table row,
+        // command 7, key off or hard restart says otherwise. S5.9 kept this
+        // byte what the player wrote before (0x01 for an imported GT
+        // instrument, whose table sets the waveform); GT itself would hold the
+        // first-frame byte here (gplay.c:361), see the verdict.
+        ch.waveform = ins.waveform | GATE;
         ch.pulse_width = ins.pulse_width;
         ch.first_wave = ins.first_wave;
         ch.wave_ptr = ins.wave_ptr;
@@ -729,8 +748,10 @@ impl SidSongPlayer {
                 }
                 l => {
                     match l {
-                        0x10..=0xDF => ch.waveform = l & !GATE,
-                        0xE0..=0xEF => ch.waveform = l & 0x0E,
+                        // The gate bit is the row's (gplay.c:525, 527): a row
+                        // with it clear releases the note (S5.9).
+                        0x10..=0xDF => ch.waveform = l,
+                        0xE0..=0xEF => ch.waveform = l & 0x0F,
                         _ => {}
                     }
                     Self::wave_note(ch, row.right);
@@ -872,7 +893,8 @@ impl SidSongPlayer {
             let control = if ch.first_frame && ch.first_wave != 0 {
                 ch.first_wave
             } else {
-                ch.waveform | if ch.gate { GATE } else { 0 }
+                // `wave & gate` (gplay.c:945): the channel's gate is a mask.
+                ch.waveform & if ch.gate { 0xFF } else { !GATE }
             };
             self.chip.write(base + 4, control);
         }

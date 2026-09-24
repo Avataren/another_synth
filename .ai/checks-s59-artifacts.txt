@@ -1,0 +1,2 @@
+✓ public/worklets and public/wasm match their sources
+EXIT CODE (node scripts/check-artifacts.cjs): 0

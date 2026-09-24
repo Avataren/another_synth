@@ -75,10 +75,12 @@ export function buildSidChainSong(): SidDoc {
   });
 
   const tables: Array<[SidTableName, number, number]> = [
-    // wave: pulse at +0, +4, +7 semitones, then back to row 1 (a C major arpeggio)
-    ['wave', 0x40, 0x00],
-    ['wave', 0x40, 0x04],
-    ['wave', 0x40, 0x07],
+    // wave: pulse + gate at +0, +4, +7 semitones, then back to row 1 (a C
+    // major arpeggio). The gate bit is the row's own, as in GoatTracker
+    // (S5.9): a $40 row would release the note.
+    ['wave', 0x41, 0x00],
+    ['wave', 0x41, 0x04],
+    ['wave', 0x41, 0x07],
     ['wave', 0xff, 0x01],
     // pulse: width 0x400, then 32 frames of +0x10, 32 of -0x10, loop to row 2
     ['pulse', 0x84, 0x00],
