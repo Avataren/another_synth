@@ -134,6 +134,25 @@ fn each_tap_carries_its_own_voice() {
 }
 
 #[test]
+fn tap_full_scale_is_what_a_full_voice_reaches_in_its_tap() {
+    // Voice 2 plays a saw (the full 12-bit swing, -1..+1 in voice units) at
+    // sustain 15 and the song's VOL 15: past the DC blocker's settling its
+    // tap swings +-1 voice unit, times the chip's output gain. The scopes
+    // divide by `tap_full_scale` to draw that at full height, on both chips.
+    for model in [SidModel::Sid8580, SidModel::Sid6581] {
+        let mut s = chord();
+        s.model = model;
+        let mut p = player(&s);
+        let full = p.chip().tap_full_scale();
+        assert!(full > 0.0 && full < 1.0, "{model:?}: full scale {full} is a voice's share of the mix");
+        let (_, taps) = render_taps(&mut p, 25);
+        let peak = taps[1][10 * SPF..].iter().fold(0.0f32, |m, s| m.max(s.abs())) as f64;
+        let ratio = peak / full;
+        assert!((0.9..=1.1).contains(&ratio), "{model:?}: saw tap peak {peak} vs full scale {full} (ratio {ratio})");
+    }
+}
+
+#[test]
 fn the_voice_mask_drops_a_voice_from_the_mix_and_its_tap() {
     let mut p = player(&chord());
     assert_eq!(p.chip().voice_mask(), ALL_VOICES);

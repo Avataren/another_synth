@@ -134,6 +134,11 @@ impl SidPlayer {
         }
     }
 
+    /// A voice tap's full scale (`Chip::tap_full_scale`) at gain 1.0.
+    pub fn tap_full_scale(&self) -> f64 {
+        self.player.chip().tap_full_scale()
+    }
+
     pub fn instrument_count(&self) -> u32 {
         self.player.song().instruments.len() as u32
     }

@@ -33,6 +33,8 @@ export interface SidWasmPlayer {
   channels(): number;
   chip_model(): string;
   instrument_count(): number;
+  /** A voice tap's level for a full voice at VOL 15 (`Chip::tap_full_scale`). */
+  tap_full_scale(): number;
   enable_preview(): void;
   preview_note_on(instrument: number, note: number): boolean;
   preview_note_off(): void;
@@ -48,6 +50,12 @@ export interface SidSongInfo {
   chipModel: string;
   instrumentCount: number;
   sampleRate: number;
+  /**
+   * What a full-swing voice at full envelope and VOL 15 reaches in its tap
+   * (outputs 1..3): each voice at its share of the mix, well below 1.0. The
+   * per-track scopes divide by it to draw such a voice at full height.
+   */
+  voiceFullScale: number;
 }
 
 /** Main thread -> worklet. */
@@ -231,6 +239,7 @@ export class SidProcessorCore {
           chipModel: player.chip_model(),
           instrumentCount: player.instrument_count(),
           sampleRate: this.sampleRate,
+          voiceFullScale: player.tap_full_scale(),
         },
       });
     } catch (error) {

@@ -2529,6 +2529,14 @@ export class SidPlayer {
     enable_preview() {
         wasm.sidplayer_enable_preview(this.__wbg_ptr);
     }
+    /**
+     * A voice tap's full scale (`Chip::tap_full_scale`) at gain 1.0.
+     * @returns {number}
+     */
+    tap_full_scale() {
+        const ret = wasm.sidplayer_tap_full_scale(this.__wbg_ptr);
+        return ret;
+    }
     clear_loop_rows() {
         wasm.sidplayer_clear_loop_rows(this.__wbg_ptr);
     }

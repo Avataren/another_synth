@@ -259,6 +259,14 @@ impl Chip {
         self.volume_dac[(vol & 0x0F) as usize]
     }
 
+    /// A voice tap's full scale: the level one full-swing voice at full
+    /// envelope and VOL 15 reaches in its tap (`render_taps`). The taps carry
+    /// each voice at its share of the mix, so this sits well below 1.0; the
+    /// per-track scopes divide by it to draw a full voice at full height.
+    pub fn tap_full_scale(&self) -> f64 {
+        self.volume_level(0x0F) * self.base_gain * self.trim
+    }
+
     pub fn model(&self) -> SidModel {
         self.model
     }

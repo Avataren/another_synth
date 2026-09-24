@@ -164,6 +164,14 @@ export class SidSongTransport {
     this.client?.connectVoiceTaps(Array.from({ length: SID_VOICES }, (_, i) => bank.getTrackTap(i)));
   }
 
+  /**
+   * What a full voice reaches in its tap (`SidSongInfo.voiceFullScale`), for
+   * the per-track scopes; `null` before a song has loaded.
+   */
+  voiceFullScale(): number | null {
+    return this.client?.song?.voiceFullScale ?? null;
+  }
+
   private disposeClient(): void {
     for (const unsub of this.clientUnsubs) unsub();
     this.clientUnsubs = [];

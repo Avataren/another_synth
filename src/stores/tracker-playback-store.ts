@@ -475,6 +475,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     sid.connectVoiceTaps();
   }
 
+  /** A SID voice tap's full scale, for the per-track scopes (`null`: no song loaded). */
+  function getSidVoiceFullScale(): number | null {
+    return sid.voiceFullScale();
+  }
+
   /** The SID transport itself (tests and diagnostics). */
   function sidTransport(): SidSongTransport {
     return sid;
@@ -1005,6 +1010,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     sidPreviewOutput,
     onSidPreviewOutput,
     connectSidVoiceTaps,
+    getSidVoiceFullScale,
     sidTransport,
 
     // Mute/Solo

@@ -11,6 +11,7 @@ import { AHX_SCOPE_FULL_SCALE } from 'src/audio/worklets/ahx-core';
 import {
   scopePolyline,
   scopeFullScale,
+  scopeMidrange,
   scopeTriggerStart,
   scopeVisiblePoints,
 } from 'src/components/tracker/scope-trace';
@@ -26,15 +27,36 @@ interface Props {
    */
   scopeSource?: ((channel: number) => Int16Array | null) | null;
   scopeChannel?: number;
-  /** Fixed display gain for the scope path (1, 2 or 4; clipped at the edge). */
+  /**
+   * Draws `audioNode` as a triggered oscilloscope instead of the plain
+   * analyser trace: a still waveform drawn around its midrange (the source
+   * is DC-blocked), with a swing of twice this value (read every frame;
+   * `null` falls back to 1.0) spanning the height, less a little headroom
+   * (`ANALYSER_SCOPE_HEADROOM`). For a source whose voices
+   * run well below full scale, like a SID voice tap at its share of the
+   * chip's mix (`getSidVoiceFullScale`).
+   */
+  analyserFullScale?: (() => number | null) | null;
+  /** Fixed display gain for both scope paths (1, 2 or 4; clipped at the edge). */
   scopeGain?: number;
 }
 
 const props = defineProps<Props>();
 
+/** Analyser window of the plain trace, and of the triggered one (as AHX_SCOPE_WINDOW_FRAMES). */
+const TRACE_FFT_SIZE = 256;
+const SCOPE_FFT_SIZE = 2048;
+/**
+ * Headroom over `analyserFullScale` in the triggered scope. A DC blocker lets
+ * a slow pulse droop between edges, so each edge overshoots its full swing:
+ * up to 1.11x measured on GoatTracker demos. 1.15 keeps those in the scope.
+ */
+const ANALYSER_SCOPE_HEADROOM = 1.15;
+
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let analyser: AnalyserNode | null = null;
 let dataArray: Uint8Array | null = null;
+let floatData: Float32Array | null = null;
 let unregisterAnimation: (() => void) | null = null;
 let currentConnectedNode: AudioNode | null = null;
 
@@ -99,7 +121,7 @@ function setupAnalyser() {
   // Create analyser if we don't have one yet
   if (!analyser) {
     analyser = props.audioContext.createAnalyser();
-    analyser.fftSize = 256;
+    analyser.fftSize = TRACE_FFT_SIZE;
     dataArray = new Uint8Array(analyser.frequencyBinCount);
   }
 
@@ -138,8 +160,8 @@ function startVisualization() {
   // Reused every frame by the scope path.
   let polyline = new Float32Array(0);
 
-  const drawScope = (source: (channel: number) => Int16Array | null) => {
-    const data = source(props.scopeChannel ?? 0);
+  // `centered`: draw around the window's midrange (a DC-blocked source).
+  const drawScope = (data: ArrayLike<number> | null, fullScale: number, centered = false) => {
     ctx.strokeStyle = cachedWaveformColor;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -148,15 +170,17 @@ function startVisualization() {
       ctx.lineTo(canvasWidth, canvasHeight / 2);
     } else {
       const count = scopeVisiblePoints(data.length);
+      const center = centered ? scopeMidrange(data) : 0;
       if (polyline.length < count * 2) polyline = new Float32Array(count * 2);
       const n = scopePolyline(
         data,
-        scopeTriggerStart(data),
+        scopeTriggerStart(data, center),
         count,
         canvasWidth,
         canvasHeight,
-        scopeFullScale(AHX_SCOPE_FULL_SCALE, props.scopeGain),
+        scopeFullScale(fullScale, props.scopeGain),
         polyline,
+        center,
       );
       for (let k = 0; k < n; k++) {
         const x = polyline[2 * k] ?? 0;
@@ -170,10 +194,21 @@ function startVisualization() {
 
   const draw = () => {
     const source = props.scopeSource ?? null;
+    const analyserFullScale = props.analyserFullScale ?? null;
     if (!ctx || canvasWidth === 0) return;
     if (!source && (!localAnalyser || !localDataArray)) return;
 
-    if (!source) localAnalyser!.getByteTimeDomainData(localDataArray!);
+    // The triggered scope wants a longer window than the plain trace.
+    if (!source && localAnalyser) {
+      const size = analyserFullScale ? SCOPE_FFT_SIZE : TRACE_FFT_SIZE;
+      if (localAnalyser.fftSize !== size) localAnalyser.fftSize = size;
+      if (analyserFullScale) {
+        if (floatData?.length !== size) floatData = new Float32Array(size);
+        localAnalyser.getFloatTimeDomainData(floatData);
+      } else {
+        localAnalyser.getByteTimeDomainData(localDataArray!);
+      }
+    }
 
     // Clear and draw background
     ctx.fillStyle = cachedBgColor;
@@ -188,7 +223,12 @@ function startVisualization() {
     ctx.stroke();
 
     if (source) {
-      drawScope(source);
+      drawScope(source(props.scopeChannel ?? 0), AHX_SCOPE_FULL_SCALE);
+      return;
+    }
+    if (analyserFullScale) {
+      const fullScale = analyserFullScale();
+      drawScope(floatData, (fullScale && fullScale > 0 ? fullScale : 1) * ANALYSER_SCOPE_HEADROOM, true);
       return;
     }
     const analyserData = localDataArray!;
@@ -239,6 +279,7 @@ function cleanup() {
   }
 
   dataArray = null;
+  floatData = null;
   canvasWidth = 0;
   canvasHeight = 0;
 }

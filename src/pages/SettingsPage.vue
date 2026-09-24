@@ -243,7 +243,7 @@
 
                   <div class="select-setting">
                     <label class="select-label" for="ahx-scope-gain">
-                      AHX/HVL scope gain
+                      AHX/HVL and SID scope gain
                     </label>
                     <select
                       id="ahx-scope-gain"
@@ -261,8 +261,8 @@
                       <option value="4">4x</option>
                     </select>
                     <span class="toggle-description">
-                      Magnifies each AHX/HVL channel's waveform so quiet
-                      voices are readable; a loud one is clipped at the edge
+                      Magnifies each AHX/HVL or SID channel's waveform so
+                      quiet voices are readable; a loud one is clipped at the edge
                       of its scope. Display only.
                     </span>
                   </div>

@@ -79,8 +79,20 @@ describe('SidProcessorCore over the real wasm', () => {
     expect(events).toContainEqual({
       type: 'song-loaded',
       id: nextId - 1,
-      info: { songRows: 32, channels: 3, chipModel: '6581', instrumentCount: 4, sampleRate: SAMPLE_RATE },
+      info: {
+        songRows: 32,
+        channels: 3,
+        chipModel: '6581',
+        instrumentCount: 4,
+        sampleRate: SAMPLE_RATE,
+        voiceFullScale: expect.any(Number),
+      },
     });
+    // A voice's share of the mix: the scopes scale it up to full height.
+    const loaded = events.findLast((e) => e.type === 'song-loaded');
+    const fullScale = loaded?.type === 'song-loaded' ? loaded.info.voiceFullScale : 0;
+    expect(fullScale).toBeGreaterThan(0.05);
+    expect(fullScale).toBeLessThan(0.5);
     core.handle({ type: 'load-song', id: nextId++, bytes: new Uint8Array([1, 2, 3, 4]) });
     expect(events.at(-1)).toMatchObject({ type: 'error', id: nextId - 1 });
     expect((events.at(-1) as { message: string }).message).toMatch(/SID load failed: .*ASID/);
