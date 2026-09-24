@@ -258,8 +258,8 @@ describe('the grid projection', () => {
     expect(grid[0]!.positionTranspose).toEqual([0, 0, 5]);
     const [v1, v2, v3] = grid[0]!.tracks;
     expect(v1!.entries[0]).toMatchObject({ row: 0, note: 'A-4', instrument: '01' });
-    // The chip's pitch, not equal temperament: 7493 * 985248 / 2^24.
-    expect(v1!.entries[0]!.frequency).toBeCloseTo(440.0291, 4);
+    // The chip's pitch, not equal temperament: 7494 * 985248 / 2^24.
+    expect(v1!.entries[0]!.frequency).toBeCloseTo(440.0878, 4);
     expect(v2!.entries[0]).toMatchObject({ row: 8, note: 'C-4', instrument: '02' });
     // E-3 transposed +5 sounds A-3.
     expect(v3!.entries[0]).toMatchObject({ row: 10, note: 'A-3', instrument: '03' });

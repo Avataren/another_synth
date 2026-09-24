@@ -101,12 +101,13 @@ fn power(x: &[f32], hz: f64) -> f64 {
 #[test]
 fn note_table_pins_match_the_app() {
     // reg = round(440 * 2^((i - 57) / 12) * 2^24 / 985 248):
-    // C-0: 16.3516 Hz * 17.02841 = 278.44 -> 278; A-4: 440 * 17.02841 =
-    // 7492.5 -> 7493; G#7: 3322.44 * 17.02841 = 56575.9 -> 56576. The app's
+    // GT's table: equal temperament at a nominal 985 000 Hz clock (2^24 / 985000
+    // = 17.0326 units per Hz): C-0: 16.3516 Hz -> 278.5 -> 279; A-4: 440 ->
+    // 7494.3 -> 7494; G#7: 3322.44 -> 56590. The app's
     // `sidNoteFreqReg` test pins the same three.
-    assert_eq!(gt_note_freq_reg(0), 278);
-    assert_eq!(gt_note_freq_reg(57), 7493);
-    assert_eq!(gt_note_freq_reg(92), 56576);
+    assert_eq!(gt_note_freq_reg(0), 279);
+    assert_eq!(gt_note_freq_reg(57), 7494);
+    assert_eq!(gt_note_freq_reg(92), 56590);
     // S5.10: the index is 7 bits, as GT's table reads it (200 & 0x7f = 72);
     // strictly rising over the row notes.
     assert_eq!(gt_note_freq_reg(200), gt_note_freq_reg(72));
@@ -214,7 +215,7 @@ fn a_note_plays_its_table_register_on_the_songs_chip() {
     // Attack 0 is 2 ms and the frame 20 ms, so the envelope has already
     // reached the sustain level 0xFF by the frame's end.
     let v = p.chip().voice(0);
-    assert_eq!(v.frequency(), 7493);
+    assert_eq!(v.frequency(), 7494);
     assert_eq!(v.control(), 0x11);
     assert_eq!(v.envelope_stage(), Stage::DecaySustain);
     assert_eq!(v.envelope_level(), 0xFF);

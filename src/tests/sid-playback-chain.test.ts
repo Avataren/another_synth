@@ -35,7 +35,7 @@ import { buildSidChainSong } from './helpers/sid-chain-song';
 const ROOT = resolve(__dirname, '../..');
 const SAMPLE_RATE = 44100;
 const ROW = 6 * 882;
-const A4 = (7493 * 985248) / 2 ** 24;
+const A4 = (7494 * 985248) / 2 ** 24;
 
 beforeAll(() => {
   initSync({ module: new Uint8Array(readFileSync(resolve(ROOT, 'public/wasm/audio_processor_bg.wasm'))) });

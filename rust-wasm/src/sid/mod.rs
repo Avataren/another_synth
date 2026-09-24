@@ -142,21 +142,30 @@ pub const GT_NOTE_COUNT: u8 = 93;
 /// indexes it with `note & 0x7f` (gplay.c:720). S5.10.
 pub const GT_TABLE_NOTES: u8 = 96;
 
+/// The nominal clock GoatTracker's note table assumes, Hz. Its 96 entries are
+/// equal temperament with A-4 = 440 Hz at THIS clock, rounded; at the chip's
+/// true PAL clock (`PAL_CLOCK_HZ`, 985 248) they sound 0.43 cent sharp on
+/// average (0.98 at most). Found by fitting: with 985 000 all 96 of GT's
+/// entries reproduce exactly (S5.16), and no other clock, tuning or rounding
+/// tried gets past 61.
+pub const GT_TABLE_CLOCK_HZ: f64 = 985_000.0;
+
 /// The frequency register of note index `index` as GoatTracker's player
 /// reads it (S5.10): the index is 7 bits (`note &= 0x7f`, gplay.c:720, so a
 /// transpose that wraps below C-0 lands high); 0..95 are notes, equal
-/// temperament from A-4 = 440 Hz at the PAL clock, rounded, i.e.
-/// `note_to_freq_reg` with C-0 at MIDI 12, B-7 clamped to $FFFF; 96..127 are
-/// 0, silence, as GT's zero entries are. The entries are DERIVED, not GT's
-/// (plan §3 rule 3: no GT table is copied): 64 of GT's 96 differ from them by
-/// 1-16 register units, under 0.5 cent except C-0 (279 vs 278, 6 cents). The
-/// app's `sidNoteFreqReg` computes the same numbers over 0..92; both sides
-/// pin 278, 7493 and 56576 for C-0, A-4 and G#7.
+/// temperament from A-4 = 440 Hz at `GT_TABLE_CLOCK_HZ`, rounded, with B-7
+/// clamped to $FFFF; 96..127 are 0, silence, as GT's zero entries are. The
+/// entries are COMPUTED, not GT's (plan §3 rule 3: no GT table is copied); the
+/// formula is exact against GT's numbers since S5.16 (before it used the true
+/// PAL clock and 64 of GT's 96 differed by 1-16 register units). The app's
+/// `sidNoteFreqReg` computes the same numbers over 0..92; both sides pin 279,
+/// 7494 and 56590 for C-0, A-4 and G#7.
 pub fn gt_note_freq_reg(index: u8) -> u16 {
     let i = index & 0x7F;
     if i >= GT_TABLE_NOTES {
         0
     } else {
-        note_to_freq_reg(i as i32 + 12)
+        let hz = 440.0 * 2f64.powf((i as i32 - 57) as f64 / 12.0);
+        (hz * 16_777_216.0 / GT_TABLE_CLOCK_HZ).round().clamp(0.0, 65_535.0) as u16
     }
 }

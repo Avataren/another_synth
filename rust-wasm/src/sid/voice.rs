@@ -65,16 +65,17 @@
 
 use super::envelope::{Envelope, Stage};
 use super::noise::Noise;
-use super::revision::profile_6581;
+use super::revision::R4AR;
 use super::waveform::{waveform_output, GATE, NOISE, TEST};
 use super::{SidModel, ACC_MASK, PAL_CLOCK_HZ};
 
 const MSB: u32 = 0x80_0000;
 const NOISE_CLOCK_BIT: u32 = 0x08_0000; // accumulator bit 19
 
-/// 6581 waveform-DAC DC offset in normalised units (half-scale = 1).
-/// INFERRED tuning. The value lives in the revision profile (S5.15).
-pub const VOICE_DC_6581: f64 = profile_6581().voice_dc;
+/// 6581 waveform-DAC DC offset in normalised units (half-scale = 1), R4AR's
+/// (the S2 reference). INFERRED tuning. A chip plays its own profile's
+/// (`Voice::with_dc`, S5.16): the GT-reference profile's is 0.5625.
+pub const VOICE_DC_6581: f64 = R4AR.voice_dc;
 /// The 6581 attack floor: 10 %-90 % rise of a full-scale step, seconds.
 /// The plan's cited figure (§1.2), taken at face value.
 pub const ATTACK_FLOOR_6581_S: f64 = 1.5e-3;
@@ -110,6 +111,8 @@ pub struct Voice {
     /// 6581: consecutive cycles with no waveform selected (saturates at
     /// the fade time). Unused on the 8580.
     wave0_age: u32,
+    /// 6581: the waveform DAC's DC offset, envelope-scaled. Unused on the 8580.
+    dc: f64,
 }
 
 impl Default for Voice {
@@ -121,6 +124,11 @@ impl Default for Voice {
 impl Voice {
     /// A powered-on voice of `model`.
     pub fn new(model: SidModel) -> Self {
+        Voice::with_dc(model, VOICE_DC_6581)
+    }
+
+    /// A powered-on voice of `model` whose 6581 DAC offset is `dc`.
+    pub fn with_dc(model: SidModel, dc: f64) -> Self {
         Voice {
             model,
             acc: 0,
@@ -135,6 +143,7 @@ impl Voice {
             amp: 0.0,
             lag_alpha: 1.0 - (-1.0 / attack_lag_tau_cycles()).exp(),
             wave0_age: 0,
+            dc,
         }
     }
 
@@ -211,7 +220,7 @@ impl Voice {
             SidModel::Sid8580 => {
                 (self.wave as f64 - 2048.0) / 2048.0 * (self.env.level() as f64 / 255.0)
             }
-            SidModel::Sid6581 => ((self.wave as f64 - 2048.0) / 2048.0 + VOICE_DC_6581) * self.amp,
+            SidModel::Sid6581 => ((self.wave as f64 - 2048.0) / 2048.0 + self.dc) * self.amp,
         }
     }
 

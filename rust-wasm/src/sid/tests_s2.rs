@@ -69,6 +69,8 @@ const PIN_PROGRAM: &[(usize, u8, u8)] = &[
 
 fn render_pin_program(model: SidModel) -> Vec<f32> {
     let mut c = Chip::with_profile(model, DEFAULT_SAMPLE_RATE, &R4AR).expect("model constructs");
+    c.set_gain_trim(1.0); // the pins are at the S1/S2 reference level (S5.16 trims the app's)
+    c.set_filter_sign(1.0); // ... and polarity (S5.16 inverts the filtered path)
     let mut out = vec![0.0f32; PIN_LEN];
     let mut at = 0;
     for &(t, reg, val) in PIN_PROGRAM {
@@ -164,7 +166,10 @@ fn pin_6581_render_is_bit_identical_to_s2() {
 /// A chip on the R4AR profile: these are S2's pins, and the default 6581 is
 /// the GT-reference filter since S5.16 (an 8580 ignores the profile).
 fn chip(m: SidModel) -> Chip {
-    Chip::with_profile(m, DEFAULT_SAMPLE_RATE, &R4AR).expect("both models construct")
+    let mut c = Chip::with_profile(m, DEFAULT_SAMPLE_RATE, &R4AR).expect("both models construct");
+    c.set_gain_trim(1.0); // reference level; see `check_pin`
+    c.set_filter_sign(1.0);
+    c
 }
 
 fn freq(c: &mut Chip, v: u8, f: u16) {

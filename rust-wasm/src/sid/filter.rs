@@ -322,7 +322,7 @@ impl Filter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sid::revision::{GT_REF, R4AR};
+    use crate::sid::revision::R4AR;
 
     const SR: f64 = 44_100.0;
 
@@ -457,8 +457,10 @@ mod tests {
     }
 
     /// Steady-state gain of a sine of amplitude `amp` at `hz`, 6581 filter.
+    /// R4AR's 6581 filter (soft limit SAT 1.0); the GT-reference profile's is
+    /// effectively linear (S5.16).
     fn sine_gain_6581(mode: u8, cutoff: u16, res: u8, hz: f64, amp: f64) -> f64 {
-        let mut f = Filter::with_model(SidModel::Sid6581, SR);
+        let mut f = Filter::with_profile(SidModel::Sid6581, &R4AR, SR);
         f.set_mode(mode);
         f.set(cutoff, res);
         let n = 44_100;
@@ -573,10 +575,10 @@ mod tests {
         // the same 2 % the 8580 test uses. Reg 0x300 (~1.6 kHz) keeps the
         // map below the 4 kHz ceiling, so the probe sits on the real fc.
         let reg = 0x300;
-        let fc = cutoff_hz_6581(reg);
+        let fc = cutoff_hz_6581_with(&R4AR, reg);
         for res in [0u8, 8, 15] {
             let g = sine_gain_6581(LP, reg, res, fc, 0.01);
-            assert!((g / resonance_q_6581(res) - 1.0).abs() < 0.02, "res {res}: {g}");
+            assert!((g / resonance_q_6581_with(&R4AR, res) - 1.0).abs() < 0.02, "res {res}: {g}");
         }
         // Level-dependent peak gain: the band-pass state is clamped below
         // SAT = 1, so the resonant peak must fall as the level rises. At

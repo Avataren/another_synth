@@ -93,6 +93,9 @@ pub struct RevisionProfile {
     /// Soft limit of the band-pass state, in voice units (`filter.rs`):
     /// s <- sat * tanh(s / sat). Large = near linear.
     pub sat: f64,
+    /// Output level trim on top of the headroom-rule gain (`chip_gain`).
+    /// 1.0 = the S2 level. `GT_REF` trims to GoatTracker's playback level.
+    pub gain_trim: f64,
     /// Weights of VOL bits 0..3 in the volume DAC. The level of VOL v is
     /// the sum of the weights of v's set bits over the sum of all four, so
     /// VOL 0 = 0 and VOL 15 = 1 whatever the weights.
@@ -131,6 +134,7 @@ pub const R4AR: RevisionProfile = RevisionProfile {
     cutoff_anchors_hi: &R4AR_ANCHORS_HI,
     resonance: ResonanceMap::Exponential { divisor: 12.0 },
     sat: 1.0,
+    gain_trim: 1.0,
     volume_bit_weights: [1.0, 2.0, 3.9, 7.6],
     voice_dc: 0.25,
     mix_dc: 0.5,
@@ -155,6 +159,7 @@ const R4AR_ANCHORS_HI: [(u16, f64); 4] = [
 ///   the 4 kHz ceiling the high piece is R4AR's, untouched.
 /// - Resonance: Q = 0.707 + 0.0698 * res (measured 0.72 at 0, 1.76 at 15).
 /// - Soft limit: GT's filter core is linear; see `sat` for the level kept.
+/// - Level: `gain_trim` (S5.16), measured against the same playback.
 pub const GT_REF: RevisionProfile = RevisionProfile {
     revision: DieRevision::GtRef,
     cutoff_anchors_lo: &[
@@ -175,9 +180,27 @@ pub const GT_REF: RevisionProfile = RevisionProfile {
     ],
     cutoff_anchors_hi: &R4AR_ANCHORS_HI,
     resonance: ResonanceMap::Linear { slope: 0.0698 },
-    sat: 4.0,
+    // reSID's filter core is linear, so effectively no soft limit: 1000 leaves
+    // the tanh in place but a million times off. MEASURED on the bass channel
+    // of Coconut Conundrum, filtered level ours / reSID: sat 4 -> 0.919,
+    // 16 -> 0.987, 1000 -> 0.999. (S5.16 first picked 4 from the noise
+    // transfer function alone; a strong resonant bass shows the loss.)
+    sat: 1000.0,
+    // Level: steady tri/saw/pulse/noise at 788, 7493 and 20000 Hz-ish
+    // registers, unfiltered, ran 1.14-1.16x GT's (reSID) RMS on the 6581 at
+    // R4AR's gain 0.1976; 1 / 1.16 = 0.862 of that is 0.1704. The headroom-rule
+    // gain follows the DC terms (0.1619 at voice DC 0.5625), so the trim is
+    // 0.1704 / 0.1619 = 1.052.
+    gain_trim: 1.052,
     volume_bit_weights: R4AR.volume_bit_weights,
-    voice_dc: R4AR.voice_dc,
+    // Voice DC 0.5625 = (0x800 - 0x380) / 0x800: the 6581 waveform DAC's zero
+    // sits at 0x380, not mid-scale, so a centred wave carries 0.5625 of its
+    // amplitude as envelope-scaled DC. MEASURED against GT's playback two
+    // ways: the DC step when the envelope opens on a no-waveform note (ours
+    // -0.105 at 0.25, reSID -0.051; 0.5625 gives -0.050), and the release tail
+    // after a hard restart (0.53 0.62 0.49 0.38 ... vs reSID 0.51 0.61 0.48
+    // 0.37 ...; at 0.25 ours ran 0.30 0.41 0.31 0.24 ...).
+    voice_dc: 0.5625,
     mix_dc: R4AR.mix_dc,
 };
 

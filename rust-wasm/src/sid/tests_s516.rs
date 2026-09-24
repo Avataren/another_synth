@@ -334,3 +334,237 @@ fn the_players_note_on_after_a_hard_restart_is_delayed_by_the_adsr_bug_as_in_gt(
     assert_eq!(l[6], 0, "frame 6: still waiting on the rate counter, levels {l:?}");
     assert_eq!(l[7], 255, "frame 7: the attack has run, levels {l:?}");
 }
+
+// ---------------------------------------------------------------------------
+// Output level: trimmed to GoatTracker's playback (S5.16)
+// ---------------------------------------------------------------------------
+
+use super::chip::GAIN_TRIM_8580;
+
+/// AC RMS of a steady unfiltered triangle (pitch reg 0x1D45, sustain 15,
+/// volume 15), 2 s after note-on, on `c`.
+fn steady_tri_rms(mut c: Chip) -> f64 {
+    c.write(0x18, 0x0F);
+    c.write(0x00, 0x45);
+    c.write(0x01, 0x1D);
+    c.write(0x06, 0xF0);
+    c.write(0x04, 0x11);
+    let mut out = vec![0.0f32; 88_200];
+    c.render(&mut out);
+    let tail = &out[44_100..];
+    let mean = tail.iter().map(|&v| v as f64).sum::<f64>() / tail.len() as f64;
+    (tail.iter().map(|&v| (v as f64 - mean).powi(2)).sum::<f64>() / tail.len() as f64).sqrt()
+}
+
+#[test]
+fn the_trim_is_a_pure_scale_of_the_reference_level() {
+    for (model, trim) in [(SidModel::Sid8580, GAIN_TRIM_8580), (SidModel::Sid6581, GT_REF.gain_trim)] {
+        let mut reference = Chip::new(model).unwrap();
+        reference.set_gain_trim(1.0);
+        let r = steady_tri_rms(reference);
+        let d = steady_tri_rms(Chip::new(model).unwrap());
+        assert!((d / r - trim).abs() < 1e-9, "{model:?}: {d} / {r} = {}, want {trim}", d / r);
+    }
+}
+
+#[test]
+fn r4ar_keeps_the_reference_level_and_gt_refs_level_follows_its_own_dc_and_trim() {
+    use super::chip::CHIP_GAIN;
+    assert_eq!(R4AR.gain_trim, 1.0);
+    assert!(GAIN_TRIM_8580 < 1.0);
+    let r4ar = steady_tri_rms(Chip::with_profile(SidModel::Sid6581, DEFAULT_SAMPLE_RATE, &R4AR).unwrap());
+    let gt = steady_tri_rms(Chip::new(SidModel::Sid6581).unwrap());
+    // The AC level of a steady tone scales with headroom gain x trim; the
+    // headroom gain follows the profile's DC terms (0.5625 vs 0.25 voice DC).
+    let want = GT_REF.chip_gain(CHIP_GAIN) * GT_REF.gain_trim / R4AR.chip_gain(CHIP_GAIN);
+    assert!((gt / r4ar - want).abs() < 1e-9, "{} vs {want}", gt / r4ar);
+    // R4AR's own level is the S2 reference: its trim changes nothing.
+    let mut r = Chip::with_profile(SidModel::Sid6581, DEFAULT_SAMPLE_RATE, &R4AR).unwrap();
+    r.set_gain_trim(1.0);
+    assert_eq!(steady_tri_rms(r), r4ar);
+}
+
+#[test]
+fn gt_ref_carries_the_measured_dc_and_r4ar_keeps_its_own() {
+    assert_eq!(GT_REF.voice_dc, 0.5625);
+    assert_eq!(R4AR.voice_dc, 0.25);
+    // The DC is per chip, so the note-start step (an open envelope on a
+    // no-waveform note: GT's first-frame `09`) differs. Unfiltered, at the
+    // level of a full-volume voice, the largest 5 ms mean after the note
+    // starts is -0.051 in GoatTracker's playback (reSID), -0.053 in ours at
+    // GtRef's DC and -0.105 at R4AR's.
+    let step = |p: &'static super::revision::RevisionProfile| {
+        let mut c = Chip::with_profile(SidModel::Sid6581, DEFAULT_SAMPLE_RATE, p).unwrap();
+        c.write(0x18, 0x0F);
+        c.write(0x00, 0x14);
+        c.write(0x01, 0x03);
+        c.write(0x03, 0x08);
+        c.write(0x06, 0xF7);
+        let mut idle = vec![0.0f32; 3 * SPF]; // the volume write's mixer-DC step decays first
+        c.render(&mut idle);
+        c.write(0x04, 0x09); // test + gate, no waveform
+        let mut out = vec![0.0f32; 3 * SPF];
+        c.render(&mut out);
+        out.chunks(220)
+            .filter(|w| w.len() == 220)
+            .map(|w| w.iter().map(|&v| v as f64).sum::<f64>() / 220.0)
+            .fold(0.0f64, |m, v| if v.abs() > m.abs() { v } else { m })
+    };
+    let (g, r) = (step(&GT_REF), step(&R4AR));
+    assert!((g + 0.051).abs() < 0.008, "GtRef step {g}");
+    assert!(r < -0.09, "R4AR step {r}");
+}
+
+#[test]
+fn the_two_chips_are_equally_loud_as_reSIDs_are() {
+    // Measured against GoatTracker's playback: on every waveform and pitch
+    // tried its 6581 and 8580 have the same RMS (0.098 for a full-volume
+    // triangle). Ours differed 1.16 vs 1.65 times that before the trims;
+    // after them the chips agree to a couple of percent.
+    let a = steady_tri_rms(Chip::new(SidModel::Sid6581).unwrap());
+    let b = steady_tri_rms(Chip::new(SidModel::Sid8580).unwrap());
+    assert!((a / b - 1.0).abs() < 0.03, "6581 {a} vs 8580 {b}");
+    // And both sit at GT's level, 0.098 (measured), within 3%.
+    assert!((a / 0.098 - 1.0).abs() < 0.03, "6581 {a}");
+    assert!((b / 0.098 - 1.0).abs() < 0.03, "8580 {b}");
+}
+
+// ---------------------------------------------------------------------------
+// Key off / key on in the next row act at the gate-timer prefetch
+// ---------------------------------------------------------------------------
+
+/// Voice 1: a note on row 0, then `later` (row index, note) rows, on an
+/// instrument with gate timer 2, tempo 6. Returns voice 1's gate bit after each
+/// of the first `frames` rendered frames.
+fn gate_bits_around(later: &[(usize, u8)], frames: usize) -> Vec<bool> {
+    let ins = Instrument {
+        name: b"g".to_vec(),
+        sustain: 15,
+        gate_timer: 2,
+        hard_restart: true,
+        wave_ptr: 1,
+        ..Default::default()
+    };
+    let n = 16;
+    let list = |pattern: u8| Orderlist { entries: vec![OrderEntry { pattern, transpose: 0, repeat: 1 }], restart: 0 };
+    let mut rows = vec![Row::default(); n];
+    rows[0] = row(49, 1);
+    for &(r, note) in later {
+        rows[r] = row(note, 0);
+    }
+    let s = SidSong {
+        version: SONG_FILE_VERSION,
+        model: SidModel::Sid8580,
+        channels: 3,
+        speed_multiplier: 1,
+        tempo: 6,
+        name: b"s516g".to_vec(),
+        author: Vec::new(),
+        copyright: Vec::new(),
+        subsongs: vec![Subsong { orderlists: vec![list(0), list(1), list(1)] }],
+        patterns: vec![Pattern { rows }, Pattern { rows: vec![Row::default(); n] }],
+        instruments: vec![ins],
+        tables: Tables { wave: vec![t(0x41, 0x00), t(0xFF, 0x00)], ..Default::default() },
+    };
+    let s = SidSong::parse(&s.to_bytes()).expect("parses");
+    let mut p = SidSongPlayer::new(s, DEFAULT_SAMPLE_RATE).expect("player builds");
+    let mut out = vec![0.0f32; SPF];
+    (0..frames)
+        .map(|_| {
+            p.render(&mut out);
+            p.chip().voice(0).control() & 1 != 0
+        })
+        .collect()
+}
+
+#[test]
+fn a_key_off_in_the_next_row_clears_the_gate_gatetimer_frames_early() {
+    // Row 1 (the key off) starts on frame 6; with gate timer 2 GT reads it two
+    // ticks earlier, on frame 4, and drops the gate then (gplay.c:920). Before
+    // S5.16 the gate stayed up until the row itself.
+    let g = gate_bits_around(&[(1, 126)], 8);
+    assert_eq!(g, vec![true, true, true, true, false, false, false, false], "{g:?}");
+}
+
+#[test]
+fn a_key_on_in_the_next_row_raises_the_gate_gatetimer_frames_early_too() {
+    // Key off on row 1 (down from frame 4), key on on row 2, which starts on
+    // frame 12: read two ticks earlier, on frame 10, the gate is up again then.
+    let g = gate_bits_around(&[(1, 126), (2, 127)], 14);
+    let want = [true, true, true, true, false, false, false, false, false, false, true, true, true, true];
+    assert_eq!(g, want.to_vec(), "{g:?}");
+}
+
+// ---------------------------------------------------------------------------
+// The filtered path is inverted, as in GoatTracker's playback
+// ---------------------------------------------------------------------------
+
+/// Correlation of a saw with its open low-pass-filtered copy on `c` (a small
+/// lag search: the filter delays). +1 = same polarity, -1 = inverted.
+fn filtered_vs_direct_correlation(mut make: impl FnMut() -> Chip) -> f64 {
+    let render = |mut c: Chip, fc: u16, mode: u8, route: u8| {
+        c.write(0x18, 0x0F | (mode << 4));
+        c.write(0x15, (fc & 7) as u8);
+        c.write(0x16, (fc >> 3) as u8);
+        c.write(0x17, route);
+        c.write(0x00, 1500u16 as u8);
+        c.write(0x01, (1500u16 >> 8) as u8);
+        c.write(0x03, 0x08);
+        c.write(0x06, 0xF0);
+        c.write(0x04, 0x21);
+        let mut out = vec![0.0f32; 44_100 * 2];
+        c.render(&mut out);
+        let tail: Vec<f64> = out[44_100..].iter().map(|&v| v as f64).collect();
+        let mean = tail.iter().sum::<f64>() / tail.len() as f64;
+        tail.iter().map(|v| v - mean).collect::<Vec<f64>>()
+    };
+    let direct = render(make(), 0, 0, 0);
+    let lp = render(make(), 1000, 1, 1);
+    let dot = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
+    let norm = (dot(&direct, &direct) * dot(&lp, &lp)).sqrt();
+    (0..60)
+        .map(|lag| dot(&direct[..direct.len() - lag], &lp[lag..]) / norm)
+        .fold(0.0f64, |m, v| if v.abs() > m.abs() { v } else { m })
+}
+
+#[test]
+fn the_filtered_path_is_inverted_against_the_direct_path_on_both_chips() {
+    for model in [SidModel::Sid6581, SidModel::Sid8580] {
+        let r = filtered_vs_direct_correlation(|| Chip::new(model).unwrap());
+        assert!(r < -0.99, "{model:?}: correlation {r}");
+        // The reference (the S1/S2 pins) keeps the filter non-inverting.
+        let r = filtered_vs_direct_correlation(|| {
+            let mut c = Chip::new(model).unwrap();
+            c.set_filter_sign(1.0);
+            c
+        });
+        assert!(r > 0.99, "{model:?} reference: correlation {r}");
+    }
+}
+
+#[test]
+fn gt_refs_filter_is_level_independent_and_r4ars_compresses() {
+    use super::filter::{cutoff_hz_6581_with, Filter, LP};
+    // A resonant low-pass peak at three drive levels. reSID's filter core is
+    // linear, and its bass was 8% louder than ours through the old limit
+    // (filtered level ours / reSID: sat 4 -> 0.919, effectively off -> 0.999).
+    let peak = |p: &'static super::revision::RevisionProfile, amp: f64| {
+        let reg = 0x300;
+        let hz = cutoff_hz_6581_with(p, reg);
+        let mut f = Filter::with_profile(SidModel::Sid6581, p, 44_100.0);
+        f.set_mode(LP);
+        f.set(reg, 15);
+        let mut m: f64 = 0.0;
+        for i in 0..44_100 {
+            let y = f.process(amp * (2.0 * std::f64::consts::PI * hz * i as f64 / 44_100.0).sin());
+            if i > 22_050 {
+                m = m.max(y.abs());
+            }
+        }
+        m / amp
+    };
+    let (a, b) = (peak(&GT_REF, 0.01), peak(&GT_REF, 3.0));
+    assert!((b / a - 1.0).abs() < 1e-3, "GtRef {a} vs {b}");
+    let (a, b) = (peak(&R4AR, 0.01), peak(&R4AR, 3.0));
+    assert!(b < a * 0.85, "R4AR compresses: {a} vs {b}");
+}

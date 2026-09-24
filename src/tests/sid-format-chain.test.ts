@@ -196,11 +196,11 @@ describe("the 'sid' format profile and pitch model (GT note table)", () => {
     expect(SID_PROFILE.arpeggioCommandByte).toBe(0xff);
   });
 
-  it('the note table: the same registers the Rust player pins (C-0 278, A-4 7493, G#7 56576)', () => {
+  it('the note table: the same registers the Rust player pins (C-0 279, A-4 7494, G#7 56590)', () => {
     expect(SID_NOTE_COUNT).toBe(93);
-    expect(sidNoteFreqReg(0)).toBe(278);
-    expect(sidNoteFreqReg(57)).toBe(7493);
-    expect(sidNoteFreqReg(92)).toBe(56576);
+    expect(sidNoteFreqReg(0)).toBe(279);
+    expect(sidNoteFreqReg(57)).toBe(7494);
+    expect(sidNoteFreqReg(92)).toBe(56590);
     expect(sidFreqRegToHz(7493)).toBeCloseTo(440.0291, 4);
   });
 
@@ -288,7 +288,7 @@ describe('a SID song through the store, the .cmod and the playback chain', () =>
     // The first step of voice 1 is A-4 at the chip's own pitch.
     const step = song.patterns[0]!.tracks[0]!.steps.find((s) => s.row === 0)!;
     expect(step.midi).toBe(69);
-    expect(step.frequency).toBeCloseTo(440.0291, 4);
+    expect(step.frequency).toBeCloseTo(440.0878, 4);
   });
 
   it('the file the chain saves is the Rust fixture, byte for byte (the chip plays exactly this)', async () => {

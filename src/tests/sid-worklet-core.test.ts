@@ -66,7 +66,7 @@ function power(x: Float32Array, hz: number): number {
 }
 
 const peak = (x: Float32Array) => x.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
-const A4 = (7493 * 985248) / 2 ** 24; // the table register's pitch, 440.03 Hz
+const A4 = (7494 * 985248) / 2 ** 24; // the table register's pitch, 440.09 Hz
 
 beforeAll(() => {
   initSync({ module: new Uint8Array(readFileSync(resolve(ROOT, 'public/wasm/audio_processor_bg.wasm'))) });

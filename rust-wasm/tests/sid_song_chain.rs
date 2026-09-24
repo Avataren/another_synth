@@ -93,7 +93,7 @@ fn the_song_plays_on_a_chip_of_its_own_model_frame_by_frame() {
         match f {
             // Row 0: voice 1 A-4 on "Tri lead" (triangle + gate); voices 2-3 silent (no waveform, no gate).
             0 => {
-                assert_eq!(v1.frequency(), 7493);
+                assert_eq!(v1.frequency(), 7494);
                 assert_eq!(v1.control(), 0x11);
                 assert_eq!((v2.control(), v3.control()), (0, 0));
             }

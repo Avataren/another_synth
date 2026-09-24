@@ -248,7 +248,7 @@ fn preview_plays_an_instrument_without_the_sequencer() {
     p.render(&mut out);
     // Instrument 1 (triangle) at A-4 on voice 1, gated; the song's own rows
     // (E-5, C-4) never start: the sequencer is off.
-    assert_eq!(p.chip().voice(0).frequency(), 7493);
+    assert_eq!(p.chip().voice(0).frequency(), 7494);
     assert_eq!(p.chip().voice(0).control(), 0x10 | GATE);
     assert_eq!(p.chip().voice(1).control() & GATE, 0);
     assert_eq!(p.song_row(), 0);

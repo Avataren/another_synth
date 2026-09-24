@@ -999,6 +999,14 @@ impl SidSongPlayer {
             return;
         }
         let next = self.next_row(c);
+        // GT reads the next row `gatetimer` ticks early and acts on a key off or
+        // key on there and then (gplay.c:920-923), not when the row starts; a
+        // note gets the gate-off / hard restart below. Only the gate moves: a
+        // key off leaves AD/SR alone.
+        if next.note == NOTE_KEY_OFF || next.note == NOTE_KEY_ON {
+            self.channels[c].gate = next.note == NOTE_KEY_ON;
+            return;
+        }
         if !(NOTE_FIRST..=NOTE_LAST).contains(&next.note) || next.command == 3 {
             return;
         }

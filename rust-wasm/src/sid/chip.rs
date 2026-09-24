@@ -95,7 +95,7 @@
 //! the mix and their taps; all three on is the datasheet chip.
 
 use super::filter::Filter;
-use super::revision::{profile_6581, RevisionProfile};
+use super::revision::{profile_6581, RevisionProfile, R4AR};
 use super::voice::Voice;
 use super::waveform::SYNC;
 use super::{SidError, SidModel, DEFAULT_SAMPLE_RATE, PAL_CLOCK_HZ};
@@ -104,12 +104,19 @@ use super::{SidError, SidModel, DEFAULT_SAMPLE_RATE, PAL_CLOCK_HZ};
 /// resonant filter can add ~+8 dB on top. INFERRED tuning (carried from S0).
 pub const CHIP_GAIN: f64 = 0.28;
 
+/// 8580 output trim on top of `CHIP_GAIN` (S5.16): steady tri/saw/pulse/noise
+/// through the 8580 ran 1.55-1.65x GoatTracker's (reSID) RMS, the same on
+/// every waveform and pitch tried (median 1.644); 1 / 1.65 = 0.606. reSID's
+/// two chips are equally loud; ours differed by the S2 headroom rule. The
+/// 6581's trim is in its profile (`RevisionProfile::gain_trim`).
+pub const GAIN_TRIM_8580: f64 = 0.606;
+
 /// 6581 mixer/volume-stage DC in voice units. INFERRED tuning (header),
 /// from the revision profile.
-pub const MIX_DC_6581: f64 = profile_6581().mix_dc;
+pub const MIX_DC_6581: f64 = R4AR.mix_dc;
 
 /// 6581 output gain, from the headroom rule in the header.
-pub const CHIP_GAIN_6581: f64 = profile_6581().chip_gain(CHIP_GAIN);
+pub const CHIP_GAIN_6581: f64 = R4AR.chip_gain(CHIP_GAIN);
 
 /// Corner of the output AC coupling (the C64's output capacitor), Hz.
 /// INFERRED tuning (carried from S0).
@@ -153,6 +160,20 @@ pub struct Chip {
     tap_x: [f64; 3],
     tap_y: [f64; 3],
     volume_dac: [f64; 16],
+    /// Output level trim on top of the headroom-rule gain (8580:
+    /// `GAIN_TRIM_8580`; 6581: the profile's `gain_trim`). 1.0 is the S1/S2
+    /// reference level, and multiplying by it changes no bit.
+    trim: f64,
+    /// +1 or -1: the filtered path's polarity in the mix. GoatTracker's playback
+    /// (reSID) inverts the filter's output relative to the direct path on both
+    /// chips (correlation -0.996 between a saw and its open LP-filtered copy),
+    /// so the chip does (S5.16); the S1/S2 pins run at +1.
+    filter_sign: f64,
+    /// The headroom-rule gain this chip plays at (8580: `CHIP_GAIN`; 6581: its
+    /// profile's `chip_gain`, which follows the profile's DC terms).
+    base_gain: f64,
+    /// 6581: the mixer/volume-stage DC of the chip's profile, voice units.
+    mix_dc: f64,
     /// Register writes waiting for their cycle (`write_after`): (chip cycle,
     /// register, value), in the order they were scheduled.
     pending: Vec<(u64, u8, u8)>,
@@ -186,7 +207,7 @@ impl Chip {
         Ok(Chip {
             model,
             sample_rate,
-            voices: [Voice::new(model); 3],
+            voices: [Voice::with_dc(model, profile.voice_dc); 3],
             filter: Filter::with_profile(model, profile, sample_rate),
             fc: 0,
             res_filt: 0,
@@ -199,11 +220,21 @@ impl Chip {
             dc_r: (-2.0 * std::f64::consts::PI * DC_BLOCK_HZ / sample_rate).exp(),
             voice_mask: ALL_VOICES,
             pending: Vec::new(),
+            trim: match model {
+                SidModel::Sid8580 => GAIN_TRIM_8580,
+                SidModel::Sid6581 => profile.gain_trim,
+            },
+            filter_sign: -1.0,
+            base_gain: match model {
+                SidModel::Sid8580 => CHIP_GAIN,
+                SidModel::Sid6581 => profile.chip_gain(CHIP_GAIN),
+            },
+            mix_dc: profile.mix_dc,
             tap_x: [0.0; 3],
             tap_y: [0.0; 3],
             volume_dac: match model {
                 SidModel::Sid8580 => std::array::from_fn(|v| v as f64 / 15.0),
-                SidModel::Sid6581 => profile_6581().volume_table(),
+                SidModel::Sid6581 => profile.volume_table(),
             },
         })
     }
@@ -257,6 +288,20 @@ impl Chip {
     /// ADSR delay bug, `envelope.rs`).
     pub fn write_after(&mut self, delay: u64, reg: u8, val: u8) {
         self.pending.push((self.cycles + delay, reg, val));
+    }
+
+    /// Sets the output level trim (1.0 = the S1/S2 reference level). For the
+    /// tests that pin absolute levels; the app plays the model's own trim.
+    #[cfg(test)]
+    pub(crate) fn set_gain_trim(&mut self, trim: f64) {
+        self.trim = trim;
+    }
+
+    /// Sets the filtered path's polarity (+1 = the S1/S2 reference, -1 = the
+    /// app's). For the tests that pin renders through the filter.
+    #[cfg(test)]
+    pub(crate) fn set_filter_sign(&mut self, sign: f64) {
+        self.filter_sign = sign;
     }
 
     /// Applies every scheduled write at once, whatever its cycle: for a caller
@@ -375,11 +420,7 @@ impl Chip {
         let voice3_direct = self.mode_vol & VOICE3_OFF == 0;
         let volume = self.volume_level(self.mode_vol);
         let mask = self.voice_mask;
-        let tap_gain = volume
-            * match self.model {
-                SidModel::Sid8580 => CHIP_GAIN,
-                SidModel::Sid6581 => CHIP_GAIN_6581,
-            };
+        let tap_gain = volume * self.base_gain * self.trim;
         for (k, o) in out.iter_mut().enumerate() {
             self.cycle_frac += self.cycles_per_sample;
             let n = self.cycle_frac as u32;
@@ -412,9 +453,9 @@ impl Chip {
                 }
             }
             let x = match self.model {
-                SidModel::Sid8580 => (self.filter.process(filt_in) + direct) * volume * CHIP_GAIN,
+                SidModel::Sid8580 => (self.filter_sign * self.filter.process(filt_in) + direct) * volume * self.base_gain * self.trim,
                 SidModel::Sid6581 => {
-                    (self.filter.process(filt_in) + direct + MIX_DC_6581) * volume * CHIP_GAIN_6581
+                    (self.filter_sign * self.filter.process(filt_in) + direct + self.mix_dc) * volume * self.base_gain * self.trim
                 }
             };
             let y = x - self.dc_x + self.dc_r * self.dc_y;

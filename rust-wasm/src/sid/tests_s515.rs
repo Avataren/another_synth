@@ -20,7 +20,12 @@ const V1: u8 = 0x00;
 const G6: f64 = 0.84 / 4.25;
 
 fn chip(m: SidModel) -> Chip {
-    Chip::new(m).expect("both models construct")
+    // R4AR at the S2 reference level: these tests pin R4AR's numbers (S5.16
+    // made the default 6581 the GT-reference profile and trims both models).
+    let mut c = Chip::with_profile(m, DEFAULT_SAMPLE_RATE, &R4AR).expect("both models construct");
+    c.set_gain_trim(1.0);
+    c.set_filter_sign(1.0);
+    c
 }
 
 fn rms(x: &[f32]) -> f64 {

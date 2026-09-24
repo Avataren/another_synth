@@ -687,6 +687,14 @@ export function createXmAmigaPitchModel(): PitchModel {
 export const SID_PAL_CLOCK = 985248;
 
 /**
+ * The nominal clock GoatTracker's note table assumes: its 96 entries are equal
+ * temperament with A-4 = 440 Hz at this clock, rounded (all of them reproduce
+ * exactly, S5.16; the Rust `GT_TABLE_CLOCK_HZ`). At the chip's true PAL clock
+ * they sound 0.43 cent sharp on average, which is what GT plays.
+ */
+export const SID_NOTE_TABLE_CLOCK = 985000;
+
+/**
  * Notes in a SID song's note table: C-0 (index 0) to G#7 (index 92), the
  * GoatTracker range. A-7 and up would still fit the 16-bit register, but
  * B-7 does not (67 277 > 65 535), so the table stops where GT's does.
@@ -701,12 +709,13 @@ const SID_MAX_PERIOD = (SID_NOTE_COUNT - 1) * SID_UNITS_PER_SEMITONE;
 /**
  * The 16-bit frequency register for note `index` (0 = C-0 ... 92 = G#7):
  * equal temperament with A-4 (index 57) at 440 Hz, rounded to the nearest
- * register value at the PAL clock. Derived here from the datasheet formula,
- * not copied from any tracker's table (plan-sid-tracking.md §8.3); the Rust
- * player computes the same values (`sid::gt_note_freq_reg`), and both sides
- * pin C-0 = 278, A-4 = 7493 and G#7 = 56576. A-4 therefore sounds at
- * 7493 * 985248 / 2^24 = 440.029 Hz: the table is register-quantized, which
- * is the SID's pitch, not an error.
+ * register value at GoatTracker's nominal clock (`SID_NOTE_TABLE_CLOCK`).
+ * Computed here from that formula, not copied from any tracker's table
+ * (plan-sid-tracking.md §8.3); the Rust player computes the same values
+ * (`sid::gt_note_freq_reg`), and both sides pin C-0 = 279, A-4 = 7494 and
+ * G#7 = 56590. A-4 therefore sounds at 7494 * 985248 / 2^24 = 440.088 Hz at
+ * the chip's true clock: the table is register-quantized, which is the SID's
+ * pitch, not an error.
  */
 export function sidNoteFreqReg(index: number): number {
   const i = Math.max(0, Math.min(SID_NOTE_COUNT - 1, Math.round(index)));
@@ -727,7 +736,7 @@ export function sidTableFreqReg(index: number): number {
   const i = index & 0x7f;
   if (i >= SID_TABLE_NOTES) return 0;
   const hz = 440 * Math.pow(2, (i - 57) / 12);
-  return Math.min(0xffff, Math.round((hz * 16777216) / SID_PAL_CLOCK));
+  return Math.min(0xffff, Math.round((hz * 16777216) / SID_NOTE_TABLE_CLOCK));
 }
 
 /** The frequency in Hz a SID frequency register sounds at (PAL). */
