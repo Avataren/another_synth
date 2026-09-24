@@ -8,9 +8,9 @@
     "rust-wasm/.cargo/config.toml"
   ],
   "sourceFileCount": 95,
-  "sourceHash": "7837470ab8a885bf4bef673adc38f8b1b21503e5ce7663fd9c0a221c4bb96efe",
+  "sourceHash": "ad35b69141ee0dd6d3f04d710db920bad6b2c892385c2b80969c42fd34de028b",
   "outputs": {
-    "public/wasm/audio_processor_bg.wasm": "e8f9b020588efc602d5760acafe4c07eb7fd56895b69c94bdabe14a18e6a1146",
+    "public/wasm/audio_processor_bg.wasm": "5168c328d1d86f25b76f0a87dba0ade13db0021563078e4d424336254adfa1f9",
     "public/wasm/audio_processor.js": "ab6257aad27f72e6da1c6ed3866688d7763348ff0bc8357fd79be39d3b8ab42f"
   }
 }

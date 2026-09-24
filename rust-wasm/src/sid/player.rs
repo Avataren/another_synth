@@ -111,6 +111,12 @@
 //!   - per-voice taps and mute/solo (`render_taps`, `Chip::set_voice_mask`).
 
 use super::chip::{Chip, REG_FC_HI, REG_FC_LO, REG_MODE_VOL, REG_RES_FILT};
+
+/// Chip cycles between two register writes of a frame (GT: `lda $xxxx,x` 4 +
+/// `sta $d400,x` 5, gsid.h `SIDWRITEDELAY`).
+const WRITE_SPACING: u64 = 9;
+/// Extra cycles before a control register (GT: `SIDWAVEDELAY`, the `and`).
+const CONTROL_EXTRA: u64 = 4;
 use super::song::{
     Instrument, Row, SidSong, TableRow, NOTE_FIRST, NOTE_KEY_OFF, NOTE_KEY_ON, NOTE_LAST,
     SID_CHANNELS,
@@ -453,7 +459,7 @@ impl SidSongPlayer {
     /// One frame; then, when it ended the row loop's last row, straight back
     /// to the loop's start (so `song_row` never reports the row past it).
     fn frame_with_loop(&mut self) {
-        self.frame();
+        self.frame_core();
         if let Some((start, end)) = self.loop_rows {
             if self.tick == 0 && !self.preview && self.rows_played >= end {
                 let carried = self.samples_to_frame;
@@ -463,8 +469,15 @@ impl SidSongPlayer {
         }
     }
 
-    /// Plays one frame: sequencer, effects, tables, register writes.
+    /// Plays one frame: sequencer, effects, tables, register writes, and
+    /// the writes are applied on return (for a caller that does not render).
+    /// `render` uses `frame_core`, whose writes stay spaced (`write_registers`).
     pub fn frame(&mut self) {
+        self.frame_core();
+        self.chip.flush_writes();
+    }
+
+    fn frame_core(&mut self) {
         if self.tick == 0 && !self.preview {
             for c in 0..SID_CHANNELS {
                 let row = self.current_row(c);
@@ -997,26 +1010,43 @@ impl SidSongPlayer {
         }
     }
 
+    /// Writes the frame's registers the way GoatTracker's SID interface does
+    /// (gsid.cpp, sid_fillbuffer): one at a time in its `sidorder`, the filter
+    /// first, then per voice pulse width, SR, AD, frequency and the control
+    /// register last, each `WRITE_SPACING` cycles after the one before and
+    /// `CONTROL_EXTRA` more before a control register (a real playroutine's
+    /// `lda`/`sta` pair). The spacing is what lets the envelope's rate counter
+    /// run on between SR/AD and the gate, so a note-on lands on the ADSR delay
+    /// bug as it does in GT (the attack starts up to ~30 ms late) and a hard
+    /// restart's gap is as long as GT's.
     fn write_registers(&mut self) {
+        let mut at: u64 = 0;
+        let mut put = |chip: &mut Chip, reg: u8, val: u8, control: bool| {
+            if control {
+                at += CONTROL_EXTRA;
+            }
+            chip.write_after(at, reg, val);
+            at += WRITE_SPACING;
+        };
+        put(&mut self.chip, REG_FC_LO, (self.cutoff & 0x07) as u8, false);
+        put(&mut self.chip, REG_FC_HI, (self.cutoff >> 3) as u8, false);
+        put(&mut self.chip, REG_MODE_VOL, (self.mode << 4) | self.volume, false);
+        put(&mut self.chip, REG_RES_FILT, self.res_filt, false);
         for (c, ch) in self.channels.iter().enumerate() {
             let base = (c * 7) as u8;
-            self.chip.write(base, (ch.freq & 0xFF) as u8);
-            self.chip.write(base + 1, (ch.freq >> 8) as u8);
-            self.chip.write(base + 2, (ch.pulse_width & 0xFF) as u8);
-            self.chip.write(base + 3, (ch.pulse_width >> 8) as u8);
-            self.chip.write(base + 5, ch.ad);
-            self.chip.write(base + 6, ch.sr);
             let control = if ch.first_frame && ch.first_wave != 0 {
                 ch.first_wave
             } else {
                 // `wave & gate` (gplay.c:945): the channel's gate is a mask.
                 ch.waveform & if ch.gate { 0xFF } else { !GATE }
             };
-            self.chip.write(base + 4, control);
+            put(&mut self.chip, base + 2, (ch.pulse_width & 0xFF) as u8, false);
+            put(&mut self.chip, base + 3, (ch.pulse_width >> 8) as u8, false);
+            put(&mut self.chip, base + 6, ch.sr, false);
+            put(&mut self.chip, base + 5, ch.ad, false);
+            put(&mut self.chip, base, (ch.freq & 0xFF) as u8, false);
+            put(&mut self.chip, base + 1, (ch.freq >> 8) as u8, false);
+            put(&mut self.chip, base + 4, control, true);
         }
-        self.chip.write(REG_FC_LO, (self.cutoff & 0x07) as u8);
-        self.chip.write(REG_FC_HI, (self.cutoff >> 3) as u8);
-        self.chip.write(REG_RES_FILT, self.res_filt);
-        self.chip.write(REG_MODE_VOL, (self.mode << 4) | self.volume);
     }
 }

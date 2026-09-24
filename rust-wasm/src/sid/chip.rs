@@ -153,6 +153,9 @@ pub struct Chip {
     tap_x: [f64; 3],
     tap_y: [f64; 3],
     volume_dac: [f64; 16],
+    /// Register writes waiting for their cycle (`write_after`): (chip cycle,
+    /// register, value), in the order they were scheduled.
+    pending: Vec<(u64, u8, u8)>,
 }
 
 /// All three voices heard: the mask of a powered-on chip.
@@ -195,6 +198,7 @@ impl Chip {
             dc_y: 0.0,
             dc_r: (-2.0 * std::f64::consts::PI * DC_BLOCK_HZ / sample_rate).exp(),
             voice_mask: ALL_VOICES,
+            pending: Vec::new(),
             tap_x: [0.0; 3],
             tap_y: [0.0; 3],
             volume_dac: match model {
@@ -245,6 +249,39 @@ impl Chip {
 
     /// Write a register (offset 0x00..=0x18 from the chip base; higher bits
     /// of `reg` are ignored, read-only offsets are ignored).
+    /// Schedules a register write `delay` chip cycles from now; `render`
+    /// applies it when the cycle arrives, in scheduling order for equal
+    /// cycles. A player uses this to space a frame's writes the way a real
+    /// playroutine does (a `lda`/`sta` pair per register), which matters
+    /// because the envelope's rate counter keeps running between them (the
+    /// ADSR delay bug, `envelope.rs`).
+    pub fn write_after(&mut self, delay: u64, reg: u8, val: u8) {
+        self.pending.push((self.cycles + delay, reg, val));
+    }
+
+    /// Applies every scheduled write at once, whatever its cycle: for a caller
+    /// that steps a player without rendering audio and reads the registers.
+    pub fn flush_writes(&mut self) {
+        for (_, reg, val) in std::mem::take(&mut self.pending) {
+            self.write(reg, val);
+        }
+    }
+
+    /// Applies every scheduled write whose cycle has come.
+    #[inline]
+    fn apply_due_writes(&mut self) {
+        let now = self.cycles;
+        let mut i = 0;
+        while i < self.pending.len() {
+            if self.pending[i].0 <= now {
+                let (_, reg, val) = self.pending.remove(i);
+                self.write(reg, val);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
     pub fn write(&mut self, reg: u8, val: u8) {
         let reg = reg & 0x1F;
         match reg {
@@ -292,6 +329,9 @@ impl Chip {
     /// Advance the digital core by one chip cycle.
     #[inline]
     pub fn clock(&mut self) {
+        if !self.pending.is_empty() {
+            self.apply_due_writes();
+        }
         for v in self.voices.iter_mut() {
             v.clock_accumulator();
         }

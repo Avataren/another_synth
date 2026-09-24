@@ -213,3 +213,124 @@ fn an_8580_ignores_the_profile() {
     assert_eq!(a.filter().cutoff(), b.filter().cutoff());
     assert_eq!(a.filter().q(), b.filter().q());
 }
+
+// ---------------------------------------------------------------------------
+// Spaced register writes: the ADSR delay bug at a note-on (found on the
+// snare of "Coconut Conundrum": reSID's hit starts ~12-30 ms after its gate,
+// ours started at once)
+// ---------------------------------------------------------------------------
+
+/// A voice parked in a hard restart (AD 0x0f, SR 0x00, gate off, envelope at
+/// zero), then GT's note-on writes for one frame: SR, AD, frequency, then the
+/// control register with the gate. `spaced` writes them 9 cycles apart the way
+/// GT does (+4 before the control register); otherwise all in one instant.
+/// Returns the envelope level after `cycles` more cycles.
+fn envelope_after_note_on(spaced: bool, cycles: u64) -> u8 {
+    let mut c = Chip::new(SidModel::Sid6581).unwrap();
+    c.write(0x18, 0x0f);
+    c.write(0x05, 0x0f);
+    c.write(0x06, 0x00);
+    c.write(0x04, 0x40); // pulse, gate off: release with rate period 9
+    c.clock_cycles(30_000); // long enough to reach zero and freeze
+    let writes: [(u8, u8); 5] = [(0x06, 0xF7), (0x05, 0x00), (0x00, 0x14), (0x01, 0x03), (0x04, 0x09)];
+    let mut at = 0u64;
+    for (reg, val) in writes {
+        if reg == 0x04 {
+            at += 4;
+        }
+        if spaced {
+            c.write_after(at, reg, val);
+        } else {
+            c.write(reg, val);
+        }
+        at += 9;
+    }
+    c.clock_cycles(cycles);
+    c.voice(0).envelope_level()
+}
+
+#[test]
+fn write_after_applies_a_write_on_its_cycle_not_before() {
+    let mut c = Chip::new(SidModel::Sid6581).unwrap();
+    c.write_after(10, 0x00, 0xAB);
+    c.write_after(10, 0x01, 0x12);
+    c.clock_cycles(10);
+    assert_eq!(c.voice(0).frequency(), 0, "cycle 10 is not reached yet");
+    c.clock_cycles(1);
+    assert_eq!(c.voice(0).frequency(), 0x12AB, "both writes landed once it is");
+    c.write_after(5, 0x00, 0xCD);
+    c.flush_writes();
+    assert_eq!(c.voice(0).frequency(), 0x12CD, "flush applies what is pending at once");
+}
+
+#[test]
+fn a_spaced_note_on_lands_on_the_adsr_delay_bug_and_an_instant_one_does_not() {
+    // Instant writes: the rate counter is still under the attack period (9)
+    // when the gate opens, so the 2 ms attack starts at once: 5 ms later the
+    // level is at the top (255 after ~2.3 ms).
+    assert_eq!(envelope_after_note_on(false, 5_000), 255);
+    // Spaced writes (GT's): SR=0xF7 changes the release period to 313 first;
+    // by the time the gate opens the counter is past the attack period 9, so
+    // it must run on to 0x7FFF and wrap: the attack is ~32 ms late. 5 ms
+    // after the gate the envelope has not moved; 40 ms after it has.
+    assert_eq!(envelope_after_note_on(true, 5_000), 0);
+    assert_eq!(envelope_after_note_on(true, 40_000), 255);
+}
+
+/// Voice 1 plays a pulse note twice, six frames (one row) apart, on an
+/// instrument with a hard restart 2 frames before the next note (AD 0x00,
+/// SR 0xF7, first-frame waveform 0x09): GT's usual note-on. Returns voice 1's
+/// envelope level at the end of each of the first 9 rendered frames.
+fn hard_restart_note_levels() -> Vec<u8> {
+    let ins = Instrument {
+        name: b"hr".to_vec(),
+        sustain: 15,
+        release: 7,
+        first_wave: 0x09,
+        gate_timer: 2,
+        hard_restart: true,
+        wave_ptr: 1,
+        ..Default::default()
+    };
+    let n = 16;
+    let list = |pattern: u8| Orderlist { entries: vec![OrderEntry { pattern, transpose: 0, repeat: 1 }], restart: 0 };
+    let mut rows = vec![Row::default(); n];
+    rows[0] = row(49, 1);
+    rows[1] = row(49, 1);
+    let s = SidSong {
+        version: SONG_FILE_VERSION,
+        model: SidModel::Sid6581,
+        channels: 3,
+        speed_multiplier: 1,
+        tempo: 6,
+        name: b"s516hr".to_vec(),
+        author: Vec::new(),
+        copyright: Vec::new(),
+        subsongs: vec![Subsong { orderlists: vec![list(0), list(1), list(1)] }],
+        patterns: vec![Pattern { rows }, Pattern { rows: vec![Row::default(); n] }],
+        instruments: vec![ins],
+        tables: Tables { wave: vec![t(0x41, 0x00), t(0xFF, 0x00)], ..Default::default() },
+    };
+    let s = SidSong::parse(&s.to_bytes()).expect("parses");
+    let mut p = SidSongPlayer::new(s, DEFAULT_SAMPLE_RATE).expect("player builds");
+    let mut out = vec![0.0f32; SPF];
+    (0..9)
+        .map(|_| {
+            p.render(&mut out);
+            p.chip().voice(0).envelope_level()
+        })
+        .collect()
+}
+
+#[test]
+fn the_players_note_on_after_a_hard_restart_is_delayed_by_the_adsr_bug_as_in_gt() {
+    // The second note starts on frame 6 (row 1). Its gate opens in the first
+    // ~250 cycles of that frame; with GT's spaced writes (SR before AD before
+    // the gate) the attack is ~32 ms late, so at the end of frame 6 (20 ms
+    // after the gate) the envelope is still at zero, and by the end of frame 7
+    // it has run. Written all at once (the old behaviour) it was at the top
+    // already at the end of frame 6.
+    let l = hard_restart_note_levels();
+    assert_eq!(l[6], 0, "frame 6: still waiting on the rate counter, levels {l:?}");
+    assert_eq!(l[7], 255, "frame 7: the attack has run, levels {l:?}");
+}
