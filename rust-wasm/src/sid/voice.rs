@@ -65,6 +65,7 @@
 
 use super::envelope::{Envelope, Stage};
 use super::noise::Noise;
+use super::revision::profile_6581;
 use super::waveform::{waveform_output, GATE, NOISE, TEST};
 use super::{SidModel, ACC_MASK, PAL_CLOCK_HZ};
 
@@ -72,8 +73,8 @@ const MSB: u32 = 0x80_0000;
 const NOISE_CLOCK_BIT: u32 = 0x08_0000; // accumulator bit 19
 
 /// 6581 waveform-DAC DC offset in normalised units (half-scale = 1).
-/// INFERRED tuning.
-pub const VOICE_DC_6581: f64 = 0.25;
+/// INFERRED tuning. The value lives in the revision profile (S5.15).
+pub const VOICE_DC_6581: f64 = profile_6581().voice_dc;
 /// The 6581 attack floor: 10 %-90 % rise of a full-scale step, seconds.
 /// The plan's cited figure (§1.2), taken at face value.
 pub const ATTACK_FLOOR_6581_S: f64 = 1.5e-3;

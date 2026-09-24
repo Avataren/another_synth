@@ -35,8 +35,9 @@
 //! to bypass the Filter (FILT 3 = 0) and setting 3 OFF to a one prevents
 //! Voice 3 from reaching the audio output"). A filtered voice 3 is
 //! unaffected. FILTEX routes the external input, which is not modelled
-//! (silent). Master volume scales the mix linearly, VOL / 15 (INFERRED: 8580
-//! volume DAC treated as linear, no 6581-style volume DC step).
+//! (silent). Master volume scales the mix. On the 8580 it is linear, VOL / 15
+//! (INFERRED: 8580 volume DAC treated as linear, no 6581-style volume DC
+//! step). The 6581's DAC is nonlinear (S5.15, below).
 //!
 //! Readback (datasheet): OSC3 = the upper 8 bits of voice 3's waveform
 //! output (including combined waveforms, ring mod and a held waveform 0),
@@ -59,11 +60,12 @@
 //! Part of it sits in the mixer/volume stage: the volume DAC scales a
 //! standing DC. That second part is what makes the classic "$D418 volume
 //! digi" loud on a 6581 and near-silent on an 8580. Modelled as
-//!   x = (filter + direct + MIX_DC_6581) * VOL / 15 * CHIP_GAIN_6581
+//!   x = (filter + direct + MIX_DC_6581) * level(VOL) * CHIP_GAIN_6581
+//! (S2 had level(VOL) = VOL / 15; S5.15's table is below).
 //! INFERRED: MIX_DC_6581 = 0.5 (half a full-scale voice) is a tuning guess.
 //! The output coupling (16 Hz DC blocker, shared with the 8580) removes any
 //! steady DC. So both DC terms are heard only as transients: a volume write
-//! gives a step of MIX_DC * dVOL/15 * gain that decays as r^n (r =
+//! gives a step of MIX_DC * dlevel * gain that decays as r^n (r =
 //! e^(-2 pi 16 / fs)), and a note-on gives a VOICE_DC-sized thump.
 //! Gain calibration: the 6581 gain is derived, not guessed, from the S0/S1
 //! headroom rule. With every DC term at its worst, the 6581's peak equals
@@ -73,7 +75,15 @@
 //! The same waveform is therefore 20 log10(0.197647 / 0.28) = -3.03 dB
 //! quieter on the 6581. The rule is a derivation; the DC values it rests on
 //! are the INFERRED guesses above. Level balance is an ears-gate item.
-//! No 6581 volume-DAC nonlinearity is modelled: volume stays linear, VOL/15.
+//!
+//! Die revision (S5.15). The DC values, the gain rule's inputs, the cutoff
+//! anchors and the volume DAC are revision data: they live in
+//! `revision::RevisionProfile`, and the 6581 plays `revision::profile_6581()`
+//! (6581R4AR). The constants below are aliases of that profile. The volume
+//! DAC is the one new trait: level(VOL) comes from the profile's INFERRED
+//! bit weights (monotonic, within 0.01 of VOL / 15, exact at 0 and 15;
+//! disclosure at `revision::R4AR`). It scales the tone and the mixer DC
+//! alike, so a $D418 write steps the DC by MIX_DC * dlevel * gain.
 //!
 //! Per-voice taps (S4, the app's per-track scopes and spectrum): `render_taps`
 //! also writes each voice's own signal, the decimated voice output before
@@ -85,7 +95,8 @@
 //! the mix and their taps; all three on is the datasheet chip.
 
 use super::filter::Filter;
-use super::voice::{Voice, VOICE_DC_6581};
+use super::revision::profile_6581;
+use super::voice::Voice;
 use super::waveform::SYNC;
 use super::{SidError, SidModel, DEFAULT_SAMPLE_RATE, PAL_CLOCK_HZ};
 
@@ -93,11 +104,12 @@ use super::{SidError, SidModel, DEFAULT_SAMPLE_RATE, PAL_CLOCK_HZ};
 /// resonant filter can add ~+8 dB on top. INFERRED tuning (carried from S0).
 pub const CHIP_GAIN: f64 = 0.28;
 
-/// 6581 mixer/volume-stage DC in voice units. INFERRED tuning (header).
-pub const MIX_DC_6581: f64 = 0.5;
+/// 6581 mixer/volume-stage DC in voice units. INFERRED tuning (header),
+/// from the revision profile.
+pub const MIX_DC_6581: f64 = profile_6581().mix_dc;
 
 /// 6581 output gain, from the headroom rule in the header.
-pub const CHIP_GAIN_6581: f64 = CHIP_GAIN * 3.0 / (3.0 * (1.0 + VOICE_DC_6581) + MIX_DC_6581);
+pub const CHIP_GAIN_6581: f64 = profile_6581().chip_gain(CHIP_GAIN);
 
 /// Corner of the output AC coupling (the C64's output capacitor), Hz.
 /// INFERRED tuning (carried from S0).
@@ -140,6 +152,7 @@ pub struct Chip {
     voice_mask: u8,
     tap_x: [f64; 3],
     tap_y: [f64; 3],
+    volume_dac: [f64; 16],
 }
 
 /// All three voices heard: the mask of a powered-on chip.
@@ -177,6 +190,10 @@ impl Chip {
             voice_mask: ALL_VOICES,
             tap_x: [0.0; 3],
             tap_y: [0.0; 3],
+            volume_dac: match model {
+                SidModel::Sid8580 => std::array::from_fn(|v| v as f64 / 15.0),
+                SidModel::Sid6581 => profile_6581().volume_table(),
+            },
         })
     }
 
@@ -189,6 +206,12 @@ impl Chip {
 
     pub fn voice_mask(&self) -> u8 {
         self.voice_mask
+    }
+
+    /// The volume DAC's level for VOL `vol` (low nibble), 0..=1: VOL / 15 on
+    /// the 8580, the revision profile's table on the 6581.
+    pub fn volume_level(&self, vol: u8) -> f64 {
+        self.volume_dac[(vol & 0x0F) as usize]
     }
 
     pub fn model(&self) -> SidModel {
@@ -303,7 +326,7 @@ impl Chip {
     fn render_inner(&mut self, out: &mut [f32], mut taps: Option<[&mut [f32]; 3]>) {
         let filt_bits = self.res_filt & 0x07;
         let voice3_direct = self.mode_vol & VOICE3_OFF == 0;
-        let volume = (self.mode_vol & 0x0F) as f64 / 15.0;
+        let volume = self.volume_level(self.mode_vol);
         let mask = self.voice_mask;
         let tap_gain = volume
             * match self.model {

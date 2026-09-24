@@ -67,6 +67,7 @@
 //!   Not modelled: the real filter's input-dependent cutoff shift. The plan
 //!   approximates it by the static remap, which is what this is.
 
+use super::revision::profile_6581;
 use super::SidModel;
 use std::f64::consts::PI;
 
@@ -86,7 +87,7 @@ pub fn resonance_q(res: u8) -> f64 {
 }
 
 /// 6581 cutoff floor (register 0), Hz.
-pub const F_LO_6581: f64 = 220.0;
+pub const F_LO_6581: f64 = CUTOFF_ANCHORS_6581_LO[0].1;
 /// Soft limit of the 6581 band-pass state (one full-scale voice). INFERRED.
 pub const SAT_6581: f64 = 1.0;
 
@@ -112,20 +113,13 @@ pub const SAT_6581: f64 = 1.0;
 /// - Expected tolerance vs reSID's spline: within ±5% at the anchors, and
 ///   ±15% between them in the 1-10 kHz region. The log-linear chords sit
 ///   below a convex curve. Ears-gate.
-pub const CUTOFF_ANCHORS_6581_LO: [(u16, f64); 4] = [
-    (0, F_LO_6581),
-    (0x200, 420.0),
-    (0x300, 1_600.0),
-    (0x3FF, 6_000.0),
-];
+///
+/// S5.15: the anchors are revision data and live in the 6581 revision
+/// profile (`revision::R4AR`, GENERIC-6581: S5.12's anchors unchanged).
+pub const CUTOFF_ANCHORS_6581_LO: [(u16, f64); 4] = profile_6581().cutoff_anchors_lo;
 /// 6581 cutoff anchors, high piece: registers 0x400..=0x7FF (FC_HI bit 7
 /// set). Disclosure at `CUTOFF_ANCHORS_6581_LO`.
-pub const CUTOFF_ANCHORS_6581_HI: [(u16, f64); 4] = [
-    (0x400, 4_600.0),
-    (0x500, 9_500.0),
-    (0x600, 14_500.0),
-    (0x7FF, 18_000.0),
-];
+pub const CUTOFF_ANCHORS_6581_HI: [(u16, f64); 4] = profile_6581().cutoff_anchors_hi;
 
 /// Log-linear interpolation through `anchors`. `reg` must lie within the
 /// anchors' span (the first anchor to the last).
