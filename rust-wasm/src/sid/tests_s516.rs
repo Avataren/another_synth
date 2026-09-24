@@ -327,11 +327,13 @@ fn the_players_note_on_after_a_hard_restart_is_delayed_by_the_adsr_bug_as_in_gt(
     // The second note starts on frame 6 (row 1). Its gate opens in the first
     // ~250 cycles of that frame; with GT's spaced writes (SR before AD before
     // the gate) the attack is ~32 ms late, so at the end of frame 6 (20 ms
-    // after the gate) the envelope is still at zero, and by the end of frame 7
-    // it has run. Written all at once (the old behaviour) it was at the top
-    // already at the end of frame 6.
+    // after the gate) the attack has not started: the envelope sits at the
+    // floor the hard restart's release left it at (0 or 1: S5.17's AD 0x0F
+    // keeps the note up ~33 ms, so the release ends on the way in), and by the
+    // end of frame 7 it has run. Written all at once (the old behaviour) it
+    // was at the top already at the end of frame 6.
     let l = hard_restart_note_levels();
-    assert_eq!(l[6], 0, "frame 6: still waiting on the rate counter, levels {l:?}");
+    assert!(l[6] <= 1, "frame 6: still waiting on the rate counter, levels {l:?}");
     assert_eq!(l[7], 255, "frame 7: the attack has run, levels {l:?}");
 }
 

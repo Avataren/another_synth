@@ -75,8 +75,9 @@
 //!     (the row lasts left + 1 frames; pinned in S5); 0x10..=0xDF
 //!     sets the waveform to `left` whole, 0xE0..=0xEF to `left & 0x0F`, the
 //!     gate bit kept in both (gplay.c:525, 527; S5.9), 0x00 keeps it,
-//!     0xF0..=0xFE (GT's table commands) is not modelled and only advances
-//!     (its right column is not a note). right, GT's arithmetic
+//!     0xF0..=0xFE (GT's table commands): $F5 sets AD and $F6 sets SR to
+//!     the right column (S5.17), the rest are not modelled and only advance
+//!     (the right column is not a note). right, GT's arithmetic
 //!     (S5.10, gplay.c:714-721): 0x00..=0x7F added to the channel's note,
 //!     0x80 no change, 0x81..=0xFF the absolute note, then `& 0x7F`, into the
 //!     128-entry table (96 notes, then zeros: `gt_note_freq_reg`). This right
@@ -117,6 +118,12 @@ use super::chip::{Chip, REG_FC_HI, REG_FC_LO, REG_MODE_VOL, REG_RES_FILT};
 const WRITE_SPACING: u64 = 9;
 /// Extra cycles before a control register (GT: `SIDWAVEDELAY`, the `and`).
 const CONTROL_EXTRA: u64 = 4;
+/// The AD a hard restart writes (GT's default `adparam` 0x0F00, gplay.c:929,
+/// its high byte; SR is the low byte, 0). Decay 15 puts the envelope's rate
+/// period at 31251 cycles while the gate is still on, so the counter is past
+/// the release period (9) when the gate closes and the ADSR delay bug holds the
+/// note at level for ~33 ms before it releases: GT's audible tail after a hit.
+const HARD_RESTART_AD: u8 = 0x0F;
 use super::song::{
     Instrument, Row, SidSong, TableRow, NOTE_FIRST, NOTE_KEY_OFF, NOTE_KEY_ON, NOTE_LAST,
     SID_CHANNELS,
@@ -862,9 +869,16 @@ impl SidSongPlayer {
                         0xE0..=0xEF => ch.waveform = l & 0x0F,
                         _ => {}
                     }
-                    // $F0-$FE run a table command (not modelled): its right
-                    // column is the command's parameter, not a note, and GT
-                    // skips the tick effects that frame (gplay.c:704-710).
+                    // $F0-$FE run a table command: its right column is the
+                    // command's parameter, not a note, and GT skips the tick
+                    // effects that frame (gplay.c:704-710). Only 5 (set AD)
+                    // and 6 (set SR) are modelled (gplay.c:643-649); they
+                    // stand until the next note or hard restart.
+                    match l {
+                        0xF5 => ch.ad = row.right,
+                        0xF6 => ch.sr = row.right,
+                        _ => {}
+                    }
                     noted = if l >= 0xF0 { true } else { Self::wave_note(ch, row.right) };
                     ch.wave_ptr = ch.wave_ptr.wrapping_add(1);
                 }
@@ -1013,7 +1027,7 @@ impl SidSongPlayer {
         let ch = &mut self.channels[c];
         ch.gate = false;
         if hr {
-            ch.ad = 0;
+            ch.ad = HARD_RESTART_AD;
             ch.sr = 0;
         }
     }

@@ -1706,3 +1706,10 @@ Things to know before touching any of it:
   tie-note, and a wave-table delay row sets its note after the wait. Other GT semantics it does
   not model (funktempo, wavetable commands, vibrato delay 0 = off, pulse width/filter routing
   untouched by instruments without tables) are listed with counts in the D-log §7.
+
+## SID player: hard restart and wave-table commands (S5.17)
+
+- GT's hard restart writes AD = `adparam>>8` = 0x0F (not 0) and SR = 0 (gplay.c:929). The 0x0F is what makes a GT note hold ~33 ms after its gate closes (decay 15 puts the rate period at 31251, so the counter is past the release period when the gate drops and the ADSR delay bug waits for the 0x8000 wrap). With AD 0 the release started at once and voice 3 of "Coconut Conundrum" sounded much shorter than in GT. `HARD_RESTART_AD` in `sid/player.rs`.
+- Wave-table commands $F5 (set AD) and $F6 (set SR) are modelled; the other $F0-$FE are not (they only advance). $F6 60 on that instrument drops the sustain 7 -> 6 for the last frame (the 7/6 level gap).
+- Compare AD/SR too, not just the control byte: control bytes matched GT on all frames while AD/SR did not. Voice-3 RMS vs GT after the fix: 0.98 (6581) / 0.99 (8580).
+- Still different, voice 3, 6581 only: the first frame after a note's gate opens is 0.875x GT's (8580: 0.99x); on a note-on GT's frequency register lags the new note by one frame (inaudible under the test bit).

@@ -7,10 +7,10 @@
     "rust-wasm/rust-toolchain.toml",
     "rust-wasm/.cargo/config.toml"
   ],
-  "sourceFileCount": 95,
-  "sourceHash": "9e718e4ffa53baece91e990894b16e981cde525b257c6c9d40250d652466762f",
+  "sourceFileCount": 96,
+  "sourceHash": "fba5ab65b2f0bb262e7829fe9e2647f2d82c7a8712110362e24d818bdaccf138",
   "outputs": {
-    "public/wasm/audio_processor_bg.wasm": "f2698947de8081b4a4d208c16d8cdceee74e08bec5e0fdaaa7fa5f1afae3677a",
+    "public/wasm/audio_processor_bg.wasm": "0b581ebfad9a157b2e8c652c871f64a8d4cd52b34ad8faf6636ef875c6bddcd8",
     "public/wasm/audio_processor.js": "ab6257aad27f72e6da1c6ed3866688d7763348ff0bc8357fd79be39d3b8ab42f"
   }
 }
