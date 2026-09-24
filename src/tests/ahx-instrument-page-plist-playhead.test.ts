@@ -10,6 +10,8 @@ vi.mock('src/stores/tracker-playback-store', () => ({
   useTrackerPlaybackStore: () => ({
     previewAhxNoteOn: async () => true,
     previewAhxNoteOff: () => undefined,
+    setAhxPreviewScopeEnabled: () => undefined,
+    getAhxPreviewWaveform: () => null,
   }),
 }));
 vi.mock('src/components/tracker/pattern-canvas/PatternCanvas.vue', async () => ({

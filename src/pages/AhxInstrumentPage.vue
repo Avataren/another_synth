@@ -76,21 +76,14 @@
         @set-octave="play.setOctave"
         @toggle-midi="play.toggleMidi"
       />
-      <div v-if="audible" class="ahx-analyzer-wrap">
-        <div class="ahx-analyzer" data-testid="ahx-analyzer-row">
-          <figure class="ahx-analyzer__slot">
-            <OscilloscopeComponent :node="ahxPreviewOutputNode" :mono="true" data-testid="ahx-analyzer-oscilloscope" />
-            <figcaption class="ahx-dim" data-testid="ahx-analyzer-caption-wave">Wave</figcaption>
-          </figure>
-          <figure class="ahx-analyzer__slot">
-            <FrequencyAnalyzerComponent :node="ahxPreviewOutputNode" data-testid="ahx-analyzer-frequency" />
-            <figcaption class="ahx-dim" data-testid="ahx-analyzer-caption-spectrum">Spectrum</figcaption>
-          </figure>
-        </div>
-        <span v-if="!ahxPreviewOutputNode" class="ahx-dim ahx-analyzer__idle" data-testid="ahx-analyzer-idle"
-          >Play a note to see it here.</span
-        >
-      </div>
+      <PreviewScopeBand
+        v-if="audible"
+        class="ahx-scopes"
+        testid-prefix="ahx"
+        :spectrum-node="ahxPreviewOutputNode"
+        :scope-source="playbackStore.getAhxPreviewWaveform"
+        :scope-gain="userSettings.settings.ahxScopeGain"
+      />
       <span v-else class="ahx-dim" data-testid="ahx-analyzer-off"
         >Unavailable: there is no source file to play this instrument from.</span
       >
@@ -331,6 +324,7 @@
       </div>
 
       <div class="ahx-right">
+      <div class="ahx-right__main">
       <section class="ahx-card" data-testid="ahx-card-tone">
         <h3>Starting tone</h3>
         <p class="ahx-dim ahx-note">
@@ -458,7 +452,7 @@
       </section>
       </div>
 
-      <section class="ahx-card ahx-plist-full">
+      <section class="ahx-card ahx-plist">
         <h3>
           PList
           <span class="ahx-dim" data-testid="ahx-plist-summary"
@@ -645,6 +639,7 @@
         </div>
         <p v-else class="ahx-dim">This instrument has no PList. Add a row to give it one.</p>
       </section>
+      </div>
     </div>
     </template>
   </q-page>
@@ -673,8 +668,7 @@ import AhxAuditionBar from 'src/components/ahx/AhxAuditionBar.vue';
 import { ahxSourceInfo } from 'src/audio/tracker/ahx-source';
 import { ahxPListPlayhead } from 'src/audio/tracker/ahx-plist-playhead';
 import { ahxPreviewOutputNode } from 'src/audio/tracker/ahx-preview-output';
-import OscilloscopeComponent from 'src/components/OscilloscopeComponent.vue';
-import FrequencyAnalyzerComponent from 'src/components/FrequencyAnalyzerComponent.vue';
+import PreviewScopeBand from 'src/components/tracker/PreviewScopeBand.vue';
 import { ahxNotices, reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
 import AhxSliderField from 'src/components/ahx/AhxSliderField.vue';
@@ -1101,9 +1095,14 @@ function handleKeyDown(event: KeyboardEvent) {
   }
 }
 
-onMounted(() => window.addEventListener('keydown', handleKeyDown));
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown);
+  // The scope draws the preview voice's own waveform, which the worklet records only while asked.
+  playbackStore.setAhxPreviewScopeEnabled(true);
+});
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
+  playbackStore.setAhxPreviewScopeEnabled(false);
   if (restrikeTimer !== null) clearTimeout(restrikeTimer);
 });
 </script>
@@ -1154,7 +1153,7 @@ onUnmounted(() => {
 
 .ahx-body {
   display: grid;
-  grid-template-columns: minmax(300px, 380px) 1fr;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
   gap: 12px;
   padding: 12px;
 }
@@ -1171,8 +1170,23 @@ onUnmounted(() => {
   align-content: start;
 }
 
-.ahx-plist-full {
-  grid-column: 1 / -1;
+.ahx-right__main {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+/*
+ * Wide screens: the PList beside the tone and the envelope instead of under
+ * them, so the page is three columns of about the same height rather than a
+ * tall parameter column beside a short one.
+ */
+@media (min-width: 1500px) {
+  .ahx-right {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
 }
 
 .ahx-card {
@@ -1402,55 +1416,9 @@ onUnmounted(() => {
   position: static;
 }
 
-.ahx-analyzer-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.ahx-analyzer {
-  display: flex;
-  gap: 8px;
-}
-
-.ahx-analyzer__slot {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 150px;
-  margin: 0;
-}
-
-.ahx-analyzer__slot figcaption {
-  font-size: 0.7rem;
-  text-align: center;
-}
-
-/* FrequencyAnalyzerComponent inherits height: 100% with no fallback, so an
-   unsized flex slot would collapse its canvas to 0 and it would draw
-   nothing; OscilloscopeComponent has its own fixed 120px canvas that this
-   caps down to match. */
-.ahx-analyzer__slot > :first-child {
-  height: 56px;
-}
-
-.ahx-analyzer__slot :deep(canvas) {
-  height: 56px;
-}
-
-.ahx-analyzer__slot :deep(.q-card__section) {
-  padding: 0;
-}
-
-/* Over the two boxes until the first note makes the preview voice (and its output) exist. */
-.ahx-analyzer__idle {
-  position: absolute;
-  inset: 0 0 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.8rem;
-  pointer-events: none;
+.ahx-sound-band > .ahx-scopes {
+  flex: 1 1 420px;
+  align-self: center;
 }
 
 .ahx-status {

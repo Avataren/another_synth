@@ -486,6 +486,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     return sid.voiceFullScale();
   }
 
+  /** The SID keyboard preview voice's full scale, for the instrument page's scope (`null`: not known yet). */
+  function getSidPreviewFullScale(): number | null {
+    return sid.previewFullScale();
+  }
+
   /** The SID transport itself (tests and diagnostics). */
   function sidTransport(): SidSongTransport {
     return sid;
@@ -513,6 +518,16 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
   function getAhxChannelWaveform(channel: number): Int16Array | null {
     return ahx.getAhxChannelWaveform(channel);
+  }
+
+  /** The instrument page's scope: record the AHX keyboard preview voice's waveform, or stop. */
+  function setAhxPreviewScopeEnabled(enabled: boolean): void {
+    ahx.setAhxPreviewScopeEnabled(enabled);
+  }
+
+  /** The AHX preview voice's newest waveform, in `TrackWaveform`'s `scopeSource` shape (the channel is ignored). */
+  function getAhxPreviewWaveform(_channel?: number): Int16Array | null {
+    return ahx.getAhxPreviewWaveform();
   }
 
   /**
@@ -1009,6 +1024,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // AHX/HVL per-voice scopes
     setAhxScopesEnabled,
     getAhxChannelWaveform,
+    setAhxPreviewScopeEnabled,
+    getAhxPreviewWaveform,
 
     // SID (plan-sid-tracking.md S4)
     previewSidNoteOn,
@@ -1018,6 +1035,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     onSidPreviewOutput,
     connectSidVoiceTaps,
     getSidVoiceFullScale,
+    getSidPreviewFullScale,
     sidTransport,
 
     // Mute/Solo

@@ -10,6 +10,8 @@ vi.mock('src/stores/tracker-playback-store', () => ({
   useTrackerPlaybackStore: () => ({
     previewAhxNoteOn: async () => true,
     previewAhxNoteOff: () => undefined,
+    setAhxPreviewScopeEnabled: () => undefined,
+    getAhxPreviewWaveform: () => null,
   }),
 }));
 
@@ -128,8 +130,10 @@ describe('AhxInstrumentPage, UX pass 2', () => {
   describe('U2: the tone beside Level & wave', () => {
     it('the right column starts with the tone card, then the envelope, with honest labels', async () => {
       const w = await mountEditor(1);
-      const cards = w.get('.ahx-right').findAll(':scope > section');
+      const cards = w.get('.ahx-right__main').findAll(':scope > section');
       expect(cards.map((c) => c.attributes('data-testid'))).toEqual(['ahx-card-tone', 'ahx-card-envelope']);
+      // The PList follows them in the right column (beside them on a wide screen), not under both columns.
+      expect(w.get('.ahx-right').find(':scope > .ahx-plist').exists()).toBe(true);
       expect(el(w, 'ahx-card-tone').get('h3').text()).toBe('Starting tone');
       expect(el(w, 'ahx-card-tone').text()).toContain('Starting brightness');
       expect(w.text()).not.toContain('Filter position');

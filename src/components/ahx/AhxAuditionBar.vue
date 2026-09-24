@@ -75,7 +75,7 @@
       </label>
       <label
         class="ahx-check ahx-check--bar"
-        title="Strike the held note again shortly after each edit. Volume, wave length, vibrato and the sweep setup are only read when a note is struck, so this is what makes them audible while you drag."
+        :title="props.restrikeTitle"
       >
         <input
           type="checkbox"
@@ -90,7 +90,7 @@
         v-if="audible"
         class="ahx-dim ahx-audition__hint"
         title="Hold a note to hear this instrument as it is now. The song plays the same edit from its next trigger of this instrument; a note already sounding keeps its volume, vibrato and wave length until it is struck again."
-        >Play with the keyboard (Z-M, Q-P), MIDI or the keys; edits sound at once.</span
+        >{{ props.hint }}</span
       >
       <span v-else class="ahx-dim" data-testid="ahx-audition-off"
         >Unavailable: there is no source file to play this instrument from (keyboard, MIDI and keys are off).</span
@@ -113,9 +113,17 @@ interface Props {
   octave: number;
   stripStart: number;
   midiStatus: MidiInputStatus;
+  /** The hint beside the controls (the default is the AHX editor's). */
+  hint?: string;
+  /** Re-strike's tooltip: what an edit does to a sounding note differs per format. */
+  restrikeTitle?: string;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  hint: 'Play with the keyboard (Z-M, Q-P), MIDI or the keys; edits sound at once.',
+  restrikeTitle:
+    'Strike the held note again shortly after each edit. Volume, wave length, vibrato and the sweep setup are only read when a note is struck, so this is what makes them audible while you drag.',
+});
 
 const emit = defineEmits<{
   'pointer-down': [midi: number];

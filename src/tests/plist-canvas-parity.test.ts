@@ -8,7 +8,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import type { AhxInstrument } from '@another-synth/tracker-playback';
 
 vi.mock('src/stores/tracker-playback-store', () => ({
-  useTrackerPlaybackStore: () => ({ previewAhxNoteOn: async () => true, previewAhxNoteOff: () => undefined }),
+  useTrackerPlaybackStore: () => ({ previewAhxNoteOn: async () => true, previewAhxNoteOff: () => undefined, setAhxPreviewScopeEnabled: () => undefined, getAhxPreviewWaveform: () => null }),
 }));
 vi.mock('src/components/tracker/pattern-canvas/PatternCanvas.vue', async () => ({
   default: (await import('./helpers/pattern-canvas-stub')).PatternCanvasStub,

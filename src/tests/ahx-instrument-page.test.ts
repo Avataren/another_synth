@@ -13,6 +13,8 @@ vi.mock('src/stores/tracker-playback-store', () => ({
       return true;
     },
     previewAhxNoteOff: (midi: number) => preview.off.push(midi),
+    setAhxPreviewScopeEnabled: () => undefined,
+    getAhxPreviewWaveform: () => null,
   }),
 }));
 

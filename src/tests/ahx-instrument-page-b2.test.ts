@@ -9,6 +9,8 @@ vi.mock('src/stores/tracker-playback-store', () => ({
   useTrackerPlaybackStore: () => ({
     previewAhxNoteOn: async () => true,
     previewAhxNoteOff: () => undefined,
+    setAhxPreviewScopeEnabled: () => undefined,
+    getAhxPreviewWaveform: () => null,
   }),
 }));
 

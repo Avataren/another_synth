@@ -301,6 +301,31 @@ describe('AhxProcessorCore over the real wasm', () => {
       return { core, events };
     }
 
+    it('a preview voice posts its waveforms too (the instrument editor\'s scope)', () => {
+      const { core, events } = capturingCore();
+      core.handle({ type: 'set-capture', enabled: true });
+      core.handle({ type: 'set-preview', enabled: true });
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
+      core.handle({ type: 'preview-note-on', instrument: 1, note: 25, velocity: 127 });
+      render(core, SAMPLE_RATE / 2);
+      const posted = waveforms(events);
+      // About 25 Hz, as a playing song reports.
+      expect(posted.length).toBeGreaterThanOrEqual(10);
+      expect(posted.length).toBeLessThanOrEqual(15);
+      // The previewed note is voice 0's.
+      const voice0 = (posted.at(-1) as Waveforms).data.subarray(0, AHX_SCOPE_POINTS);
+      expect(voice0.some((v) => v !== 0)).toBe(true);
+    });
+
+    it('a preview voice posts none with capture off', () => {
+      const { core, events } = capturingCore();
+      core.handle({ type: 'set-preview', enabled: true });
+      core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
+      core.handle({ type: 'preview-note-on', instrument: 1, note: 25, velocity: 127 });
+      render(core, SAMPLE_RATE / 2);
+      expect(waveforms(events)).toHaveLength(0);
+    });
+
     it('is off by default: no waveforms events', () => {
       const { core, events } = newCore();
       core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });

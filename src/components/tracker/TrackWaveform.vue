@@ -70,6 +70,8 @@ let canvasHeight = 0;
 let cachedWaveformColor = 'rgb(254, 65, 116)';
 let cachedBgColor = '#0b111a';
 let themeObserver: MutationObserver | null = null;
+// The box can change size without the window doing so (a flex band reflowing).
+let resizeObserver: ResizeObserver | null = null;
 
 function updateCachedColors() {
   const style = getComputedStyle(document.documentElement);
@@ -116,11 +118,13 @@ function disconnectCurrentNode() {
 }
 
 function setupAnalyser() {
-  if (!props.audioContext) return;
+  // Without a context given, the node's own (an editor's preview voice).
+  const context = props.audioContext ?? props.audioNode?.context ?? null;
+  if (!context) return;
 
   // Create analyser if we don't have one yet
   if (!analyser) {
-    analyser = props.audioContext.createAnalyser();
+    analyser = context.createAnalyser();
     analyser.fftSize = TRACE_FFT_SIZE;
     dataArray = new Uint8Array(analyser.frequencyBinCount);
   }
@@ -290,17 +294,23 @@ function handleResize() {
 
 onMounted(() => {
   window.addEventListener('resize', handleResize);
+  if (typeof ResizeObserver !== 'undefined' && canvasRef.value) {
+    resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(canvasRef.value);
+  }
   updateCachedColors();
   setupThemeObserver();
   if (props.scopeSource) {
     startVisualization();
-  } else if (props.audioContext) {
+  } else {
     setupAnalyser();
   }
 });
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
+  resizeObserver?.disconnect();
+  resizeObserver = null;
   if (themeObserver) {
     themeObserver.disconnect();
     themeObserver = null;

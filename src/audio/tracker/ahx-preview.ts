@@ -45,6 +45,12 @@ export class AhxPreview {
   /** Same reasoning as `plistRowListeners`, for the preview voice's own output `GainNode` (not the song bus). */
   private readonly outputNodeListeners = new Set<(node: AudioNode | null) => void>();
   private clientUnsubs: Array<() => void> = [];
+  /** Whether the editor's scope wants the voice's waveform (`setCapture`); applied to a client made later too. */
+  private captureWanted = false;
+  /** The newest snapshot of the preview voice (voice 0), or null. */
+  private waveform: Int16Array | null = null;
+  /** The client's waveform subscription, held only while capture is wanted. */
+  private waveformUnsub: (() => void) | null = null;
 
   constructor(
     private readonly host: AhxTransportHost & {
@@ -179,6 +185,44 @@ export class AhxPreview {
     return promise;
   }
 
+  /**
+   * Have the worklet record the preview voice's waveform for a scope (the
+   * instrument page's, while it is open). Off by default: no capture work.
+   */
+  setCapture(enabled: boolean): void {
+    if (this.captureWanted === enabled) return;
+    this.captureWanted = enabled;
+    if (enabled) {
+      if (this.client) this.startCapture(this.client);
+      return;
+    }
+    this.stopCapture();
+    this.client?.setCapture(false);
+  }
+
+  private startCapture(client: AhxPlayerClient): void {
+    client.setCapture(true);
+    // The previewed note is voice 0's: that run is the scope's.
+    this.waveformUnsub ??= client.onWaveforms((w) => {
+      this.waveform = w.data.subarray(0, w.points);
+    });
+  }
+
+  private stopCapture(): void {
+    this.waveformUnsub?.();
+    this.waveformUnsub = null;
+    this.waveform = null;
+  }
+
+  /**
+   * The preview voice's newest waveform (`i16`, oldest first, full scale
+   * `AHX_SCOPE_FULL_SCALE`), or null before one has arrived or with capture
+   * off. Not reactive; read it from a draw loop.
+   */
+  getWaveform(): Int16Array | null {
+    return this.waveform;
+  }
+
   private async prepare(bytes: Uint8Array): Promise<AhxPlayerClient | null> {
     if (this.client && this.client.audioContext !== this.host.audioContext) {
       this.disposeClient();
@@ -214,6 +258,7 @@ export class AhxPreview {
           }),
         ];
         this.client = client;
+        if (this.captureWanted) this.startCapture(client);
         // `client.output`: the preview voice's own gain, not `this.host.output`
         // (the whole song's mix bus) — see D-A in the redesign plan.
         for (const listener of this.outputNodeListeners) listener(client.output);
@@ -228,6 +273,7 @@ export class AhxPreview {
   private disposeClient(): void {
     for (const unsubscribe of this.clientUnsubs) unsubscribe();
     this.clientUnsubs = [];
+    this.stopCapture();
     // The worklet that reported a row is gone, and with it the note.
     if (this.client) for (const listener of this.plistRowListeners) listener({ instrument: 0, row: -1 });
     if (this.client) for (const listener of this.outputNodeListeners) listener(null);

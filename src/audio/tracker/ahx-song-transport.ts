@@ -80,6 +80,8 @@ let ahxTransportInstance: AhxTransport | null = null;
 let ahxUnsubscribes: Array<() => void> = [];
 /** The keyboard-preview voice: its own worklet, apart from the song's (`AhxTransport`). */
 let ahxPreviewInstance: AhxPreview | null = null;
+/** Whether the instrument page's scope wants the preview voice's waveform (applied to a preview made later too). */
+let ahxPreviewScopeWanted = false;
 let ahxSourceUnsubscribe: (() => void) | null = null;
 let ahxStructureUnsubscribe: (() => void) | null = null;
 /** The debounce in front of a live reload of a playing AHX song (`AhxReloadScheduler`). */
@@ -253,6 +255,17 @@ export class AhxSongTransport {
     ahxPreviewInstance?.noteOff(midi);
   }
 
+  /** Record the keyboard preview voice's waveform for the instrument page's scope, or stop. */
+  setAhxPreviewScopeEnabled(enabled: boolean): void {
+    ahxPreviewScopeWanted = enabled;
+    ahxPreviewInstance?.setCapture(enabled);
+  }
+
+  /** The preview voice's newest waveform (see `AhxPreview.getWaveform`), or null. Not reactive. */
+  getAhxPreviewWaveform(): Int16Array | null {
+    return ahxPreviewInstance?.getWaveform() ?? null;
+  }
+
   /**
    * What the playhead's clock holds a row back by, and how often the engine
    * can step: the preview's context latency (seconds; 0 where the browser does
@@ -276,6 +289,7 @@ export class AhxSongTransport {
     // preview's worklet reports once there is one.
     preview.onPListRow(pushAhxPListReport);
     preview.onOutputNode(setAhxPreviewOutputNode);
+    preview.setCapture(ahxPreviewScopeWanted);
     setAhxPListTimingSource(this.ahxPlayheadTiming);
     return preview;
   }

@@ -3506,7 +3506,10 @@ var AhxProcessorCore = class {
         fadeOutTail(left);
         if (right) fadeOutTail(right);
       }
-      if (this.preview) this.reportPListRow(player);
+      if (this.preview) {
+        this.reportPListRow(player);
+        if (this.capture) this.reportPreviewWaveforms(player, left.length);
+      }
     } catch (error) {
       this.dropPlayer();
       left.fill(0);
@@ -3668,6 +3671,13 @@ var AhxProcessorCore = class {
     this.lastPlistRow = row;
     this.lastPlistInstrument = instrument;
     this.post({ type: "plist-row", instrument, row });
+  }
+  /** Preview mode: the voices' waveforms at the song's report rate. */
+  reportPreviewWaveforms(player, frames) {
+    this.framesSincePosition += frames;
+    if (this.framesSincePosition < this.sampleRate * POSITION_INTERVAL_SECONDS) return;
+    this.framesSincePosition = 0;
+    this.postWaveforms(player);
   }
   /** Snapshots every voice into the reused buffer and posts it. Allocates nothing per report. */
   postWaveforms(player) {

@@ -5,15 +5,18 @@ import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
+const scope = vi.hoisted(() => ({ enabled: [] as boolean[], waveform: () => null as Int16Array | null }));
 vi.mock('src/stores/tracker-playback-store', () => ({
   useTrackerPlaybackStore: () => ({
     previewAhxNoteOn: async () => true,
     previewAhxNoteOff: () => undefined,
+    setAhxPreviewScopeEnabled: (enabled: boolean) => scope.enabled.push(enabled),
+    getAhxPreviewWaveform: scope.waveform,
   }),
 }));
 
 import AhxInstrumentPage from 'pages/AhxInstrumentPage.vue';
-import OscilloscopeComponent from 'src/components/OscilloscopeComponent.vue';
+import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import FrequencyAnalyzerComponent from 'src/components/FrequencyAnalyzerComponent.vue';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
@@ -21,12 +24,11 @@ import { setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
 import { ahxPreviewOutputNode } from 'src/audio/tracker/ahx-preview-output';
 
 /**
- * B2 wiring smoke test: the analyzer row on AhxInstrumentPage binds
- * :node="ahxPreviewOutputNode" (the direct module import, mirroring
- * ahxPListPlayhead) to the two reused, unmodified visualizer components, and
- * gates on the same `audible` flag the audition bar already uses. Not an
- * audio-correctness test — OscilloscopeComponent/FrequencyAnalyzerComponent
- * are untouched by this plan.
+ * B2 wiring smoke test: the analyzer row on AhxInstrumentPage draws the
+ * preview voice with the tracker's own AHX scope (`TrackWaveform` on the
+ * voice's snapshots) and a spectrum of `ahxPreviewOutputNode` (the direct
+ * module import, mirroring ahxPListPlayhead), gated on the same `audible`
+ * flag the audition bar uses. Not an audio-correctness test.
  */
 
 const karma = (): ArrayBuffer => {
@@ -101,15 +103,24 @@ describe('AhxInstrumentPage analyzer row (B2)', () => {
     const w = await mountEditor(1);
     expect(has(w, 'ahx-analyzer-row')).toBe(true);
     expect(has(w, 'ahx-analyzer-off')).toBe(false);
-    const osc = w.findComponent(OscilloscopeComponent);
+    const osc = w.findComponent(TrackWaveform);
     const freq = w.findComponent(FrequencyAnalyzerComponent);
     expect(osc.exists()).toBe(true);
     expect(freq.exists()).toBe(true);
-    expect(osc.props('node')).toBe(ahxPreviewOutputNode.value);
+    // The tracker's AHX scope: the preview voice's own snapshots, at the tracker's scope gain.
+    expect(osc.props('scopeSource')).toBe(scope.waveform);
+    expect(osc.props('scopeGain')).toBe(1);
     expect(freq.props('node')).toBe(ahxPreviewOutputNode.value);
-    // AHX preview is monophonic: the oscilloscope must not do a stereo split.
-    expect(osc.props('mono')).toBe(true);
-    expect(osc.props('node')).toBeNull();
+    expect(freq.props('node')).toBeNull();
+  });
+
+  it('asks for the preview voice\'s waveform while the page is open, and stops after', async () => {
+    load();
+    scope.enabled.length = 0;
+    const w = await mountEditor(1);
+    expect(scope.enabled).toEqual([true]);
+    w.unmount();
+    expect(scope.enabled).toEqual([true, false]);
   });
 
   it('not audible: renders ahx-analyzer-off, no analyzer components mounted', async () => {
@@ -119,7 +130,7 @@ describe('AhxInstrumentPage analyzer row (B2)', () => {
     const w = await mountEditor(1);
     expect(has(w, 'ahx-analyzer-row')).toBe(false);
     expect(has(w, 'ahx-analyzer-off')).toBe(true);
-    expect(w.findComponent(OscilloscopeComponent).exists()).toBe(false);
+    expect(w.findComponent(TrackWaveform).exists()).toBe(false);
     expect(w.findComponent(FrequencyAnalyzerComponent).exists()).toBe(false);
   });
 
@@ -129,11 +140,11 @@ describe('AhxInstrumentPage analyzer row (B2)', () => {
     const node = fakeAudioNode();
     ahxPreviewOutputNode.value = node;
     await w.vm.$nextTick();
-    expect(w.findComponent(OscilloscopeComponent).props('node')).toBe(node);
     expect(w.findComponent(FrequencyAnalyzerComponent).props('node')).toBe(node);
+    expect(has(w, 'ahx-analyzer-idle')).toBe(false);
     ahxPreviewOutputNode.value = null;
     await w.vm.$nextTick();
-    expect(w.findComponent(OscilloscopeComponent).props('node')).toBeNull();
     expect(w.findComponent(FrequencyAnalyzerComponent).props('node')).toBeNull();
+    expect(has(w, 'ahx-analyzer-idle')).toBe(true);
   });
 });

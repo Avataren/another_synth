@@ -176,6 +176,15 @@ export class SidSongTransport {
     return this.client?.song?.voiceFullScale ?? null;
   }
 
+  /**
+   * The same for the keyboard preview voice's output (the instrument page's
+   * scope): one voice through the chip's output, at the level a tap has. The
+   * song's value until the preview has loaded the song; both are the song's chip.
+   */
+  previewFullScale(): number | null {
+    return this.preview?.song?.voiceFullScale ?? this.voiceFullScale();
+  }
+
   private disposeClient(): void {
     for (const unsub of this.clientUnsubs) unsub();
     this.clientUnsubs = [];

@@ -18,6 +18,7 @@ vi.mock('src/stores/tracker-playback-store', () => ({
     prepareSidPreview: async () => {
       preview.prepared += 1;
     },
+    getSidPreviewFullScale: () => 0.17,
     sidPreviewOutput: () => null,
     onSidPreviewOutput: () => () => undefined,
   }),
@@ -28,6 +29,8 @@ import AhxSliderField from 'src/components/ahx/AhxSliderField.vue';
 import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
 import AhxSegmented from 'src/components/ahx/AhxSegmented.vue';
 import AhxPianoStrip from 'src/components/ahx/AhxPianoStrip.vue';
+import AhxAuditionBar from 'src/components/ahx/AhxAuditionBar.vue';
+import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { decodeSidFile, encodeSidFile, serializeSidFile, type SidDoc } from 'src/audio/tracker/sid-doc';
 import { canEditSlot, resolveInstrumentEditorRoute } from 'src/audio/tracker/instrument-types';
@@ -193,6 +196,32 @@ describe('SidInstrumentPage', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'PageUp', key: 'PageUp', shiftKey: true }));
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyQ', key: 'q' }));
     expect(preview.on.at(-1)).toEqual([2, 72]);
+  });
+
+  it('the scope is the tracker\'s SID scope, on the preview voice at its full scale', async () => {
+    const { w } = await mountEditor(1);
+    const scope = w.findComponent(TrackWaveform);
+    expect(scope.exists()).toBe(true);
+    expect(scope.props('audioNode')).toBeNull();
+    expect((scope.props('analyserFullScale') as () => number)()).toBe(0.17);
+    expect(w.find('[data-testid="sid-analyzer-idle"]').exists()).toBe(true);
+  });
+
+  it('re-strike on edit strikes the held note again after an edit, with the edited instrument', async () => {
+    vi.useFakeTimers();
+    try {
+      const { w } = await mountEditor(1);
+      w.findComponent(AhxAuditionBar).vm.$emit('update:restrike', true);
+      await nextTick();
+      w.findComponent(AhxPianoStrip).vm.$emit('down', 60);
+      field(w, AhxSliderField, 'sid-field-attack').vm.$emit('update:modelValue', 5);
+      await nextTick();
+      vi.advanceTimersByTime(200);
+      expect(preview.on).toEqual([[1, 60], [1, 60]]);
+      expect(preview.offKeys).toEqual([60]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('releasing an earlier key names it, so the voice keeps the newer note', async () => {

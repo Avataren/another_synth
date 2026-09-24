@@ -9,7 +9,7 @@ import type { AhxInstrument } from '@another-synth/tracker-playback';
 
 const playback = vi.hoisted(() => ({ noteOn: vi.fn(async () => true), noteOff: vi.fn() }));
 vi.mock('src/stores/tracker-playback-store', () => ({
-  useTrackerPlaybackStore: () => ({ previewAhxNoteOn: playback.noteOn, previewAhxNoteOff: playback.noteOff }),
+  useTrackerPlaybackStore: () => ({ previewAhxNoteOn: playback.noteOn, previewAhxNoteOff: playback.noteOff, setAhxPreviewScopeEnabled: () => undefined, getAhxPreviewWaveform: () => null }),
 }));
 vi.mock('src/components/tracker/pattern-canvas/PatternCanvas.vue', async () => ({
   default: (await import('./helpers/pattern-canvas-stub')).PatternCanvasStub,

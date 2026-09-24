@@ -47,23 +47,29 @@
 
     <template v-else>
       <div class="sid-sound-band" data-testid="sid-sound-band">
-        <div class="sid-keys">
-          <q-btn flat dense icon="remove" :disable="octave <= AHX_MIN_OCTAVE" title="Octave down (Shift+PageDown)" @click="play.setOctave(octave - 1)" />
-          <span class="sid-dim">Octave {{ octave }}</span>
-          <q-btn flat dense icon="add" :disable="octave >= AHX_MAX_OCTAVE" title="Octave up (Shift+PageUp)" @click="play.setOctave(octave + 1)" />
-          <AhxPianoStrip :start="stripStart" :held="heldKeys" @down="play.pointerDown" @up="play.pointerUp" />
-        </div>
-        <div class="sid-analyzer" data-testid="sid-analyzer-row">
-          <figure class="sid-analyzer__slot">
-            <OscilloscopeComponent :node="previewNode" :mono="true" data-testid="sid-analyzer-oscilloscope" />
-            <figcaption class="sid-dim">Wave</figcaption>
-          </figure>
-          <figure class="sid-analyzer__slot">
-            <FrequencyAnalyzerComponent :node="previewNode" data-testid="sid-analyzer-frequency" />
-            <figcaption class="sid-dim">Spectrum</figcaption>
-          </figure>
-          <span v-if="!previewNode" class="sid-dim" data-testid="sid-analyzer-idle">Play a note to see it here.</span>
-        </div>
+        <AhxAuditionBar
+          :audible="true"
+          :held-keys="heldKeys"
+          v-model:latch="latch"
+          v-model:restrike="restrike"
+          :octave="octave"
+          :strip-start="stripStart"
+          :midi-status="play.midiStatus.value"
+          hint="Play with the keyboard (Z-M, Q-P), MIDI or the keys; an edit is heard from the next note."
+          restrike-title="Strike the held note again shortly after each edit: the preview voice takes the edited instrument when a note is struck, so this is what makes an edit audible while you drag."
+          @pointer-down="play.pointerDown"
+          @pointer-up="play.pointerUp"
+          @set-octave="play.setOctave"
+          @toggle-midi="play.toggleMidi"
+        />
+        <PreviewScopeBand
+          class="sid-scopes"
+          testid-prefix="sid"
+          :spectrum-node="previewNode"
+          :audio-node="previewNode"
+          :analyser-full-scale="playbackStore.getSidPreviewFullScale"
+          :scope-gain="userSettings.settings.ahxScopeGain"
+        />
       </div>
 
       <div class="sid-body">
@@ -223,11 +229,11 @@
               :testid="`sid-field-${key}`"
               @update:model-value="edit({ [key]: $event })"
             />
-            <label class="sid-toggles">
+            <label class="sid-check">
               <input type="checkbox" :checked="instrument.hardRestart" data-testid="sid-hard-restart" @change="edit({ hardRestart: !instrument.hardRestart })" />
               Hard restart (the early gate-off also zeroes the envelope)
             </label>
-            <label class="sid-toggles">
+            <label class="sid-check">
               <input type="checkbox" :checked="instrument.noGateOff" data-testid="sid-no-gate-off" @change="edit({ noGateOff: !instrument.noGateOff })" />
               No gate-off (a note of this instrument skips the early gate-off and hard restart)
             </label>
@@ -239,8 +245,10 @@
         </div>
 
         <div class="sid-col sid-col--tables">
+          <div class="sid-tables">
           <fieldset v-for="table in SID_TABLE_NAMES" :key="table" class="sid-card" :data-testid="`sid-table-${table}`">
             <legend>{{ TABLE_LABELS[table] }} table</legend>
+            <div class="sid-table-scroll">
             <table class="sid-table">
               <tbody>
                 <tr
@@ -261,6 +269,7 @@
                 </tr>
               </tbody>
             </table>
+            </div>
             <q-btn
               flat
               dense
@@ -272,6 +281,7 @@
               @click="commit(editSidTableByte(doc, table, doc.tables[table].length, 'left', 0))"
             />
           </fieldset>
+          </div>
           <p class="sid-dim sid-note">
             The tables are the song's, shared by every instrument: a row edited here changes every instrument that
             reaches it. Rows this instrument reaches are marked. Left <code>FF</code> jumps to the row on the right
@@ -299,18 +309,13 @@
  * rows of note/waveform/two effects, while a SID instrument points into four
  * shared two-byte tables, so the tables are edited as byte rows here.
  */
-import { computed, onMounted, onUnmounted, shallowRef } from 'vue';
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { formatInstrumentId } from '@another-synth/tracker-playback';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
-import {
-  AHX_DEFAULT_OCTAVE,
-  AHX_MAX_OCTAVE,
-  AHX_MIN_OCTAVE,
-  useAhxPlayInput,
-} from 'src/composables/useAhxPlayInput';
+import { AHX_DEFAULT_OCTAVE, useAhxPlayInput } from 'src/composables/useAhxPlayInput';
 import {
   SID_MAX_INSTRUMENTS,
   SID_MAX_TABLE_ROWS,
@@ -344,9 +349,8 @@ import { ahxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import AhxSliderField from 'src/components/ahx/AhxSliderField.vue';
 import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
 import AhxSegmented from 'src/components/ahx/AhxSegmented.vue';
-import AhxPianoStrip from 'src/components/ahx/AhxPianoStrip.vue';
-import OscilloscopeComponent from 'src/components/OscilloscopeComponent.vue';
-import FrequencyAnalyzerComponent from 'src/components/FrequencyAnalyzerComponent.vue';
+import AhxAuditionBar from 'src/components/ahx/AhxAuditionBar.vue';
+import PreviewScopeBand from 'src/components/tracker/PreviewScopeBand.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -486,9 +490,25 @@ const play = useAhxPlayInput({
   },
   autoMidi: computed(() => userSettings.settings.enableMidi),
 });
-const { heldKeys, octave } = play;
+const { heldKeys, latch, octave } = play;
 /** The strip's lowest key follows the octave, so touch reaches what the keyboard does (Z is C-3 at octave 4). */
 const stripStart = computed(() => 48 + (octave.value - AHX_DEFAULT_OCTAVE) * 12);
+/**
+ * Re-strike on edit, as the AHX page: the preview voice takes the edited doc
+ * when a note is struck, so striking the held note again after a short pause
+ * is what makes an edit heard while it is being made.
+ */
+const restrike = ref(false);
+const RESTRIKE_DELAY_MS = 150;
+let restrikeTimer: ReturnType<typeof setTimeout> | null = null;
+watch(instrument, () => {
+  if (!restrike.value || heldKeys.size === 0) return;
+  if (restrikeTimer !== null) clearTimeout(restrikeTimer);
+  restrikeTimer = setTimeout(() => {
+    restrikeTimer = null;
+    play.restrikeHeld();
+  }, RESTRIKE_DELAY_MS);
+});
 // Ready the preview voice, so the first key sounds at once.
 onMounted(() => {
   if (instrument.value) void playbackStore.prepareSidPreview().catch(() => undefined);
@@ -505,6 +525,7 @@ function handleKeyDown(event: KeyboardEvent): void {
 onMounted(() => window.addEventListener('keydown', handleKeyDown));
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
+  if (restrikeTimer !== null) clearTimeout(restrikeTimer);
   stopPreviewWatch();
   playbackStore.previewSidNoteOff();
 });
@@ -526,12 +547,17 @@ onUnmounted(() => {
 }
 .sid-banner__info,
 .sid-banner__actions,
-.sid-keys,
 .sid-toggles {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+/* A checkbox with a sentence: the box stays beside the text as it wraps. */
+.sid-check {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 .sid-banner__label,
 .sid-banner__name {
@@ -556,30 +582,52 @@ onUnmounted(() => {
 .sid-sound-band {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 16px;
-  padding: 8px 16px;
+  align-items: stretch;
+  gap: 12px;
+  padding: 8px 12px;
   position: sticky;
   top: 0;
   z-index: 2;
   background: var(--app-background, #0b111a);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
-.sid-analyzer {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.sid-analyzer__slot {
+/* The AHX editor's bar: its card frame comes from that page's `.ahx-card`, so it is given here. */
+.sid-sound-band > .ahx-audition-bar {
+  flex: 1 1 420px;
+  position: static;
   margin: 0;
-  width: 220px;
-  height: 72px;
+  border: 1px solid var(--tracker-accent-secondary, #3b82a0);
+  border-radius: 6px;
+}
+.sid-sound-band > .sid-scopes {
+  flex: 1 1 420px;
+  align-self: center;
 }
 .sid-body {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: 12px;
   padding: 12px;
+}
+/*
+ * Wide screens: the sound's two columns, then the tables taking what is left.
+ * The four tables sit side by side there (each scrolls on its own), rather
+ * than stacked into one column several screens tall.
+ */
+@media (min-width: 1400px) {
+  .sid-body {
+    grid-template-columns: minmax(340px, 1fr) minmax(340px, 1fr) minmax(360px, 1.3fr);
+  }
+}
+.sid-tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.sid-table-scroll {
+  max-height: 420px;
+  overflow-y: auto;
 }
 .sid-col {
   display: grid;

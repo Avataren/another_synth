@@ -483,7 +483,12 @@ export class AhxProcessorCore {
         fadeOutTail(left);
         if (right) fadeOutTail(right);
       }
-      if (this.preview) this.reportPListRow(player);
+      if (this.preview) {
+        this.reportPListRow(player);
+        // A preview voice is never "playing" a song, so `report` (which posts
+        // the song's waveforms) does not run: the editor's scope gets its own.
+        if (this.capture) this.reportPreviewWaveforms(player, left.length);
+      }
     } catch (error) {
       // A wasm trap leaves the instance unusable; go silent rather than
       // throw into the render thread.
@@ -675,6 +680,14 @@ export class AhxProcessorCore {
     this.lastPlistRow = row;
     this.lastPlistInstrument = instrument;
     this.post({ type: 'plist-row', instrument, row });
+  }
+
+  /** Preview mode: the voices' waveforms at the song's report rate. */
+  private reportPreviewWaveforms(player: AhxWasmPlayer, frames: number): void {
+    this.framesSincePosition += frames;
+    if (this.framesSincePosition < this.sampleRate * POSITION_INTERVAL_SECONDS) return;
+    this.framesSincePosition = 0;
+    this.postWaveforms(player);
   }
 
   /** Snapshots every voice into the reused buffer and posts it. Allocates nothing per report. */
