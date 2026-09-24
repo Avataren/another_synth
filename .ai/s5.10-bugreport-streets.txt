@@ -7,3 +7,4 @@ channels:  1, 2, 3
 heard:     everything sounds off here, something is not transposed right
 expected:  (not provided)
   (Morten, follow-up 07:46: not sure ALL channels are off — maybe just one; something is not right. Exact channel(s) unknown, GT2 A/B pending.)
+  (Morten, follow-up 07:46b: the problem PERSISTS for several patterns around that area — not a single-order glitch, a sustained region roughly order 81 and onwards/around. Batch should examine the transpose state transitions across orders ~78-90 and find where our decode diverges from GT's.)
