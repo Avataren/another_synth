@@ -10,7 +10,7 @@
   "sourceFileCount": 90,
   "sourceHash": "4f5d59b318240361088fd23ed9503a7281cda18ec3c357b264540e226eb0c384",
   "outputs": {
-    "public/wasm/audio_processor_bg.wasm": "b31f44b1ba1f02740d426e0a3560f98e86087a63904e4c36b7c1a20b48406b94",
+    "public/wasm/audio_processor_bg.wasm": "4d5f095fec5ffdcb31ac7e56ce46cffec2e94eebbbbc69ec2bb8a103a575d32d",
     "public/wasm/audio_processor.js": "ab6257aad27f72e6da1c6ed3866688d7763348ff0bc8357fd79be39d3b8ab42f"
   }
 }
