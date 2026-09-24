@@ -435,12 +435,16 @@ fn portamento_and_tone_portamento_use_the_speed_table() {
         })
         .collect();
     // Row 0: trigger (no slide on the trigger frame), +256, +256.
-    // Row 1: -256 x3. Row 2: glide from c4 - 256 up to C#4 by 0x50 a frame.
+    // Row 1: tick 0 holds, then -256 x2. Row 2: tick 0 holds, then the glide
+    // from c4 up to C#4 by 0x50 a frame. Every row's tick 0 skips the tick
+    // effects (goattrk2.c:55 optimizerealtime, gplay.c:728; S5.12 — the S3
+    // pin slid on tick 0 too).
     let up = c4 + 256 * 2;
-    let down = up - 256 * 3;
-    assert_eq!(&freqs[..6], &[c4, c4 + 256, up, up - 256, up - 512, down]);
-    assert_eq!(freqs[6], (down + 0x50).min(cs4));
-    assert_eq!(freqs[8], (down + 3 * 0x50).min(cs4));
+    let down = up - 256 * 2;
+    assert_eq!(&freqs[..6], &[c4, c4 + 256, up, up, up - 256, down]);
+    assert_eq!(freqs[6], down);
+    assert_eq!(freqs[7], (down + 0x50).min(cs4));
+    assert_eq!(freqs[8], (down + 2 * 0x50).min(cs4));
     assert_eq!(p.channel_note(0), 49, "the glide's note is the channel's note");
 }
 

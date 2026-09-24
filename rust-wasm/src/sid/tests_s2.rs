@@ -105,14 +105,18 @@ fn check_pin(model: SidModel, hash: u64, values: &[u32]) {
     );
 }
 
-/// Captured on the unmodified S1 tree (4f76a8d3), before any S2 edit.
-const PIN_8580_HASH: u64 = 0x1b60_5c39_7a1c_65b3;
+/// Captured on the unmodified S1 tree (4f76a8d3), before any S2 edit, and
+/// re-captured once in S5.12 for the 4 kHz cutoff ceiling
+/// (`filter::CUTOFF_CEILING_DELTA_HZ`): the program's fc 0x305 (8580 map
+/// ~4550 Hz) and fc 0x7F8+ now clamp. With the ceiling disabled the old pin
+/// still reproduced bit-exactly, so the ceiling is the whole change.
+const PIN_8580_HASH: u64 = 0x0203_91c3_3edb_562a;
 const PIN_8580_VALUES: [u32; 33] = [
-    0x3a1d0fbd, 0xbdd58906, 0xbc5242b4, 0x3e7bf07f, 0x3e8b7e37, 0xbe183425, 0xbe8f386e,
-    0x3e7cbe56, 0x3ec48b61, 0x3da806ff, 0xbd85e4d2, 0xbd8079b4, 0xbdc7b87f, 0xbe2aaa92,
-    0x3e36eaae, 0x3e9a659b, 0xbdb05b5a, 0x3e88fe55, 0x3c82978d, 0xbdb18956, 0x3e38936c,
-    0xbddf790c, 0x3dcdfbb3, 0x3cb6f768, 0x3c11387f, 0x3ab1e9f9, 0x3a22904d, 0xbeaa1a45,
-    0xbdfaf491, 0xbcd7d73c, 0x3d4f7286, 0x3dfc1c91, 0xbe373268,
+    0x3a2732a2, 0xbdaf3087, 0xbab77906, 0x3e82a673, 0x3e90d05f, 0xbe008509, 0xbe8f3a36,
+    0x3e7cbdcb, 0x3ec48b56, 0x3da806f8, 0xbd85e4d3, 0xbd8079b4, 0xbdc7b87f, 0xbe2aaa92,
+    0x3e36eaae, 0x3e9a659b, 0xbdb05b5a, 0x3e856725, 0x3c4cc161, 0xbdb530a2, 0x3e363d37,
+    0xbdde4763, 0x3dccaeb8, 0x3cb53336, 0x3c1443bb, 0x3abb0312, 0x3a22d2e0, 0xbeaa1a34,
+    0xbdfaf487, 0xbcd7d736, 0x3d4f7286, 0x3dfc1c91, 0xbe373268,
 ];
 
 #[test]
@@ -121,14 +125,16 @@ fn pin_8580_render_is_bit_identical_to_s1() {
 }
 
 /// Captured from S2's own 6581 on first green (NOT a derivation, NOT a
-/// hardware reference): future refactors must keep it bit-exact.
-const PIN_6581_HASH: u64 = 0x0a9a_5612_18c4_2f29;
+/// hardware reference): future refactors must keep it bit-exact. Re-captured
+/// in S5.12 for the 4 kHz cutoff ceiling (the fc 0x7F8+ write at 13_230;
+/// values 0-16 are unchanged), same check as the 8580 pin.
+const PIN_6581_HASH: u64 = 0x638d_b490_6cc8_db08;
 const PIN_6581_VALUES: [u32; 33] = [
     0x3dca67d9, 0xbd01e3ef, 0x3d1dbd2f, 0x3e2481ba, 0x3e72edd6, 0xbe011992, 0xbe413170,
     0x3d6355ae, 0x3e942154, 0x3dbaa7ba, 0xbb80623b, 0xbe0a0cc4, 0xbd04dd8b, 0xbcb12bb5,
-    0xbcc06f77, 0x3cb29ca2, 0x3c96ad7f, 0x3d8dbddc, 0xbc85b592, 0x3dcb57ca, 0x3bc5ac05,
-    0x3dbdc238, 0x3e039d22, 0x3cfa0f10, 0x3c3654a6, 0x3b397b0e, 0x3a9715db, 0xbe7cc197,
-    0xbda69746, 0xbd45f65d, 0x3d51ff4f, 0x3df7f587, 0xbda31be6,
+    0xbcc06f77, 0x3cb29ca2, 0x3c96ad7f, 0x3d023257, 0xbc9e9695, 0x3d88a33e, 0x3ba6897e,
+    0x3d805f38, 0x3e030aff, 0x3cf82e76, 0x3c38e338, 0x3b3ef901, 0x3a977d42, 0xbe7cc121,
+    0xbda69722, 0xbd45f652, 0x3d51ff51, 0x3df7f587, 0xbda31be6,
 ];
 
 #[test]

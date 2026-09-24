@@ -22,6 +22,9 @@
 //!   is documented as near-linear over the datasheet range, so
 //!   fc = 30 + reg * (12000 - 30) / 2047 Hz (5.85 Hz per step).
 //! - Resonance: Q = 0.707 * 2^(res / 8). Butterworth at 0, +8.3 dB peak at 15.
+//! - Ceiling (S5.12, both models): `Filter::set` clamps the mapped cutoff to
+//!   4 kHz, the limit GoatTracker 2's reSID playback applies
+//!   (`CUTOFF_CEILING_DELTA_HZ`). The maps themselves stay unclamped.
 //! Linear: no saturation. The 8580 is "clean", not perfectly so.
 //!
 //! 6581 (S2, plan §1.2 "static nonlinear remap of the cutoff register +
@@ -111,6 +114,15 @@ pub fn resonance_q_6581(res: u8) -> f64 {
     0.707 * 2f64.powf((res & 0xF) as f64 / 12.0)
 }
 
+/// Effective cutoff ceiling, Hz, both models (S5.12). GoatTracker 2 plays
+/// through classic reSID in its delta-clock mode (default SAMPLE_FAST,
+/// gsound.c:216 -> gsid.cpp:77-80), where reSID limits the filter cutoff to
+/// 4 kHz (reSID filter.cpp:259-265, applied via filter.h:461); GT2 songs
+/// were mixed by ear against it. The value is that ceiling, a fact read from
+/// the cited code's behaviour; no GPL text copied. The maps above stay
+/// unclamped; only `Filter::set` applies it.
+pub const CUTOFF_CEILING_DELTA_HZ: f64 = 4000.0;
+
 /// Cutoff map of `model`.
 pub fn cutoff_hz_for(model: SidModel, reg: u16) -> f64 {
     match model {
@@ -134,6 +146,7 @@ pub struct Filter {
     g: f64,
     k: f64,
     h: f64,
+    fc: f64,
     cutoff_reg: u16,
     res: u8,
     mode: u8,
@@ -155,6 +168,7 @@ impl Filter {
             g: 0.0,
             k: 0.0,
             h: 0.0,
+            fc: 0.0,
             cutoff_reg: 0,
             res: 0,
             mode: 0,
@@ -169,10 +183,16 @@ impl Filter {
         self.model
     }
 
-    /// The current cutoff in Hz from this model's map (before the
-    /// 0.49 * sample-rate clamp).
+    /// The current cutoff in Hz from this model's map (before the 4 kHz
+    /// ceiling and the 0.49 * sample-rate clamp).
     pub fn cutoff(&self) -> f64 {
         cutoff_hz_for(self.model, self.cutoff_reg)
+    }
+
+    /// The cutoff in Hz the coefficients were computed for: the map, then
+    /// `CUTOFF_CEILING_DELTA_HZ`, then 0.49 * sample rate.
+    pub fn effective_cutoff(&self) -> f64 {
+        self.fc
     }
 
     /// The current Q from this model's resonance map.
@@ -201,7 +221,8 @@ impl Filter {
     pub fn set(&mut self, cutoff_reg: u16, res: u8) {
         self.cutoff_reg = cutoff_reg & 0x7FF;
         self.res = res & 0xF;
-        let fc = self.cutoff().min(self.sample_rate * 0.49);
+        let fc = self.cutoff().min(CUTOFF_CEILING_DELTA_HZ).min(self.sample_rate * 0.49);
+        self.fc = fc;
         self.g = (PI * fc / self.sample_rate).tan();
         self.k = 1.0 / self.q();
         self.h = 1.0 / (1.0 + self.g * (self.g + self.k));
@@ -266,6 +287,27 @@ mod tests {
         assert!((resonance_q(8) - 1.414).abs() < 1e-12);
         for r in 0..15 {
             assert!(resonance_q(r + 1) > resonance_q(r));
+        }
+    }
+
+    #[test]
+    fn effective_cutoff_has_gts_4_khz_delta_mode_ceiling_on_both_models() {
+        // GT2 plays through reSID in its delta-clock mode, which limits the
+        // cutoff to 4 kHz; the maps stay unclamped (register_maps and
+        // map_6581_endpoints pin 12 kHz / 18 kHz at 0x7FF).
+        for model in [SidModel::Sid8580, SidModel::Sid6581] {
+            for sr in [44_100.0, 48_000.0] {
+                let mut f = Filter::with_model(model, sr);
+                f.set(0x7FF, 0);
+                assert_eq!(f.effective_cutoff(), 4000.0, "{model:?} sr {sr} reg 0x7FF");
+                assert!(f.cutoff() > 4000.0, "{model:?}: the map itself is unclamped");
+                // First register whose map exceeds 4 kHz clamps; below passes.
+                let over = (0..=0x7FFu16).find(|&r| cutoff_hz_for(model, r) > 4000.0).unwrap();
+                f.set(over, 0);
+                assert_eq!(f.effective_cutoff(), 4000.0, "{model:?} reg {over:#x}");
+                f.set(over - 1, 0);
+                assert_eq!(f.effective_cutoff(), cutoff_hz_for(model, over - 1), "{model:?} reg {:#x}", over - 1);
+            }
         }
     }
 

@@ -80,17 +80,20 @@ fn tone_portamento_zero_is_gt_tie_note_the_pitch_jumps_without_a_trigger() {
 #[test]
 fn tone_portamento_with_a_speed_still_glides() {
     // The control: 3 01 glides by speed row 1 (0x10 a frame). A glide row
-    // triggers nothing, so it already slides on its first frame (frame 3), as
-    // tests_s3's portamento test pins.
+    // triggers nothing; its tick 0 (frame 3) skips the tick effects like
+    // every row's (gplay.c:728, S5.12 — S5 pinned a tick-0 step here), so
+    // the glide starts on tick 1, the same phase as the `3 00` tie jump.
     let mut p = SidSongPlayer::new(tie_song(1), DEFAULT_SAMPLE_RATE).expect("player builds");
     for _ in 0..4 {
         frame(&mut p);
     }
     let c4 = gt_note_freq_reg(48);
+    assert_eq!(p.channel_freq(0), c4);
+    assert_eq!(p.channel_note(0), 52);
+    frame(&mut p);
     assert_eq!(p.channel_freq(0), c4 + 0x10);
     frame(&mut p);
     assert_eq!(p.channel_freq(0), c4 + 0x20);
-    assert_eq!(p.channel_note(0), 52);
 }
 
 #[test]
@@ -209,8 +212,9 @@ fn a_wave_table_note_passes_through_a_speed_glide_and_the_glide_resumes() {
     // The same passthrough under a real portamento — the suppression was
     // "under any portamento" (commands 1-3): the wave note sets the frequency
     // on its frame (gplay.c:714-722, the effects skipped by the gplay.c:722
-    // jump) and the glide resumes from it. The tick-0 glide start itself
-    // stays pinned (tests_s3's portamento test, the S5 control). Speed row 1
+    // jump) and the glide resumes from it. The glide starts on tick 1
+    // (gplay.c:728; S5.12, tests_s3's portamento test and the S5 control
+    // pin it). Speed row 1
     // = 0x10 a frame toward E-4 (index 52); the glide is far from clamped at
     // 0x10 steps.
     let mut p = SidSongPlayer::new(wave_porta_song(1), DEFAULT_SAMPLE_RATE).expect("player builds");
@@ -221,11 +225,10 @@ fn a_wave_table_note_passes_through_a_speed_glide_and_the_glide_resumes() {
             p.channel_freq(0)
         })
         .collect();
-    // f0-f3 as in the tie test. f4 (the glide row's tick 0): the pinned
-    // tick-0 glide step, no wave note that frame. f5 (tick 1): the glide
-    // steps again, then the wave note 55 overwrites (wins its frame).
-    // f6 (tick 2): the glide resumes DOWN from 55 toward the target 52.
-    // f7: the wave note again.
-    assert_eq!(freqs, vec![c, eb, eb, eb, eb + 0x10, g, g - 0x10, g]);
+    // f0-f3 as in the tie test. f4 (the glide row's tick 0): no glide step
+    // (gplay.c:728), no wave note that frame. f5 (tick 1): the wave note 55
+    // wins its frame. f6 (tick 2): the glide resumes DOWN from 55 toward
+    // the target 52. f7: the wave note again.
+    assert_eq!(freqs, vec![c, eb, eb, eb, eb, g, g - 0x10, g]);
     assert_eq!(p.chip().voice(0).control(), 0x21);
 }
