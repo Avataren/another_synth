@@ -95,7 +95,7 @@
 //! the mix and their taps; all three on is the datasheet chip.
 
 use super::filter::Filter;
-use super::revision::profile_6581;
+use super::revision::{profile_6581, RevisionProfile};
 use super::voice::Voice;
 use super::waveform::SYNC;
 use super::{SidError, SidModel, DEFAULT_SAMPLE_RATE, PAL_CLOCK_HZ};
@@ -167,6 +167,13 @@ impl Chip {
     /// A powered-on chip rendering at `sample_rate` Hz. Each instance keeps
     /// its model for life; build another chip to switch models.
     pub fn with_sample_rate(model: SidModel, sample_rate: f64) -> Result<Chip, SidError> {
+        Chip::with_profile(model, sample_rate, profile_6581())
+    }
+
+    /// A chip whose 6581 filter plays `profile` (the cutoff curve, resonance
+    /// map and soft limit; DC, gain and the volume DAC are the default
+    /// profile's, which every profile so far shares). An 8580 ignores it.
+    pub fn with_profile(model: SidModel, sample_rate: f64, profile: &'static RevisionProfile) -> Result<Chip, SidError> {
         if let Some(reason) = model.unimplemented_reason() {
             return Err(SidError::ModelNotImplemented { model, reason });
         }
@@ -177,7 +184,7 @@ impl Chip {
             model,
             sample_rate,
             voices: [Voice::new(model); 3],
-            filter: Filter::with_model(model, sample_rate),
+            filter: Filter::with_profile(model, profile, sample_rate),
             fc: 0,
             res_filt: 0,
             mode_vol: 0,

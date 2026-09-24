@@ -67,7 +67,7 @@
 //!   Not modelled: the real filter's input-dependent cutoff shift. The plan
 //!   approximates it by the static remap, which is what this is.
 
-use super::revision::profile_6581;
+use super::revision::{profile_6581, RevisionProfile};
 use super::SidModel;
 use std::f64::consts::PI;
 
@@ -88,8 +88,6 @@ pub fn resonance_q(res: u8) -> f64 {
 
 /// 6581 cutoff floor (register 0), Hz.
 pub const F_LO_6581: f64 = CUTOFF_ANCHORS_6581_LO[0].1;
-/// Soft limit of the 6581 band-pass state (one full-scale voice). INFERRED.
-pub const SAT_6581: f64 = 1.0;
 
 /// 6581 cutoff anchors (register, Hz), low piece: registers 0..=0x3FF
 /// (FC_HI bit 7 clear).
@@ -116,10 +114,10 @@ pub const SAT_6581: f64 = 1.0;
 ///
 /// S5.15: the anchors are revision data and live in the 6581 revision
 /// profile (`revision::R4AR`, GENERIC-6581: S5.12's anchors unchanged).
-pub const CUTOFF_ANCHORS_6581_LO: [(u16, f64); 4] = profile_6581().cutoff_anchors_lo;
+pub const CUTOFF_ANCHORS_6581_LO: &[(u16, f64)] = profile_6581().cutoff_anchors_lo;
 /// 6581 cutoff anchors, high piece: registers 0x400..=0x7FF (FC_HI bit 7
 /// set). Disclosure at `CUTOFF_ANCHORS_6581_LO`.
-pub const CUTOFF_ANCHORS_6581_HI: [(u16, f64); 4] = profile_6581().cutoff_anchors_hi;
+pub const CUTOFF_ANCHORS_6581_HI: &[(u16, f64)] = profile_6581().cutoff_anchors_hi;
 
 /// Log-linear interpolation through `anchors`. `reg` must lie within the
 /// anchors' span (the first anchor to the last).
@@ -136,19 +134,31 @@ fn log_interp(anchors: &[(u16, f64)], reg: u16) -> f64 {
     f0 * (f1 / f0).powf(t)
 }
 
-/// 6581 cutoff register -> Hz: the two-piece measured-anchor curve (header).
+/// 6581 cutoff register -> Hz on the default profile (`profile_6581()`).
 pub fn cutoff_hz_6581(reg: u16) -> f64 {
+    cutoff_hz_6581_with(profile_6581(), reg)
+}
+
+/// 6581 cutoff register -> Hz on `profile`: its two-piece anchor curve
+/// (header), log-linear inside each piece.
+pub fn cutoff_hz_6581_with(profile: &RevisionProfile, reg: u16) -> f64 {
     let reg = reg & 0x7FF;
     if reg < 0x400 {
-        log_interp(&CUTOFF_ANCHORS_6581_LO, reg)
+        log_interp(profile.cutoff_anchors_lo, reg)
     } else {
-        log_interp(&CUTOFF_ANCHORS_6581_HI, reg)
+        log_interp(profile.cutoff_anchors_hi, reg)
     }
 }
 
-/// 6581 resonance nibble -> Q.
+/// 6581 resonance nibble -> Q on the default profile.
 pub fn resonance_q_6581(res: u8) -> f64 {
-    0.707 * 2f64.powf((res & 0xF) as f64 / 12.0)
+    resonance_q_6581_with(profile_6581(), res)
+}
+
+/// 6581 resonance nibble -> Q on `profile` (R4AR: exponential; GtRef: the
+/// linear map fitted to GoatTracker's playback, see `revision::GT_REF`).
+pub fn resonance_q_6581_with(profile: &RevisionProfile, res: u8) -> f64 {
+    profile.resonance.q(res)
 }
 
 /// Effective cutoff ceiling, Hz, both models (S5.12). GoatTracker 2 plays
@@ -189,6 +199,8 @@ pub struct Filter {
     mode: u8,
     sample_rate: f64,
     model: SidModel,
+    /// The 6581 maps and soft limit this filter plays (ignored on the 8580).
+    profile: &'static RevisionProfile,
 }
 
 impl Filter {
@@ -199,6 +211,12 @@ impl Filter {
 
     /// A filter with `model`'s maps and (6581) its saturating resonance.
     pub fn with_model(model: SidModel, sample_rate: f64) -> Self {
+        Filter::with_profile(model, profile_6581(), sample_rate)
+    }
+
+    /// A filter with `model`'s maps; a 6581 plays `profile`'s cutoff curve,
+    /// resonance map and soft limit (an 8580 ignores it).
+    pub fn with_profile(model: SidModel, profile: &'static RevisionProfile, sample_rate: f64) -> Self {
         let mut f = Filter {
             s1: 0.0,
             s2: 0.0,
@@ -211,6 +229,7 @@ impl Filter {
             mode: 0,
             sample_rate,
             model,
+            profile,
         };
         f.set(0, 0);
         f
@@ -223,7 +242,10 @@ impl Filter {
     /// The current cutoff in Hz from this model's map (before the 4 kHz
     /// ceiling and the 0.49 * sample-rate clamp).
     pub fn cutoff(&self) -> f64 {
-        cutoff_hz_for(self.model, self.cutoff_reg)
+        match self.model {
+            SidModel::Sid8580 => cutoff_hz(self.cutoff_reg),
+            SidModel::Sid6581 => cutoff_hz_6581_with(self.profile, self.cutoff_reg),
+        }
     }
 
     /// The cutoff in Hz the coefficients were computed for: the map, then
@@ -234,7 +256,10 @@ impl Filter {
 
     /// The current Q from this model's resonance map.
     pub fn q(&self) -> f64 {
-        resonance_q_for(self.model, self.res)
+        match self.model {
+            SidModel::Sid8580 => resonance_q(self.res),
+            SidModel::Sid6581 => resonance_q_6581_with(self.profile, self.res),
+        }
     }
 
     pub fn cutoff_reg(&self) -> u16 {
@@ -274,7 +299,8 @@ impl Filter {
         let bp = v1 + self.s1;
         self.s1 = bp + v1;
         if self.model == SidModel::Sid6581 {
-            self.s1 = SAT_6581 * (self.s1 / SAT_6581).tanh();
+            let sat = self.profile.sat;
+            self.s1 = sat * (self.s1 / sat).tanh();
         }
         let v2 = self.g * bp;
         let lp = v2 + self.s2;
@@ -296,6 +322,7 @@ impl Filter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sid::revision::{GT_REF, R4AR};
 
     const SR: f64 = 44_100.0;
 
@@ -448,10 +475,10 @@ mod tests {
     #[test]
     fn map_6581_endpoints_anchors_and_a_hand_point() {
         // Endpoints: 220 Hz floor at 0, 18 kHz at 0x7FF.
-        assert!((cutoff_hz_6581(0) - 220.0).abs() < 1e-9);
-        assert!((cutoff_hz_6581(0x7FF) - 18_000.0).abs() < 1e-6);
-        assert_eq!(cutoff_hz_6581(0x800), cutoff_hz_6581(0)); // 11 bits only
-        assert_eq!(cutoff_hz_6581(0xFFFF), cutoff_hz_6581(0x7FF));
+        assert!((cutoff_hz_6581_with(&R4AR, 0) - 220.0).abs() < 1e-9);
+        assert!((cutoff_hz_6581_with(&R4AR, 0x7FF) - 18_000.0).abs() < 1e-6);
+        assert_eq!(cutoff_hz_6581_with(&R4AR, 0x800), cutoff_hz_6581_with(&R4AR, 0)); // 11 bits only
+        assert_eq!(cutoff_hz_6581_with(&R4AR, 0xFFFF), cutoff_hz_6581_with(&R4AR, 0x7FF));
         // Measured anchors (.ai/sid-chip-comparison-report.md §6.3), ±5%.
         for (reg, want) in [
             (0x200u16, 420.0),
@@ -461,7 +488,7 @@ mod tests {
             (0x500, 9_500.0),
             (0x600, 14_500.0),
         ] {
-            let got = cutoff_hz_6581(reg);
+            let got = cutoff_hz_6581_with(&R4AR, reg);
             assert!(
                 (got / want - 1.0).abs() < 0.05,
                 "reg {reg:#05x}: {got} Hz, want {want}"
@@ -471,9 +498,9 @@ mod tests {
         // 0x300 anchors, so halfway in log f: sqrt(420 * 1600) = 819.756 Hz.
         // The 8580 map puts the same register at 30 + 640 * 5.84758 = 3772.45 Hz.
         assert!(
-            (cutoff_hz_6581(0x280) - 819.756).abs() < 0.01,
+            (cutoff_hz_6581_with(&R4AR, 0x280) - 819.756).abs() < 0.01,
             "{}",
-            cutoff_hz_6581(0x280)
+            cutoff_hz_6581_with(&R4AR, 0x280)
         );
         assert!((cutoff_hz(0x280) - 3772.45).abs() < 0.01);
     }
@@ -506,12 +533,12 @@ mod tests {
     fn resonance_6581_is_weaker_than_the_8580() {
         // Q = 0.707 * 2^(res/12): 0 -> 0.707, 12 -> 1.414, 15 -> 0.707 * 2^1.25
         // = 0.707 * 2.378414 = 1.681539. The 8580 reaches 2.6 at 15.
-        assert!((resonance_q_6581(0) - 0.707).abs() < 1e-12);
-        assert!((resonance_q_6581(12) - 1.414).abs() < 1e-12);
-        assert!((resonance_q_6581(15) - 1.681539).abs() < 1e-6);
+        assert!((resonance_q_6581_with(&R4AR, 0) - 0.707).abs() < 1e-12);
+        assert!((resonance_q_6581_with(&R4AR, 12) - 1.414).abs() < 1e-12);
+        assert!((resonance_q_6581_with(&R4AR, 15) - 1.681539).abs() < 1e-6);
         for r in 1..16u8 {
-            assert!(resonance_q_6581(r) > resonance_q_6581(r - 1));
-            assert!(resonance_q_6581(r) < resonance_q(r));
+            assert!(resonance_q_6581_with(&R4AR, r) > resonance_q_6581_with(&R4AR, r - 1));
+            assert!(resonance_q_6581_with(&R4AR, r) < resonance_q(r));
         }
     }
 

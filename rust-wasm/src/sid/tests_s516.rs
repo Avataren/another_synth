@@ -156,3 +156,60 @@ fn a_cutoff_row_straight_after_a_set_row_is_taken_on_the_same_frame() {
     let (cutoff, res, mode) = filter_after(&filter_song(vec![t(0x91, 0xF1), t(0x00, 0x25), t(0xFF, 0x00)]), 1);
     assert_eq!((cutoff, res, mode), (0x25 << 3, 15, 0x10));
 }
+
+// ---------------------------------------------------------------------------
+// The GT-reference 6581 profile (`revision::GT_REF`) and R4AR beside it
+// ---------------------------------------------------------------------------
+
+use super::filter::{cutoff_hz_6581_with, resonance_q_6581_with};
+use super::revision::{DieRevision, GT_REF, R4AR};
+use super::Chip;
+
+#[test]
+fn the_default_6581_is_the_gt_reference_and_r4ar_is_still_a_profile_a_chip_can_take() {
+    let d = Chip::new(SidModel::Sid6581).unwrap();
+    let r = Chip::with_profile(SidModel::Sid6581, DEFAULT_SAMPLE_RATE, &R4AR).unwrap();
+    let g = Chip::with_profile(SidModel::Sid6581, DEFAULT_SAMPLE_RATE, &GT_REF).unwrap();
+    for c in [&d, &g] {
+        assert_eq!(c.filter().cutoff(), cutoff_hz_6581_with(&GT_REF, 0));
+    }
+    assert_eq!(r.filter().cutoff(), cutoff_hz_6581_with(&R4AR, 0));
+    assert_eq!(GT_REF.revision, DieRevision::GtRef);
+}
+
+#[test]
+fn gt_ref_cutoff_hits_the_measured_points_and_stays_below_r4ars_chords_at_the_low_end() {
+    // Measured f0 of GT's 6581 low-pass (two-pole fit, res 0), Hz.
+    for (reg, hz) in [(0u16, 219.0), (0x100, 248.0), (0x200, 417.0), (0x280, 778.0), (0x300, 1_628.0), (0x380, 3_331.0)] {
+        assert!((cutoff_hz_6581_with(&GT_REF, reg) - hz).abs() < 1e-9, "reg {reg:#05x}");
+    }
+    // Between anchors it is log-linear: 0x160 is sqrt(266 * 299).
+    assert!((cutoff_hz_6581_with(&GT_REF, 0x160) - (266.0f64 * 299.0).sqrt()).abs() < 1e-9);
+    // R4AR's four chords ran 15-25% high across 0x080..=0x1C0; GtRef is under them.
+    for reg in [0x080u16, 0x0C0, 0x100, 0x140, 0x180, 0x1C0] {
+        assert!(cutoff_hz_6581_with(&GT_REF, reg) < cutoff_hz_6581_with(&R4AR, reg) * 0.95, "reg {reg:#05x}");
+    }
+    // Above the measurement the high piece is R4AR's.
+    assert_eq!(cutoff_hz_6581_with(&GT_REF, 0x500), cutoff_hz_6581_with(&R4AR, 0x500));
+}
+
+#[test]
+fn gt_ref_resonance_is_linear_and_r4ars_is_the_old_exponential() {
+    // Measured Q: 0.72 at 0, 1.76 at 15, linear in between.
+    assert!((resonance_q_6581_with(&GT_REF, 0) - 0.707).abs() < 1e-12);
+    assert!((resonance_q_6581_with(&GT_REF, 15) - (0.707 + 15.0 * 0.0698)).abs() < 1e-12);
+    for r in 1..16u8 {
+        let step = resonance_q_6581_with(&GT_REF, r) - resonance_q_6581_with(&GT_REF, r - 1);
+        assert!((step - 0.0698).abs() < 1e-12, "res {r}");
+    }
+    // R4AR keeps 0.707 * 2^(res/12): 1.414 at 12.
+    assert!((resonance_q_6581_with(&R4AR, 12) - 1.414).abs() < 1e-12);
+}
+
+#[test]
+fn an_8580_ignores_the_profile() {
+    let a = Chip::with_profile(SidModel::Sid8580, DEFAULT_SAMPLE_RATE, &R4AR).unwrap();
+    let b = Chip::with_profile(SidModel::Sid8580, DEFAULT_SAMPLE_RATE, &GT_REF).unwrap();
+    assert_eq!(a.filter().cutoff(), b.filter().cutoff());
+    assert_eq!(a.filter().q(), b.filter().q());
+}

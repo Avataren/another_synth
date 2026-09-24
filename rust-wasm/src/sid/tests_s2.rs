@@ -11,6 +11,7 @@
 
 use super::chip::{REG_FC_HI, REG_FC_LO, REG_MODE_VOL, REG_RES_FILT};
 use super::waveform::{GATE, NOISE, PULSE, RING, SAW, SYNC, TEST, TRI};
+use super::revision::R4AR;
 use super::*;
 
 const V1: u8 = 0x00;
@@ -67,7 +68,7 @@ const PIN_PROGRAM: &[(usize, u8, u8)] = &[
 ];
 
 fn render_pin_program(model: SidModel) -> Vec<f32> {
-    let mut c = Chip::new(model).expect("model constructs");
+    let mut c = Chip::with_profile(model, DEFAULT_SAMPLE_RATE, &R4AR).expect("model constructs");
     let mut out = vec![0.0f32; PIN_LEN];
     let mut at = 0;
     for &(t, reg, val) in PIN_PROGRAM {
@@ -160,8 +161,10 @@ fn pin_6581_render_is_bit_identical_to_s2() {
 // Per-instance model switch
 // ---------------------------------------------------------------------------
 
+/// A chip on the R4AR profile: these are S2's pins, and the default 6581 is
+/// the GT-reference filter since S5.16 (an 8580 ignores the profile).
 fn chip(m: SidModel) -> Chip {
-    Chip::new(m).expect("both models construct")
+    Chip::with_profile(m, DEFAULT_SAMPLE_RATE, &R4AR).expect("both models construct")
 }
 
 fn freq(c: &mut Chip, v: u8, f: u16) {

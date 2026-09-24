@@ -146,14 +146,18 @@ fn volume_digi_is_loud_on_the_6581_and_silent_on_the_8580() {
 // API: the revision profile is the one place revision data lives
 // ---------------------------------------------------------------------------
 
-use super::revision::{profile_6581, DieRevision, RevisionProfile, R4AR, SID6581_REVISION};
+use super::revision::{profile_6581, DieRevision, RevisionProfile, GT_REF, R4AR, SID6581_REVISION};
 
 #[test]
-fn sid6581_plays_the_r4ar_profile() {
-    assert_eq!(SID6581_REVISION, DieRevision::R4AR);
+fn sid6581_plays_the_gt_reference_profile_and_r4ar_stays_selectable() {
+    // S5.16: the default 6581 is the GT-reference filter; R4AR is still a
+    // profile a chip can be built with (`Chip::with_profile`).
+    assert_eq!(SID6581_REVISION, DieRevision::GtRef);
+    assert_eq!(DieRevision::GtRef.profile(), &GT_REF);
+    assert_eq!(profile_6581(), &GT_REF);
     assert_eq!(DieRevision::R4AR.profile(), &R4AR);
-    assert_eq!(profile_6581(), &R4AR);
     assert_eq!(R4AR.revision, DieRevision::R4AR);
+    assert_eq!(GT_REF.revision, DieRevision::GtRef);
 }
 
 #[test]
@@ -179,13 +183,15 @@ fn r4ar_cutoff_is_the_s512_measured_curve() {
             (0x7FF, 18_000.0)
         ]
     );
-    assert_eq!(filter::CUTOFF_ANCHORS_6581_LO, p.cutoff_anchors_lo);
-    assert_eq!(filter::CUTOFF_ANCHORS_6581_HI, p.cutoff_anchors_hi);
+    // The filter's anchor consts follow the default profile (GT reference).
+    assert_eq!(filter::CUTOFF_ANCHORS_6581_LO, GT_REF.cutoff_anchors_lo);
+    assert_eq!(filter::CUTOFF_ANCHORS_6581_HI, GT_REF.cutoff_anchors_hi);
+    // R4AR's own curve, asked for by profile, is unchanged.
     for &(reg, hz) in p.cutoff_anchors_lo.iter().chain(p.cutoff_anchors_hi.iter()) {
-        assert_eq!(filter::cutoff_hz_6581(reg), hz, "reg {reg:#05x}");
+        assert_eq!(filter::cutoff_hz_6581_with(p, reg), hz, "reg {reg:#05x}");
     }
     // S5.12 hand point: sqrt(420 * 1600) = 819.756 Hz at 0x280.
-    assert!((filter::cutoff_hz_6581(0x280) - 819.756).abs() < 0.01);
+    assert!((filter::cutoff_hz_6581_with(p, 0x280) - 819.756).abs() < 0.01);
 }
 
 #[test]

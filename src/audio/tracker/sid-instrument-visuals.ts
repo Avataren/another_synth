@@ -202,8 +202,11 @@ export function sidEnvelopeLevels(ad: number, sr: number, gateFrames: number, fr
 // ---------------------------------------------------------------------------
 
 type Anchors = readonly (readonly [number, number])[];
-/** `CUTOFF_ANCHORS_6581_LO` / `_HI` (S5.12 R2; measured anchors, disclosure in filter.rs). */
-const CUTOFF_ANCHORS_6581_LO: Anchors = [[0, 220], [0x200, 420], [0x300, 1_600], [0x3ff, 6_000]];
+/** `CUTOFF_ANCHORS_6581_LO` / `_HI` of the default 6581 profile, `GT_REF` (S5.16: fitted to GoatTracker's playback, `.ai/sid-6581-gt-fit-notes.md`; the high piece is R4AR's). */
+const CUTOFF_ANCHORS_6581_LO: Anchors = [
+  [0, 219], [0x080, 229], [0x100, 248], [0x140, 266], [0x180, 299], [0x1c0, 339], [0x200, 417],
+  [0x240, 550], [0x280, 778], [0x2c0, 1_139], [0x300, 1_628], [0x340, 2_329], [0x380, 3_331], [0x3ff, 6_000],
+];
 const CUTOFF_ANCHORS_6581_HI: Anchors = [[0x400, 4_600], [0x500, 9_500], [0x600, 14_500], [0x7ff, 18_000]];
 
 /** `log_interp`: log-linear interpolation through `anchors` (`reg` inside their span). */
@@ -227,7 +230,7 @@ export function sidCutoffHz(model: SidChipModel, reg: number): number {
 
 /** `resonance_q_for`: the resonance nibble's Q on `model`. */
 export function sidResonanceQ(model: SidChipModel, res: number): number {
-  return 0.707 * 2 ** ((res & 0xf) / (model === '8580' ? 8 : 12));
+  return model === '8580' ? 0.707 * 2 ** ((res & 0xf) / 8) : 0.707 + 0.0698 * (res & 0xf);
 }
 
 /**
