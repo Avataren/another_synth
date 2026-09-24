@@ -1,0 +1,328 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 npx
+npm notice run 'vitest' run src/tests/sid-transpose-s510.test.ts src/tests/sid-sng-export.test.ts src/tests/sid-sng-import.test.ts
+
+ RUN  v2.1.8 /home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-transpose
+
+ ❯ src/tests/sid-sng-import.test.ts (24 tests | 1 failed) 22ms
+   × GTS5 (readme §6.1) > plays orderlist commands as state: a transpose holds, a repeat $Dk plays the next pattern k + 1 times ($DF = 16, gplay.c:977-986), the restart byte names an entry 6ms
+     → expected { entries: [ { …(3) }, …(2) ], …(1) } to deeply equal { entries: [ { …(3) }, …(2) ], …(1) }
+ ❯ src/tests/sid-transpose-s510.test.ts (5 tests | 2 failed) 26ms
+   × S5.10: Streets orderlists decode as GoatTracker plays them > a $Dk repeat plays the pattern k + 1 times: every channel equals GT's walk 9ms
+     → channel 1: expected [ { pattern: 1, …(2) }, …(29) ] to deeply equal [ { pattern: 1, …(2) }, …(29) ]
+   × S5.10: Streets orderlists decode as GoatTracker plays them > the +3 key change lands on all three channels on the same song row 2ms
+     → expected [ 1440, 1488, 1504 ] to deeply equal [ 1568, 1568, 1568 ]
+ ❯ src/tests/sid-sng-export.test.ts (12 tests | 2 failed) 146ms
+   × the GTS5 writer > encodes an orderlist as GT commands: a transpose when it changes, a repeat above 1 as $D0 + plays - 1 (gplay.c:977-986; $DF = 16), TRANSPOSE before REPEAT 6ms
+     → expected [ 11, 242, 211, +0, 1, 224, 208, …(5) ] to deeply equal [ 11, 242, 210, +0, 1, 224, 223, …(5) ]
+   × the GTS5 writer > points the restart at the restart entry's first command byte 1ms
+     → expected [ 5, +0, 243, 210, +0, 255, 1 ] to deeply equal [ 5, +0, 243, 209, +0, 255, 1 ]
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/sid-sng-export.test.ts > the GTS5 writer > encodes an orderlist as GT commands: a transpose when it changes, a repeat above 1 as $D0 + plays - 1 (gplay.c:977-986; $DF = 16), TRANSPOSE before REPEAT
+AssertionError: expected [ 11, 242, 211, +0, 1, 224, 208, …(5) ] to deeply equal [ 11, 242, 210, +0, 1, 224, 223, …(5) ]
+
+- Expected
++ Received
+
+  Array [
+    11,
+    242,
+-   210,
++   211,
+    0,
+    1,
+    224,
+-   223,
++   208,
+    0,
+    254,
+-   209,
++   210,
+    1,
+    255,
+  ]
+
+ ❯ src/tests/sid-sng-export.test.ts:108:51
+    106|     });
+    107|     const b = bytesOf(doc);
+    108|     expect(Array.from(b.subarray(101, 101 + 12))).toEqual([11, 0xf2, 0…
+       |                                                   ^
+    109|     expect(b[113]).toBe(0x00);
+    110|     const back = importGtSong(b);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  src/tests/sid-sng-export.test.ts > the GTS5 writer > points the restart at the restart entry's first command byte
+AssertionError: expected [ 5, +0, 243, 210, +0, 255, 1 ] to deeply equal [ 5, +0, 243, 209, +0, 255, 1 ]
+
+- Expected
++ Received
+
+  Array [
+    5,
+    0,
+    243,
+-   209,
++   210,
+    0,
+    255,
+    1,
+  ]
+
+ ❯ src/tests/sid-sng-export.test.ts:129:50
+    127|     const doc = song({ subsongs: [{ orderlists: [list([once(0), { patt…
+    128|     const b = bytesOf(doc);
+    129|     expect(Array.from(b.subarray(101, 101 + 7))).toEqual([5, 0x00, 0xf…
+       |                                                  ^
+    130|   });
+    131| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  src/tests/sid-sng-import.test.ts > GTS5 (readme §6.1) > plays orderlist commands as state: a transpose holds, a repeat $Dk plays the next pattern k + 1 times ($DF = 16, gplay.c:977-986), the restart byte names an entry
+AssertionError: expected { entries: [ { …(3) }, …(2) ], …(1) } to deeply equal { entries: [ { …(3) }, …(2) ], …(1) }
+
+- Expected
++ Received
+
+  Object {
+    "entries": Array [
+      Object {
+        "pattern": 0,
+-       "repeat": 3,
++       "repeat": 2,
+        "transpose": 2,
+      },
+      Object {
+        "pattern": 1,
+        "repeat": 1,
+        "transpose": 2,
+      },
+      Object {
+        "pattern": 0,
+-       "repeat": 16,
++       "repeat": 15,
+        "transpose": -8,
+      },
+    ],
+    "restart": 2,
+  }
+
+ ❯ src/tests/sid-sng-import.test.ts:206:44
+    204|       ),
+    205|     );
+    206|     expect(doc.subsongs[0]!.orderlists[0]).toEqual({
+       |                                            ^
+    207|       entries: [
+    208|         { pattern: 0, transpose: 2, repeat: 3 },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  src/tests/sid-transpose-s510.test.ts > S5.10: Streets orderlists decode as GoatTracker plays them > a $Dk repeat plays the pattern k + 1 times: every channel equals GT's walk
+AssertionError: channel 1: expected [ { pattern: 1, …(2) }, …(29) ] to deeply equal [ { pattern: 1, …(2) }, …(29) ]
+
+- Expected
++ Received
+
+  Array [
+    Object {
+      "pattern": 1,
+-     "repeat": 9,
++     "repeat": 8,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 7,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 8,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 1,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 1,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 7,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 8,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 1,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 1,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 14,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 16,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 18,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 20,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 1,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 1,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 7,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 8,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 1,
+-     "repeat": 6,
++     "repeat": 5,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 25,
+-     "repeat": 3,
++     "repeat": 2,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 28,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 25,
+-     "repeat": 3,
++     "repeat": 2,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 28,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 1,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 1,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 14,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 34,
+      "repeat": 1,
+      "transpose": 0,
+    },
+    Object {
+      "pattern": 14,
+      "repeat": 1,
+      "transpose": 3,
+    },
+    Object {
+      "pattern": 16,
+      "repeat": 1,
+      "transpose": 3,
+    },
+    Object {
+      "pattern": 18,
+      "repeat": 1,
+      "transpose": 3,
+    },
+    Object {
+      "pattern": 20,
+      "repeat": 1,
+      "transpose": 3,
+    },
+  ]
+
+ ❯ src/tests/sid-transpose-s510.test.ts:84:75
+     82|     const lists = rawOrderlists(bytes);
+     83|     for (let c = 0; c < 3; c++) {
+     84|       expect(doc.subsongs[0]!.orderlists[c]!.entries, `channel ${c + 1…
+       |                                                                           ^
+     85|     }
+     86|     // The repeats by hand: $D8 01 = 9 plays, $D5 01 = 6, $D2 19 = 3 (…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  src/tests/sid-transpose-s510.test.ts > S5.10: Streets orderlists decode as GoatTracker plays them > the +3 key change lands on all three channels on the same song row
+AssertionError: expected [ 1440, 1488, 1504 ] to deeply equal [ 1568, 1568, 1568 ]
+
+- Expected
++ Received
+
+  Array [
+-   1568,
+-   1568,
+-   1568,
++   1440,
++   1488,
++   1504,
+  ]
+
+ ❯ src/tests/sid-transpose-s510.test.ts:112:62
+    110|       return row;
+    111|     };
+    112|     expect([startOf(0, 26), startOf(1, 48), startOf(2, 19)]).toEqual([…
+       |                                                              ^
+    113|     expect(layout.total).toBe(1824);
+    114|     expect(layout.starts).toContain(1568);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+ Test Files  3 failed (3)
+      Tests  5 failed | 36 passed (41)
+   Start at  08:20:49
+   Duration  1.35s (transform 320ms, setup 21ms, collect 973ms, tests 194ms, environment 688ms, prepare 931ms)
+
+EXIT=1

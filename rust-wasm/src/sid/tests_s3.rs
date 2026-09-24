@@ -107,16 +107,18 @@ fn note_table_pins_match_the_app() {
     assert_eq!(gt_note_freq_reg(0), 278);
     assert_eq!(gt_note_freq_reg(57), 7493);
     assert_eq!(gt_note_freq_reg(92), 56576);
-    // Clamped at G#7; strictly rising.
-    assert_eq!(gt_note_freq_reg(200), 56576);
+    // S5.10: the index is 7 bits, as GT's table reads it (200 & 0x7f = 72);
+    // strictly rising over the row notes.
+    assert_eq!(gt_note_freq_reg(200), gt_note_freq_reg(72));
     for i in 1..GT_NOTE_COUNT {
         assert!(gt_note_freq_reg(i) > gt_note_freq_reg(i - 1));
     }
-    // Row note 1 is C-0; transposes clamp into the table.
+    // Row note 1 is C-0; S5.10: transposes wrap as GT's u8 note does
+    // (gplay.c:350, 921; `tests_s510.rs`), no longer clamped.
     assert_eq!(note_index(1, 0), 0);
     assert_eq!(note_index(58, 0), 57);
-    assert_eq!(note_index(1, -12), 0);
-    assert_eq!(note_index(93, 5), 92);
+    assert_eq!(note_index(1, -12), 244);
+    assert_eq!(note_index(93, 5), 97);
 }
 
 // ---------------------------------------------------------------------------
@@ -463,9 +465,12 @@ fn instrument_vibrato_waits_then_swings_around_the_note() {
             p.chip().voice(0).frequency() as i32 - a4
         })
         .collect();
-    // Trigger frame, 2 delay frames, then half-swings of 4 frames (the first
-    // centred, 2 long): +10 +20, then -10 per frame for 4, then +10 for 4.
-    assert_eq!(regs, vec![0, 0, 0, 10, 20, 10, 0, -10, -20, -10, 0, 10]);
+    // S5.10, GoatTracker's instrument vibrato (gplay.c:767-800, the
+    // `tests_s510.rs` oracle): trigger frame; delay 2 counts down once (frame
+    // 1) and swings from frame 2, at 1; turn value 4 gives a first swing of
+    // 4/2 + 1 = 3 frames up, then 6 each way; frame 6 is tick 0 and holds.
+    // (S3 pinned its own model: 2 delay frames, 4-frame half-swings.)
+    assert_eq!(regs, vec![0, 0, 10, 20, 30, 20, 20, 10, 0, -10, -20, -30]);
 }
 
 #[test]

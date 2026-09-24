@@ -6,9 +6,9 @@ import {
   GT_MAX_TRANSPOSE,
   GT_MIN_TRANSPOSE,
   GT_ORDER_END,
-  GT_ORDER_REPEAT,
   GT_TEXT_LENGTH,
   GT_TRANSPOSE_ZERO,
+  gtRepeatByte,
 } from './gt-sng-common';
 import {
   GT_GATE_NO_HARD_RESTART,
@@ -91,7 +91,8 @@ export function gtSongExportProblem(doc: SidDoc): string | null {
  * The GT orderlist bytes of `list` (readme §6.1.2), endmark and restart
  * included: each entry's transpose when it changes (and, at the restart
  * entry, when the loop would otherwise carry the end's transpose into it),
- * its repeat when above 1 (TRANSPOSE before REPEAT, readme §3.1), its pattern.
+ * its repeat when above 1 (`gtRepeatByte`; TRANSPOSE before REPEAT, readme
+ * §3.1), its pattern.
  */
 function orderlistBytes(list: SidOrderlist): number[] {
   const out: number[] = [];
@@ -104,7 +105,7 @@ function orderlistBytes(list: SidOrderlist): number[] {
       out.push(GT_TRANSPOSE_ZERO + e.transpose);
       transpose = e.transpose;
     }
-    if (e.repeat > 1) out.push(GT_ORDER_REPEAT | (e.repeat & 0x0f));
+    if (e.repeat > 1) out.push(gtRepeatByte(e.repeat));
     out.push(e.pattern);
   }
   out.push(GT_ORDER_END, restartByte);

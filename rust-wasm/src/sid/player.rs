@@ -14,16 +14,19 @@
 //! Per frame, in this order (INFERRED ordering, a plain playroutine's):
 //!   1. on the row's first frame, every channel reads its row: an instrument
 //!      number selects the instrument; a note 1..=93 (transposed by the
-//!      orderlist entry, clamped into the table) triggers it: the
+//!      orderlist entry as GT's u8 arithmetic does, never clamped: S5.10,
+//!      `note_index`) triggers it: the
 //!      instrument's AD/SR, waveform, pulse width and table pointers are
 //!      loaded, the gate goes on and the first-frame waveform (if any) is
 //!      written this frame; key off clears the gate, key on sets it; then
 //!      the row's command;
-//!   2. continuous commands (1, 2, 3, 4) and the instrument vibrato, the
-//!      wave and pulse tables per channel, then the (global) filter table;
+//!   2. per channel the wave table, then, unless a wave step set a note
+//!      (GT ends the frame there, gplay.c:722), the running command (1, 2,
+//!      3, 4, or 0's instrument vibrato); the pulse table; then the (global)
+//!      filter table;
 //!   3. the hard restart: `gate_timer` frames before a row that triggers a
 //!      note, the gate is cleared, and with `hard_restart` AD/SR go to 0;
-//!   4. every register is written: per voice frequency (+ vibrato), pulse
+//!   4. every register is written: per voice frequency, pulse
 //!      width, AD, SR, then control (waveform | gate); then cutoff,
 //!      resonance/routing and mode/volume.
 //!
@@ -31,8 +34,9 @@
 //! set, from its format documentation, interpreted here, not copied):
 //!   0 none; 1/2 portamento up/down and 3 tone portamento at the 16-bit
 //!   register speed held in speed-table row `param` (left<<8 | right);
-//!   4 vibrato with speed-table row `param` (left = frames per half-swing,
-//!   right = register step per frame); 5 AD = param; 6 SR = param;
+//!   4 vibrato with speed-table row `param`, GoatTracker's (S5.10,
+//!   `vibrato`: left = turn value, $80 up fine mode, right = register step);
+//!   5 AD = param; 6 SR = param;
 //!   7 waveform = param; 8/9/A start the wave/pulse/filter table at row
 //!   `param`; B resonance/routing ($17) = param; C cutoff high byte = param;
 //!   D master volume = param & 15; E funktempo: not modelled (ignored);
@@ -45,6 +49,13 @@
 //!   through under it and win their frame (gplay.c:714-722, 722). Pinned in
 //!   S5, phase and passthrough aligned in S5.6 against the `.sng` corpus and
 //!   the GT2 source.
+//!   S5.10, GT's running command (gplay.c:351-358, 397-428): a new note sets
+//!   it to 0 with the instrument's speed row and vibrato delay; commands 0-4
+//!   replace it; 5-F leave it, so a vibrato or a slide runs on under them.
+//!   Command 0 runs the instrument vibrato: a delay of 0 never, above 1
+//!   counting down, at 1 swinging (gplay.c:767-772). The vibrato skips tick
+//!   0 as GT's realtime optimisation does (gplay.c:728); commands 1-3 do
+//!   not yet (pre-existing, unchanged here).
 //!
 //! Tables (1-based rows; left 0xFF = jump to row `right`, 0 = stop; one
 //! jump per frame):
@@ -52,9 +63,11 @@
 //!     (the row lasts left + 1 frames; pinned in S5); 0x10..=0xDF
 //!     sets the waveform, 0xE0..=0xEF the waveform `left & 0x0F`, 0x00 keeps
 //!     it, 0xF0..=0xFE (GT's table commands) is not modelled and only
-//!     advances. right: 0x00..=0x5F note up from the triggered note,
-//!     0x60..=0x7F down (right - 0x80), 0x80 no change, 0x81..=0xDF the
-//!     absolute note `right & 0x7F`. This right column is the arpeggio;
+//!     advances (its right column is not a note). right, GT's arithmetic
+//!     (S5.10, gplay.c:714-721): 0x00..=0x7F added to the channel's note,
+//!     0x80 no change, 0x81..=0xFF the absolute note, then `& 0x7F`, into the
+//!     128-entry table (96 notes, then zeros: `gt_note_freq_reg`). This right
+//!     column is the arpeggio;
 //!   pulse: left 0x80..=0xFE sets the width to (left & 0x0F)<<8 | right;
 //!     0x01..=0x7F adds the signed `right` to it for `left` frames;
 //!   filter: left 0x00 sets the cutoff high byte to `right`; 0x01..=0x7F
@@ -105,7 +118,12 @@ struct Channel {
     transpose: i8,
     // Voice.
     instrument: usize,
+    /// GT's `cptr->note`: the row note's index under the transpose, a u8
+    /// that wraps (gplay.c:350, 921), unmasked.
     base_note: u8,
+    /// GT's `cptr->lastnote`: the 7-bit index last played (gplay.c:721),
+    /// for the fine vibrato's step.
+    last_note: u8,
     freq: u16,
     target: Option<u16>,
     gate: bool,
@@ -117,17 +135,21 @@ struct Channel {
     first_wave: u8,
     cmd: u8,
     param: u8,
+    /// GT's running `command`/`cmddata` (gplay.c:351-358, 397-428): set by a
+    /// new note (0 and the instrument's speed row) and by commands 0-4; 5-F
+    /// leave them. The tick effects (portamento, vibrato) read these.
+    run_cmd: u8,
+    run_param: u8,
     // Tables.
     wave_ptr: u8,
     wave_wait: u8,
     pulse_ptr: u8,
     pulse_time: u8,
     pulse_speed: i8,
-    // Vibrato (the command's or the instrument's).
+    // Vibrato (the command's or the instrument's): GT's `vibdelay` and u8
+    // `vibtime` (gplay.c:352, 615-640).
     vib_delay: u8,
-    vib_count: u8,
-    vib_up: bool,
-    vib_offset: i32,
+    vib_time: u8,
 }
 
 /// Plays one subsong of a `SidSong` on a chip of the song's model.
@@ -158,11 +180,14 @@ pub struct SidSongPlayer {
     preview: bool,
 }
 
-/// The note table index of row note `note` under `transpose`, clamped into
-/// the table (`sidNoteIndex` in the app's projection does the same).
+/// The note index of row note `note` under `transpose`, as GoatTracker
+/// computes it: `newnote = (u8)(note + trans)`, `cptr->note = (u8)(newnote -
+/// FIRSTNOTE)` (gplay.c:921, 350), so it WRAPS: G#7 +5 is 97, C-0 -1 is 255.
+/// Never clamped (S5.10; the old clamp to G#7 played up to 5 semitones flat).
+/// The table reads it `& 0x7f` (`gt_note_freq_reg`). The app's display
+/// (`sidNoteIndex`) still clamps: a grid cell can only name C-0..G#7.
 pub fn note_index(note: u8, transpose: i8) -> u8 {
-    let i = note as i32 - NOTE_FIRST as i32 + transpose as i32;
-    i.clamp(0, GT_NOTE_COUNT as i32 - 1) as u8
+    (note as i32 - NOTE_FIRST as i32 + transpose as i32) as u8
 }
 
 fn table_row(table: &[TableRow], ptr: u8) -> Option<TableRow> {
@@ -290,6 +315,8 @@ impl SidSongPlayer {
                 ch.gate = false;
                 ch.cmd = 0;
                 ch.param = 0;
+                ch.run_cmd = 0;
+                ch.run_param = 0;
             }
         }
     }
@@ -309,6 +336,7 @@ impl SidSongPlayer {
         ch.instrument = instrument;
         ch.cmd = 0;
         ch.param = 0;
+        self.new_note(0, note.min(GT_NOTE_COUNT - 1));
         self.trigger(0, note.min(GT_NOTE_COUNT - 1));
         true
     }
@@ -367,12 +395,13 @@ impl SidSongPlayer {
         (self.channels[c].order, self.channels[c].row)
     }
 
-    /// The frequency register channel `c` holds before vibrato.
+    /// The frequency register channel `c` holds (vibrato included: GT's
+    /// vibrato moves `cptr->freq` itself, gplay.c:636-639).
     pub fn channel_freq(&self, c: usize) -> u16 {
         self.channels[c].freq
     }
 
-    /// The note table index channel `c` last triggered.
+    /// The note index channel `c` last triggered (GT's `cptr->note`, unmasked).
     pub fn channel_note(&self, c: usize) -> u8 {
         self.channels[c].base_note
     }
@@ -430,8 +459,12 @@ impl SidSongPlayer {
             }
         }
         for c in 0..SID_CHANNELS {
-            self.continuous(c);
-            self.wave_step(c);
+            // GT runs the wave table first; a step that sets a note ends the
+            // channel's frame before the tick effects (gplay.c:714-722
+            // `goto PULSEEXEC`), so that frame neither slides nor vibrates.
+            if !self.wave_step(c) {
+                self.continuous(c);
+            }
             self.pulse_step(c);
             self.hard_restart(c);
         }
@@ -518,6 +551,7 @@ impl SidSongPlayer {
         let tone_porta = row.command == 3;
         if (NOTE_FIRST..=NOTE_LAST).contains(&row.note) {
             let note = note_index(row.note, self.channels[c].transpose);
+            self.new_note(c, note);
             if tone_porta {
                 // Tie-note and glide rows: no trigger, and no tick-0 pitch
                 // write. GT's realtime optimisation (goattrk2.c:55
@@ -531,7 +565,6 @@ impl SidSongPlayer {
                 // are `3 00` with a real note (4930 with key-offs). Phase
                 // aligned in S5.6 (.ai/sid-crosscheck-verdict.md (a), 1).
                 let ch = &mut self.channels[c];
-                ch.base_note = note;
                 ch.target = Some(gt_note_freq_reg(note));
             } else {
                 self.trigger(c, note);
@@ -542,10 +575,28 @@ impl SidSongPlayer {
             self.channels[c].gate = true;
         }
         let p = row.param;
+        let speed_ptr = self.instrument(c).map(|i| i.speed_ptr).unwrap_or(0);
         let ch = &mut self.channels[c];
         ch.cmd = row.command;
         ch.param = p;
         match row.command {
+            // GT's tick-0 commands (gplay.c:397-428): 0 hands the tick
+            // effects to the instrument's vibrato (its speed row, on the
+            // instrument the channel now has); 1 and 2 restart the vibrato
+            // phase; 1-4 take over. 5-F below leave the running command.
+            0x0 => {
+                ch.run_cmd = 0;
+                ch.run_param = speed_ptr;
+            }
+            0x1 | 0x2 => {
+                ch.vib_time = 0;
+                ch.run_cmd = row.command;
+                ch.run_param = p;
+            }
+            0x3 | 0x4 => {
+                ch.run_cmd = row.command;
+                ch.run_param = p;
+            }
             0x5 => ch.ad = p,
             0x6 => ch.sr = p,
             0x7 => ch.waveform = p & !GATE,
@@ -573,18 +624,31 @@ impl SidSongPlayer {
         }
     }
 
+    /// GT's new-note init (gplay.c:348-358), glide or trigger alike: the
+    /// note, and the running command back to 0 with the instrument's speed
+    /// row and vibrato delay.
+    fn new_note(&mut self, c: usize, note: u8) {
+        let (speed_ptr, delay) = self.instrument(c).map(|i| (i.speed_ptr, i.vibrato_delay)).unwrap_or((0, 0));
+        let ch = &mut self.channels[c];
+        ch.base_note = note;
+        ch.run_cmd = 0;
+        ch.run_param = speed_ptr;
+        ch.vib_delay = delay;
+    }
+
     fn trigger(&mut self, c: usize, note: u8) {
         let ins = self.instrument(c).cloned();
         let bit = 1u8 << c;
         let ch = &mut self.channels[c];
-        ch.base_note = note;
+        // The pitch GT's wave table sets on the note's first step (a row
+        // with note column $00 is `cptr->note & 0x7f`, vibtime 0,
+        // gplay.c:714-721); set here at once, and again by that step.
+        ch.last_note = note & 0x7F;
         ch.freq = gt_note_freq_reg(note);
         ch.target = None;
         ch.gate = true;
         ch.first_frame = true;
-        ch.vib_offset = 0;
-        ch.vib_up = true;
-        ch.vib_count = 0;
+        ch.vib_time = 0;
         let Some(ins) = ins else {
             ch.first_wave = 0;
             return;
@@ -598,7 +662,6 @@ impl SidSongPlayer {
         ch.wave_wait = 0;
         ch.pulse_ptr = ins.pulse_ptr;
         ch.pulse_time = 0;
-        ch.vib_delay = ins.vibrato_delay;
         if ins.filter.enabled {
             self.res_filt |= bit;
         } else {
@@ -614,26 +677,40 @@ impl SidSongPlayer {
         }
     }
 
-    fn vibrato(ch: &mut Channel, speed: u8, depth: u8) {
-        let half = speed.max(1);
-        if ch.vib_count == 0 && ch.vib_offset == 0 && ch.vib_up {
-            // Centre the swing: the first half-swing is half as long.
-            ch.vib_count = half / 2;
+    /// One vibrato frame, GoatTracker's (gplay.c:615-640, 776-799): speed
+    /// row `ptr` gives the turn value (left) and the register step (right);
+    /// a left of $80 up is the fine mode, whose step is the gap from the
+    /// last note to the next, shifted right by `right`. `vibtime` is a u8:
+    /// past the turn value (and below $80) it flips to its complement, then
+    /// steps by 2; odd goes down, even up. A turn value k gives a first swing
+    /// of k/2 + 1 frames, then k + 2 frames each way (even k).
+    fn vibrato(&mut self, c: usize, ptr: u8) {
+        let (mut turn, mut step) = self.speed_row(ptr).map(|r| (r.left, r.right as u16)).unwrap_or((0, 0));
+        let ch = &mut self.channels[c];
+        if turn >= 0x80 {
+            turn &= 0x7F;
+            let at = |i: u8| if i < 0x80 { gt_note_freq_reg(i) } else { 0 };
+            let shift = self.song.tables.speed.get(ptr as usize - 1).map(|r| r.right).unwrap_or(0);
+            step = at(ch.last_note + 1).wrapping_sub(at(ch.last_note)).checked_shr(shift as u32).unwrap_or(0);
         }
-        ch.vib_offset += if ch.vib_up { depth as i32 } else { -(depth as i32) };
-        ch.vib_count += 1;
-        if ch.vib_count >= half {
-            ch.vib_count = 0;
-            ch.vib_up = !ch.vib_up;
+        if ch.vib_time < 0x80 && ch.vib_time > turn {
+            ch.vib_time ^= 0xFF;
         }
+        ch.vib_time = ch.vib_time.wrapping_add(2);
+        ch.freq = if ch.vib_time & 1 != 0 { ch.freq.wrapping_sub(step) } else { ch.freq.wrapping_add(step) };
     }
 
     fn continuous(&mut self, c: usize) {
         if self.channels[c].first_frame {
             return;
         }
-        let (cmd, param) = (self.channels[c].cmd, self.channels[c].param);
+        let (cmd, param) = (self.channels[c].run_cmd, self.channels[c].run_param);
         let speed = self.speed_row(param).map(|r| (r.left as u16) << 8 | r.right as u16);
+        // GT's realtime optimisation skips the tick effects on tick 0
+        // (goattrk2.c:55, gplay.c:728). Applied to the vibrato here (S5.10);
+        // the portamentos 1-3 still slide on tick 0 (a pre-existing
+        // difference, not this batch's). The preview voice has no rows.
+        let tick0 = self.tick == 0 && !self.preview;
         match cmd {
             0x1 => {
                 if let Some(s) = speed {
@@ -649,7 +726,7 @@ impl SidSongPlayer {
             }
             0x3 => {
                 let ch = &mut self.channels[c];
-                if ch.param == 0 {
+                if ch.run_param == 0 {
                     // Tie-note pitch, GT phase (S5.6): the tick effects run
                     // from tick 1 (tick 0 is skipped by the realtime
                     // optimisation, goattrk2.c:55 + gplay.c:728) and re-assert
@@ -671,40 +748,42 @@ impl SidSongPlayer {
                     }
                 }
             }
-            0x4 => {
-                if let Some(r) = self.speed_row(param) {
-                    Self::vibrato(&mut self.channels[c], r.left, r.right);
+            0x4 if !tick0 => self.vibrato(c, param),
+            // The instrument vibrato is command 0's fall-through into 4
+            // (gplay.c:767-772): no speed row or a delay of 0 never
+            // vibrates; a delay above 1 counts down a frame; at 1 it swings.
+            0x0 if !tick0 => {
+                let ch = &mut self.channels[c];
+                if param == 0 || ch.vib_delay == 0 {
+                    return;
                 }
+                if ch.vib_delay > 1 {
+                    ch.vib_delay -= 1;
+                    return;
+                }
+                self.vibrato(c, param);
             }
             _ => {}
         }
-        if cmd != 0x4 {
-            let vib = self.instrument(c).map(|i| i.speed_ptr).unwrap_or(0);
-            if let Some(r) = self.speed_row(vib) {
-                let ch = &mut self.channels[c];
-                if ch.vib_delay > 0 {
-                    ch.vib_delay -= 1;
-                } else {
-                    Self::vibrato(ch, r.left, r.right);
-                }
-            }
-        }
     }
 
-    fn wave_step(&mut self, c: usize) {
+    /// The wave table's frame; `true` when a step set a note (or ran a
+    /// table command), which ends GT's frame before the tick effects.
+    fn wave_step(&mut self, c: usize) -> bool {
         let ch = &self.channels[c];
         if ch.first_frame && ch.first_wave != 0 {
-            return;
+            return false;
         }
         let table = &self.song.tables.wave;
         let ch = &mut self.channels[c];
         let mut jumped = false;
+        let mut noted = false;
         while let Some(row) = table_row(table, ch.wave_ptr) {
             match row.left {
                 0xFF => {
                     if jumped || row.right == 0 || row.right as usize > table.len() {
                         ch.wave_ptr = 0;
-                        return;
+                        return false;
                     }
                     ch.wave_ptr = row.right;
                     jumped = true;
@@ -723,7 +802,7 @@ impl SidSongPlayer {
                     }
                     ch.wave_wait -= 1;
                     if ch.wave_wait == 0 {
-                        Self::wave_note(ch, row.right);
+                        noted = Self::wave_note(ch, row.right);
                         ch.wave_ptr = ch.wave_ptr.wrapping_add(1);
                     }
                 }
@@ -733,7 +812,10 @@ impl SidSongPlayer {
                         0xE0..=0xEF => ch.waveform = l & 0x0E,
                         _ => {}
                     }
-                    Self::wave_note(ch, row.right);
+                    // $F0-$FE run a table command (not modelled): its right
+                    // column is the command's parameter, not a note, and GT
+                    // skips the tick effects that frame (gplay.c:704-710).
+                    noted = if l >= 0xF0 { true } else { Self::wave_note(ch, row.right) };
                     ch.wave_ptr = ch.wave_ptr.wrapping_add(1);
                 }
             }
@@ -742,23 +824,28 @@ impl SidSongPlayer {
         if ch.wave_ptr as usize > table.len() {
             ch.wave_ptr = 0;
         }
+        noted
     }
 
     /// A wave-table row's right column: the note it sets, under any command.
     /// GT's wave-note path has no command check (gplay.c:714-722): the note
     /// applies while a portamento stands too, and that frame skips the tick
     /// effects (gplay.c:722), so the wave note wins it. S5.6: the S3-era
-    /// suppression under commands 1-3 is removed.
-    fn wave_note(ch: &mut Channel, right: u8) {
-        let note = match right {
-            0x80 => None,
-            r @ 0x00..=0x5F => Some(ch.base_note as i32 + r as i32),
-            r @ 0x60..=0x7F => Some(ch.base_note as i32 + r as i32 - 0x80),
-            r => Some((r & 0x7F) as i32),
-        };
-        if let Some(n) = note {
-            ch.freq = gt_note_freq_reg(n.clamp(0, GT_NOTE_COUNT as i32 - 1) as u8);
+    /// suppression under commands 1-3 is removed. S5.10: GT's arithmetic,
+    /// mod 128 (gplay.c:714-721): $00-$7F is added to the channel's note
+    /// ($7F is one down, $60 is 32 down only when that stays above C-0),
+    /// $81-$FF is the absolute note `right & 0x7f`, then `& 0x7f`; never
+    /// clamped. The step resets the vibrato phase and is the fine vibrato's
+    /// last note. `false`: $80, no note.
+    fn wave_note(ch: &mut Channel, right: u8) -> bool {
+        if right == 0x80 {
+            return false;
         }
+        let note = if right < 0x80 { ch.base_note.wrapping_add(right) } else { right } & 0x7F;
+        ch.freq = gt_note_freq_reg(note);
+        ch.vib_time = 0;
+        ch.last_note = note;
+        true
     }
 
     fn pulse_step(&mut self, c: usize) {
@@ -862,9 +949,8 @@ impl SidSongPlayer {
     fn write_registers(&mut self) {
         for (c, ch) in self.channels.iter().enumerate() {
             let base = (c * 7) as u8;
-            let f = (ch.freq as i32 + ch.vib_offset).clamp(0, 0xFFFF) as u16;
-            self.chip.write(base, (f & 0xFF) as u8);
-            self.chip.write(base + 1, (f >> 8) as u8);
+            self.chip.write(base, (ch.freq & 0xFF) as u8);
+            self.chip.write(base + 1, (ch.freq >> 8) as u8);
             self.chip.write(base + 2, (ch.pulse_width & 0xFF) as u8);
             self.chip.write(base + 3, (ch.pulse_width >> 8) as u8);
             self.chip.write(base + 5, ch.ad);

@@ -192,8 +192,8 @@ describe('GTS5 (readme §6.1)', () => {
     ]);
   });
 
-  it('plays orderlist commands as state: a transpose holds, a repeat applies to the next pattern, R0 is 16, the restart byte names an entry', () => {
-    const list = [0xf2, 0xd3, 0x00, 0x01, 0xe8, 0xd0, 0x00, 0xff, 0x04];
+  it('plays orderlist commands as state: a transpose holds, a repeat $Dk plays the next pattern k + 1 times ($DF = 16, gplay.c:977-986), the restart byte names an entry', () => {
+    const list = [0xf2, 0xd2, 0x00, 0x01, 0xe8, 0xdf, 0x00, 0xff, 0x04];
     const three = [list, [0x00, 0xff, 0x00], [0x00, 0xff, 0x00]];
     const { doc, notes } = ok(
       importGtSong(
