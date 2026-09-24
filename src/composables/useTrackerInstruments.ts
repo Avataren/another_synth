@@ -4,7 +4,7 @@ import type { Patch } from 'src/audio/types/preset-types';
 import { createDefaultPatchMetadata, createEmptySynthState } from 'src/audio/types/preset-types';
 import type { InstrumentSlot, useTrackerStore } from 'src/stores/tracker-store';
 import type { usePatchStore } from 'src/stores/patch-store';
-import { canEditSlot, resolveInstrumentEditorRoute } from 'src/audio/tracker/instrument-types';
+import { canEditSlot, listsSongInstrument, resolveInstrumentEditorRoute } from 'src/audio/tracker/instrument-types';
 
 /**
  * Patch option from a bank
@@ -93,7 +93,13 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
    * Get the display name for an instrument slot
    */
   function getInstrumentDisplayName(slot: InstrumentSlot): string {
-    return slot.instrumentName || slot.patchName || '—';
+    if (slot.instrumentName || slot.patchName) return slot.instrumentName || slot.patchName;
+    // A song instrument its file left unnamed (most GoatTracker GTS5 songs)
+    // is listed by number, as its instrument page titles it: a dash would
+    // make it look like an unused slot.
+    return listsSongInstrument(slot)
+      ? `Instrument ${context.formatInstrumentId(slot.slot)}`
+      : '—';
   }
 
   /**

@@ -576,7 +576,7 @@
                 class="instrument-row"
                 :class="{
                   active: activeInstrumentId === formatInstrumentId(slot.slot),
-                  empty: !slot.patchId && !isAhxSlot(slot),
+                  empty: !slot.patchId && !listsSongInstrument(slot),
                   'mod-instrument': !!instrumentBadgeLabel(slot),
                 }"
                 :title="slot.patchId || isAhxSlot(slot) ? `Bank: ${slot.bankName}` : ''"
@@ -1011,6 +1011,7 @@ import {
   canEditSlot,
   instrumentBadgeLabel,
   isAhxSlot,
+  listsSongInstrument,
 } from 'src/audio/tracker/instrument-types';
 
 const router = useRouter();

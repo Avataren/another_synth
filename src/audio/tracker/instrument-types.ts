@@ -205,6 +205,15 @@ export function isAhxSlot(slot: TaggableSlot): boolean {
   return normalizeInstrumentType(slot.instrumentType) === 'ahx';
 }
 
+/**
+ * True for a slot that lists one of the song's own instruments with no patch
+ * behind it: an AHX/HVL one, or a SID one (tagged only for an instrument the
+ * song's doc holds, `showSidDoc`). It is filled, though it has no `patchId`.
+ */
+export function listsSongInstrument(slot: TaggableSlot): boolean {
+  return isAhxSlot(slot) || normalizeInstrumentFormat(slot.instrumentFormat) === 'sid';
+}
+
 /** Router route name for a slot's editor, or null. */
 export function resolveInstrumentEditorRoute(slot: TaggableSlot): string | null {
   const editor = resolveInstrumentEditor(slot);
