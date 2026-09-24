@@ -1,0 +1,382 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 npx
+npm notice run 'vitest' run src/tests/sid-spectrum-taps.test.ts
+
+ RUN  v2.1.8 /home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-mirror
+
+Browserslist: browsers data (caniuse-lite) is 10 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > spectrum: three non-null taps, one per voice, the bank's own track monitors (never the master fallback)
+[FileIO] AudioContext did not resume. Loading the song anyway; click anywhere on the page to enable audio. Current state: suspended
+[SongBank] AudioContext state=suspended; attempting to resume.
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > spectrum: three non-null taps, one per voice, the bank's own track monitors (never the master fallback)
+[TrackerSongBank] Timeout waiting for audio context to resume. Please interact with the page (click anywhere).
+[SongBank] AudioContext resume timed out; final state=suspended
+[SongBank] AudioContext still suspended after bounded resume attempt; building instruments while suspended (rebuild-on-resume is armed).
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > waveforms: every voice's visualizer node is its tap, before and during playback
+[FileIO] AudioContext did not resume. Loading the song anyway; click anywhere on the page to enable audio. Current state: suspended
+[SongBank] AudioContext state=suspended; attempting to resume.
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > waveforms: every voice's visualizer node is its tap, before and during playback
+[TrackerSongBank] Timeout waiting for audio context to resume. Please interact with the page (click anywhere).
+[SongBank] AudioContext resume timed out; final state=suspended
+[SongBank] AudioContext still suspended after bounded resume attempt; building instruments while suspended (rebuild-on-resume is armed).
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > with nothing looking (analyzer and scopes off) there are no taps, as for a native song
+[FileIO] AudioContext did not resume. Loading the song anyway; click anywhere on the page to enable audio. Current state: suspended
+[SongBank] AudioContext state=suspended; attempting to resume.
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > with nothing looking (analyzer and scopes off) there are no taps, as for a native song
+[TrackerSongBank] Timeout waiting for audio context to resume. Please interact with the page (click anywhere).
+[SongBank] AudioContext resume timed out; final state=suspended
+[SongBank] AudioContext still suspended after bounded resume attempt; building instruments while suspended (rebuild-on-resume is armed).
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > AHX keeps its master fallback and a native song its tap array (unchanged)
+[FileIO] AudioContext did not resume. Loading the song anyway; click anywhere on the page to enable audio. Current state: suspended
+[SongBank] AudioContext state=suspended; attempting to resume.
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > AHX keeps its master fallback and a native song its tap array (unchanged)
+[TrackerSongBank] Timeout waiting for audio context to resume. Please interact with the page (click anywhere).
+[SongBank] AudioContext resume timed out; final state=suspended
+[SongBank] AudioContext still suspended after bounded resume attempt; building instruments while suspended (rebuild-on-resume is armed).
+
+ ❯ src/tests/sid-spectrum-taps.test.ts (14 tests | 1 failed) 3353ms
+   ✓ a SID song loaded through the real path gets real per-track taps > spectrum: three non-null taps, one per voice, the bank's own track monitors (never the master fallback) 1076ms
+   ✓ a SID song loaded through the real path gets real per-track taps > waveforms: every voice's visualizer node is its tap, before and during playback 610ms
+   ✓ a SID song loaded through the real path gets real per-track taps > with nothing looking (analyzer and scopes off) there are no taps, as for a native song 607ms
+   ✓ a SID song loaded through the real path gets real per-track taps > AHX keeps its master fallback and a native song its tap array (unchanged) 630ms
+   × S5.13: a mono (SID) trace is mirrored across the screen center > mono: ONE analyser, painted in BOTH strips -- the right strip is the left one mirrored 76ms
+     → expected [ [ 1, 35.709, 6, 4.291 ], …(39) ] to deeply equal [ [ 1, 36.29, 6, 3.71 ], …(39) ]
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/sid-spectrum-taps.test.ts > S5.13: a mono (SID) trace is mirrored across the screen center > mono: ONE analyser, painted in BOTH strips -- the right strip is the left one mirrored
+AssertionError: expected [ [ 1, 35.709, 6, 4.291 ], …(39) ] to deeply equal [ [ 1, 36.29, 6, 3.71 ], …(39) ]
+
+- Expected
++ Received
+
+  Array [
+    Array [
+      1,
+-     36.29,
++     35.709,
+      6,
+-     3.71,
++     4.291,
+    ],
+    Array [
+      1,
+-     36.29,
++     35.709,
+      6,
+      3,
+    ],
+    Array [
+      9,
+-     35.548,
++     34.851,
+      6,
+-     4.452,
++     5.149,
+    ],
+    Array [
+      9,
+-     35.548,
++     34.851,
+      6,
+      3,
+    ],
+    Array [
+      17,
+-     34.249,
++     33.349,
+      6,
+-     5.751,
++     6.651,
+    ],
+    Array [
+      17,
+-     34.249,
++     33.349,
+      6,
+      3,
+    ],
+    Array [
+      25,
+-     32.487,
++     31.31,
+      6,
+-     7.513,
++     8.69,
+    ],
+    Array [
+      25,
+-     32.487,
++     31.31,
+      6,
+      3,
+    ],
+    Array [
+      33,
+-     30.354,
++     28.843,
+      6,
+-     9.646,
++     11.157,
+    ],
+    Array [
+      33,
+-     30.354,
++     28.843,
+      6,
+      3,
+    ],
+    Array [
+      41,
+-     28.035,
++     26.161,
+      6,
+-     11.965,
++     13.839,
+    ],
+    Array [
+      41,
+-     28.035,
++     26.161,
+      6,
+      3,
+    ],
+    Array [
+      49,
+-     25.438,
++     23.157,
+      6,
+-     14.562,
++     16.843,
+    ],
+    Array [
+      49,
+-     25.438,
++     23.157,
+      6,
+      3,
+    ],
+    Array [
+      57,
+-     22.562,
++     19.831,
+      6,
+-     17.438,
++     20.169,
+    ],
+    Array [
+      57,
+-     22.562,
++     19.831,
+      6,
+      3,
+    ],
+    Array [
+      65,
+-     19.502,
++     16.291,
+      6,
+-     20.498,
++     23.709,
+    ],
+    Array [
+      65,
+-     19.502,
++     16.291,
+      6,
+      3,
+    ],
+    Array [
+      73,
+-     16.348,
++     12.644,
+      6,
+-     23.652,
++     27.356,
+    ],
+    Array [
+      73,
+-     16.348,
++     12.644,
+      6,
+      3,
+    ],
+    Array [
+      81,
+-     16.348,
++     12.644,
+      6,
+-     23.652,
++     27.356,
+    ],
+    Array [
+      81,
+-     16.348,
++     12.644,
+      6,
+      3,
+    ],
+    Array [
+      89,
+-     16.348,
++     12.644,
+      6,
+-     23.652,
++     27.356,
+    ],
+    Array [
+      89,
+-     16.348,
++     12.644,
+      6,
+      3,
+    ],
+    Array [
+      97,
+-     16.348,
++     12.644,
+      6,
+-     23.652,
++     27.356,
+    ],
+    Array [
+      97,
+-     16.348,
++     12.644,
+      6,
+      3,
+    ],
+    Array [
+      105,
+-     16.348,
++     12.644,
+      6,
+-     23.652,
++     27.356,
+    ],
+    Array [
+      105,
+-     16.348,
++     12.644,
+      6,
+      3,
+    ],
+    Array [
+      113,
+-     16.348,
++     12.644,
+      6,
+-     23.652,
++     27.356,
+    ],
+    Array [
+      113,
+-     16.348,
++     12.644,
+      6,
+      3,
+    ],
+    Array [
+      121,
+-     16.348,
++     12.644,
+      6,
+-     23.652,
++     27.356,
+    ],
+    Array [
+      121,
+-     16.348,
++     12.644,
+      6,
+      3,
+    ],
+    Array [
+      129,
+-     16.348,
++     12.644,
+      6,
+-     23.652,
++     27.356,
+    ],
+    Array [
+      129,
+-     16.348,
++     12.644,
+      6,
+      3,
+    ],
+    Array [
+      137,
+-     16.348,
++     12.644,
+      6,
+-     23.652,
++     27.356,
+    ],
+    Array [
+      137,
+-     16.348,
++     12.644,
+      6,
+      3,
+    ],
+    Array [
+      145,
+-     16.348,
++     12.644,
+      6,
+-     23.652,
++     27.356,
+    ],
+    Array [
+      145,
+-     16.348,
++     12.644,
+      6,
+      3,
+    ],
+    Array [
+      153,
+-     16.348,
++     12.644,
+      6,
+-     23.652,
++     27.356,
+    ],
+    Array [
+      153,
+-     16.348,
++     12.644,
+      6,
+      3,
+    ],
+  ]
+
+ ❯ src/tests/sid-spectrum-taps.test.ts:441:33
+    439|     expect(right?.rects.length ?? 0).toBeGreaterThan(0);
+    440|     // Same bars, same heights, reflected about the center line.
+    441|     expect(round(right!.rects)).toEqual(round(left.rects.map(reflect))…
+       |                                 ^
+    442|     // The shared analyser is read once per frame, not once per strip …
+    443|     // read would advance its smoothing/peaks twice and break the mirr…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 passed (14)
+   Start at  12:07:27
+   Duration  4.57s (transform 782ms, setup 15ms, collect 427ms, tests 3.35s, environment 206ms, prepare 339ms)
+
+vitest exit=1

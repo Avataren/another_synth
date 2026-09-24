@@ -21,9 +21,10 @@ interface Props {
   trackNodes?: (AudioNode | null)[];
   isPlaying: boolean;
   /** The source is mono (a SID chip, plan-sid-tracking.md S5.7): ONE trace
-   *  of the master mix in the left strip, instead of an L/R pair (its mix
-   *  output is stereo with identical sides) or voices spread over both
-   *  strips as if the chip panned them. */
+   *  of the master mix, instead of an L/R pair (its mix output is stereo
+   *  with identical sides) or voices spread over both strips as if the chip
+   *  panned them. The trace is mirrored (S5.13): the same analyser drawn in
+   *  both strips, each fanning out from the screen center. */
   mono?: boolean;
 }
 
@@ -43,6 +44,12 @@ interface ChannelAnalyzer {
   smoothed: Float32Array;
   peaks: Float32Array;
   sourceNode: AudioNode | null;
+  /** The frame (animation-loop time) and bar count `smoothed`/`peaks` were
+   *  last advanced for. A mono channel is drawn in both strips; the second
+   *  strip in a frame reuses the first one's update rather than reading and
+   *  smoothing again, so both show the identical trace. */
+  updatedAt: number;
+  updatedBars: number;
 }
 
 /** One side's canvas, and the 1-2 channels drawn into it. Every channel on
@@ -221,6 +228,8 @@ function createChannelAnalyzer(audioContext: BaseAudioContext): ChannelAnalyzer 
     smoothed: new Float32Array(analyser.frequencyBinCount),
     peaks: new Float32Array(analyser.frequencyBinCount),
     sourceNode: null,
+    updatedAt: -1,
+    updatedBars: 0,
   };
 }
 
@@ -372,16 +381,22 @@ function buildStereoGraph(sourceNode: AudioNode) {
   right.channels = [r];
 }
 
-/** One analyser straight on the master (no splitter), drawn in the left strip only. */
+/** One analyser straight on the master (no splitter), shared by both strips:
+ *  each draws it from its inner edge outward, so the right strip is the left
+ *  one mirrored about the screen center. Connected once, however many strips
+ *  hold it. */
 function buildMonoGraph(sourceNode: AudioNode) {
   const channel = createChannelAnalyzer(sourceNode.context);
   connectChannel(channel, sourceNode);
   connectedMasterNode = sourceNode;
   left.channels = [channel];
-  right.channels = [];
+  right.channels = [channel];
 }
 
-function updateChannelData(channel: ChannelAnalyzer, numBars: number) {
+function updateChannelData(channel: ChannelAnalyzer, numBars: number, time: number) {
+  if (channel.updatedAt === time && channel.updatedBars === numBars) return;
+  channel.updatedAt = time;
+  channel.updatedBars = numBars;
   channel.analyser.getByteFrequencyData(channel.dataArray);
   const bufferLength = channel.analyser.frequencyBinCount;
   for (let i = 0; i < numBars; i++) {
@@ -456,7 +471,7 @@ function drawChannel(
   }
 }
 
-function drawSide(side: Side) {
+function drawSide(side: Side, time: number) {
   const canvas = side.canvasRef.value;
   if (!canvas || side.channels.length === 0) return;
   updateCanvasSize(side);
@@ -475,7 +490,7 @@ function drawSide(side: Side) {
   const barWidth = side.displayWidth / numBars;
 
   side.channels.forEach((channel) => {
-    updateChannelData(channel, numBars);
+    updateChannelData(channel, numBars, time);
     drawChannel(ctx, side, channel, numBars, barWidth);
   });
 }
@@ -483,7 +498,7 @@ function drawSide(side: Side) {
 function updateAnimationState(side: Side) {
   if (side.channels.length > 0) {
     if (!side.unregisterAnimation) {
-      side.unregisterAnimation = registerAnimationCallback(() => drawSide(side));
+      side.unregisterAnimation = registerAnimationCallback((time) => drawSide(side, time));
     }
   } else if (side.unregisterAnimation) {
     side.unregisterAnimation();

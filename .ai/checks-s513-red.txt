@@ -1,0 +1,75 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 npx
+npm notice run 'vitest' run src/tests/sid-spectrum-taps.test.ts
+
+ RUN  v2.1.8 /home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-mirror
+
+Browserslist: browsers data (caniuse-lite) is 10 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > spectrum: three non-null taps, one per voice, the bank's own track monitors (never the master fallback)
+[FileIO] AudioContext did not resume. Loading the song anyway; click anywhere on the page to enable audio. Current state: suspended
+[SongBank] AudioContext state=suspended; attempting to resume.
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > spectrum: three non-null taps, one per voice, the bank's own track monitors (never the master fallback)
+[TrackerSongBank] Timeout waiting for audio context to resume. Please interact with the page (click anywhere).
+[SongBank] AudioContext resume timed out; final state=suspended
+[SongBank] AudioContext still suspended after bounded resume attempt; building instruments while suspended (rebuild-on-resume is armed).
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > waveforms: every voice's visualizer node is its tap, before and during playback
+[FileIO] AudioContext did not resume. Loading the song anyway; click anywhere on the page to enable audio. Current state: suspended
+[SongBank] AudioContext state=suspended; attempting to resume.
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > waveforms: every voice's visualizer node is its tap, before and during playback
+[TrackerSongBank] Timeout waiting for audio context to resume. Please interact with the page (click anywhere).
+[SongBank] AudioContext resume timed out; final state=suspended
+[SongBank] AudioContext still suspended after bounded resume attempt; building instruments while suspended (rebuild-on-resume is armed).
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > with nothing looking (analyzer and scopes off) there are no taps, as for a native song
+[FileIO] AudioContext did not resume. Loading the song anyway; click anywhere on the page to enable audio. Current state: suspended
+[SongBank] AudioContext state=suspended; attempting to resume.
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > with nothing looking (analyzer and scopes off) there are no taps, as for a native song
+[TrackerSongBank] Timeout waiting for audio context to resume. Please interact with the page (click anywhere).
+[SongBank] AudioContext resume timed out; final state=suspended
+[SongBank] AudioContext still suspended after bounded resume attempt; building instruments while suspended (rebuild-on-resume is armed).
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > AHX keeps its master fallback and a native song its tap array (unchanged)
+[FileIO] AudioContext did not resume. Loading the song anyway; click anywhere on the page to enable audio. Current state: suspended
+[SongBank] AudioContext state=suspended; attempting to resume.
+
+stderr | src/tests/sid-spectrum-taps.test.ts > a SID song loaded through the real path gets real per-track taps > AHX keeps its master fallback and a native song its tap array (unchanged)
+[TrackerSongBank] Timeout waiting for audio context to resume. Please interact with the page (click anywhere).
+[SongBank] AudioContext resume timed out; final state=suspended
+[SongBank] AudioContext still suspended after bounded resume attempt; building instruments while suspended (rebuild-on-resume is armed).
+
+ ❯ src/tests/sid-spectrum-taps.test.ts (14 tests | 1 failed) 3330ms
+   ✓ a SID song loaded through the real path gets real per-track taps > spectrum: three non-null taps, one per voice, the bank's own track monitors (never the master fallback) 1058ms
+   ✓ a SID song loaded through the real path gets real per-track taps > waveforms: every voice's visualizer node is its tap, before and during playback 611ms
+   ✓ a SID song loaded through the real path gets real per-track taps > with nothing looking (analyzer and scopes off) there are no taps, as for a native song 608ms
+   ✓ a SID song loaded through the real path gets real per-track taps > AHX keeps its master fallback and a native song its tap array (unchanged) 627ms
+   × S5.13: a mono (SID) trace is mirrored across the screen center > mono: ONE analyser, painted in BOTH strips -- the right strip is the left one mirrored 69ms
+     → expected 0 to be greater than 0
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/sid-spectrum-taps.test.ts > S5.13: a mono (SID) trace is mirrored across the screen center > mono: ONE analyser, painted in BOTH strips -- the right strip is the left one mirrored
+AssertionError: expected 0 to be greater than 0
+ ❯ src/tests/sid-spectrum-taps.test.ts:439:38
+    437|     const right = painted.get(r);
+    438|     expect(left.rects.length).toBeGreaterThan(0);
+    439|     expect(right?.rects.length ?? 0).toBeGreaterThan(0);
+       |                                      ^
+    440|     // Same bars, same heights, reflected about the center line.
+    441|     expect(round(right!.rects)).toEqual(round(left.rects.map(reflect))…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 passed (14)
+   Start at  12:07:21
+   Duration  4.58s (transform 743ms, setup 12ms, collect 419ms, tests 3.33s, environment 202ms, prepare 364ms)
+
+vitest exit=1
