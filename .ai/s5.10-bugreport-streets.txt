@@ -1,0 +1,8 @@
+[another_synth bug report]
+song:      Streets  (sha256: 34da331cf5ecacc7150caca940e5a631daf3fd871a02acee5e4758c2fa64a4ad)
+title:     "Streets"
+build:     v0.3.65 (eefe5556)
+position:  order 81 row 0 -> order 81 row 15
+channels:  1, 2, 3
+heard:     everything sounds off here, something is not transposed right
+expected:  (not provided)
