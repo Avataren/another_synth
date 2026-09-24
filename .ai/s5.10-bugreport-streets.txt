@@ -6,3 +6,4 @@ position:  order 81 row 0 -> order 81 row 15
 channels:  1, 2, 3
 heard:     everything sounds off here, something is not transposed right
 expected:  (not provided)
+  (Morten, follow-up 07:46: not sure ALL channels are off — maybe just one; something is not right. Exact channel(s) unknown, GT2 A/B pending.)
