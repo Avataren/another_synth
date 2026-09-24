@@ -1,0 +1,146 @@
+   Compiling audio_processor v0.1.0 (/home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-r4ar/rust-wasm)
+warning: unused import: `super::*`
+    --> src/audio_engine/native.rs:1537:9
+     |
+1537 |     use super::*;
+     |         ^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `Connection`, `ModulationTransformation`, and `ModulationType`
+    --> src/audio_engine/native.rs:1538:24
+     |
+1538 |     use crate::graph::{Connection, ModulationTransformation, ModulationType};
+     |                        ^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+
+warning: unused imports: `AnalogOscillator` and `Mixer`
+    --> src/audio_engine/native.rs:1539:24
+     |
+1539 |     use crate::nodes::{AnalogOscillator, Mixer};
+     |                        ^^^^^^^^^^^^^^^^  ^^^^^
+
+warning: unused import: `crate::PortId`
+    --> src/audio_engine/native.rs:1540:9
+     |
+1540 |     use crate::PortId;
+     |         ^^^^^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+    --> src/audio_engine/native.rs:1541:9
+     |
+1541 |     use uuid::Uuid;
+     |         ^^^^^^^^^^
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:119:35
+    |
+119 |         let safe_ms = ms.max(f32::EPSILON * 1000.0); // Ensure positive
+    |                                   ^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:286:32
+    |
+286 |             envelope_l += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:293:32
+    |
+293 |             envelope_r += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: function `port_id_from_u32` is never used
+  --> src/audio_engine/patch_loader.rs:25:8
+   |
+25 | pub fn port_id_from_u32(value: u32) -> PatchLoaderResult<PortId> {
+   |        ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `modulation_type_from_i32` is never used
+  --> src/audio_engine/patch_loader.rs:59:8
+   |
+59 | pub fn modulation_type_from_i32(value: i32) -> PatchLoaderResult<ModulationType> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `modulation_transform_from_i32` is never used
+  --> src/audio_engine/patch_loader.rs:69:8
+   |
+69 | pub fn modulation_transform_from_i32(value: i32) -> PatchLoaderResult<ModulationTransformation> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `filter_type_from_i32` is never used
+  --> src/audio_engine/patch_loader.rs:80:8
+   |
+80 | pub fn filter_type_from_i32(value: i32) -> PatchLoaderResult<FilterType> {
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `find_node_id` is never used
+  --> src/audio_engine/patch_loader.rs:96:8
+   |
+96 | pub fn find_node_id(voice_layout: &PatchVoiceLayout, node_type: &str) -> Option<String> {
+   |        ^^^^^^^^^^^^
+
+warning: methods `ensure_gate_buffer_len`, `ensure_frequency_buffer_len`, `set_gate_buffer`, and `set_frequency_buffer` are never used
+   --> src/automation.rs:205:8
+    |
+ 31 | impl AutomationFrame {
+    | -------------------- methods in this implementation
+...
+205 |     fn ensure_gate_buffer_len(&mut self, target_len: usize) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+...
+215 |     fn ensure_frequency_buffer_len(&mut self, target_len: usize) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+239 |     fn set_gate_buffer(&mut self, voice_index: usize, values: &[f32]) {
+    |        ^^^^^^^^^^^^^^^
+...
+273 |     fn set_frequency_buffer(&mut self, voice_index: usize, values: &[f32]) {
+    |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `G6` is never used
+  --> src/sid/tests_s515.rs:20:7
+   |
+20 | const G6: f64 = 0.84 / 4.25;
+   |       ^^
+
+warning: `audio_processor` (lib test) generated 15 warnings (run `cargo fix --lib -p audio_processor --tests` to apply 5 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.09s
+     Running unittests src/lib.rs (target/debug/build/audio_processor/c2aa128425eb2c43/out/audio_processor-c2aa128425eb2c43)
+
+running 3 tests
+test sid::tests_s515::volume_dac_6581_mixer_dc_step_follows_the_r4ar_table_not_vol_over_15 ... FAILED
+test sid::tests_s515::volume_digi_is_loud_on_the_6581_and_silent_on_the_8580 ... FAILED
+test sid::tests_s515::volume_dac_6581_scales_a_steady_tone_by_the_table_and_the_8580_stays_linear ... FAILED
+
+failures:
+
+---- sid::tests_s515::volume_dac_6581_mixer_dc_step_follows_the_r4ar_table_not_vol_over_15 stdout ----
+
+thread 'sid::tests_s515::volume_dac_6581_mixer_dc_step_follows_the_r4ar_table_not_vol_over_15' (2588692) panicked at src/sid/tests_s515.rs:73:9:
+vol 5: 0.03294117748737335, want 0.0333955
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- sid::tests_s515::volume_digi_is_loud_on_the_6581_and_silent_on_the_8580 stdout ----
+
+thread 'sid::tests_s515::volume_digi_is_loud_on_the_6581_and_silent_on_the_8580' (2588694) panicked at src/sid/tests_s515.rs:133:5:
+7 -> 8 step 0.006588233975946246
+
+---- sid::tests_s515::volume_dac_6581_scales_a_steady_tone_by_the_table_and_the_8580_stays_linear stdout ----
+
+thread 'sid::tests_s515::volume_dac_6581_scales_a_steady_tone_by_the_table_and_the_8580_stays_linear' (2588693) panicked at src/sid/tests_s515.rs:89:9:
+6581 vol 8: 0.5333333332210732, want 0.524138
+
+
+failures:
+    sid::tests_s515::volume_dac_6581_mixer_dc_step_follows_the_r4ar_table_not_vol_over_15
+    sid::tests_s515::volume_dac_6581_scales_a_steady_tone_by_the_table_and_the_8580_stays_linear
+    sid::tests_s515::volume_digi_is_loud_on_the_6581_and_silent_on_the_8580
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 250 filtered out; finished in 1.77s
+
+error: test failed, to rerun pass `--lib`
+EXIT CODE: 101

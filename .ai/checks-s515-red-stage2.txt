@@ -1,0 +1,86 @@
+   Compiling audio_processor v0.1.0 (/home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-r4ar/rust-wasm)
+error[E0432]: unresolved import `super::revision`
+   --> src/sid/tests_s515.rs:140:12
+    |
+140 | use super::revision::{profile_6581, DieRevision, RevisionProfile, R4AR, SID6581_REVISION};
+    |            ^^^^^^^^ could not find `revision` in `super`
+
+warning: unused import: `super::*`
+    --> src/audio_engine/native.rs:1537:9
+     |
+1537 |     use super::*;
+     |         ^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `Connection`, `ModulationTransformation`, and `ModulationType`
+    --> src/audio_engine/native.rs:1538:24
+     |
+1538 |     use crate::graph::{Connection, ModulationTransformation, ModulationType};
+     |                        ^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+
+warning: unused imports: `AnalogOscillator` and `Mixer`
+    --> src/audio_engine/native.rs:1539:24
+     |
+1539 |     use crate::nodes::{AnalogOscillator, Mixer};
+     |                        ^^^^^^^^^^^^^^^^  ^^^^^
+
+warning: unused import: `crate::PortId`
+    --> src/audio_engine/native.rs:1540:9
+     |
+1540 |     use crate::PortId;
+     |         ^^^^^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+    --> src/audio_engine/native.rs:1541:9
+     |
+1541 |     use uuid::Uuid;
+     |         ^^^^^^^^^^
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:119:35
+    |
+119 |         let safe_ms = ms.max(f32::EPSILON * 1000.0); // Ensure positive
+    |                                   ^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:286:32
+    |
+286 |             envelope_l += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+warning: use of deprecated constant `std::f32::EPSILON`: replaced by the `EPSILON` associated constant on `f32`
+   --> src/nodes/limiter.rs:293:32
+    |
+293 |             envelope_r += f32::EPSILON * 0.1;
+    |                                ^^^^^^^
+
+error[E0599]: no method named `volume_level` found for struct `sid::chip::Chip` in the current scope
+   --> src/sid/tests_s515.rs:207:23
+    |
+207 |         assert_eq!(c6.volume_level(v), t[v as usize]);
+    |                       ^^^^^^^^^^^^ method not found in `sid::chip::Chip`
+    |
+   ::: src/sid/chip.rs:126:1
+    |
+126 | pub struct Chip {
+    | --------------- method `volume_level` not found for this struct
+
+error[E0599]: no method named `volume_level` found for struct `sid::chip::Chip` in the current scope
+   --> src/sid/tests_s515.rs:208:23
+    |
+208 |         assert_eq!(c8.volume_level(v), v as f64 / 15.0);
+    |                       ^^^^^^^^^^^^ method not found in `sid::chip::Chip`
+    |
+   ::: src/sid/chip.rs:126:1
+    |
+126 | pub struct Chip {
+    | --------------- method `volume_level` not found for this struct
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+warning: `audio_processor` (lib test) generated 8 warnings
+error: could not compile `audio_processor` (lib test) due to 3 previous errors; 8 warnings emitted
+EXIT CODE: 101
