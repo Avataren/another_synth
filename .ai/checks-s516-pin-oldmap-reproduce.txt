@@ -1,0 +1,8 @@
+# S5.16 pin reproduce check: with the S5.12 log-linear map restored (temp patch), every
+# tests_s2 pin including pin_6581_render_is_bit_identical_to_s2 and the peak-gain pin
+# reproduces bit-exactly — the S5.16 drive-segmented map is the whole 6581 pin change.
+cmd: cargo test --lib tests_s2 (worktree rust-wasm, cutoff_hz_6581 temporarily = old log-linear)
+
+test sid::tests_s2::pin_6581_render_is_bit_identical_to_s2 ... ok
+test sid::tests_s2::filter_6581_peak_gain_depends_on_level_the_8580_does_not ... ok
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 248 filtered out; finished in 1.82s

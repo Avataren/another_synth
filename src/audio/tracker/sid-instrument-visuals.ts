@@ -206,23 +206,85 @@ type Anchors = readonly (readonly [number, number])[];
 const CUTOFF_ANCHORS_6581_LO: Anchors = [[0, 220], [0x200, 420], [0x300, 1_600], [0x3ff, 6_000]];
 const CUTOFF_ANCHORS_6581_HI: Anchors = [[0x400, 4_600], [0x500, 9_500], [0x600, 14_500], [0x7ff, 18_000]];
 
-/** `log_interp`: log-linear interpolation through `anchors` (`reg` inside their span). */
-function logInterp(anchors: Anchors, reg: number): number {
+/**
+ * S5.16 SPEC constants of the kinked 11-bit f0 DAC and VCR drive — the
+ * measured 6581R4AR parameter set, inherited by R3 (disclosure in
+ * `revision.rs` / `filter.rs`: 2R/R 2.20, no bit-0 termination, DAC bias
+ * 6.65 V, scale 2.63 V, VCR threshold 1.31 V, voice DC 5.0 V).
+ */
+const F0_DAC_BITS = 11;
+const F0_DAC_2R_DIV_R = 2.2;
+const F0_DAC_TERMINATED = false;
+const F0_DAC_ZERO = 6.65;
+const F0_DAC_SCALE = 2.63;
+const VCR_VTH = 1.31;
+const VCR_VX = 5.0;
+
+/** `f0_dac_raw`: raw sum of the kinked f0 DAC's set-bit contributions (plain R-2R circuit math; the 6581's bit-0 termination is missing). */
+function f0DacRaw(reg: number): number {
+  const r = 1;
+  const r2 = F0_DAC_2R_DIV_R * r;
+  let acc = 0;
+  for (let bit = 0; bit < F0_DAC_BITS; bit++) {
+    if (((reg >> bit) & 1) === 0) continue;
+    // Tail resistance from bit `bit` down to the unterminated end.
+    let tail = F0_DAC_TERMINATED ? r2 : Infinity;
+    for (let k = 0; k < bit; k++) tail = tail === Infinity ? r + r2 : r + (r2 * tail) / (r2 + tail);
+    // Source transformation of (bit voltage, tail) onto the 2R branch.
+    let v: number;
+    let rOut: number;
+    if (tail === Infinity) {
+      v = 1;
+      rOut = r2;
+    } else {
+      rOut = (r2 * tail) / (r2 + tail);
+      v = rOut / r2;
+    }
+    // Walk the output line up to the top bit.
+    for (let k = bit + 1; k < F0_DAC_BITS; k++) {
+      rOut += r;
+      const i = v / rOut;
+      rOut = (r2 * rOut) / (r2 + rOut);
+      v = rOut * i;
+    }
+    acc += v;
+  }
+  return acc;
+}
+
+/** `f0_dac_11`: DAC output for `reg`, normalized so all bits set reads exactly 2047. */
+function f0Dac(reg: number): number {
+  return (2047 * f0DacRaw(reg)) / f0DacRaw(0x7ff);
+}
+
+/** `drive_sq`: squared VCR drive — DAC voltage minus threshold minus voice DC, squared (w0 ~ Ids/C, Ids ~ (Vg - Vt - Vx)^2). */
+function driveSq(reg: number): number {
+  const x = F0_DAC_ZERO + (F0_DAC_SCALE * f0Dac(reg)) / 2048 - (VCR_VTH + VCR_VX);
+  return x * x;
+}
+
+/** `cutoff_hz_6581_driven` (S5.16): the measured anchors hit exactly by the VCR square law fitted to each anchor pair; the kinked DAC's bit-boundary dips survive. */
+function cutoffHz6581Driven(reg: number): number {
+  const r = reg & 0x7ff;
+  const anchors = r < 0x400 ? CUTOFF_ANCHORS_6581_LO : CUTOFF_ANCHORS_6581_HI;
   for (let k = 1; k < anchors.length; k++) {
     const [r0, f0] = anchors[k - 1] as readonly [number, number];
     const [r1, f1] = anchors[k] as readonly [number, number];
-    if (reg > r1) continue;
-    if (reg === r1) return f1;
-    return f0 * (f1 / f0) ** ((reg - r0) / (r1 - r0));
+    if (r > r1) continue;
+    if (r === r1) return f1;
+    const x0 = driveSq(r0);
+    const x1 = driveSq(r1);
+    const a = (f1 - f0) / (x1 - x0);
+    return f0 + a * (driveSq(r) - x0);
   }
-  throw new Error(`reg ${reg} outside the anchor span`);
+  return (anchors[anchors.length - 1] as readonly [number, number])[1];
 }
 
-/** `cutoff_hz_for`: the cutoff register's frequency on `model` (6581: `cutoff_hz_6581`, two pieces with the 0x3FF -> 0x400 step down). */
+/** `cutoff_hz_for`: the cutoff register's frequency on `model` (6581: `cutoff_hz_6581`, the S5.16 drive-segmented map with the measured $7F -> $80 step down). */
 export function sidCutoffHz(model: SidChipModel, reg: number): number {
   const r = reg & 0x7ff;
   if (model === '8580') return 30 + (r * (12_000 - 30)) / 2047;
-  return logInterp(r < 0x400 ? CUTOFF_ANCHORS_6581_LO : CUTOFF_ANCHORS_6581_HI, r);
+  return cutoffHz6581Driven(r);
 }
 
 /** `resonance_q_for`: the resonance nibble's Q on `model`. */

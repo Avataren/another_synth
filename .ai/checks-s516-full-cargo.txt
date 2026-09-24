@@ -1,0 +1,9 @@
+# S5.16 full cargo gate: cargo test --features native-host --no-fail-fast
+# after fixture regeneration; sid_visuals_parity green; the ONLY failure is the
+# pre-existing manifest_covers_every_fixture (fixture corpus 99 vs manifest 24, unchanged from main tip 8d31dce6).
+TOTAL: passed 422, failed 1, ignored 1
+failures:
+
+---- manifest_covers_every_fixture stdout ----
+
+--

@@ -76,10 +76,12 @@
 //! quieter on the 6581. The rule is a derivation; the DC values it rests on
 //! are the INFERRED guesses above. Level balance is an ears-gate item.
 //!
-//! Die revision (S5.15). The DC values, the gain rule's inputs, the cutoff
-//! anchors and the volume DAC are revision data: they live in
-//! `revision::RevisionProfile`, and the 6581 plays `revision::profile_6581()`
-//! (6581R4AR). The constants below are aliases of that profile. The volume
+//! Die revision (S5.15, S5.16). The DC values, the gain rule's inputs, the
+//! cutoff anchors and the volume DAC are revision data: they live in
+//! `revision::RevisionProfile`, and the 6581 plays
+//! `revision::profile_6581()` (6581R3 by default; the measured parameter
+//! set is R4AR's, inherited by R3 — no R3-specific measurement exists).
+//! The constants below are aliases of that profile. The volume
 //! DAC is the one new trait: level(VOL) comes from the profile's INFERRED
 //! bit weights (monotonic, within 0.01 of VOL / 15, exact at 0 and 15;
 //! disclosure at `revision::R4AR`). It scales the tone and the mixer DC

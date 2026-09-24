@@ -1,0 +1,2 @@
+# S5.16 type gate: npx vue-tsc --noEmit
+exit=0

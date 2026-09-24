@@ -1,0 +1,3 @@
+# S5.16 GREEN: cargo lib after the drive-segmented map wired in (was red: checks-s516-red-1.txt)
+cmd: cargo test --lib (rust-wasm, branch agent/sid-r3-0924a)
+test result: ok. 264 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 49.24s

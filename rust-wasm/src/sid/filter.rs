@@ -30,22 +30,22 @@
 //! 6581 (S2, plan §1.2 "static nonlinear remap of the cutoff register +
 //! level-dependent peak gain"). Same SVF, same taps, same mode bits; three
 //! things differ, all gated on `SidModel::Sid6581`:
-//! - Cutoff map (S5.12 R2; S2's logistic curve replaced). Public knowledge
-//!   (C64 community measurements of many chips): the 6581 cutoff is
+//! - Cutoff map (S5.16; the S5.12 log-linear anchor chords replaced). Public
+//!   knowledge (C64 community measurements of many chips): the 6581 cutoff is
 //!   strongly nonlinear in the register. The bottom of the range barely
 //!   moves and the floor sits in the low hundreds of Hz rather than at the
 //!   datasheet's 30 Hz. It also varies a lot from chip to chip. The
-//!   published nominal curve has two pieces: FC_HI bit 7 has its own DAC
-//!   weight, so the curve steps DOWN from ~6 kHz at 0x3FF to ~4.6 kHz at
-//!   0x400 and then rises again to 18 kHz. Modelled as log-linear
-//!   interpolation through measured anchors, one anchor set per piece:
-//!     0 220 Hz, 0x200 420, 0x300 1600, 0x3FF 6000 |
-//!     0x400 4600, 0x500 9500, 0x600 14500, 0x7FF 18000
-//!   Each piece is strictly monotonic. The 0x3FF -> 0x400 drop is the one
-//!   deliberate non-monotonicity. The anchors are measured facts and the
-//!   values between them are derived; see the DERIVED-VALUE disclosure at
-//!   `CUTOFF_ANCHORS_6581_LO`. The old map was 2-3x too dark across FC_HI
-//!   $50-$7F (report §6.3). Ears-gate.
+//!   measured curve's landmarks: FC_HI bit 7 has its own DAC weight, so the
+//!   curve steps DOWN from ~6 kHz at 0x3FF to ~4.6 kHz at 0x400 and then
+//!   rises again to 18 kHz. Modelled (S5.16) as a drive-segmented map: the
+//!   register drives the kinked 11-bit f0 DAC of the measured R4AR
+//!   parameter set (2R/R 2.20, no bit-0 termination), whose output biases
+//!   the filter VCRs; between the 8 measured anchors the VCR square law is
+//!   fitted to each anchor pair, so every anchor is hit exactly and the
+//!   DAC's real bit-boundary discontinuities (~6% dips from 0x10 up,
+//!   including the $7F -> $80 step) survive the map. See the disclosure at
+//!   `cutoff_hz_6581_driven` and `CUTOFF_ANCHORS_6581_LO`. The old map was
+//!   2-3x too dark across FC_HI $50-$7F (report §6.3). Ears-gate.
 //! - Resonance map: Q = 0.707 * 2^(res / 12) (Butterworth at 0, Q 1.68 =
 //!   +4.5 dB at 15). INFERRED from the public description of the 6581's
 //!   resonance as clearly weaker and rounder than the 8580's; the exponent
@@ -67,7 +67,7 @@
 //!   Not modelled: the real filter's input-dependent cutoff shift. The plan
 //!   approximates it by the static remap, which is what this is.
 
-use super::revision::profile_6581;
+use super::revision::{profile_6581, RevisionProfile};
 use super::SidModel;
 use std::f64::consts::PI;
 
@@ -94,56 +94,168 @@ pub const SAT_6581: f64 = 1.0;
 /// 6581 cutoff anchors (register, Hz), low piece: registers 0..=0x3FF
 /// (FC_HI bit 7 clear).
 ///
-/// DERIVED-VALUE DISCLOSURE (S5.12 R2, both anchor sets).
-/// - Measured facts: every anchor except the two ends is a figure quoted in
+/// MEASURED-VALUE DISCLOSURE (S5.12 R2, extended S5.16).
+/// - Measured facts (SPEC): every anchor is a figure quoted in
 ///   `.ai/sid-chip-comparison-report.md` §6.3 and the S5.12 brief, which
 ///   summarise the published 6581 cutoff measurements (Antti Lankila's
 ///   6581 filter / cutoff measurement write-ups, bel.fi/~ankila/, as cited
 ///   in the brief): ~420 Hz at 0x200, ~1.6 kHz at 0x300, ~6 kHz at 0x3FF,
-///   a step DOWN to ~4.6 kHz at 0x400 (FC_HI $7F -> $80, where the top bit's
-///   different DAC weight lands), ~9.5 kHz at 0x500, ~14.5 kHz at 0x600.
-///   The ends, 220 Hz at 0 and 18 kHz at 0x7FF, are the published range of
-///   that nominal curve (6581R4AR). The report states them as the range of
-///   reSID's curve. They are also this map's previous endpoints.
-/// - Derived: every value between anchors. It is log-linear (exponential
-///   in the register) within each segment, so each piece is strictly
-///   monotonic. reSID interpolates its measured points with a spline. That
-///   spline and its point list (reSID filter.cpp) are GPL and were NOT used.
-///   The anchors are rounded published figures, not reSID's points.
-/// - Expected tolerance vs reSID's spline: within ±5% at the anchors, and
-///   ±15% between them in the 1-10 kHz region. The log-linear chords sit
-///   below a convex curve. Ears-gate.
-///
-/// S5.15: the anchors are revision data and live in the 6581 revision
-/// profile (`revision::R4AR`, GENERIC-6581: S5.12's anchors unchanged).
+///   a step DOWN to ~4.6 kHz at 0x400 (FC_HI $7F -> $80), ~9.5 kHz at
+///   0x500, ~14.5 kHz at 0x600, 220 Hz at 0 and 18 kHz at 0x7FF (the
+///   published range of the nominal curve). Since S5.16 these anchors are
+///   hit EXACTLY by the drive-segmented map below (the old log-linear
+///   chords passed them only within ±5%).
+/// - S5.15: the anchors are revision data and live in the 6581 revision
+///   profile (`revision::R4AR`, inherited by `R3`).
 pub const CUTOFF_ANCHORS_6581_LO: [(u16, f64); 4] = profile_6581().cutoff_anchors_lo;
 /// 6581 cutoff anchors, high piece: registers 0x400..=0x7FF (FC_HI bit 7
 /// set). Disclosure at `CUTOFF_ANCHORS_6581_LO`.
 pub const CUTOFF_ANCHORS_6581_HI: [(u16, f64); 4] = profile_6581().cutoff_anchors_hi;
 
-/// Log-linear interpolation through `anchors`. `reg` must lie within the
-/// anchors' span (the first anchor to the last).
-fn log_interp(anchors: &[(u16, f64)], reg: u16) -> f64 {
-    let seg = anchors
-        .windows(2)
-        .find(|w| reg <= w[1].0)
-        .expect("reg inside the anchor span");
-    let ((r0, f0), (r1, f1)) = (seg[0], seg[1]);
-    if reg == r1 {
-        return f1;
-    }
-    let t = (reg - r0) as f64 / (r1 - r0) as f64;
-    f0 * (f1 / f0).powf(t)
+/// 6581 cutoff register -> Hz, S5.16: the measured anchors hit exactly by
+/// a drive-segmented map.
+///
+/// - The register drives the kinked 11-bit f0 DAC (`f0_dac_11`), whose
+///   output voltage biases the filter's VCRs; the drive is the squared
+///   excess over VCR threshold + voice DC (`drive_sq`).
+/// - Between two measured anchors the map is the VCR square law fitted to
+///   that anchor pair: fc = f0 + a*(drive(reg) - drive(r0)), a chosen so
+///   the segment ENDS exactly on the measured pair. Every anchor is hit
+///   exactly (the old log-linear chords passed them only within ±5%).
+/// - The kinked DAC's own discontinuities survive: the map dips where the
+///   DAC dips (~6% at each FC_HI bit boundary from 0x10 up, including
+///   0x400), and the measured 6000 -> 4600 Hz drop at $7F -> $80 is the
+///   anchor pair itself.
+/// - Derived (ears-gate): the within-segment curvature and the dip
+///   magnitudes between anchors. Only the 8 anchors are measurements; the
+///   old log-linear map was equally derived between them. The pure
+///   drive-law curve WITHOUT per-segment fitting misfits the measured
+///   middle anchors by 2-3x (verdict: the static map's chip-variant
+///   spread is not reproducible from one parameter set), so the anchors
+///   stay the calibration skeleton.
+pub fn cutoff_hz_6581(reg: u16) -> f64 {
+    cutoff_hz_6581_driven(reg)
 }
 
-/// 6581 cutoff register -> Hz: the two-piece measured-anchor curve (header).
-pub fn cutoff_hz_6581(reg: u16) -> f64 {
-    let reg = reg & 0x7FF;
-    if reg < 0x400 {
-        log_interp(&CUTOFF_ANCHORS_6581_LO, reg)
-    } else {
-        log_interp(&CUTOFF_ANCHORS_6581_HI, reg)
+/// Bits of the 11-bit f0 DAC ($D415/$D416). Structural, not revision data.
+pub const F0_DAC_BITS: u32 = 11;
+
+/// Raw sum of the kinked f0 DAC's set-bit contributions for register
+/// `reg`, in units of the full bit voltage (re-derived circuit math; SPEC
+/// parameters, GPL structure not copied). The ladder sums to 1.0000 at
+/// all bits set with the adopted 2.20/no-termination parameters.
+fn f0_dac_raw(profile: &RevisionProfile, reg: u16) -> f64 {
+    let r = 1.0;
+    let r2 = profile.f0_dac_2r_div_r * r;
+    let mut acc = 0.0;
+    for bit in 0..F0_DAC_BITS {
+        if reg >> bit & 1 == 0 {
+            continue;
+        }
+        // Tail resistance from bit `bit` down to bit 0: repeated
+        // parallel substitution along the R line. Without the bit-0
+        // termination the tail starts open.
+        let mut tail = if profile.f0_dac_terminated { r2 } else { f64::INFINITY };
+        for _ in 0..bit {
+            tail = if tail.is_infinite() {
+                r + r2
+            } else {
+                r + r2 * tail / (r2 + tail)
+            };
+        }
+        // Source transformation of (bit voltage, tail) onto the 2R branch.
+        let (mut v, mut r_out) = if tail.is_infinite() {
+            // Open tail: the full bit voltage drives the branch.
+            (1.0, r2)
+        } else {
+            let r_par = r2 * tail / (r2 + tail);
+            (r_par / r2, r_par)
+        };
+        // Walk the output line up to the top bit.
+        for _ in bit + 1..F0_DAC_BITS {
+            r_out += r;
+            let i = v / r_out;
+            r_out = r2 * r_out / (r2 + r_out);
+            v = r_out * i;
+        }
+        acc += v;
     }
+    acc
+}
+
+/// Output of the 6581 family's kinked 11-bit f0 DAC for register `reg`,
+/// normalized so the all-bits-set value reads exactly 2047 (the adopted
+/// parameters sum to 1.0, so this is also the reference engine's integer
+/// scale).
+///
+/// SPEC values: an R-2R ladder whose 2R/R ratio is the profile's
+/// `f0_dac_2r_div_r` (2.20, measured 6581R4AR), the bit-0 2R termination
+/// missing (all 6581 DACs), bit 0 at the unterminated end. Per-bit
+/// effective weights, normalized to bit 0: [1.0000, 1.4545, 2.5702,
+/// 4.8542, ...] — the published figures (the "kink": upper bits weigh
+/// relatively less than a factor of 2, converging to a factor of ~1.94).
+pub fn f0_dac_11(profile: &RevisionProfile, reg: u16) -> f64 {
+    2047.0 * f0_dac_raw(profile, reg) / f0_dac_raw(profile, (1 << F0_DAC_BITS) - 1)
+}
+
+/// DAC output voltage for register `reg`: bias + scale over the 11-bit
+/// range (SPEC: 6.65 V at register 0, 2.63 V full scale).
+fn f0_dac_vw(profile: &RevisionProfile, reg: u16) -> f64 {
+    profile.f0_dac_zero + profile.f0_dac_scale * f0_dac_11(profile, reg) / 2048.0
+}
+
+/// Squared VCR drive for register `reg`: the excess of the DAC voltage
+/// over the VCR threshold plus the voice DC the integrator rides at.
+/// In the VCR's triode/strong-inversion region the integrator's cutoff
+/// is proportional to this square (w0 ~ Ids/C, Ids ~ (Vg - Vt - Vx)^2).
+fn drive_sq(profile: &RevisionProfile, reg: u16) -> f64 {
+    let x = f0_dac_vw(profile, reg) - profile.vcr_vth - profile.vcr_vx;
+    x * x
+}
+
+/// 6581 cutoff register -> Hz, S5.16: the measured anchors hit exactly by
+/// a drive-segmented map.
+///
+/// - The register drives the kinked 11-bit f0 DAC (`f0_dac_11`), whose
+///   output voltage biases the filter's VCRs; the drive is the squared
+///   excess over VCR threshold + voice DC (`drive_sq`).
+/// - Between two measured anchors the map is the VCR square law fitted to
+///   that anchor pair: fc = f0 + a*(drive(reg) - drive(r0)), a chosen so
+///   the segment ENDS exactly on the measured pair. Every anchor is hit
+///   exactly (the old log-linear chords passed them only within ±5%).
+/// - The kinked DAC's own discontinuities survive: the map dips where the
+///   DAC dips (~6% at each FC_HI bit boundary from 0x10 up, including
+///   0x400), and the measured 6000 -> 4600 Hz drop at $7F -> $80 is the
+///   anchor pair itself.
+/// - Derived (ears-gate): the within-segment curvature and the dip
+///   magnitudes between anchors. Only the 8 anchors are measurements; the
+///   old log-linear map was equally derived between them. The pure
+///   drive-law curve WITHOUT per-segment fitting misfits the measured
+///   middle anchors by 2-3x (verdict: the static map's chip-variant
+///   spread is not reproducible from one parameter set), so the anchors
+///   stay the calibration skeleton.
+pub fn cutoff_hz_6581_driven(reg: u16) -> f64 {
+    let profile = profile_6581();
+    let reg = reg & 0x7FF;
+    let piece = if reg < 0x400 {
+        &profile.cutoff_anchors_lo
+    } else {
+        &profile.cutoff_anchors_hi
+    };
+    for pair in piece.windows(2) {
+        let (r0, f0) = pair[0];
+        let (r1, f1) = pair[1];
+        if reg <= r1 {
+            if reg == r1 {
+                return f1;
+            }
+            let x0 = drive_sq(profile, r0);
+            let x1 = drive_sq(profile, r1);
+            let a = (f1 - f0) / (x1 - x0);
+            return f0 + a * (drive_sq(profile, reg) - x0);
+        }
+    }
+    piece[piece.len() - 1].1
 }
 
 /// 6581 resonance nibble -> Q.
@@ -452,7 +564,9 @@ mod tests {
         assert!((cutoff_hz_6581(0x7FF) - 18_000.0).abs() < 1e-6);
         assert_eq!(cutoff_hz_6581(0x800), cutoff_hz_6581(0)); // 11 bits only
         assert_eq!(cutoff_hz_6581(0xFFFF), cutoff_hz_6581(0x7FF));
-        // Measured anchors (.ai/sid-chip-comparison-report.md §6.3), ±5%.
+        // Measured anchors, hit EXACTLY (S5.16: the drive-segmented map
+        // ends every segment on the measured pair; the S5.12 log-linear
+        // chords passed them only within ±5%).
         for (reg, want) in [
             (0x200u16, 420.0),
             (0x300, 1_600.0),
@@ -463,15 +577,15 @@ mod tests {
         ] {
             let got = cutoff_hz_6581(reg);
             assert!(
-                (got / want - 1.0).abs() < 0.05,
+                (got - want).abs() < 1e-6,
                 "reg {reg:#05x}: {got} Hz, want {want}"
             );
         }
-        // Hand point, reg 0x280, halfway (in register) between the 0x200 and
-        // 0x300 anchors, so halfway in log f: sqrt(420 * 1600) = 819.756 Hz.
-        // The 8580 map puts the same register at 30 + 640 * 5.84758 = 3772.45 Hz.
+        // Hand point, reg 0x280 (S5.16): the kinked-DAC-driven map puts it
+        // at 985.861 Hz; the S5.12 log-linear chord had 819.756. The 8580
+        // map still puts the same register at 30 + 640 * 5.84758 = 3772.45 Hz.
         assert!(
-            (cutoff_hz_6581(0x280) - 819.756).abs() < 0.01,
+            (cutoff_hz_6581(0x280) - 985.860_948).abs() < 1e-3,
             "{}",
             cutoff_hz_6581(0x280)
         );
@@ -479,21 +593,25 @@ mod tests {
     }
 
     #[test]
-    fn map_6581_is_monotonic_per_piece_with_the_fc_hi_step_and_unlike_the_8580() {
-        // Strictly rising within each piece (0..=0x3FF, 0x400..=0x7FF); the
-        // one deliberate drop is 0x3FF -> 0x400 (~6 kHz -> ~4.6 kHz), the
-        // FC_HI $7F/$80 step.
-        for r in (0..0x3FFu16).chain(0x400..0x7FF) {
-            assert!(cutoff_hz_6581(r + 1) > cutoff_hz_6581(r), "reg {r:#05x}");
+    fn map_6581_follows_the_kinked_dac_and_keeps_the_fc_hi_step() {
+        // S5.16: the map rises wherever the kinked f0 DAC rises and dips
+        // where it dips (~6% at each FC_HI bit boundary from 0x10 up);
+        // the measured $7F -> $80 drop (6000 -> 4600 Hz, -23%) is the
+        // anchor pair itself. The S5.12 map was strictly monotonic per
+        // piece — its per-piece monotonicity is superseded by the DAC's
+        // real discontinuities (red record: checks-s516-red-1.txt).
+        for r in 0..0x7FFu16 {
+            if f0_dac_11(profile_6581(), r + 1) >= f0_dac_11(profile_6581(), r) {
+                assert!(cutoff_hz_6581(r + 1) > cutoff_hz_6581(r), "reg {r:#05x}");
+            }
         }
         assert!(cutoff_hz_6581(0x400) < cutoff_hz_6581(0x3FF) * 0.85);
         // Bottom quarter: the 6581 barely moves (220 -> ~420 Hz) where the
         // 8580 sweeps 30 -> ~3 kHz; the top ends 18 kHz vs 12 kHz.
         assert!(cutoff_hz_6581(0x200) / cutoff_hz_6581(0) < 2.0);
         assert!(cutoff_hz(0x200) / cutoff_hz(0) > 100.0);
-        // Hand values: reg 0 -> 220 vs 30 (x7.3); 0x100 -> sqrt(220 * 420)
-        // = 304 vs 1527 (x5.0); 0x200 -> 420 vs 3024 (x7.2); 0x7FF -> 18000
-        // vs 12000 (x1.5).
+        // Hand values: reg 0 -> 220 vs 30 (x7.3); 0x100 -> 298.6 vs 1527
+        // (x5.1); 0x200 -> 420 vs 3024 (x7.2); 0x7FF -> 18000 vs 12000 (x1.5).
         for r in [0u16, 0x100, 0x200, 0x7FF] {
             let (a, b) = (cutoff_hz_6581(r), cutoff_hz(r));
             assert!((a / b).max(b / a) > 1.45, "reg {r}: 6581 {a} vs 8580 {b}");

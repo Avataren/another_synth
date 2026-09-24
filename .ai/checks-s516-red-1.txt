@@ -1,0 +1,42 @@
+# S5.16 RED stage 1: new cutoff-model pins on the fit_6581-lineage log-linear map (old engine)
+cmd: cargo test --lib (worktree rust-wasm, branch agent/sid-r3-0924a, revision.rs R3-flipped + driven map present but not wired; cutoff_hz_6581 still log-linear)
+
+failures:
+
+---- sid::tests_s515::sid6581_plays_the_r4ar_profile stdout ----
+
+thread 'sid::tests_s515::sid6581_plays_the_r4ar_profile' (2651453) panicked at src/sid/tests_s515.rs:153:5:
+assertion `left == right` failed
+  left: R3
+ right: R4AR
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+--
+failures:
+    sid::tests_s515::sid6581_plays_the_r4ar_profile
+    sid::tests_s516::cutoff_map_is_the_driven_map_in_production
+    sid::tests_s516::driven_map_hand_points
+    sid::tests_s516::driven_map_inherits_the_kinked_dac_dips
+
+test result: FAILED. 260 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 49.08s
+
+error: test failed, to rerun pass `--lib`
+
+--- failing detail ---
+---- sid::tests_s515::sid6581_plays_the_r4ar_profile stdout ----
+
+thread 'sid::tests_s515::sid6581_plays_the_r4ar_profile' (2651453) panicked at src/sid/tests_s515.rs:153:5:
+--
+---- sid::tests_s516::cutoff_map_is_the_driven_map_in_production stdout ----
+
+thread 'sid::tests_s516::cutoff_map_is_the_driven_map_in_production' (2651462) panicked at src/sid/tests_s516.rs:75:9:
+--
+---- sid::tests_s516::driven_map_hand_points stdout ----
+
+thread 'sid::tests_s516::driven_map_hand_points' (2651464) panicked at src/sid/tests_s516.rs:100:9:
+--
+---- sid::tests_s516::driven_map_inherits_the_kinked_dac_dips stdout ----
+
+thread 'sid::tests_s516::driven_map_inherits_the_kinked_dac_dips' (2651465) panicked at src/sid/tests_s516.rs:112:5:
+
+RED evidence: production path cutoff_hz_6581 (log-linear) fails hand-point pin
+0x080 258.6004839 vs driven 254.027473; fails dip pin 0x0100 (old map strictly monotone per piece); driven-map production inequality; tests_s515 still asserts R4AR.
