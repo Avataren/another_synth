@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-24T07:34:58.351Z",
+  "generated": "2026-09-24T11:18:30.039Z",
   "collections": [
     {
       "id": "ahx",
@@ -1844,6 +1844,13 @@
           "channels": 3,
           "file": "goattracker/cadaver/warlord.sng",
           "bytes": 7174
+        },
+        {
+          "title": "Sid-Warrior",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/kalachnikov/sid_warrior.sng",
+          "bytes": 10722
         },
         {
           "title": "Alien Funk",

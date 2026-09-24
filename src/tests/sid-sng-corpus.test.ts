@@ -14,9 +14,9 @@ import {
 } from 'src/audio/tracker/sid-doc';
 
 /**
- * plan-sid-tracking.md S5 corpus acceptance. The corpus is the 83 valid
- * GoatTracker songs curated from ModLand on 2026-09-23 (61 GTS5, 22 GTS!),
- * fixtured in `fixtures/gt-songs/<artist>/` (house names; provenance in its
+ * plan-sid-tracking.md S5 corpus acceptance. The corpus is the 84 valid
+ * GoatTracker songs curated from ModLand on 2026-09-23 and 2026-09-24 (62
+ * GTS5, 22 GTS!), fixtured in `fixtures/gt-songs/<artist>/` (house names; provenance in its
  * README). Every file must:
  *   1. import (with the hints its name carries);
  *   2. import FAITHFULLY: an independent reader here re-reads the raw bytes
@@ -90,11 +90,11 @@ function rawGts5(b: Uint8Array) {
 }
 
 describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
-  it('holds the 83 curated files: 61 GTS5 and 22 GTS!', () => {
-    // corpus-size constant: re-measure when fixtures/gt-songs changes (83 files, 2026-09-23).
-    expect(files).toHaveLength(83);
+  it('holds the 84 curated files: 62 GTS5 and 22 GTS!', () => {
+    // corpus-size constant: re-measure when fixtures/gt-songs changes (84 files, 2026-09-24).
+    expect(files).toHaveLength(84);
     const magics = files.map((f) => magic(bytesOf(f)));
-    expect(magics.filter((m) => m === 'GTS5')).toHaveLength(61);
+    expect(magics.filter((m) => m === 'GTS5')).toHaveLength(62);
     expect(magics.filter((m) => m === 'GTS!')).toHaveLength(22);
   });
 
@@ -192,7 +192,7 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
       );
       checked += 1;
     }
-    expect(checked).toBe(61);
+    expect(checked).toBe(62);
   });
 
   it('GTS!: every row keeps its note and instrument; every pattern its length; every orderlist its patterns', () => {
@@ -295,10 +295,10 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
       );
       equal += 1;
     }
-    expect(equal).toBe(83);
+    expect(equal).toBe(84);
   });
 
-  it('the deviations the import reports, per kind and per file (the D-log list; MEASURED 2026-09-23)', () => {
+  it('the deviations the import reports, per kind and per file (the D-log list; MEASURED 2026-09-24, 84 files)', () => {
     const byKind: Partial<Record<GtImportNoteKind, number>> = {};
     const filesOf: Partial<Record<GtImportNoteKind, Set<string>>> = {};
     for (const [name, r] of imports) {
@@ -307,20 +307,23 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
         (filesOf[n.kind] ??= new Set()).add(name);
       }
     }
+    // MEASURED 2026-09-24 (84 files): table-padded 2 -> 3, from
+    // kalachnikov/sid_warrior.sng (instrument 1's speed pointer 29, 1-row table).
     expect(byKind).toEqual({
-      'table-padded': 2,
+      'table-padded': 3,
       'no-gateoff': 1,
       'loop-transpose': 3,
       'gt1-convert': 77,
       'gt1-dropped': 25,
     });
     expect([...filesOf['table-padded']!].sort()).toEqual([
+      'kalachnikov/sid_warrior.sng',
       'mch/balcony_princess.sng',
       'mch/in_a_rush.sng',
     ]);
     expect([...filesOf['no-gateoff']!]).toEqual(['stinsen/upsandowns.sng']);
     expect([...filesOf['loop-transpose']!]).toEqual(['stinsen/game_tune.sng']);
-    // Every GTS5 file other than those four imports with nothing to report.
+    // Every GTS5 file other than those five imports with nothing to report.
     const quiet = [...imports].filter(
       ([, r]) => r.variant === 'GTS5' && r.notes.length === 0,
     );

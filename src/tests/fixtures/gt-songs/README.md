@@ -1,7 +1,7 @@
 # GoatTracker corpus fixture
 
 The S5 `.sng` importer's acceptance corpus (`src/tests/sid-sng-corpus.test.ts`
-pins the counts). The same 83 files are deployed as song data in
+pins the counts). The same 84 files are deployed as song data in
 `public/songs/goattracker/`; this copy is the tests' own, so curating the
 public set never moves a test. `../gt-songs-corrupt/sleepwalk.sng` is the one
 corrupt-as-published file, kept to prove it is refused.
@@ -10,11 +10,13 @@ These are GoatTracker song files (`.sng`): song **data**, the compositions of
 their authors, not program code. They were curated on 2026-09-23 from
 **ModLand** (https://modland.com), the GoatTracker section
 (`/pub/modules/GoatTracker/`, all nine artist folders: Aeuk, Ansgaros,
-Barfington, Cadaver, Mch, Shinobi, Spock, Stinsen, Yehar). Thanks to ModLand
-for keeping them, and to the composers for writing them. Copyright stays with
-the composers (the copyright line inside each file says whose).
+Barfington, Cadaver, Mch, Shinobi, Spock, Stinsen, Yehar). One more was added
+on 2026-09-24, with Morten's authorization: Kalachnikov's `sid-warrior.sng`,
+from ModLand's GoatTracker 2 section (`/pub/modules/GoatTracker 2/`). Thanks
+to ModLand for keeping them, and to the composers for writing them. Copyright
+stays with the composers (the copyright line inside each file says whose).
 
-83 files: 61 `GTS5` (GoatTracker 2) and 22 `GTS!` (GoatTracker 1). One more
+84 files: 62 `GTS5` (GoatTracker 2) and 22 `GTS!` (GoatTracker 1). One more
 file in the folders, Spock's `sleepwalk.sng`, is corrupt as published (its
 pattern data desyncs under every layout) and is not included here.
 
@@ -47,6 +49,7 @@ cannot store them: `6581`/`8580` (the SID chip the song was written for) and
 | `cadaver/nintendo_style.sng` | `Cadaver/nintendo-style.sng` | GTS! | 3201 | `e652f7b206a74087` | Nintendo-style / Cadaver |
 | `cadaver/tarantula.sng` | `Cadaver/tarantula.sng` | GTS! | 6818 | `310c791f027bc5e7` | (empty: GoatTracker 1 file) |
 | `cadaver/warlord.sng` | `Cadaver/warlord.sng` | GTS! | 7174 | `fa3efe2ad8e885d3` | (empty: GoatTracker 1 file) |
+| `kalachnikov/sid_warrior.sng` | `/pub/modules/GoatTracker 2/Kalachnikov/sid-warrior.sng` (GoatTracker 2 section; added 2026-09-24; no chip or `2x` token: untagged, the loader's defaults apply) | GTS5 | 10722 | `d4aba14293b1ab87` | Sid-Warrior / Kalachnikov |
 | `mch/alien_funk.sng` | `Mch/alien%20funk.sng` | GTS5 | 19083 | `f5a6b844bd148190` | Alien Funk / Michal Brzeski (Mch) |
 | `mch/attitude_14.sng` | `Mch/attitude%2014.sng` | GTS5 | 9536 | `2c10d6a788b0bc89` | Attitude #14 / Michal Brzeski (Mch) |
 | `mch/balcony_princess.sng` | `Mch/balcony%20princess.sng` | GTS5 | 28497 | `9d03d02a3fa6240b` | balcony princess / mch/genesis project^msl |
