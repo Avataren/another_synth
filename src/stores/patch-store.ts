@@ -1171,7 +1171,18 @@ export const usePatchStore = defineStore('patchStore', {
         }
       }
     },
-    async setVoiceCount(newCount: number): Promise<boolean> {
+    /**
+     * `rebuildInstrument` replaces the edited instrument with one built from
+     * the new patch, for an instrument whose voice count is fixed when it is
+     * built (a song bank's pooled instrument); without it the current
+     * instrument just reloads the patch.
+     */
+    async setVoiceCount(
+      newCount: number,
+      options?: {
+        rebuildInstrument?: (patch: Patch) => Promise<EditableInstrument | null>;
+      },
+    ): Promise<boolean> {
       const layoutStore = useLayoutStore();
       const nodeStateStore = useNodeStateStore();
       const assetStore = useAssetStore();
@@ -1268,11 +1279,22 @@ export const usePatchStore = defineStore('patchStore', {
         instrumentGain: instrumentStore.instrumentGain,
       });
 
-      // Reapply the freshly serialized patch so the engine rebuilds voices.
+      const rebuilt = options?.rebuildInstrument
+        ? await options.rebuildInstrument(patch)
+        : null;
+      if (rebuilt) {
+        instrumentStore.useExternalInstrument(rebuilt);
+      }
+
+      // Reapply the freshly serialized patch so the engine rebuilds voices
+      // (a rebuilt instrument already has it loaded).
       // applyPatchObject() treats this as a "load" and resets the dirty
       // baseline, but a voice-count change is a real edit that must still
       // be saved -- re-flag it dirty immediately after.
-      const applied = await this.applyPatchObject(patch);
+      const applied = await this.applyPatchObject(
+        patch,
+        rebuilt ? { skipLoadPatch: true } : undefined,
+      );
       if (applied) {
         this.notifyPatchChanged();
       }

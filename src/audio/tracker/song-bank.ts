@@ -696,6 +696,21 @@ export class TrackerSongBank implements TrackerSink {
     }
   }
 
+  /**
+   * Tear down one instrument and build it again from `patch`, returning the
+   * new instance. A pooled instrument's voice allocation is fixed when it is
+   * built, so a voice-count edit cannot reach it through loadPatch.
+   */
+  async rebuildInstrument(
+    instrumentId: string,
+    patch: Patch,
+  ): Promise<InstrumentV2 | ModInstrument | PooledInstrument | null> {
+    this.desired.set(instrumentId, this.lifecycle.normalizePatch(patch));
+    this.lifecycle.teardownInstrument(instrumentId);
+    await this.lifecycle.ensureInstrument(instrumentId, patch);
+    return this.getInstrument(instrumentId);
+  }
+
   async prepareInstrument(instrumentId?: string): Promise<void> {
     if (!instrumentId) return;
     const patch = this.desired.get(instrumentId);

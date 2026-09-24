@@ -102,6 +102,15 @@ export const useTrackerAudioStore = defineStore('trackerAudio', {
     },
 
     /**
+     * Rebuild a slot's instrument from `patch` (e.g. after a voice-count
+     * change) and return the new instance for live editing.
+     */
+    rebuildInstrumentForSlot(slotNumber: number, patch: Patch) {
+      const instrumentId = this.formatInstrumentId(slotNumber);
+      return getSongBank().rebuildInstrument(instrumentId, patch);
+    },
+
+    /**
      * Update the stored patch data for a slot after live editing.
      * This keeps the song bank's stored patch in sync with the live instrument
      * WITHOUT reloading the instrument.

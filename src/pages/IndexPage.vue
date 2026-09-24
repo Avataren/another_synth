@@ -326,6 +326,7 @@ import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { useMacroStore } from 'src/stores/macro-store';
 import { resolvePatchVoiceCount } from 'src/audio/utils/voice-count';
 import ModInstrument from 'src/audio/mod-instrument';
+import { PooledInstrument } from 'src/audio/pooled-instrument-factory';
 import { isSamplerInstrumentType } from 'src/audio/tracker/instrument-types';
 import PresetManager from 'src/components/PresetManager.vue';
 import type {
@@ -614,7 +615,35 @@ async function saveSongPatch() {
 
 async function handleSongPatchVoiceChange(value: number) {
   songPatchVoiceCount.value = value;
-  await patchStore.setVoiceCount(value);
+  const slotNumber = editingSlot.value;
+  const liveInstrument =
+    slotNumber !== null
+      ? trackerAudioStore.getInstrumentForSlot(slotNumber)
+      : null;
+  // A pooled song instrument owns the voices it was allocated when it was
+  // built, so loading a patch with more voices leaves it at that count: it
+  // is rebuilt from the new patch instead, and the editor moves to the new one.
+  const rebuildsPooled =
+    slotNumber !== null &&
+    liveInstrument instanceof PooledInstrument &&
+    instrumentStore.currentInstrument === liveInstrument;
+  await patchStore.setVoiceCount(
+    value,
+    rebuildsPooled
+      ? {
+          rebuildInstrument: async (patch) => {
+            const rebuilt = await trackerAudioStore.rebuildInstrumentForSlot(
+              slotNumber,
+              patch,
+            );
+            if (rebuilt instanceof PooledInstrument) return rebuilt;
+            // The old instrument is gone; preview on the standalone one.
+            instrumentStore.restoreDefaultInstrument();
+            return null;
+          },
+        }
+      : undefined,
+  );
 }
 
 async function backToTracker() {
