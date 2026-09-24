@@ -368,11 +368,9 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
     ]);
   });
 
-  it('the hints a name carries: 6581 for one file, 2x for four, the defaults for the rest', () => {
-    const chips = [...imports]
-      .filter(([, r]) => r.doc.chipModel === '6581')
-      .map(([n]) => n);
-    expect(chips).toEqual(['stinsen/defunkt_final_fv_po_ro_6581_ffff.sng']);
+  it('the hints a name carries: 2x for four, the defaults for the rest (the 6581, GT\'s own, for every file)', () => {
+    // No corpus name says 8580; the one that says 6581 agrees with the default.
+    expect([...imports.values()].every((r) => r.doc.chipModel === '6581')).toBe(true);
     const fast = [...imports]
       .filter(([, r]) => r.doc.speedMultiplier === 2)
       .map(([n]) => n)
@@ -387,7 +385,7 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
     // The export says what the .sng cannot carry.
     const space = exportGtSong(imports.get('stinsen/space_2x.sng')!.doc);
     expect(space.ok && space.notes).toEqual([
-      'the chip model (8580) is not stored in a .sng: GoatTracker takes it from its -E option',
+      'the chip model (6581) is not stored in a .sng: GoatTracker takes it from its -E option',
       'the 2x speed is not stored in a .sng: play it in GoatTracker with -S2',
     ]);
   });

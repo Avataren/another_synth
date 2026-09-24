@@ -55,7 +55,7 @@ describe('a GoatTracker .sng through the real load path', () => {
     if (!imported.ok) throw new Error(imported.reason);
     // The doc crossed the song file (`data.sidFile`) and came back equal.
     expect(store.sidDoc).toEqual(imported.doc);
-    expect(store.sidDoc?.chipModel).toBe('8580');
+    expect(store.sidDoc?.chipModel).toBe('6581');
     expect(store.currentSong.title).toBe('Alien Funk');
     expect(store.currentSong.author).toBe('Michal Brzeski (Mch)');
     // The grid: positions, each three voices, notes in them.

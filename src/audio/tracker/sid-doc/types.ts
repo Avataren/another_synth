@@ -17,8 +17,12 @@
 
 /** Which SID revision the song is written for: the Rust `SidModel` (`Sid8580` / `Sid6581`). */
 export type SidChipModel = '8580' | '6581';
-/** The default model: the plan's decision 1 (8580 first). */
-export const SID_DEFAULT_CHIP_MODEL: SidChipModel = '8580';
+/**
+ * The default model for a new song and for a `.sng` whose name gives no hint:
+ * the 6581, GoatTracker's own default (goattrk2.c:47 `sidmodel = 0`, model 0
+ * = 6581). The plan's decision 1 started at the 8580.
+ */
+export const SID_DEFAULT_CHIP_MODEL: SidChipModel = '6581';
 
 /** Voices of one SID chip. Dual SID (6) is S7, behind its own flag. */
 export const SID_CHANNELS = 3;

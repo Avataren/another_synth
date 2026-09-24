@@ -97,7 +97,7 @@ describe('GTS5 (readme §6.1)', () => {
       doc.speedMultiplier,
       doc.chipModel,
       doc.channels,
-    ]).toEqual([6, 1, '8580', 3]);
+    ]).toEqual([6, 1, '6581', 3]);
   });
 
   it('maps notes $60-$BC to 1-93, $BD rest to 0, $BE key off to 126, $BF key on to 127; the $FF row ends the pattern', () => {

@@ -35,7 +35,7 @@ function song(fields: Partial<SidDoc> = {}): SidDoc {
     songName: 'Tune',
     author: 'Me',
     copyright: '',
-    chipModel: '8580',
+    chipModel: '6581',
     channels: 3,
     speedMultiplier: 1,
     tempo: 6,

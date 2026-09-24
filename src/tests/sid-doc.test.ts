@@ -96,7 +96,7 @@ describe('the doc', () => {
   it('a new song: three voices, each its own blank pattern, one plain instrument, empty tables', () => {
     const doc = createNewSidDoc({ songName: 'x', patternRows: 16 });
     expect(doc.channels).toBe(SID_CHANNELS);
-    expect(doc.chipModel).toBe('8580');
+    expect(doc.chipModel).toBe('6581');
     expect(doc.tempo).toBe(6);
     expect(doc.speedMultiplier).toBe(1);
     expect(doc.version).toBe(SID_FILE_VERSION);
