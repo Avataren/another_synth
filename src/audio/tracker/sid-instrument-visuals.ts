@@ -253,7 +253,9 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
   const gate = true;
   let firstFrame = true;
   const firstWave = ins.firstWave;
-  let waveform = ins.waveform & ~0x01;
+  // The player's control byte (S5.9): the instrument's gate-clear waveform
+  // with the gate bit set, then the table's bytes whole; written `& gate mask`.
+  let waveform = ins.waveform | 0x01;
   let pw = ins.pulseWidth;
   let wavePtr = ins.wavePtr;
   let waveWait = 0;
@@ -309,8 +311,8 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
         waveWait -= 1;
         if (waveWait === 0) wavePtr = (wavePtr + 1) & 0xff;
       } else {
-        if (r.left >= 0x10 && r.left <= 0xdf) waveform = r.left & ~0x01;
-        else if (r.left >= 0xe0 && r.left <= 0xef) waveform = r.left & 0x0e;
+        if (r.left >= 0x10 && r.left <= 0xdf) waveform = r.left;
+        else if (r.left >= 0xe0 && r.left <= 0xef) waveform = r.left & 0x0f;
         let n: number | undefined;
         if (r.right === 0x80) n = undefined;
         else if (r.right <= 0x5f) n = base + r.right;
@@ -407,7 +409,7 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
     pulseStep();
     filterStep();
     const written = Math.max(0, Math.min(0xffff, freq + vibOffset));
-    const control = firstFrame && firstWave !== 0 ? firstWave : waveform | (gate ? 0x01 : 0);
+    const control = firstFrame && firstWave !== 0 ? firstWave : waveform & (gate ? 0xff : 0xfe);
     out.push([written, pw & 0xfff, control, cutoff & 0x7ff, resFilt >> 4, mode & 0x07]);
     firstFrame = false;
   }

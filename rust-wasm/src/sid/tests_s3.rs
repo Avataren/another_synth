@@ -283,7 +283,8 @@ fn orderlist_repeat_transpose_and_restart() {
 
 #[test]
 fn wave_table_is_waveform_and_arpeggio() {
-    // Rows: pulse +0, pulse +4, saw +7, jump to 1.
+    // Rows: pulse +0, pulse +4, saw +7, jump to 1; each row's gate bit set
+    // (S5.9: the row's byte is the control byte, gate included).
     let t = |l: u8, r: u8| TableRow { left: l, right: r };
     let mut i = ins(0x10);
     i.wave_ptr = 1;
@@ -293,7 +294,7 @@ fn wave_table_is_waveform_and_arpeggio() {
         vec![p0, blank(8)],
         [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]],
         vec![i],
-        Tables { wave: vec![t(0x40, 0x00), t(0x40, 0x04), t(0x20, 0x07), t(0xFF, 0x01)], ..Default::default() },
+        Tables { wave: vec![t(0x41, 0x00), t(0x41, 0x04), t(0x21, 0x07), t(0xFF, 0x01)], ..Default::default() },
     );
     let mut p = player(&s);
     let mut seen = Vec::new();

@@ -136,7 +136,7 @@ fn a_delayed_wave_step_waits_then_sets_its_note_the_readme_minor_chord() {
     assert_eq!(p.chip().voice(0).control(), 0x21);
 }
 
-/// A C-4 trigger over a looping wave program (tri/no-note, saw/note +3,
+/// A C-4 trigger over a looping wave program (tri+gate/no-note, saw+gate/note +3,
 /// jump loop), with `3 XY` on row 1 to note E-4 (index 52). `row1_param` 0 is
 /// the tie, 1 the speed glide at speed row 1 (0x10 a frame, the S5 control's
 /// speed). Tempo 4: row 0 = frames 0-3, row 1 = frames 4-7.
@@ -167,7 +167,7 @@ fn wave_porta_song(row1_param: u8) -> SidSong {
         }],
         tables: Tables {
             speed: vec![TableRow { left: 0x00, right: 0x10 }],
-            wave: vec![t(0x10, 0x80), t(0x20, 0x03), t(0xFF, 0x01)],
+            wave: vec![t(0x11, 0x80), t(0x21, 0x03), t(0xFF, 0x01)],
             ..Default::default()
         },
     };

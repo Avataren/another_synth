@@ -1,0 +1,398 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 npx
+npm notice run 'vite-node' .ai/s59-corpus-scan.ts
+aeuk/metal_warrior_4_streets.sng
+  ins 3 "Snare" first=$09 PLAYED gate-off rows [09:80 0A:80]
+  ins 4 "Tom" first=$09 PLAYED gate-off rows [0F:40]
+  ins 6 "Hihat" first=$09 PLAYED gate-off rows [1D:80]
+ansgaros/metal_warrior_4_forest_encounter.sng
+  ins 4 "Snare" first=$09 PLAYED gate-off rows [0D:80 0E:80]
+  ins 5 "Tom" first=$09 PLAYED gate-off rows [13:40 14:40 15:40 16:40 17:40 18:40 19:40]
+  ins 9 ""Piano"" first=$09 PLAYED gate-off rows [21:40]
+barfington/barfington_s_nintendometal.sng
+  ins 3 "Tom" first=$09 PLAYED gate-off rows [0B:40 0C:40 0D:40 0E:40 0F:40 10:40 11:40]
+  ins 4 "Snare" first=$09 PLAYED gate-off rows [16:80 17:80]
+barfington/metal_warrior_4_research_facility.sng
+  ins 3 "BD" first=$09 PLAYED gate-off rows [06:40 07:40]
+  ins 4 "Snare" first=$09 PLAYED gate-off rows [0C:80 0D:80]
+  ins 5 "Tom" first=$09 PLAYED gate-off rows [11:40]
+  ins 12 "HH" first=$09 PLAYED gate-off rows [28:80]
+cadaver/covert_ops_in_2d_funktempo.sng
+  ins 6 "Snare" first=$09 PLAYED gate-off rows [0C:80 0D:80]
+  ins 9 "Tom" first=$09 PLAYED gate-off rows [16:40 17:40 18:40 19:40 1A:40 1B:40 1C:40]
+cadaver/dojo.sng
+  ins 2 "Koto" first=$09 PLAYED gate-off rows [07:40]
+  ins 5 "Snare" first=$09 PLAYED gate-off rows [12:80 13:80]
+  ins 7 "Fast Koto" first=$09 PLAYED gate-off rows [1A:20]
+  ins 8 "Loud Koto" first=$09 PLAYED gate-off rows [1F:40]
+  ins 13 "Short sound" first=$09 PLAYED gate-off rows [27:20]
+cadaver/goattracker_drum_example.sng
+  ins 1 "Bassdrum" first=$09 PLAYED gate-off rows [03:40 04:40]
+  ins 2 "Snaredrum" first=$09 PLAYED gate-off rows [09:80 0A:80]
+  ins 3 "Hihat" first=$09 PLAYED gate-off rows [0D:80]
+cadaver/goattracker_example_mw1_title.sng
+  ins 3 "Snare" first=$09 PLAYED gate-off rows [09:40 0A:80 0B:80]
+cadaver/metal_warrior_4_covert_ops_in_2d.sng
+  ins 6 "Snare" first=$09 PLAYED gate-off rows [0B:40 0C:80 0D:80]
+  ins 9 "Tom" first=$09 PLAYED gate-off rows [16:40 17:40 18:40 19:40 1A:40 1B:40 1C:40]
+cadaver/metal_warrior_4_investigations.sng
+  ins 3 "Tom" first=$09 PLAYED gate-off rows [0E:40 0F:40 10:40 11:40 12:40 13:40 14:40 15:40]
+  ins 4 "Lead " first=$09 PLAYED gate-off rows [19:20]
+  ins 7 "Snare" first=$09 PLAYED gate-off rows [22:40 23:80 24:80]
+  ins 10 "Lead short" first=$09 PLAYED gate-off rows [19:20]
+cadaver/metal_warrior_4_the_chosen_path.sng
+  ins 3 "Tom" first=$09 PLAYED gate-off rows [0D:40]
+  ins 4 "BD" first=$09 PLAYED gate-off rows [16:40 17:40 18:40]
+  ins 5 "Snare" first=$09 PLAYED gate-off rows [1C:40 1D:80 1E:80]
+cadaver/mw_title_remix.sng
+  ins 3 "Snare" first=$09 PLAYED gate-off rows [09:40 0A:80 0B:80]
+cadaver/mw_title_remix_2x_speed.sng
+  ins 3 "Snare" first=$09 PLAYED gate-off rows [09:40 0A:80 0B:80]
+cadaver/nintendo_style.sng
+  ins 4 "Snare" first=$09 PLAYED gate-off rows [0C:80 0D:80]
+  ins 5 "Tom" first=$09 PLAYED gate-off rows [11:40 12:40 13:40 14:40 15:40]
+cadaver/tarantula.sng
+  ins 1 "Bass+BD" first=$09 PLAYED gate-off rows [03:40]
+  ins 2 "Snare+BD" first=$09 PLAYED gate-off rows [09:40]
+  ins 3 "Pulsegtr" first=$09 PLAYED gate-off rows [0D:40]
+  ins 4 "Bass+HH" first=$09 PLAYED gate-off rows [11:40]
+  ins 5 "BD only" first=$09 PLAYED gate-off rows [15:40]
+  ins 6 "Snare only" first=$09 PLAYED gate-off rows [1D:80 1E:80]
+  ins 13 "Clicks" first=$09 PLAYED gate-off rows [29:20]
+  ins 14 "Bass+click1" first=$09 PLAYED gate-off rows [2D:40]
+  ins 15 "Bass+click2" first=$09 PLAYED gate-off rows [31:40]
+  ins 17 "Sawarp" first=$09 PLAYED gate-off rows [35:20]
+cadaver/warlord.sng
+  ins 9 "Tom" first=$09 PLAYED gate-off rows [18:40]
+  ins 10 "Shortlead" first=$09 PLAYED gate-off rows [24:40]
+  ins 12 "Snare" first=$09 PLAYED gate-off rows [29:80 2A:80]
+mch/alien_funk.sng
+  ins 1 "kick-wobset 26" first=$09 PLAYED gate-off rows [05:10]
+  ins 2 "kickbass" first=$09 PLAYED gate-off rows [0E:40]
+  ins 4 "snare" first=$09 PLAYED gate-off rows [16:40 18:80]
+  ins 8 "hh1" first=$09 PLAYED gate-off rows [1F:80]
+  ins 11 "" first=$09 PLAYED gate-off rows [2B:10]
+  ins 12 "" first=$09 PLAYED gate-off rows [1F:80]
+mch/attitude_14.sng
+  ins 1 "" first=$09 PLAYED gate-off rows [02:40 07:10 0C:20]
+  ins 4 "" first=$09 unused gate-off rows [14:80]
+  ins 5 "" first=$09 PLAYED gate-off rows [14:80]
+  ins 7 "" first=$09 PLAYED gate-off rows [1C:80 1D:80]
+mch/balcony_princess.sng
+  ins 6 "snare" first=$09 PLAYED gate-off rows [17:80]
+mch/golden_moments.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [0C:80 0D:80]
+  ins 3 "" first=$09 unused gate-off rows [10:80]
+  ins 4 "" first=$09 PLAYED gate-off rows [13:80]
+  ins 24 "" first=$09 PLAYED gate-off rows [84:80]
+mch/graffiti_intro.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [0B:40 0D:80]
+  ins 3 "" first=$09 PLAYED gate-off rows [10:80]
+  ins 7 "" first=$09 PLAYED gate-off rows [17:14 18:54]
+  ins 8 "" first=$01 PLAYED gate-off rows [1B:80]
+  ins 10 "" first=$09 PLAYED gate-off rows [26:10]
+mch/groove_machine.sng
+  ins 1 "" first=$09 PLAYED gate-off rows [07:80]
+  ins 3 "" first=$09 PLAYED gate-off rows [0C:80]
+  ins 4 "" first=$09 PLAYED gate-off rows [15:10]
+  ins 14 "" first=$09 PLAYED gate-off rows [3C:10 3D:80]
+mch/gubbdata_2016_invitation.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [0A:80 0B:80]
+  ins 11 "" first=$09 PLAYED gate-off rows [29:46]
+mch/homunculi_tune_1.sng
+  ins 5 "" first=$09 PLAYED gate-off rows [11:80 12:80]
+  ins 12 "" first=$09 PLAYED gate-off rows [35:80]
+mch/homunculi_tune_2.sng
+  ins 4 "" first=$09 PLAYED gate-off rows [0B:80 0C:80]
+  ins 5 "" first=$09 unused gate-off rows [0F:10 10:40 11:80 12:14 13:80]
+mch/hybrid_song.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [06:40]
+  ins 5 "" first=$09 PLAYED gate-off rows [11:80 12:80]
+  ins 9 "" first=$09 PLAYED gate-off rows [18:40 19:40 1A:40]
+  ins 10 "" first=$09 PLAYED gate-off rows [1C:40 1D:40 1E:40]
+mch/in_a_rush.sng
+  ins 3 "" first=$09 PLAYED gate-off rows [0E:80]
+  ins 4 "" first=$09 PLAYED gate-off rows [12:10]
+  ins 10 "" first=$09 PLAYED gate-off rows [23:40]
+  ins 14 "" first=$09 PLAYED gate-off rows [44:80]
+  ins 16 "" first=$09 PLAYED gate-off rows [4B:80]
+  ins 21 "" first=$09 PLAYED gate-off rows [5F:10]
+mch/midnight_dream.sng
+  ins 3 "" first=$09 PLAYED gate-off rows [0A:40 0B:80 0C:50 0D:80]
+  ins 4 "" first=$09 PLAYED gate-off rows [10:80]
+  ins 5 "" first=$09 PLAYED gate-off rows [10:80]
+  ins 7 "" first=$09 PLAYED gate-off rows [18:10]
+  ins 8 "" first=$09 PLAYED gate-off rows [18:10]
+mch/on_the_road_once_again.sng
+  ins 1 "" first=$09 PLAYED gate-off rows [05:10]
+  ins 3 "" first=$09 PLAYED gate-off rows [15:80 16:80]
+  ins 4 "" first=$09 PLAYED gate-off rows [19:80]
+  ins 5 "" first=$09 PLAYED gate-off rows [1F:80]
+mch/pagans_mind.sng
+  ins 1 "" first=$09 PLAYED gate-off rows [03:40 04:80 05:50 06:80]
+  ins 18 "" first=$09 PLAYED gate-off rows [3B:80 3C:16 3D:80]
+  ins 20 "" first=$09 unused gate-off rows [3B:80 3C:16 3D:80]
+mch/plasma_intro.sng
+  ins 3 "" first=$09 PLAYED gate-off rows [08:40 09:80 0A:50 0B:80]
+mch/pocket_tomb.sng
+  ins 8 "" first=$09 PLAYED gate-off rows [2A:40 2C:80]
+  ins 10 "" first=$09 PLAYED gate-off rows [21:80]
+  ins 12 "" first=$09 unused gate-off rows [21:80]
+mch/sky_captain.sng
+  ins 3 "" first=$09 PLAYED gate-off rows [0C:80]
+  ins 4 "" first=$09 PLAYED gate-off rows [0F:80]
+  ins 5 "" first=$09 PLAYED gate-off rows [0F:80]
+  ins 6 "" first=$09 unused gate-off rows [0F:80]
+  ins 7 "" first=$09 unused gate-off rows [0F:80]
+  ins 12 "" first=$09 PLAYED gate-off rows [19:40]
+  ins 14 "" first=$09 PLAYED gate-off rows [23:40]
+mch/two_years_in_gp.sng
+  ins 1 "" first=$09 unused gate-off rows [01:40]
+  ins 2 "" first=$09 PLAYED gate-off rows [06:40]
+  ins 4 "" first=$09 PLAYED gate-off rows [0D:80]
+  ins 5 "" first=$09 PLAYED gate-off rows [13:80]
+  ins 8 "" first=$09 PLAYED gate-off rows [1A:40]
+  ins 9 "" first=$09 PLAYED gate-off rows [1F:40]
+  ins 10 "" first=$09 PLAYED gate-off rows [23:40]
+  ins 11 "" first=$09 PLAYED gate-off rows [27:40]
+  ins 12 "" first=$09 PLAYED gate-off rows [2B:40]
+  ins 13 "" first=$09 PLAYED gate-off rows [2F:40]
+shinobi/wod.sng
+  ins 17 "bassdrum" first=$09 PLAYED gate-off rows [6F:80]
+  ins 20 "leadwave 3" first=$09 PLAYED gate-off rows [7D:40]
+  ins 40 "leadwave 3037" first=$09 PLAYED gate-off rows [EB:40]
+stinsen/alcorythm_ffff.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [09:80]
+  ins 6 "" first=$09 PLAYED gate-off rows [17:10 18:80]
+  ins 7 "" first=$09 PLAYED gate-off rows [1B:80]
+stinsen/archaic_groove.sng
+  ins 3 "Revolload-snare" first=$09 PLAYED gate-off rows [39:40 3A:40 3B:80 3C:80]
+  ins 7 "Clik-Clak bass" first=$09 PLAYED gate-off rows [46:40]
+stinsen/arpling.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [08:80 09:80]
+  ins 5 "" first=$09 PLAYED gate-off rows [08:80 09:80]
+  ins 20 "" first=$09 PLAYED gate-off rows [4C:40]
+  ins 28 "" first=$09 PLAYED gate-off rows [08:80 09:80]
+  ins 33 "" first=$09 PLAYED gate-off rows [08:80 09:80]
+  ins 47 "" first=$09 PLAYED gate-off rows [08:80 09:80]
+  ins 52 "" first=$09 PLAYED gate-off rows [08:80 09:80]
+stinsen/bait.sng
+  ins 4 "" first=$09 PLAYED gate-off rows [0F:80]
+  ins 19 "" first=$09 PLAYED gate-off rows [0F:80]
+  ins 21 "" first=$09 PLAYED gate-off rows [0F:80]
+  ins 38 "" first=$09 PLAYED gate-off rows [0F:80]
+  ins 42 "" first=$09 PLAYED gate-off rows [0F:80]
+  ins 43 "" first=$09 PLAYED gate-off rows [0F:80]
+  ins 44 "" first=$09 PLAYED gate-off rows [0F:80]
+stinsen/ballad.sng
+  ins 4 "" first=$09 PLAYED gate-off rows [09:40]
+stinsen/christmas_boogie.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [0E:80]
+  ins 3 "" first=$09 PLAYED gate-off rows [06:80]
+stinsen/coconut_conundrum.sng
+  ins 8 "" first=$00 PLAYED gate-off rows [60:80]
+stinsen/defunkt_final_fv_po_ro_6581_ffff.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [10:80]
+  ins 3 "" first=$09 PLAYED gate-off rows [04:80]
+  ins 4 "" first=$09 PLAYED gate-off rows [0D:10]
+  ins 15 "" first=$09 PLAYED gate-off rows [AF:80]
+  ins 20 "" first=$09 PLAYED gate-off rows [B5:10]
+  ins 21 "" first=$09 PLAYED gate-off rows [B8:80]
+  ins 25 "" first=$09 PLAYED gate-off rows [10:80]
+stinsen/diminishing_returns.sng
+  ins 3 "" first=$09 PLAYED gate-off rows [5A:80]
+  ins 7 "" first=$09 PLAYED gate-off rows [0B:80]
+  ins 13 "" first=$41 PLAYED gate-off rows [43:40]
+  ins 23 "" first=$09 PLAYED gate-off rows [5A:80]
+  ins 24 "" first=$09 PLAYED gate-off rows [61:80]
+  ins 28 "Tomdrum" first=$09 PLAYED gate-off rows [CD:40 CE:40]
+  ins 33 "Splash" first=$09 PLAYED gate-off rows [DA:80 DB:80 DC:80 DD:80]
+stinsen/double_rainbow_2x.sng
+  ins 5 "" first=$09 PLAYED gate-off rows [1D:80]
+  ins 24 "" first=$09 PLAYED gate-off rows [53:40 55:40]
+  ins 25 "" first=$89 PLAYED gate-off rows [53:40 55:40]
+stinsen/endless_summer.sng
+  ins 1 "" first=$09 PLAYED gate-off rows [34:80]
+stinsen/failedfunk.sng
+  ins 3 "" first=$09 PLAYED gate-off rows [18:80 19:80]
+stinsen/feeling_pink.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [1A:40 1B:40 1C:80]
+stinsen/flumbos_keps.sng
+  ins 2 "Snare only" first=$09 PLAYED gate-off rows [07:80 08:80]
+  ins 6 "Hihat" first=$09 unused gate-off rows [02:80]
+  ins 9 "Bass+HH" first=$09 PLAYED gate-off rows [48:40]
+  ins 10 "BD only" first=$09 PLAYED gate-off rows [4C:40]
+  ins 11 "Hihat" first=$09 unused gate-off rows [52:80]
+  ins 13 "becken" first=$09 PLAYED gate-off rows [59:80 5A:80 5B:80 5C:80 5D:80 5E:80 5F:80 60:80 61:80 62:80 63:80]
+  ins 16 "Snare+BD" first=$09 unused gate-off rows [78:40]
+  ins 17 "Flute" first=$09 unused gate-off rows [7B:20 7D:20]
+  ins 20 "Splash" first=$09 unused gate-off rows [86:80 87:80 88:80 89:80]
+stinsen/forced_entry.sng
+  ins 4 "Snare only" first=$09 PLAYED gate-off rows [06:80 07:80]
+  ins 11 "arp walk echo" first=$09 PLAYED gate-off rows [33:46 34:46]
+  ins 16 "Crash-nofilt" first=$09 PLAYED gate-off rows [4D:80]
+  ins 24 "Stopa" first=$09 unused gate-off rows [92:10]
+stinsen/game_tune.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [03:40 04:40 05:40 06:40 07:40]
+  ins 5 "" first=$09 PLAYED gate-off rows [35:80]
+  ins 9 "" first=$09 PLAYED gate-off rows [03:40 04:40 05:40 06:40 07:40]
+  ins 12 "" first=$09 PLAYED gate-off rows [03:40 04:40 05:40 06:40 07:40]
+stinsen/gremlinfunk.sng
+  ins 1 "" first=$09 PLAYED gate-off rows [04:80]
+  ins 6 "" first=$09 PLAYED gate-off rows [15:10]
+  ins 7 "" first=$09 PLAYED gate-off rows [1B:80]
+  ins 8 "" first=$09 PLAYED gate-off rows [1B:80]
+  ins 9 "" first=$09 PLAYED gate-off rows [1E:80]
+  ins 12 "" first=$09 PLAYED gate-off rows [1B:80]
+stinsen/iguana.sng
+  ins 6 "" first=$09 PLAYED gate-off rows [3A:10]
+  ins 7 "" first=$09 PLAYED gate-off rows [20:40 21:40 22:80]
+  ins 9 "" first=$09 PLAYED gate-off rows [D2:40 D4:80]
+  ins 12 "" first=$09 PLAYED gate-off rows [96:80]
+  ins 14 "" first=$09 PLAYED gate-off rows [C8:40]
+  ins 15 "" first=$09 PLAYED gate-off rows [D7:80]
+  ins 24 "" first=$09 PLAYED gate-off rows [20:40 21:40 22:80]
+stinsen/jeroenimo.sng
+  ins 1 "" first=$09 PLAYED gate-off rows [12:80 13:80]
+  ins 10 "" first=$09 PLAYED gate-off rows [12:80 13:80]
+  ins 11 "" first=$09 PLAYED gate-off rows [DB:80]
+stinsen/jogeir.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [08:80 09:80 0A:80]
+  ins 12 "" first=$09 PLAYED gate-off rows [08:80 09:80 0A:80]
+  ins 20 "" first=$09 PLAYED gate-off rows [76:10]
+  ins 31 "tom" first=$19 unused gate-off rows [7C:10]
+stinsen/lethargic.sng
+  ins 4 "" first=$09 PLAYED gate-off rows [0A:80]
+  ins 16 "" first=$09 PLAYED gate-off rows [68:40 69:40]
+stinsen/lolo_sawtooth_only.sng
+  ins 3 "" first=$21 PLAYED gate-off rows [11:20]
+stinsen/nordic_scene_review.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [09:80]
+  ins 3 "" first=$09 PLAYED gate-off rows [0C:40]
+  ins 4 "" first=$09 PLAYED gate-off rows [0C:40]
+  ins 13 "" first=$09 PLAYED gate-off rows [3E:80]
+  ins 14 "" first=$09 PLAYED gate-off rows [41:80]
+  ins 15 "" first=$09 PLAYED gate-off rows [44:80]
+  ins 29 "" first=$09 PLAYED gate-off rows [5D:10]
+  ins 30 "" first=$09 PLAYED gate-off rows [5D:10]
+  ins 33 "" first=$09 PLAYED gate-off rows [64:12]
+  ins 37 "" first=$09 PLAYED gate-off rows [09:80]
+stinsen/premonition_fv_po_ro_ffff.sng
+  ins 4 "" first=$09 PLAYED gate-off rows [08:40]
+stinsen/quaralline_2x.sng
+  ins 1 "" first=$09 PLAYED gate-off rows [04:80]
+  ins 4 "" first=$09 PLAYED gate-off rows [04:80]
+  ins 14 "" first=$09 PLAYED gate-off rows [1B:80]
+  ins 25 "" first=$09 PLAYED gate-off rows [5B:40]
+  ins 26 "" first=$09 PLAYED gate-off rows [5E:80]
+  ins 27 "" first=$09 PLAYED gate-off rows [5E:80]
+  ins 32 "" first=$09 PLAYED gate-off rows [7B:40]
+stinsen/relapse.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [67:40 68:40 69:80]
+  ins 10 "" first=$09 PLAYED gate-off rows [72:10]
+  ins 12 "" first=$09 PLAYED gate-off rows [75:80]
+  ins 14 "" first=$49 PLAYED gate-off rows [7A:40]
+  ins 19 "" first=$89 PLAYED gate-off rows [7A:40]
+  ins 22 "" first=$09 PLAYED gate-off rows [A1:80]
+stinsen/running_on_empty_ffff.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [08:80 09:80 0A:80]
+stinsen/safari.sng
+  ins 4 "" first=$09 PLAYED gate-off rows [06:10]
+  ins 7 "" first=$09 PLAYED gate-off rows [1C:80]
+stinsen/scarabaeus_0f00_fv_po_ro.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [08:80 09:80 0A:80]
+  ins 7 "" first=$09 PLAYED gate-off rows [19:80]
+stinsen/shadow.sng
+  ins 6 "" first=$09 PLAYED gate-off rows [23:80]
+  ins 13 "" first=$89 PLAYED gate-off rows [40:40]
+stinsen/sidetracked.sng
+  ins 2 "" first=$09 PLAYED gate-off rows [17:40]
+  ins 3 "" first=$09 PLAYED gate-off rows [13:80]
+  ins 8 "" first=$19 PLAYED gate-off rows [2B:26]
+  ins 18 "" first=$09 PLAYED gate-off rows [C0:40]
+  ins 22 "" first=$09 PLAYED gate-off rows [17:40]
+  ins 26 "" first=$09 PLAYED gate-off rows [D6:40 D7:40]
+stinsen/sniff.sng
+  ins 2 "Snare only" first=$09 unused gate-off rows [07:80 08:80]
+  ins 6 "Hihat" first=$09 unused gate-off rows [02:80]
+  ins 9 "Bass+HH" first=$09 unused gate-off rows [48:40]
+  ins 10 "BD only" first=$09 unused gate-off rows [4C:40]
+  ins 11 "Hihat" first=$09 unused gate-off rows [52:80]
+  ins 13 "becken" first=$09 unused gate-off rows [59:80 5A:80 5B:80 5C:80 5D:80 5E:80 5F:80 60:80 61:80 62:80 63:80]
+  ins 16 "Snare+BD" first=$09 unused gate-off rows [78:40]
+  ins 20 "Splash" first=$09 unused gate-off rows [81:80 82:80 83:80 84:80]
+stinsen/space_2x.sng
+  ins 5 "" first=$09 PLAYED gate-off rows [6A:80]
+  ins 8 "" first=$09 PLAYED gate-off rows [7F:80]
+  ins 12 "" first=$09 PLAYED gate-off rows [91:80]
+  ins 22 "" first=$09 PLAYED gate-off rows [91:80]
+stinsen/sunset_shuffle_po_ro_ffff.sng
+  ins 1 "" first=$09 PLAYED gate-off rows [02:80]
+  ins 3 "" first=$09 PLAYED gate-off rows [02:80]
+  ins 5 "" first=$09 PLAYED gate-off rows [06:10]
+  ins 6 "" first=$09 PLAYED gate-off rows [0B:80 0C:80]
+  ins 7 "" first=$09 PLAYED gate-off rows [15:10]
+  ins 23 "" first=$09 PLAYED gate-off rows [71:80]
+  ins 24 "" first=$09 PLAYED gate-off rows [63:80]
+  ins 42 "" first=$09 PLAYED gate-off rows [0B:80 0C:80]
+stinsen/trainwreck.sng
+  ins 1 "Revolflip-bass" first=$09 PLAYED gate-off rows [22:40]
+  ins 4 "Hihat" first=$09 PLAYED gate-off rows [2E:80]
+  ins 5 "Revolload-snare" first=$09 PLAYED gate-off rows [02:40 04:80]
+  ins 6 "Hihat" first=$09 PLAYED gate-off rows [2E:80]
+  ins 7 "Revolload-snare" first=$09 PLAYED gate-off rows [02:40 04:80]
+  ins 8 "Revolflip-kick" first=$09 PLAYED gate-off rows [AB:10 AC:10 AD:10 AE:10 AF:10]
+  ins 10 "becken" first=$09 PLAYED gate-off rows [66:80 67:80 68:80 69:80 6A:80 6B:80 6C:80 6D:80 6E:80 6F:80 70:80]
+  ins 14 "Revolflip-bass" first=$09 PLAYED gate-off rows [22:40]
+  ins 18 "Revolflip-kick" first=$09 PLAYED gate-off rows [AB:10 AC:10 AD:10 AE:10 AF:10]
+  ins 22 "Clik-Clak synth" first=$09 PLAYED gate-off rows [DC:40]
+  ins 23 "Clik-Clak synth" first=$09 PLAYED gate-off rows [DC:40]
+  ins 24 "Clik-Clak synth" first=$09 PLAYED gate-off rows [DC:40]
+  ins 26 "Clik-Clak synth" first=$09 PLAYED gate-off rows [DC:40]
+  ins 32 "Revolflip-glass" first=$09 PLAYED gate-off rows [E3:16 E4:16]
+  ins 33 "Clik-Clak synth" first=$09 PLAYED gate-off rows [DC:40]
+  ins 35 "Revolflip-bass" first=$09 PLAYED gate-off rows [22:40]
+stinsen/tribal18.sng
+  ins 9 "echo arp min7" first=$09 unused gate-off rows [1B:40]
+stinsen/tribal_tribunal.sng
+  ins 1 "Revoload-kick" first=$09 PLAYED gate-off rows [06:10 07:10 08:10]
+  ins 4 "tom" first=$09 PLAYED gate-off rows [1E:10]
+  ins 11 "Revolflip-glass" first=$09 PLAYED gate-off rows [21:10 2A:10]
+  ins 12 "tom" first=$09 PLAYED gate-off rows [2A:10]
+stinsen/unleash_the_cheese.sng
+  ins 3 "Bass+HH" first=$09 PLAYED gate-off rows [0A:40]
+  ins 4 "Stopa" first=$09 PLAYED gate-off rows [5B:10]
+  ins 10 "Stopa" first=$09 PLAYED gate-off rows [5B:10]
+  ins 11 "Snare" first=$09 PLAYED gate-off rows [68:80 69:80]
+  ins 25 "Bass+HH" first=$09 PLAYED gate-off rows [0A:40]
+stinsen/upsandowns.sng
+  ins 7 "long snare" first=$09 PLAYED gate-off rows [20:80]
+  ins 9 "" first=$09 PLAYED gate-off rows [2A:40 2B:80 2C:80]
+  ins 15 "" first=$09 PLAYED gate-off rows [55:40 56:10]
+  ins 16 "long snare" first=$09 PLAYED gate-off rows [20:80]
+  ins 21 "" first=$09 PLAYED gate-off rows [55:40 56:10]
+yehar/b_o_f_h_ingame_death_victory.sng
+  ins 2 "Bass (no drum)" first=$09 PLAYED gate-off rows [06:40]
+  ins 4 "High repeats" first=$09 PLAYED gate-off rows [0E:44 0F:20]
+  ins 5 "Tabla: Mel hi 1" first=$09 PLAYED gate-off rows [14:40 15:40 16:10]
+  ins 6 "Tabla: Mel hi 2" first=$09 PLAYED gate-off rows [1A:10]
+  ins 7 "Tabla: Mel hi 3" first=$09 PLAYED gate-off rows [1E:40 1F:10]
+  ins 9 "Bassdrum (G-5)" first=$09 PLAYED gate-off rows [2A:50 2B:10]
+  ins 10 "Snare" first=$09 PLAYED gate-off rows [3F:80 40:80 41:80 42:80 43:80 44:80]
+  ins 12 "Bass + Drum" first=$09 PLAYED gate-off rows [4A:40]
+  ins 14 "Supercrash" first=$09 PLAYED gate-off rows [53:50 54:80 55:40 56:80]
+  ins 16 "Lead fade-inout" first=$09 PLAYED gate-off rows [70:20 71:20 72:40 73:40]
+  ins 19 "Bass (quiet 1)" first=$09 PLAYED gate-off rows [06:40]
+  ins 20 "Bass (quiet 2)" first=$09 PLAYED gate-off rows [06:40]
+  ins 21 "Bass (quiet 3)" first=$09 PLAYED gate-off rows [06:40]
+  ins 22 "Bass (quiet 4)" first=$09 PLAYED gate-off rows [06:40]
+  ins 24 "lead synth" first=$09 unused gate-off rows [85:40 86:40 87:40 88:40 89:20 8A:20 8B:20]
+  ins 27 "High rep. quiet" first=$09 PLAYED gate-off rows [0E:44 0F:20]
+  ins 32 "Bass (no drum)" first=$09 PLAYED gate-off rows [A4:40]
+  ins 33 "Bass (quiet 1)" first=$09 PLAYED gate-off rows [A4:40]
+  ins 34 "Bass (quiet 1)" first=$09 PLAYED gate-off rows [AA:40]
+  ins 35 "Bass (no drum)" first=$09 PLAYED gate-off rows [AA:40]
+
+83 songs; 75 with an instrument wave table that writes a gate-off byte; 73 where such an instrument is used on a played pattern; 0 with a cmd-7 gate-off param on a played pattern
