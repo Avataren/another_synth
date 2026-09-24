@@ -31,14 +31,17 @@
 //!   hardware notes (the C64 "test-bit digi" technique relies on it).
 //! - Noise: supplied by `noise.rs` (8 LFSR taps on DAC bits 11..4).
 //! - Combined waveforms, 8580: the selected outputs share the waveform bit
-//!   lines, so the combination is the bitwise AND of the selected 12-bit
-//!   outputs (the public combinational-logic "wired-AND" view). INFERRED:
-//!   the real 8580 is documented as much closer to this ideal AND than the
-//!   6581 (whose combined waveforms are strongly attenuated), but not
-//!   identical: neighbouring bit lines pull each other down a little. That
-//!   residual is NOT modelled, because no GPL-free measured data for it was
-//!   available. Treat it as an ears-gate item. Noise in a combination
-//!   also writes zeros back into the LFSR (see `noise.rs`).
+//!   lines. The base is the bitwise AND of the selected 12-bit outputs (the
+//!   public combinational-logic "wired-AND" view). The ideal AND is far too
+//!   loud against the measured levels (S5.12 R2,
+//!   `.ai/sid-chip-comparison-report.md` §2.1: pulse+saw about +6 dB,
+//!   saw+tri about +10 dB). So pulse+saw, saw+tri and pulse+saw+tri go
+//!   through the same neighbour-pull pass as the 6581 (below), with a
+//!   weaker, per-combination threshold fitted to the measured mean level
+//!   (`PULL_THRESHOLDS_8580`, DERIVED-VALUE disclosure there). Pulse+tri
+//!   and noise combinations have no measured level and stay the plain AND.
+//!   Noise in a combination also writes zeros back into the LFSR (see
+//!   `noise.rs`).
 //! - Combined waveforms, 6581 (S2). Public knowledge: the 6581's combined
 //!   waveforms come out far weaker than the ideal AND. Saw+tri is mostly
 //!   silent, and pulse+saw keeps only the upper part of the ramp. The
@@ -58,13 +61,21 @@
 //!   of ones survive.
 //!   All ones and all zeros are fixed points. The pass is not iterated, and
 //!   it uses only the AND, not which waveforms made it.
-//!   INFERRED: the neighbour-pull rule, its 2^-d weights and the 0.75
-//!   threshold are my own tuning to match the qualitative description. No
-//!   measured 6581 combined-waveform table was used: the published ones sit
-//!   inside GPL emulators. It applies only when two or more waveforms are
-//!   selected, so a single waveform is untouched. Precomputed into a
-//!   4096-entry table (`COMBINED_6581`) because it runs every chip cycle.
-//!   Ears-gate.
+//!   INFERRED: the neighbour-pull rule and its 2^-d weights are my own
+//!   tuning to match the qualitative description. No measured 6581
+//!   combined-waveform table was used: the published ones sit inside GPL
+//!   emulators. It applies only when two or more waveforms are selected, so
+//!   a single waveform is untouched.
+//!   Thresholds (S5.12 R2): the S2 threshold 0.75 left the 6581 about
+//!   +20 dB too loud on pulse+saw (report §2.2). Pulse+saw, saw+tri and
+//!   pulse+saw+tri now use per-combination thresholds fitted to the
+//!   measured mean levels (`PULL_THRESHOLDS_6581`, DERIVED-VALUE disclosure
+//!   there). Pulse+tri and noise combinations keep 0.75
+//!   (`PULL_THRESHOLD_6581`), because no level was measured for them.
+//!   Because a lower threshold only removes more bits, each 6581
+//!   combination is a bit subset of the 8580 one at the same phase.
+//!   Precomputed into 4096-entry tables (`COMBINED_6581`,
+//!   `COMBINED_FITTED_*`), because it runs every chip cycle. Ears-gate.
 //! - No waveform selected ("waveform 0"): the DAC input floats and keeps
 //!   the last output. INFERRED from public hardware notes. `waveform_output`
 //!   returns `None` and the voice keeps its previous value. On the 8580 the
@@ -160,51 +171,143 @@ pub fn waveform_output(
     if sel & NOISE != 0 {
         out &= noise_out;
     }
-    match model {
-        // Wired-AND is the whole 8580 combined-waveform model (see header).
-        SidModel::Sid8580 => Some(out),
-        SidModel::Sid6581 if sel.count_ones() >= 2 => Some(COMBINED_6581[out as usize]),
-        SidModel::Sid6581 => Some(out),
+    if sel.count_ones() < 2 {
+        return Some(out);
     }
+    let a = out as usize;
+    Some(match (model, fitted_combination(sel)) {
+        (SidModel::Sid8580, Some(c)) => COMBINED_FITTED_8580[c][a],
+        // Pulse+tri and noise combinations: the ideal AND (see header).
+        (SidModel::Sid8580, None) => out,
+        (SidModel::Sid6581, Some(c)) => COMBINED_FITTED_6581[c][a],
+        (SidModel::Sid6581, None) => COMBINED_6581[a],
+    })
 }
 
-/// Threshold of the 6581 neighbour pull, 0.75 in units of 2048.
+/// Threshold of the S2 6581 neighbour pull, 0.75 in units of 2048. Used for
+/// the 6581 combinations without a measured level (pulse+tri, noise+X).
 pub const PULL_THRESHOLD_6581: u32 = 1536;
 
-/// The 6581 neighbour-pull pass over one ideal wired-AND value (header).
-pub const fn combined_6581(and: u16) -> u16 {
-    let mut out = 0u16;
-    let mut i = 0;
-    while i < 12 {
-        if (and >> i) & 1 != 0 {
-            let mut pull = 0u32;
-            let mut j = 0;
-            while j < 12 {
-                if j != i && (and >> j) & 1 == 0 {
-                    let d = if i > j { i - j } else { j - i };
-                    pull += 1 << (11 - d);
-                }
-                j += 1;
-            }
-            if pull < PULL_THRESHOLD_6581 {
-                out |= 1 << i;
-            }
+/// The combinations with a measured level, in `PULL_THRESHOLDS_*` order.
+pub const FITTED_COMBINATIONS: [u8; 3] = [PULSE | SAW, SAW | TRI, PULSE | SAW | TRI];
+
+/// Neighbour-pull thresholds of the combinations with a measured level
+/// (S5.12 R2), in `FITTED_COMBINATIONS` order: pulse+saw, saw+tri,
+/// pulse+saw+tri. A bit survives when its pull (header) is below the
+/// threshold, so a lower threshold means stronger bit-line coupling.
+///
+/// DERIVED-VALUE DISCLOSURE.
+/// - Measured facts: the target mean levels, from
+///   `.ai/sid-chip-comparison-report.md` §2.1/§2.2. That report is a
+///   transient comparison against reSID's measured combined-waveform tables,
+///   averaged over all 4096 phases with the pulse held high, on the 8-bit
+///   OSC3 scale (`out >> 4`):
+///     8580 pulse+saw ~62, saw+tri ~20;
+///     6581 pulse+saw ~7,  saw+tri ~1.5, pulse+saw+tri ~0.4.
+///   The 8580 pulse+saw+tri level is NOT reported. The value used,
+///   sqrt(62 * 20) = 35.2, is the geometric mean of the two measured 8580
+///   levels (the midpoint in dB). It is an interpolation, not a measurement.
+/// - Shape source: the public description of the mechanism, as cited in
+///   the S5.12 brief: Antti Lankila's reSID-fp combined-waveform measurement
+///   write-ups (arXiv:0805.0171; bel.fi/~ankila/). The selected outputs
+///   share bit lines, and a line held low drags its neighbours down, with
+///   an influence that falls off with distance. That is the S2
+///   neighbour-pull rule below, unchanged except for the threshold.
+/// - Fitted parameters: the six thresholds. Each one is the integer that
+///   brings its combination's 4096-phase mean closest to its target (the
+///   2^-d weights are S2's, not refitted). Fitted means: 8580 62.01, 20.15,
+///   35.01; 6581 6.99, 1.50, 0.40. See the test
+///   `combined_waveform_means_match_the_measured_levels`, which allows ±15%.
+/// - NOT used: reSID's wave6581_* / wave8580_* tables (GPL). No per-phase
+///   value was taken from them; only the report's averages.
+/// - Expected tolerance vs reSID: the means match by construction. The
+///   per-phase shape is the pull rule's, not the chip's. It is expected to
+///   be within ±3 dB RMS per combination, but that is unverified against
+///   the tables. Ears-gate.
+pub const PULL_THRESHOLDS_8580: [u32; 3] = [1314, 1792, 2031];
+/// 6581 thresholds, same order and disclosure as `PULL_THRESHOLDS_8580`.
+pub const PULL_THRESHOLDS_6581: [u32; 3] = [167, 1219, 761];
+
+/// Index of `sel` (bits 4-7 of the control register) in
+/// `FITTED_COMBINATIONS`, if it is one of them.
+#[inline]
+const fn fitted_combination(sel: u8) -> Option<usize> {
+    let mut c = 0;
+    while c < FITTED_COMBINATIONS.len() {
+        if FITTED_COMBINATIONS[c] == sel {
+            return Some(c);
         }
+        c += 1;
+    }
+    None
+}
+
+/// The neighbour-pull pass over one ideal wired-AND value (header): bit i
+/// of `and` survives when `pull(i) < threshold`.
+///
+/// `pull(i)` is split into its left half `L(i)` (zeros below i) and right
+/// half `R(i)` (zeros above i). Each half follows the recurrence
+/// L(i) = L(i-1)/2 + 1024*[bit i-1 zero]. That is exact in integers,
+/// because every term of L(i-1) is 2^(12-i+j) with j >= 0, i <= 11.
+pub const fn neighbour_pull(and: u16, threshold: u32) -> u16 {
+    const fn zero_weight(and: u16, i: usize) -> u32 {
+        if (and >> i) & 1 == 0 {
+            1024
+        } else {
+            0
+        }
+    }
+    let mut left = [0u32; 12];
+    let mut i = 1;
+    while i < 12 {
+        left[i] = left[i - 1] / 2 + zero_weight(and, i - 1);
         i += 1;
+    }
+    let mut out = 0u16;
+    let mut right = 0u32;
+    let mut i = 12;
+    while i > 0 {
+        i -= 1;
+        if (and >> i) & 1 != 0 && left[i] + right < threshold {
+            out |= 1 << i;
+        }
+        right = right / 2 + zero_weight(and, i);
     }
     out
 }
 
-/// `combined_6581` for every 12-bit AND value.
-pub static COMBINED_6581: [u16; 4096] = {
+/// The S2 6581 neighbour-pull pass (threshold `PULL_THRESHOLD_6581`).
+pub const fn combined_6581(and: u16) -> u16 {
+    neighbour_pull(and, PULL_THRESHOLD_6581)
+}
+
+/// `neighbour_pull(_, threshold)` for every 12-bit AND value.
+const fn pull_table(threshold: u32) -> [u16; 4096] {
     let mut t = [0u16; 4096];
     let mut a = 0;
     while a < 4096 {
-        t[a] = combined_6581(a as u16);
+        t[a] = neighbour_pull(a as u16, threshold);
         a += 1;
     }
     t
-};
+}
+
+/// `combined_6581` for every 12-bit AND value.
+pub static COMBINED_6581: [u16; 4096] = pull_table(PULL_THRESHOLD_6581);
+
+/// Per fitted combination, the pull table at its 8580 threshold.
+pub static COMBINED_FITTED_8580: [[u16; 4096]; 3] = [
+    pull_table(PULL_THRESHOLDS_8580[0]),
+    pull_table(PULL_THRESHOLDS_8580[1]),
+    pull_table(PULL_THRESHOLDS_8580[2]),
+];
+
+/// Per fitted combination, the pull table at its 6581 threshold.
+pub static COMBINED_FITTED_6581: [[u16; 4096]; 3] = [
+    pull_table(PULL_THRESHOLDS_6581[0]),
+    pull_table(PULL_THRESHOLDS_6581[1]),
+    pull_table(PULL_THRESHOLDS_6581[2]),
+];
 
 #[cfg(test)]
 mod tests {
@@ -300,27 +403,42 @@ mod tests {
     }
 
     #[test]
-    fn combined_waveforms_are_the_wired_and() {
+    fn combined_waveforms_are_the_wired_and_then_the_fitted_pull() {
         // acc 0x600000: saw = 0x600; tri (own MSB 0) = bits 22..11 of
         // 0x600000 = 0xC00; pulse(pw 0x400) = 0xFFF (0x600 >= 0x400).
         //   saw & tri         = 0x600 & 0xC00 = 0x400
         //   pulse & saw       = 0x600
-        //   pulse & tri       = 0xC00
+        //   pulse & tri       = 0xC00 (8580: the plain AND, no measured level)
         //   pulse & saw & tri = 0x400
+        // The fitted 8580 pull (thresholds 1314 / 1792 / 2031):
+        //   0x400: bit 10 alone, zeros on both sides: 2048 -> gone -> 0.
+        //   0x600: bit 10: zero 11 (1024) + zeros 8..0 at d 2..10 (1022) =
+        //          2046; bit 9: zero 11 (512) + zeros 8..0 at d 1..9 (2044)
+        //          = 2556 -> both gone -> 0.
         // With pw 0x800 the pulse is low (0x600 < 0x800), so every pulse
         // combination is 0.
         let a = 0x60_0000u32;
         let w = |c, pw| waveform_output(M, c, a, 0, pw, 0xFF0).unwrap();
-        assert_eq!(w(SAW | TRI, 0x400), 0x400);
-        assert_eq!(w(PULSE | SAW, 0x400), 0x600);
+        assert_eq!(w(SAW | TRI, 0x400), 0);
+        assert_eq!(w(PULSE | SAW, 0x400), 0);
         assert_eq!(w(PULSE | TRI, 0x400), 0xC00);
-        assert_eq!(w(PULSE | SAW | TRI, 0x400), 0x400);
+        assert_eq!(w(PULSE | SAW | TRI, 0x400), 0);
         for c in [PULSE | SAW, PULSE | TRI, PULSE | SAW | TRI] {
             assert_eq!(w(c, 0x800), 0);
         }
         // Noise 0xFF0 AND saw 0x600 = 0x600; low nibble of noise is 0.
         assert_eq!(w(NOISE | SAW, 0x400), 0x600);
         assert_eq!(waveform_output(M, NOISE | SAW, 0x60_F000, 0, 0, 0xFF0), Some(0x600));
+        // acc 0x7FF000: saw 0x7FF, tri 0xFFE, pulse(pw 0x400) high, so
+        // saw & tri = 0x7FE. Bits 1 and 10: 1024 + 2 = 1026; bits 2..9:
+        // at most 512 + 4 = 516. Every 8580 threshold is above 1026 -> 0x7FE.
+        // acc 0xFF0000, pulse+saw: AND 0xFF0. Bit 4 sees zeros 3..0 at d 1..4
+        // = 1920 (gone); bit 5 d 2..5 = 960 < 1314 (kept); higher bits less
+        // -> 0xFE0.
+        let w = |c, a| waveform_output(M, c, a, 0, 0x400, 0).unwrap();
+        assert_eq!(w(SAW | TRI, 0x7F_F000), 0x7FE);
+        assert_eq!(w(PULSE | SAW | TRI, 0x7F_F000), 0x7FE);
+        assert_eq!(w(PULSE | SAW, 0xFF_0000), 0xFE0);
     }
 
     #[test]
@@ -374,9 +492,125 @@ mod tests {
                 );
             }
         }
-        // Saw+tri at acc 0x600000: 8580 AND 0x400, 6581 0 (hand: 0x400 row).
+        // The fitted tables only remove bits too, and each 6581 threshold is
+        // below its 8580 one, so the 6581 output is a bit subset of the 8580's.
+        for c in 0..3 {
+            assert!(PULL_THRESHOLDS_6581[c] < PULL_THRESHOLDS_8580[c]);
+            for a in 0..4096usize {
+                let (x8, x6) = (COMBINED_FITTED_8580[c][a], COMBINED_FITTED_6581[c][a]);
+                assert_eq!(x8 & !(a as u16), 0, "8580 {c}: {a:#05x} gained bits");
+                assert_eq!(
+                    x6 & !x8,
+                    0,
+                    "{c}: {a:#05x}: 6581 {x6:#05x} not within 8580 {x8:#05x}"
+                );
+            }
+        }
+        // Saw+tri at acc 0x7FF000: AND 0x7FE (bits 1 and 10 pull 1026, the
+        // rest at most 516). 6581 saw+tri (1219) keeps all of it; 6581
+        // pulse+saw+tri (761) drops bits 1 and 10 -> 0x3FC; the 8580 keeps it.
+        let w = |m, c| waveform_output(m, c, 0x7F_F000, 0, 0x400, 0);
+        assert_eq!(w(m6, SAW | TRI), Some(0x7FE));
+        assert_eq!(w(m6, PULSE | SAW | TRI), Some(0x3FC));
+        assert_eq!(w(M, PULSE | SAW | TRI), Some(0x7FE));
+        // Saw+tri at acc 0x600000: AND 0x400, isolated bit -> 0 on both.
         assert_eq!(waveform_output(m6, SAW | TRI, 0x60_0000, 0, 0, 0), Some(0));
-        assert_eq!(waveform_output(M, SAW | TRI, 0x60_0000, 0, 0, 0), Some(0x400));
+        assert_eq!(waveform_output(M, SAW | TRI, 0x60_0000, 0, 0, 0), Some(0));
+    }
+
+    /// The S2 pull as first written (a double loop over bit pairs), kept as
+    /// the reference for the recurrence in `neighbour_pull`.
+    fn pull_reference(and: u16, threshold: u32) -> u16 {
+        let mut out = 0u16;
+        for i in 0..12 {
+            if (and >> i) & 1 == 0 {
+                continue;
+            }
+            let pull: u32 = (0..12)
+                .filter(|&j| j != i && (and >> j) & 1 == 0)
+                .map(|j: i32| 1u32 << (11 - (i - j).abs()))
+                .sum();
+            if pull < threshold {
+                out |= 1 << i;
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn neighbour_pull_recurrence_matches_the_pairwise_sum() {
+        let thresholds = [
+            0u32, 1, 167, 761, 1024, 1219, 1314, 1536, 1792, 2031, 2048, 4096,
+        ];
+        for t in thresholds {
+            for a in 0..4096u16 {
+                assert_eq!(
+                    neighbour_pull(a, t),
+                    pull_reference(a, t),
+                    "{a:#05x} threshold {t}"
+                );
+            }
+        }
+        for c in 0..3 {
+            assert_eq!(
+                COMBINED_FITTED_8580[c][0x6A5],
+                neighbour_pull(0x6A5, PULL_THRESHOLDS_8580[c])
+            );
+            assert_eq!(
+                COMBINED_FITTED_6581[c][0xF3C],
+                neighbour_pull(0xF3C, PULL_THRESHOLDS_6581[c])
+            );
+        }
+    }
+
+    /// Mean 8-bit (OSC3-scale, `out >> 4`) level of `control` over the 4096
+    /// saw phases `acc = u << 12`, pulse held high (pw 0): the comparison
+    /// report's §2 measurement.
+    fn mean8(model: SidModel, control: u8) -> f64 {
+        let sum: u32 = (0..4096u32)
+            .map(|u| (waveform_output(model, control, u << 12, 0, 0, 0).unwrap() >> 4) as u32)
+            .sum();
+        sum as f64 / 4096.0
+    }
+
+    #[test]
+    fn combined_waveform_means_match_the_measured_levels() {
+        // Targets: .ai/sid-chip-comparison-report.md §2.1/§2.2 (reSID's
+        // measured tables, 4096 phases, pulse high). 8580 P+S+T has no
+        // reported figure: the geometric mean of P+S and S+T (DERIVED, see
+        // `PULL_THRESHOLDS_8580`). Before S5.12 R2: 8580 P+S 127.5, S+T 63.75,
+        // P+S+T 63.75; 6581 P+S 74.9, S+T 11.7, P+S+T 11.7.
+        let (m8, m6) = (SidModel::Sid8580, SidModel::Sid6581);
+        let cases = [
+            (m8, PULSE | SAW, 62.0),
+            (m8, SAW | TRI, 20.0),
+            (m8, PULSE | SAW | TRI, (62.0f64 * 20.0).sqrt()),
+            (m6, PULSE | SAW, 7.0),
+            (m6, SAW | TRI, 1.5),
+            (m6, PULSE | SAW | TRI, 0.4),
+        ];
+        for (model, control, want) in cases {
+            let got = mean8(model, control);
+            assert!(
+                (got / want - 1.0).abs() <= 0.15,
+                "{model:?} {control:#04x}: mean {got:.3}, want {want:.3} ±15%"
+            );
+        }
+        // The report's relationship: the 6581's pulse+saw is far below the
+        // 8580's (~7 vs ~62).
+        assert!(mean8(m6, PULSE | SAW) < mean8(m8, PULSE | SAW));
+        // Pulse gating is unchanged: pulse low (pw 0xFFF, phases below it)
+        // silences every pulse combination on both models.
+        for model in [m8, m6] {
+            for control in [PULSE | SAW, PULSE | TRI, PULSE | SAW | TRI] {
+                for u in (0..0xFFFu32).step_by(7) {
+                    assert_eq!(
+                        waveform_output(model, control, u << 12, 0, 0xFFF, 0),
+                        Some(0)
+                    );
+                }
+            }
+        }
     }
 
     #[test]

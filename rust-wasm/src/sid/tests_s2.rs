@@ -110,13 +110,18 @@ fn check_pin(model: SidModel, hash: u64, values: &[u32]) {
 /// (`filter::CUTOFF_CEILING_DELTA_HZ`): the program's fc 0x305 (8580 map
 /// ~4550 Hz) and fc 0x7F8+ now clamp. With the ceiling disabled the old pin
 /// still reproduced bit-exactly, so the ceiling is the whole change.
-const PIN_8580_HASH: u64 = 0x0203_91c3_3edb_562a;
+/// Re-captured again in S5.12 R2 for the fitted combined-waveform levels
+/// (the program's saw+tri at 4_410 and pulse+saw at 22_050; values 0-5,
+/// before 4_410, are unchanged). With the fitted thresholds set back to
+/// plain AND / 1536 and the old 6581 cutoff map, both old pins reproduced
+/// bit-exactly, so those two fixes are the whole change.
+const PIN_8580_HASH: u64 = 0xdcc0_3268_6ce7_5fb2;
 const PIN_8580_VALUES: [u32; 33] = [
-    0x3a2732a2, 0xbdaf3087, 0xbab77906, 0x3e82a673, 0x3e90d05f, 0xbe008509, 0xbe8f3a36,
-    0x3e7cbdcb, 0x3ec48b56, 0x3da806f8, 0xbd85e4d3, 0xbd8079b4, 0xbdc7b87f, 0xbe2aaa92,
-    0x3e36eaae, 0x3e9a659b, 0xbdb05b5a, 0x3e856725, 0x3c4cc161, 0xbdb530a2, 0x3e363d37,
-    0xbdde4763, 0x3dccaeb8, 0x3cb53336, 0x3c1443bb, 0x3abb0312, 0x3a22d2e0, 0xbeaa1a34,
-    0xbdfaf487, 0xbcd7d736, 0x3d4f7286, 0x3dfc1c91, 0xbe373268,
+    0x3a2732a2, 0xbdaf3087, 0xbab77906, 0x3e82a673, 0x3e90d05f, 0xbe008509, 0xbe75070c,
+    0x3e863d77, 0x3ee014eb, 0x3dc99392, 0xbc3fd25f, 0xbd3dd8ee, 0xbd352993, 0xbe1b8f53,
+    0x3e6d4caf, 0x3ea1993b, 0xbd0884cf, 0x3e827275, 0x3d8120d7, 0xbdaba425, 0x3e69e9f7,
+    0xbdbfc0ae, 0x3ddc3a11, 0x3d162f24, 0x3c8f11db, 0x3bb60fc8, 0x3b23fbc5, 0xbe9a9200,
+    0xbdd65304, 0xbdb64948, 0xbdb2fe7b, 0x3dc74b62, 0xbdc06f45,
 ];
 
 #[test]
@@ -127,14 +132,17 @@ fn pin_8580_render_is_bit_identical_to_s1() {
 /// Captured from S2's own 6581 on first green (NOT a derivation, NOT a
 /// hardware reference): future refactors must keep it bit-exact. Re-captured
 /// in S5.12 for the 4 kHz cutoff ceiling (the fc 0x7F8+ write at 13_230;
-/// values 0-16 are unchanged), same check as the 8580 pin.
-const PIN_6581_HASH: u64 = 0x638d_b490_6cc8_db08;
+/// values 0-16 are unchanged), same check as the 8580 pin. Re-captured
+/// again in S5.12 R2 for the fitted combined-waveform levels and the
+/// measured-anchor cutoff map (the fc 0x305 write at 0 moves 773.5 Hz ->
+/// 1642.0 Hz, so every value changes); same disable-and-reproduce check.
+const PIN_6581_HASH: u64 = 0xffd4_c8a5_a72a_fed7;
 const PIN_6581_VALUES: [u32; 33] = [
-    0x3dca67d9, 0xbd01e3ef, 0x3d1dbd2f, 0x3e2481ba, 0x3e72edd6, 0xbe011992, 0xbe413170,
-    0x3d6355ae, 0x3e942154, 0x3dbaa7ba, 0xbb80623b, 0xbe0a0cc4, 0xbd04dd8b, 0xbcb12bb5,
-    0xbcc06f77, 0x3cb29ca2, 0x3c96ad7f, 0x3d023257, 0xbc9e9695, 0x3d88a33e, 0x3ba6897e,
-    0x3d805f38, 0x3e030aff, 0x3cf82e76, 0x3c38e338, 0x3b3ef901, 0x3a977d42, 0xbe7cc121,
-    0xbda69722, 0xbd45f652, 0x3d51ff51, 0x3df7f587, 0xbda31be6,
+    0x3dca67b2, 0x3befbbea, 0x3cddd8cd, 0x3e42cdc6, 0x3e68d0f0, 0xbdad0da8, 0xbe455549,
+    0x3d82138f, 0x3e990a41, 0x3da4a948, 0xbc0520f5, 0xbe04e05e, 0xbd01f36c, 0xbcbd8bb0,
+    0xbcbb2204, 0x3ce2f218, 0x3cc519f6, 0x3d089adc, 0xbc2d3190, 0x3d9109f0, 0x3c62e24a,
+    0x3d8f135a, 0x3e0556cb, 0x3cfaf9e0, 0x3c39bce7, 0x3b3f7d7a, 0x3a97a591, 0xbe5d17bd,
+    0xbd2052f9, 0xbc45b33b, 0xbbfc4246, 0xbbe4bc7f, 0xbbfc3e9f,
 ];
 
 #[test]
@@ -206,8 +214,8 @@ fn same_program_both_models_sane_and_different() {
 #[test]
 fn each_instance_uses_its_own_filter_maps() {
     // Same register writes; each chip's filter reports its own map.
-    // Hand values from filter.rs: reg 0x200 -> 8580 3023.96 Hz, 6581 383.63
-    // Hz. Res 15 -> 8580 Q 0.707 * 2^1.875 = 0.707 * 3.668016 = 2.593287
+    // Hand values from filter.rs: reg 0x200 -> 8580 3023.96 Hz, 6581 420 Hz
+    // (a measured anchor since S5.12 R2; S2's logistic gave 383.63). Res 15 -> 8580 Q 0.707 * 2^1.875 = 0.707 * 3.668016 = 2.593287
     // (first written as 2.6093, an arithmetic slip the test caught);
     // 6581 1.681539.
     let mut a = chip(SidModel::Sid8580);
@@ -219,7 +227,7 @@ fn each_instance_uses_its_own_filter_maps() {
     assert_eq!(a.filter().model(), SidModel::Sid8580);
     assert_eq!(b.filter().model(), SidModel::Sid6581);
     assert!((a.filter().cutoff() - 3023.96).abs() < 0.01);
-    assert!((b.filter().cutoff() - 383.63).abs() < 0.05);
+    assert!((b.filter().cutoff() - 420.0).abs() < 1e-9);
     assert!((a.filter().q() - 2.593287).abs() < 1e-6);
     assert!((b.filter().q() - 1.681539).abs() < 1e-6);
     for c in [&a, &b] {
@@ -238,7 +246,9 @@ fn each_instance_uses_its_own_filter_maps() {
 fn filtered_saw_rms(m: SidModel, s: u8) -> f64 {
     let mut c = chip(m);
     c.write(REG_MODE_VOL, 0x1F);
-    fc(&mut c, 0x32B); // 6581 ~880 Hz (2nd harmonic); 8580 ~4.8 kHz
+    // 6581 ~882 Hz (2nd harmonic): 420 * (1600/420)^(142/256) (S5.12 R2
+    // map; S2 used 0x32B, which the logistic put at ~880 Hz). 8580 ~3.85 kHz.
+    fc(&mut c, 0x28E);
     c.write(REG_RES_FILT, 0xF1);
     freq(&mut c, V1, 7493);
     c.write(V1 + 5, 0x00);
@@ -286,19 +296,23 @@ fn osc3_at(m: SidModel, control: u8, pw: u16, n: u64) -> u8 {
 #[test]
 fn combined_waveforms_6581_are_attenuated_through_osc3() {
     // acc 0x600000: saw 0x600, tri 0xC00, pulse(pw 0x400) 0xFFF.
-    //   saw+tri:   AND 0x400 -> 8580 OSC3 0x40; 6581 pull: isolated bit 10
-    //              -> 0 (waveform.rs hand table).
-    //   pulse+saw: AND 0x600 -> 8580 0x60; 6581 0 (hand table, 0x600 row).
-    // acc 0xF00000: saw 0xF00, pulse high: AND 0xF00. 6581: bit 8 sees
-    //   zeros 7..0 at d 1..8 = 1024+512+...+8 = 2040 -> gone; bit 9 sees
-    //   d 2..9 = 1020 -> kept; bits 10, 11 kept -> 0xE00 -> OSC3 0xE0.
+    //   saw+tri:   AND 0x400, isolated bit 10 (pull 2048) -> 0 on both
+    //              models (S5.12 R2: the 8580 pulls too; waveform.rs).
+    //   pulse+saw: AND 0x600 -> 0 on both (waveform.rs hand values).
+    // acc 0xF00000: saw 0xF00, pulse high: AND 0xF00. Bit 8 sees zeros
+    //   7..0 at d 1..8 = 1024+512+...+8 = 2040; bit 9 d 2..9 = 1020; bit 10
+    //   510; bit 11 255. 8580 pulse+saw threshold 1314: bits 9-11 kept ->
+    //   0xE00 -> OSC3 0xE0. 6581 threshold 167: every bit gone -> 0x00.
+    // acc 0xFF0000: AND 0xFF0. Bit 8 sees zeros 3..0 at d 5..8 = 120 < 167
+    //   (kept), bit 7 240 (gone) -> 6581 0xF00 -> OSC3 0xF0.
     let (m8, m6) = (SidModel::Sid8580, SidModel::Sid6581);
-    assert_eq!(osc3_at(m8, SAW | TRI, 0, 0x600), 0x40);
+    assert_eq!(osc3_at(m8, SAW | TRI, 0, 0x600), 0x00);
     assert_eq!(osc3_at(m6, SAW | TRI, 0, 0x600), 0x00);
-    assert_eq!(osc3_at(m8, PULSE | SAW, 0x400, 0x600), 0x60);
+    assert_eq!(osc3_at(m8, PULSE | SAW, 0x400, 0x600), 0x00);
     assert_eq!(osc3_at(m6, PULSE | SAW, 0x400, 0x600), 0x00);
-    assert_eq!(osc3_at(m8, PULSE | SAW, 0x400, 0xF00), 0xF0);
-    assert_eq!(osc3_at(m6, PULSE | SAW, 0x400, 0xF00), 0xE0);
+    assert_eq!(osc3_at(m8, PULSE | SAW, 0x400, 0xF00), 0xE0);
+    assert_eq!(osc3_at(m6, PULSE | SAW, 0x400, 0xF00), 0x00);
+    assert_eq!(osc3_at(m6, PULSE | SAW, 0x400, 0xFF0), 0xF0);
     // Single waveforms: identical on both models.
     for ctl in [SAW, TRI, PULSE] {
         assert_eq!(osc3_at(m8, ctl, 0x400, 0x600), osc3_at(m6, ctl, 0x400, 0x600));

@@ -16,8 +16,8 @@
 //! plan's "3-pole" wording, see `.ai/sid-voice-core-verdict.md`: the
 //! datasheet's slopes fix 2 poles, and no third pole is added.
 //!
-//! Register maps: both are INFERRED tuning choices, not measurements. They
-//! are carried unchanged from S0 and are ears-gate items.
+//! Register maps (8580): both are INFERRED tuning choices, not
+//! measurements. They are carried unchanged from S0 and are ears-gate items.
 //! - Cutoff: 11-bit register (FC_LO bits 0-2, FC_HI bits 0-7). The 8580 curve
 //!   is documented as near-linear over the datasheet range, so
 //!   fc = 30 + reg * (12000 - 30) / 2047 Hz (5.85 Hz per step).
@@ -30,23 +30,22 @@
 //! 6581 (S2, plan §1.2 "static nonlinear remap of the cutoff register +
 //! level-dependent peak gain"). Same SVF, same taps, same mode bits; three
 //! things differ, all gated on `SidModel::Sid6581`:
-//! - Cutoff map. Public knowledge (C64 community measurements of many
-//!   chips): the 6581 cutoff is strongly nonlinear in the register. The
-//!   bottom of the range barely moves, the middle sweeps fast, the top
-//!   flattens, and the floor sits in the low hundreds of Hz rather than at
-//!   the datasheet's 30 Hz. It also varies a lot from chip to chip. The shape
-//!   is modelled as a logistic curve in log-frequency, normalised to hit both
-//!   endpoints exactly:
-//!     x = reg / 2047,  sig(u) = 1 / (1 + e^-u)
-//!     s(x) = (sig(K (x - 1/2)) - sig(-K/2)) / (sig(K/2) - sig(-K/2))
-//!     fc = F_LO * (F_HI / F_LO)^s(x)
-//!   s(0) = 0, s(1) = 1, s strictly increasing, and s(1 - x) = 1 - s(x), so
-//!   fc(reg) * fc(2047 - reg) = F_LO * F_HI: the curve is geometrically
-//!   symmetric about sqrt(F_LO * F_HI) = 1989.97 Hz.
-//!   INFERRED: the logistic form, F_LO = 220 Hz, F_HI = 18 kHz and K = 7
-//!   are tuning guesses for "one representative chip", chosen to match the
-//!   qualitative description above. No measured curve was used (the
-//!   published ones are per-chip and sit inside GPL emulators). Ears-gate.
+//! - Cutoff map (S5.12 R2; S2's logistic curve replaced). Public knowledge
+//!   (C64 community measurements of many chips): the 6581 cutoff is
+//!   strongly nonlinear in the register. The bottom of the range barely
+//!   moves and the floor sits in the low hundreds of Hz rather than at the
+//!   datasheet's 30 Hz. It also varies a lot from chip to chip. The
+//!   published nominal curve has two pieces: FC_HI bit 7 has its own DAC
+//!   weight, so the curve steps DOWN from ~6 kHz at 0x3FF to ~4.6 kHz at
+//!   0x400 and then rises again to 18 kHz. Modelled as log-linear
+//!   interpolation through measured anchors, one anchor set per piece:
+//!     0 220 Hz, 0x200 420, 0x300 1600, 0x3FF 6000 |
+//!     0x400 4600, 0x500 9500, 0x600 14500, 0x7FF 18000
+//!   Each piece is strictly monotonic. The 0x3FF -> 0x400 drop is the one
+//!   deliberate non-monotonicity. The anchors are measured facts and the
+//!   values between them are derived; see the DERIVED-VALUE disclosure at
+//!   `CUTOFF_ANCHORS_6581_LO`. The old map was 2-3x too dark across FC_HI
+//!   $50-$7F (report §6.3). Ears-gate.
 //! - Resonance map: Q = 0.707 * 2^(res / 12) (Butterworth at 0, Q 1.68 =
 //!   +4.5 dB at 15). INFERRED from the public description of the 6581's
 //!   resonance as clearly weaker and rounder than the 8580's; the exponent
@@ -86,27 +85,71 @@ pub fn resonance_q(res: u8) -> f64 {
     0.707 * 2f64.powf((res & 0xF) as f64 / 8.0)
 }
 
-/// 6581 cutoff floor (register 0), Hz. INFERRED tuning (see header).
+/// 6581 cutoff floor (register 0), Hz.
 pub const F_LO_6581: f64 = 220.0;
-/// 6581 cutoff ceiling (register 0x7FF), Hz. INFERRED tuning.
-pub const F_HI_6581: f64 = 18_000.0;
-/// Steepness of the 6581 logistic cutoff curve. INFERRED tuning.
-pub const K_6581: f64 = 7.0;
 /// Soft limit of the 6581 band-pass state (one full-scale voice). INFERRED.
 pub const SAT_6581: f64 = 1.0;
 
-#[inline]
-fn sigmoid(u: f64) -> f64 {
-    1.0 / (1.0 + (-u).exp())
+/// 6581 cutoff anchors (register, Hz), low piece: registers 0..=0x3FF
+/// (FC_HI bit 7 clear).
+///
+/// DERIVED-VALUE DISCLOSURE (S5.12 R2, both anchor sets).
+/// - Measured facts: every anchor except the two ends is a figure quoted in
+///   `.ai/sid-chip-comparison-report.md` §6.3 and the S5.12 brief, which
+///   summarise the published 6581 cutoff measurements (Antti Lankila's
+///   6581 filter / cutoff measurement write-ups, bel.fi/~ankila/, as cited
+///   in the brief): ~420 Hz at 0x200, ~1.6 kHz at 0x300, ~6 kHz at 0x3FF,
+///   a step DOWN to ~4.6 kHz at 0x400 (FC_HI $7F -> $80, where the top bit's
+///   different DAC weight lands), ~9.5 kHz at 0x500, ~14.5 kHz at 0x600.
+///   The ends, 220 Hz at 0 and 18 kHz at 0x7FF, are the published range of
+///   that nominal curve (6581R4AR). The report states them as the range of
+///   reSID's curve. They are also this map's previous endpoints.
+/// - Derived: every value between anchors. It is log-linear (exponential
+///   in the register) within each segment, so each piece is strictly
+///   monotonic. reSID interpolates its measured points with a spline. That
+///   spline and its point list (reSID filter.cpp) are GPL and were NOT used.
+///   The anchors are rounded published figures, not reSID's points.
+/// - Expected tolerance vs reSID's spline: within ±5% at the anchors, and
+///   ±15% between them in the 1-10 kHz region. The log-linear chords sit
+///   below a convex curve. Ears-gate.
+pub const CUTOFF_ANCHORS_6581_LO: [(u16, f64); 4] = [
+    (0, F_LO_6581),
+    (0x200, 420.0),
+    (0x300, 1_600.0),
+    (0x3FF, 6_000.0),
+];
+/// 6581 cutoff anchors, high piece: registers 0x400..=0x7FF (FC_HI bit 7
+/// set). Disclosure at `CUTOFF_ANCHORS_6581_LO`.
+pub const CUTOFF_ANCHORS_6581_HI: [(u16, f64); 4] = [
+    (0x400, 4_600.0),
+    (0x500, 9_500.0),
+    (0x600, 14_500.0),
+    (0x7FF, 18_000.0),
+];
+
+/// Log-linear interpolation through `anchors`. `reg` must lie within the
+/// anchors' span (the first anchor to the last).
+fn log_interp(anchors: &[(u16, f64)], reg: u16) -> f64 {
+    let seg = anchors
+        .windows(2)
+        .find(|w| reg <= w[1].0)
+        .expect("reg inside the anchor span");
+    let ((r0, f0), (r1, f1)) = (seg[0], seg[1]);
+    if reg == r1 {
+        return f1;
+    }
+    let t = (reg - r0) as f64 / (r1 - r0) as f64;
+    f0 * (f1 / f0).powf(t)
 }
 
-/// 6581 cutoff register -> Hz: the normalised log-logistic curve (header).
+/// 6581 cutoff register -> Hz: the two-piece measured-anchor curve (header).
 pub fn cutoff_hz_6581(reg: u16) -> f64 {
-    let x = (reg & 0x7FF) as f64 / 2047.0;
-    let lo = sigmoid(-K_6581 / 2.0);
-    let hi = sigmoid(K_6581 / 2.0);
-    let s = ((sigmoid(K_6581 * (x - 0.5)) - lo) / (hi - lo)).clamp(0.0, 1.0);
-    F_LO_6581 * (F_HI_6581 / F_LO_6581).powf(s)
+    let reg = reg & 0x7FF;
+    if reg < 0x400 {
+        log_interp(&CUTOFF_ANCHORS_6581_LO, reg)
+    } else {
+        log_interp(&CUTOFF_ANCHORS_6581_HI, reg)
+    }
 }
 
 /// 6581 resonance nibble -> Q.
@@ -409,38 +452,54 @@ mod tests {
     }
 
     #[test]
-    fn map_6581_endpoints_symmetry_and_a_hand_point() {
-        // s(0) = 0 -> F_LO; s(1) = 1 -> F_HI (exact up to rounding).
+    fn map_6581_endpoints_anchors_and_a_hand_point() {
+        // Endpoints: 220 Hz floor at 0, 18 kHz at 0x7FF.
         assert!((cutoff_hz_6581(0) - 220.0).abs() < 1e-9);
         assert!((cutoff_hz_6581(0x7FF) - 18_000.0).abs() < 1e-6);
         assert_eq!(cutoff_hz_6581(0x800), cutoff_hz_6581(0)); // 11 bits only
-        // Geometric symmetry: fc(r) * fc(2047 - r) = 220 * 18000 = 3.96e6.
-        for r in (0..=2047u16).step_by(97) {
-            let p = cutoff_hz_6581(r) * cutoff_hz_6581(2047 - r);
-            assert!((p / 3.96e6 - 1.0).abs() < 1e-12, "reg {r}: {p}");
+        assert_eq!(cutoff_hz_6581(0xFFFF), cutoff_hz_6581(0x7FF));
+        // Measured anchors (.ai/sid-chip-comparison-report.md §6.3), ±5%.
+        for (reg, want) in [
+            (0x200u16, 420.0),
+            (0x300, 1_600.0),
+            (0x3FF, 6_000.0),
+            (0x400, 4_600.0),
+            (0x500, 9_500.0),
+            (0x600, 14_500.0),
+        ] {
+            let got = cutoff_hz_6581(reg);
+            assert!(
+                (got / want - 1.0).abs() < 0.05,
+                "reg {reg:#05x}: {got} Hz, want {want}"
+            );
         }
-        // Hand point, reg 0x200: x = 512/2047 = 0.250122.
-        //   sig(7 * (0.250122 - 0.5)) = sig(-1.749145) = 1/(1 + 5.74983) = 0.148152
-        //   sig(-3.5) = 1/(1 + 33.11545) = 0.029312; sig(3.5) = 0.970688
-        //   s = (0.148152 - 0.029312) / 0.941376 = 0.126241
-        //   fc = 220 * 81.8182^0.126241 = 220 * e^(0.126241 * 4.404499)
-        //      = 220 * e^0.556027 = 220 * 1.743762 = 383.63 Hz
-        // The 8580 map puts the same register at 30 + 512 * 5.84758 = 3023.96 Hz.
-        assert!((cutoff_hz_6581(0x200) - 383.63).abs() < 0.05, "{}", cutoff_hz_6581(0x200));
-        assert!((cutoff_hz(0x200) - 3023.96).abs() < 0.01);
+        // Hand point, reg 0x280, halfway (in register) between the 0x200 and
+        // 0x300 anchors, so halfway in log f: sqrt(420 * 1600) = 819.756 Hz.
+        // The 8580 map puts the same register at 30 + 640 * 5.84758 = 3772.45 Hz.
+        assert!(
+            (cutoff_hz_6581(0x280) - 819.756).abs() < 0.01,
+            "{}",
+            cutoff_hz_6581(0x280)
+        );
+        assert!((cutoff_hz(0x280) - 3772.45).abs() < 0.01);
     }
 
     #[test]
-    fn map_6581_is_strictly_monotonic_and_unlike_the_8580() {
-        for r in 0..2047u16 {
-            assert!(cutoff_hz_6581(r + 1) > cutoff_hz_6581(r), "reg {r}");
+    fn map_6581_is_monotonic_per_piece_with_the_fc_hi_step_and_unlike_the_8580() {
+        // Strictly rising within each piece (0..=0x3FF, 0x400..=0x7FF); the
+        // one deliberate drop is 0x3FF -> 0x400 (~6 kHz -> ~4.6 kHz), the
+        // FC_HI $7F/$80 step.
+        for r in (0..0x3FFu16).chain(0x400..0x7FF) {
+            assert!(cutoff_hz_6581(r + 1) > cutoff_hz_6581(r), "reg {r:#05x}");
         }
-        // Bottom quarter: the 6581 barely moves (220 -> ~384 Hz) where the
+        assert!(cutoff_hz_6581(0x400) < cutoff_hz_6581(0x3FF) * 0.85);
+        // Bottom quarter: the 6581 barely moves (220 -> ~420 Hz) where the
         // 8580 sweeps 30 -> ~3 kHz; the top ends 18 kHz vs 12 kHz.
-        assert!(cutoff_hz_6581(0x200) / cutoff_hz_6581(0) < 1.8);
+        assert!(cutoff_hz_6581(0x200) / cutoff_hz_6581(0) < 2.0);
         assert!(cutoff_hz(0x200) / cutoff_hz(0) > 100.0);
-        // Hand values: reg 0 -> 220 vs 30 (x7.3); 0x100 -> ~263 vs 1527
-        // (x5.8); 0x200 -> 384 vs 3024 (x7.9); 0x7FF -> 18000 vs 12000 (x1.5).
+        // Hand values: reg 0 -> 220 vs 30 (x7.3); 0x100 -> sqrt(220 * 420)
+        // = 304 vs 1527 (x5.0); 0x200 -> 420 vs 3024 (x7.2); 0x7FF -> 18000
+        // vs 12000 (x1.5).
         for r in [0u16, 0x100, 0x200, 0x7FF] {
             let (a, b) = (cutoff_hz_6581(r), cutoff_hz(r));
             assert!((a / b).max(b / a) > 1.45, "reg {r}: 6581 {a} vs 8580 {b}");
@@ -490,8 +549,9 @@ mod tests {
     #[test]
     fn filter_6581_small_signal_peak_is_q_and_compresses_with_level() {
         // Small signal: tanh is linear to ~u^2/3, so |H_LP(fc)| = Q within
-        // the same 2 % the 8580 test uses.
-        let reg = 0x400;
+        // the same 2 % the 8580 test uses. Reg 0x300 (~1.6 kHz) keeps the
+        // map below the 4 kHz ceiling, so the probe sits on the real fc.
+        let reg = 0x300;
         let fc = cutoff_hz_6581(reg);
         for res in [0u8, 8, 15] {
             let g = sine_gain_6581(LP, reg, res, fc, 0.01);
