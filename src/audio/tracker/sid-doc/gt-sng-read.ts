@@ -217,9 +217,6 @@ function readGts5(bytes: Uint8Array, notes: GtImportNote[], hints: GtSongHints):
   const instruments: SidInstrument[] = s.instruments.map((b, i) => {
     const gate = b[7]!;
     const noGateOff = (gate & GT_GATE_NO_GATEOFF) !== 0;
-    if (noGateOff) {
-      notes.push({ kind: 'no-gateoff', message: `instrument ${i + 1}: HR/Gate Timer $${hex(gate)} disables gate-off, which the doc has no flag for; imported as gate timer 0` });
-    }
     const ptrs = [b[2]!, b[3]!, b[4]!, b[5]!];
     ptrs.forEach((ptr, t) => {
       const table = tableRows[t]!;
@@ -243,8 +240,9 @@ function readGts5(bytes: Uint8Array, notes: GtImportNote[], hints: GtSongHints):
       pulseWidth: 0,
       filter: { enabled: false, cutoff: 0, resonance: 0, mode: 0 },
       firstWave: b[8]!,
-      gateTimer: noGateOff ? 0 : gate & 0x3f,
+      gateTimer: gate & 0x3f,
       hardRestart: (gate & GT_GATE_NO_HARD_RESTART) === 0,
+      noGateOff,
       vibratoDelay: b[6]!,
       wavePtr: ptrs[0]!,
       pulsePtr: ptrs[1]!,

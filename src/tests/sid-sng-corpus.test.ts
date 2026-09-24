@@ -154,10 +154,8 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
           where,
         ).toEqual([b[2], b[3], b[4], b[5], b[6], b[8]]);
         expect(ins.hardRestart, where).toBe((b[7]! & 0x80) === 0);
-        // $40 (no gate-off) has no doc flag: the timer is 0 then (`no-gateoff`).
-        expect(ins.gateTimer, where).toBe(
-          (b[7]! & 0x40) === 0 ? b[7]! & 0x3f : 0,
-        );
+        expect(ins.noGateOff, where).toBe((b[7]! & 0x40) !== 0);
+        expect(ins.gateTimer, where).toBe(b[7]! & 0x3f);
         expect(ins.name, where).toBe(
           String.fromCharCode(...b.subarray(9, 25)).replace(/\0.*$/s, ''),
         );
@@ -311,7 +309,6 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
     // kalachnikov/sid_warrior.sng (instrument 1's speed pointer 29, 1-row table).
     expect(byKind).toEqual({
       'table-padded': 3,
-      'no-gateoff': 1,
       'loop-transpose': 3,
       'gt1-convert': 77,
       'gt1-dropped': 25,
@@ -321,13 +318,13 @@ describe('the GoatTracker corpus (fixtures/gt-songs)', () => {
       'mch/balcony_princess.sng',
       'mch/in_a_rush.sng',
     ]);
-    expect([...filesOf['no-gateoff']!]).toEqual(['stinsen/upsandowns.sng']);
     expect([...filesOf['loop-transpose']!]).toEqual(['stinsen/game_tune.sng']);
-    // Every GTS5 file other than those five imports with nothing to report.
+    // Every GTS5 file other than those four imports with nothing to report
+    // (upsandowns' $40 instrument became the doc's noGateOff flag: 57 -> 58).
     const quiet = [...imports].filter(
       ([, r]) => r.variant === 'GTS5' && r.notes.length === 0,
     );
-    expect(quiet).toHaveLength(57);
+    expect(quiet).toHaveLength(58);
     // GTS! is a conversion: eight of the 22 GT1 files have nothing to report.
     const gt1Quiet = [...imports]
       .filter(([, r]) => r.variant === 'GTS!' && r.notes.length === 0)

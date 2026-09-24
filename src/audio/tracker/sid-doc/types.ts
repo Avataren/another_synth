@@ -182,6 +182,12 @@ export interface SidInstrument {
   readonly gateTimer: number;
   /** Whether the early gate-off also zeroes the envelope (hard restart), as GT does by default. */
   readonly hardRestart: boolean;
+  /**
+   * GoatTracker's gate-timer bit $40: a note of THIS instrument (the one the
+   * next row names) is not preceded by the early gate-off or hard restart.
+   * The gate timer still sets when the next row is read (its key off/on).
+   */
+  readonly noGateOff: boolean;
   /** Frames after a note before the instrument's vibrato starts, 0..255. */
   readonly vibratoDelay: number;
   /** 1-based rows of the four tables this instrument starts on; 0 = none. */

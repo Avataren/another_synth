@@ -177,6 +177,8 @@ pub struct Chip {
     /// Register writes waiting for their cycle (`write_after`): (chip cycle,
     /// register, value), in the order they were scheduled.
     pending: Vec<(u64, u8, u8)>,
+    /// The last byte written to each register (`written`).
+    written: [u8; 32],
 }
 
 /// All three voices heard: the mask of a powered-on chip.
@@ -220,6 +222,7 @@ impl Chip {
             dc_r: (-2.0 * std::f64::consts::PI * DC_BLOCK_HZ / sample_rate).exp(),
             voice_mask: ALL_VOICES,
             pending: Vec::new(),
+            written: [0; 32],
             trim: match model {
                 SidModel::Sid8580 => GAIN_TRIM_8580,
                 SidModel::Sid6581 => profile.gain_trim,
@@ -327,8 +330,16 @@ impl Chip {
         }
     }
 
+    /// The last byte written to register `reg` (applied writes only): the
+    /// SID's registers are write-only, so this is the writer's view, for
+    /// comparing a player's register stream with another's.
+    pub fn written(&self, reg: u8) -> u8 {
+        self.written[(reg & 0x1F) as usize]
+    }
+
     pub fn write(&mut self, reg: u8, val: u8) {
         let reg = reg & 0x1F;
+        self.written[reg as usize] = val;
         match reg {
             0x00..=0x14 => {
                 let v = &mut self.voices[(reg / 7) as usize];

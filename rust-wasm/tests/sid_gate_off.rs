@@ -91,7 +91,10 @@ fn one_voice(wave: Vec<TableRow>, row0_cmd: (u8, u8), row1: Row) -> SidSongPlaye
         copyright: Vec::new(),
         subsongs: vec![Subsong { orderlists: vec![list(0), list(1), list(1)] }],
         patterns: vec![p0, blank],
-        instruments: vec![Instrument { name: b"g".to_vec(), decay: 9, wave_ptr: 1, ..Default::default() }],
+        // A waveform of its own (the table overwrites it on the trigger frame):
+        // a GT-style instrument (waveform 0) with first-frame $00 would keep a
+        // fresh channel's gate shut and skip the table on that frame (S5.19).
+        instruments: vec![Instrument { name: b"g".to_vec(), decay: 9, waveform: 0x10, wave_ptr: 1, ..Default::default() }],
         tables: Tables { wave, ..Default::default() },
     };
     let song = SidSong::parse(&song.to_bytes()).expect("parses");

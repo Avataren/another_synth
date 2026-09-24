@@ -150,6 +150,7 @@ describe('GTS5 (readme §6.1)', () => {
       firstWave: 9,
       gateTimer: 2,
       hardRestart: true,
+      noGateOff: false,
       vibratoDelay: 7,
       wavePtr: 1,
       pulsePtr: 1,
@@ -160,12 +161,14 @@ describe('GTS5 (readme §6.1)', () => {
       doc.instruments[1]!.gateTimer,
       doc.instruments[1]!.hardRestart,
     ]).toEqual([3, false]);
-    // $40 (no gate-off) has no doc flag: timer 0, reported.
+    // $40 (no gate-off) is the doc's noGateOff flag; the timer is kept (it
+    // still says when the next row is read).
     expect([
       doc.instruments[2]!.gateTimer,
       doc.instruments[2]!.hardRestart,
-    ]).toEqual([0, true]);
-    expect(notes.map((n) => n.kind)).toEqual(['no-gateoff']);
+      doc.instruments[2]!.noGateOff,
+    ]).toEqual([2, true, true]);
+    expect(notes).toEqual([]);
     expect(doc.tables.filter).toEqual([{ left: 0x90, right: 0xf1 }]);
   });
 

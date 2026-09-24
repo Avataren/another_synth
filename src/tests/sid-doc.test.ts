@@ -56,6 +56,7 @@ function limitsDoc(): SidDoc {
     firstWave: 0xff,
     gateTimer: 63,
     hardRestart: true,
+    noGateOff: i % 3 === 0,
     vibratoDelay: 0xff,
     wavePtr: 255,
     pulsePtr: 255,

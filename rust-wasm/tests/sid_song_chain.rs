@@ -105,28 +105,32 @@ fn the_song_plays_on_a_chip_of_its_own_model_frame_by_frame() {
             }
             _ => {}
         }
-        // The pulse table: 0x400 on the trigger frame, then +0x10 a frame for
-        // 32 frames (0x600 at frame 80), then -0x10 (0x5F0 at frame 81).
+        // The pulse table: the note's frame skips it as GT's does (S5.19), so
+        // the instrument's own 0x400 there; the table's 0x400 on frame 49,
+        // then +0x10 a frame for 32 frames (0x600 at frame 81), then -0x10
+        // (0x5F0 at frame 82).
         match f {
-            48..=52 => assert_eq!(v2.pulse_width(), 0x400 + 0x10 * (f as u16 - 48), "frame {f}"),
-            80 => assert_eq!(v2.pulse_width(), 0x600),
-            81 => assert_eq!(v2.pulse_width(), 0x5F0),
+            48 => assert_eq!(v2.pulse_width(), 0x400),
+            49..=53 => assert_eq!(v2.pulse_width(), 0x400 + 0x10 * (f as u16 - 49), "frame {f}"),
+            81 => assert_eq!(v2.pulse_width(), 0x600),
+            82 => assert_eq!(v2.pulse_width(), 0x5F0),
             _ => {}
         }
         // Row 10 = frame 60: voice 3 E-3 + 5 = A-3 on "Filt saw"; its filter
-        // table: LP, $17 = 0xC4 (resonance 12, voice 3 routed) and, on the same
-        // frame 60, the cutoff-set row after it (GT combines them,
-        // gplay.c:271-275: 0x20<<3), then +2<<3 a frame for 64 frames from
-        // frame 61 (0x500 at 124), then the table stops.
+        // table, heard from the frame after the note's (the filter registers
+        // are the frame's first, GT's order, S5.19): LP, $17 = 0xC4 (resonance
+        // 12, voice 3 routed) and, on the same frame 61, the cutoff-set row
+        // after it (GT combines them, gplay.c:271-275: 0x20<<3), then +2<<3 a
+        // frame for 64 frames from frame 62 (0x500 at 125), then the table stops.
         match f {
-            60 => {
-                assert_eq!((v3.frequency(), v3.control()), (a3, 0x21));
+            60 => assert_eq!((v3.frequency(), v3.control()), (a3, 0x21)),
+            61 => {
                 let fl = chip.filter();
                 assert_eq!((fl.mode() & 0x70, fl.resonance(), fl.cutoff_reg()), (0x10, 12, 0x100));
             }
-            61..=63 => assert_eq!(chip.filter().cutoff_reg(), 0x100 + 0x10 * (f as u16 - 60), "frame {f}"),
-            123 => assert_eq!(chip.filter().cutoff_reg(), 0x4F0),
-            124 | 125 | 130 => assert_eq!(chip.filter().cutoff_reg(), 0x500, "frame {f}"),
+            62..=64 => assert_eq!(chip.filter().cutoff_reg(), 0x100 + 0x10 * (f as u16 - 61), "frame {f}"),
+            124 => assert_eq!(chip.filter().cutoff_reg(), 0x4F0),
+            125 | 126 | 131 => assert_eq!(chip.filter().cutoff_reg(), 0x500, "frame {f}"),
             _ => {}
         }
         // Row 16 = frame 96: key off; the envelope releases.

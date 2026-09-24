@@ -33,7 +33,7 @@ import {
  *          attack<<4|decay, sustain<<4|release, waveform, pulse width low,
  *          pulse width high (0..15), cutoff low, cutoff high (0..7),
  *          resonance<<4|filter-enabled<<3|mode, first-frame waveform,
- *          hard-restart<<7|gate timer (bit 6 clear), vibrato delay,
+ *          hard-restart<<7|no-gate-off<<6|gate timer, vibrato delay,
  *          wave, pulse, filter and speed table pointers
  *      4x  the wave, pulse, filter and speed tables: a row count N 0..255,
  *          N left bytes, then N right bytes (GoatTracker's column layout)
@@ -86,7 +86,7 @@ export function serializeSidFile(doc: SidDoc): Uint8Array {
       ins.filter.cutoff >> 8,
       (ins.filter.resonance << 4) | (ins.filter.enabled ? 0x08 : 0) | ins.filter.mode,
       ins.firstWave,
-      (ins.hardRestart ? 0x80 : 0) | ins.gateTimer,
+      (ins.hardRestart ? 0x80 : 0) | (ins.noGateOff ? 0x40 : 0) | ins.gateTimer,
       ins.vibratoDelay,
       ins.wavePtr,
       ins.pulsePtr,
@@ -181,7 +181,6 @@ export function parseSidFile(bytes: Uint8Array): SidDoc {
     ];
     if (pwHi > 0x0f) throw new Error(`instrument ${i + 1}: the pulse width's high byte is over 15`);
     if (cutHi > 0x07) throw new Error(`instrument ${i + 1}: the cutoff's high byte is over 7`);
-    if ((gate & 0x40) !== 0) throw new Error(`instrument ${i + 1}: a reserved gate-timer bit is set`);
     instruments.push({
       name,
       attack: ad >> 4,
@@ -194,6 +193,7 @@ export function parseSidFile(bytes: Uint8Array): SidDoc {
       firstWave,
       gateTimer: gate & 0x3f,
       hardRestart: (gate & 0x80) !== 0,
+      noGateOff: (gate & 0x40) !== 0,
       vibratoDelay,
       wavePtr,
       pulsePtr,

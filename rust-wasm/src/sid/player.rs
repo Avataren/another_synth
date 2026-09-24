@@ -28,7 +28,9 @@
 //!      3, 4, or 0's instrument vibrato); the pulse table; then the (global)
 //!      filter table;
 //!   3. the hard restart: `gate_timer` frames before a row that triggers a
-//!      note, the gate is cleared, and with `hard_restart` AD/SR go to 0;
+//!      note, the gate is cleared (unless that row's instrument has
+//!      `no_gate_off`), and with that instrument's `hard_restart` AD $0F /
+//!      SR 0 (S5.17, S5.19);
 //!   4. every register is written: per voice frequency, pulse
 //!      width, AD, SR, then control (`waveform & gate mask`, below); then
 //!      cutoff, resonance/routing and mode/volume.
@@ -81,9 +83,10 @@
 //!     (the row lasts left + 1 frames; pinned in S5); 0x10..=0xDF
 //!     sets the waveform to `left` whole, 0xE0..=0xEF to `left & 0x0F`, the
 //!     gate bit kept in both (gplay.c:525, 527; S5.9), 0x00 keeps it,
-//!     0xF0..=0xFE (GT's table commands): $F5 sets AD and $F6 sets SR to
-//!     the right column (S5.17), the rest are not modelled and only advance
-//!     (the right column is not a note). right, GT's arithmetic
+//!     0xF0..=0xFE (GT's table commands, `wave_command`): the pattern
+//!     command of the low nibble with the right column as its parameter,
+//!     for that frame (S5.17: $F5/$F6; S5.19: the rest; $F0, $F8 and $FE,
+//!     which stop GT's song, only advance). right, GT's arithmetic
 //!     (S5.10, gplay.c:714-721): 0x00..=0x7F added to the channel's note,
 //!     0x80 no change, 0x81..=0xFF the absolute note, then `& 0x7F`, into the
 //!     128-entry table (96 notes, then zeros: `gt_note_freq_reg`). This right
@@ -131,7 +134,7 @@ const CONTROL_EXTRA: u64 = 4;
 /// note at level for ~33 ms before it releases: GT's audible tail after a hit.
 const HARD_RESTART_AD: u8 = 0x0F;
 use super::song::{
-    Instrument, Row, SidSong, TableRow, NOTE_FIRST, NOTE_KEY_OFF, NOTE_KEY_ON, NOTE_LAST,
+    Instrument, InstrumentFilter, Row, SidSong, TableRow, NOTE_FIRST, NOTE_KEY_OFF, NOTE_KEY_ON, NOTE_LAST,
     SID_CHANNELS,
 };
 use super::waveform::GATE;
@@ -157,7 +160,6 @@ struct Channel {
     /// for the fine vibrato's step.
     last_note: u8,
     freq: u16,
-    target: Option<u16>,
     gate: bool,
     waveform: u8,
     ad: u8,
@@ -223,6 +225,11 @@ pub struct SidSongPlayer {
     res_filt: u8,
     mode: u8,
     volume: u8,
+    /// $15-$18 as this frame writes them: GT runs the filter table and sets
+    /// these at the top of its frame, before the channels (gplay.c:252-302),
+    /// so a row's filter command or a new instrument's filter table is heard
+    /// from the next frame.
+    filter_regs: [u8; 4],
     // Transport (S4).
     song_rows: u64,
     rows_played: u64,
@@ -285,6 +292,9 @@ impl SidSongPlayer {
         let samples_per_frame = sample_rate / (FRAME_HZ * song.speed_multiplier as f64);
         let mult = song.speed_multiplier.max(1);
         for ch in channels.iter_mut() {
+            // GT starts every channel on instrument 1 (gplay.c:62), so its
+            // gate timer brings the hard restart before a channel's first note.
+            ch.instrument = if song.instruments.is_empty() { 0 } else { 1 };
             // The first frame decrements to 0 and starts the first row.
             ch.tick = 1;
             ch.fixed = song.tempo.max(1);
@@ -310,6 +320,7 @@ impl SidSongPlayer {
             res_filt: 0,
             mode: 0,
             volume: 15,
+            filter_regs: [0, 0, 0, 15],
             song_rows,
             rows_played: 0,
             loop_rows: None,
@@ -532,6 +543,13 @@ impl SidSongPlayer {
 
     fn frame_core(&mut self) {
         self.row_ended = false;
+        self.filter_step();
+        self.filter_regs = [
+            (self.cutoff & 0x07) as u8,
+            (self.cutoff >> 3) as u8,
+            self.res_filt,
+            (self.mode << 4) | self.volume,
+        ];
         if !self.preview {
             // GT's per-channel tick, in channel order (gplay.c:319-333): a
             // command E/F on a row changes the tempo of channels after it in
@@ -550,10 +568,11 @@ impl SidSongPlayer {
             if !self.wave_step(c) {
                 self.continuous(c);
             }
-            self.pulse_step(c);
+            if !self.pulse_skipped(c) {
+                self.pulse_step(c);
+            }
             self.hard_restart(c);
         }
-        self.filter_step();
         self.write_registers();
         for ch in self.channels.iter_mut() {
             ch.first_frame = false;
@@ -670,23 +689,21 @@ impl SidSongPlayer {
         if (NOTE_FIRST..=NOTE_LAST).contains(&row.note) {
             let note = note_index(row.note, self.channels[c].transpose);
             self.new_note(c, note);
-            if tone_porta {
-                // Tie-note and glide rows: no trigger, and no tick-0 pitch
-                // write. GT's realtime optimisation (goattrk2.c:55
-                // optimizerealtime = 1) skips the tick-N effects on tick 0
-                // (gplay.c:728), so the `3 00` instant jump ("$00 ... move
-                // pitch instantly to target note", readme §3.2; gplay.c:807-811,
-                // "ST = 00 slides instantly", commands PDF p.1) lands on tick 1
-                // and is re-asserted every tick the command stands (see
-                // continuous, command 3). Pinned in S5: 4791 raw pattern rows
-                // (not orderlist-expanded) in 56 of the 61 GTS5 corpus songs
-                // are `3 00` with a real note (4930 with key-offs). Phase
-                // aligned in S5.6 (.ai/sid-crosscheck-verdict.md (a), 1).
-                let ch = &mut self.channels[c];
-                ch.target = Some(gt_note_freq_reg(note));
-            } else {
+            if !tone_porta {
                 self.trigger(c, note);
             }
+            // Tie-note and glide rows: no trigger, and no tick-0 pitch
+            // write. GT's realtime optimisation (goattrk2.c:55
+            // optimizerealtime = 1) skips the tick-N effects on tick 0
+            // (gplay.c:728), so the `3 00` instant jump ("$00 ... move
+            // pitch instantly to target note", readme §3.2; gplay.c:807-811,
+            // "ST = 00 slides instantly", commands PDF p.1) lands on tick 1
+            // and is re-asserted every tick the command stands (see
+            // continuous, command 3). Pinned in S5: 4791 raw pattern rows
+            // (not orderlist-expanded) in 56 of the 61 GTS5 corpus songs
+            // are `3 00` with a real note (4930 with key-offs). Phase
+            // aligned in S5.6 (.ai/sid-crosscheck-verdict.md (a), 1).
+            // The glide's goal is the channel's note (`tone_porta`).
         } else if row.note == NOTE_KEY_OFF {
             self.channels[c].gate = false;
         } else if row.note == NOTE_KEY_ON {
@@ -731,9 +748,16 @@ impl SidSongPlayer {
                 self.filter_ptr = p;
                 self.filter_time = 0;
             }
-            0xB => self.res_filt = p,
+            // B 00 also stops the filter table (gplay.c:468-471).
+            0xB => {
+                self.res_filt = p;
+                if p == 0 {
+                    self.filter_ptr = 0;
+                }
+            }
             0xC => self.cutoff = (p as u16) << 3,
-            0xD => self.volume = p & 0x0F,
+            // GT ignores a volume of $10 up (gplay.c:477-479).
+            0xD if p < 0x10 => self.volume = p,
             // Funktempo (gplay.c:483-492): a speed-table row's two lengths
             // (each minus 1) become the alternating row lengths, and every
             // channel switches to funktempo.
@@ -781,12 +805,17 @@ impl SidSongPlayer {
         let ins = self.instrument(c).cloned();
         let bit = 1u8 << c;
         let ch = &mut self.channels[c];
-        // The pitch GT's wave table sets on the note's first step (a row
-        // with note column $00 is `cptr->note & 0x7f`, vibtime 0,
-        // gplay.c:714-721); set here at once, and again by that step.
+        // GT sets no pitch on a note: its wave table's first step does, on the
+        // frame after the note's (a row with note column $00 is
+        // `cptr->note & 0x7f`, vibtime 0, gplay.c:714-721), so the note's
+        // first frame sounds at the channel's old frequency (audible with a
+        // first-frame byte without the test bit, e.g. $21). An instrument with
+        // no wave table (none in GT) gets its pitch at once.
         ch.last_note = note & 0x7F;
-        ch.freq = gt_note_freq_reg(note);
-        ch.target = None;
+        let gate_before = ch.gate;
+        if ins.as_ref().map_or(true, |i| i.wave_ptr == 0) {
+            ch.freq = gt_note_freq_reg(note);
+        }
         ch.gate = true;
         ch.first_frame = true;
         ch.vib_time = 0;
@@ -798,11 +827,23 @@ impl SidSongPlayer {
         ch.sr = ins.sr();
         // The doc's instrument waveform has no gate bit (`song.rs`); under the
         // AND-mask write it carries one, so the note sounds until a table row,
-        // command 7, key off or hard restart says otherwise. S5.9 kept this
-        // byte what the player wrote before (0x01 for an imported GT
-        // instrument, whose table sets the waveform); GT itself would hold the
-        // first-frame byte here (gplay.c:361), see the verdict.
-        ch.waveform = ins.waveform | GATE;
+        // command 7, key off or hard restart says otherwise. A GT instrument
+        // has none (the importer's neutral 0): GT holds the first-frame byte
+        // as the channel's waveform (gplay.c:359-365) until the wave table
+        // sets one, so a table that starts with `00` rows keeps $09 (test and
+        // gate) on, not the $01 the S5.9 player wrote.
+        // GT's first-frame byte (gplay.c:359-365): $00 leaves the waveform
+        // and the gate as they are (after a hard restart's gate-off the note
+        // stays off until something gates it), $FE/$FF set only the gate.
+        if ins.waveform != 0 {
+            ch.waveform = ins.waveform | GATE;
+        } else {
+            match ins.first_wave {
+                0 => ch.gate = gate_before,
+                0xFE | 0xFF => ch.gate = ins.first_wave == 0xFF,
+                fw => ch.waveform = fw,
+            }
+        }
         // GT never sets the pulse width on a note (gplay.c:375-381): only its
         // pulse table does, so the channel's width carries over from the last
         // note. A GT instrument has no width of its own (the importer writes
@@ -822,9 +863,14 @@ impl SidSongPlayer {
             ch.pulse_ptr = ins.pulse_ptr;
             ch.pulse_time = 0;
         }
+        // GT never touches the routing on a note: only its filter table and
+        // command B do (gplay.c:268, 469). A GT instrument has no filter of its
+        // own (the importer writes the neutral all-zero one), so, as with the
+        // pulse width above, the neutral filter keeps the channel's routing;
+        // clearing it cut a voice out of the filter the table had put it in.
         if ins.filter.enabled {
             self.res_filt |= bit;
-        } else {
+        } else if ins.filter != InstrumentFilter::default() {
             self.res_filt &= !bit;
         }
         if ins.filter_ptr > 0 {
@@ -860,12 +906,57 @@ impl SidSongPlayer {
         ch.freq = if ch.vib_time & 1 != 0 { ch.freq.wrapping_sub(step) } else { ch.freq.wrapping_add(step) };
     }
 
+    /// A slide speed from speed-table row `ptr` (0: none), GT's (gplay.c:
+    /// 733-741): left<<8 | right, or from $8000 up the fine speed, the gap from
+    /// the last note to the next shifted right `right` times. As the C64
+    /// player shifts (player.s mt_csloop, one `lsr` per count), a count of 16
+    /// and up is 0; GT's editor, in C on x86, shifts by the count mod 32.
+    fn speed(&self, c: usize, ptr: u8) -> u16 {
+        let Some(r) = self.speed_row(ptr) else {
+            return 0;
+        };
+        let v = (r.left as u16) << 8 | r.right as u16;
+        if v < 0x8000 {
+            return v;
+        }
+        let at = |i: u8| if i < 0x80 { gt_note_freq_reg(i) } else { 0 };
+        let last = self.channels[c].last_note;
+        at(last.wrapping_add(1)).wrapping_sub(at(last)).checked_shr(r.right as u32).unwrap_or(0)
+    }
+
+    /// One tone-portamento frame toward the channel's note, GT's (gplay.c:
+    /// 802-835): speed row `ptr`, 0 = straight to it; arriving (or jumping)
+    /// restarts the vibrato phase. The step wraps the register as GT's does.
+    fn tone_porta(&mut self, c: usize, ptr: u8) {
+        let speed = if ptr == 0 { 0 } else { self.speed(c, ptr) };
+        let ch = &mut self.channels[c];
+        let target = gt_note_freq_reg(ch.base_note);
+        if ptr == 0 {
+            ch.freq = target;
+            ch.vib_time = 0;
+            return;
+        }
+        if ch.freq < target {
+            ch.freq = ch.freq.wrapping_add(speed);
+            if ch.freq > target {
+                ch.freq = target;
+                ch.vib_time = 0;
+            }
+        }
+        if ch.freq > target {
+            ch.freq = ch.freq.wrapping_sub(speed);
+            if ch.freq < target {
+                ch.freq = target;
+                ch.vib_time = 0;
+            }
+        }
+    }
+
     fn continuous(&mut self, c: usize) {
         if self.channels[c].first_frame {
             return;
         }
         let (cmd, param) = (self.channels[c].run_cmd, self.channels[c].run_param);
-        let speed = self.speed_row(param).map(|r| (r.left as u16) << 8 | r.right as u16);
         // GT's realtime optimisation skips the tick effects on tick 0 of
         // every row (goattrk2.c:55, gplay.c:728): the vibratos (S5.10) and
         // the slides 1-2 and the portamento 3 (S5.12), so a slide steps
@@ -874,21 +965,19 @@ impl SidSongPlayer {
         // Not on a row's first frame; and never in preview, which has no rows.
         let ticking = !self.preview && !self.channels[c].at_row_start;
         match cmd {
+            // The slides wrap the 16-bit register as GT's do (gplay.c:744, 760).
             0x1 if !tick0 => {
-                if let Some(s) = speed {
-                    let ch = &mut self.channels[c];
-                    ch.freq = ch.freq.saturating_add(s);
-                }
+                let s = self.speed(c, param);
+                let ch = &mut self.channels[c];
+                ch.freq = ch.freq.wrapping_add(s);
             }
             0x2 if !tick0 => {
-                if let Some(s) = speed {
-                    let ch = &mut self.channels[c];
-                    ch.freq = ch.freq.saturating_sub(s);
-                }
+                let s = self.speed(c, param);
+                let ch = &mut self.channels[c];
+                ch.freq = ch.freq.wrapping_sub(s);
             }
             0x3 => {
-                let ch = &mut self.channels[c];
-                if ch.run_param == 0 {
+                if param == 0 {
                     // Tie-note pitch, GT phase (S5.6): the tick effects run
                     // from tick 1 (tick 0 is skipped by the realtime
                     // optimisation, goattrk2.c:55 + gplay.c:728) and re-assert
@@ -901,15 +990,11 @@ impl SidSongPlayer {
                     // effects); the wave step runs after this and overwrites
                     // the same way.
                     if ticking {
-                        ch.freq = gt_note_freq_reg(ch.base_note);
+                        self.tone_porta(c, 0);
                     }
-                } else if tick0 {
-                    // Portamento toward the target: tick 1 on (see above).
-                } else if let (Some(t), Some(s)) = (ch.target, speed) {
-                    ch.freq = if ch.freq < t { ch.freq.saturating_add(s).min(t) } else { ch.freq.saturating_sub(s).max(t) };
-                    if ch.freq == t {
-                        ch.target = None;
-                    }
+                } else if !tick0 {
+                    // Portamento toward the note: tick 1 on (see above).
+                    self.tone_porta(c, param);
                 }
             }
             0x4 if !tick0 => self.vibrato(c, param),
@@ -935,13 +1020,18 @@ impl SidSongPlayer {
     /// table command), which ends GT's frame before the tick effects.
     fn wave_step(&mut self, c: usize) -> bool {
         let ch = &self.channels[c];
-        if ch.first_frame && ch.first_wave != 0 {
+        // A note's frame ends before the wave table in GT (gplay.c:509-512);
+        // the doc's own instruments (a waveform of their own) with no
+        // first-frame byte play their table from that frame, as before.
+        let gt_style = self.instrument(c).map_or(false, |i| i.waveform == 0);
+        if ch.first_frame && (ch.first_wave != 0 || gt_style) {
             return false;
         }
         let table = &self.song.tables.wave;
         let ch = &mut self.channels[c];
         let mut jumped = false;
         let mut noted = false;
+        let mut command = None;
         while let Some(row) = table_row(table, ch.wave_ptr) {
             match row.left {
                 0xFF => {
@@ -978,17 +1068,15 @@ impl SidSongPlayer {
                         0xE0..=0xEF => ch.waveform = l & 0x0F,
                         _ => {}
                     }
-                    // $F0-$FE run a table command: its right column is the
-                    // command's parameter, not a note, and GT skips the tick
-                    // effects that frame (gplay.c:704-710). Only 5 (set AD)
-                    // and 6 (set SR) are modelled (gplay.c:643-649); they
-                    // stand until the next note or hard restart.
-                    match l {
-                        0xF5 => ch.ad = row.right,
-                        0xF6 => ch.sr = row.right,
-                        _ => {}
+                    // $F0-$FE run a table command (`wave_command`): its right
+                    // column is the command's parameter, not a note, and GT
+                    // skips the tick effects that frame (gplay.c:704-710).
+                    if l >= 0xF0 {
+                        command = Some((l & 0x0F, row.right));
+                        noted = true;
+                    } else {
+                        noted = Self::wave_note(ch, row.right);
                     }
-                    noted = if l >= 0xF0 { true } else { Self::wave_note(ch, row.right) };
                     ch.wave_ptr = ch.wave_ptr.wrapping_add(1);
                 }
             }
@@ -997,7 +1085,54 @@ impl SidSongPlayer {
         if ch.wave_ptr as usize > table.len() {
             ch.wave_ptr = 0;
         }
+        if let Some((cmd, param)) = command {
+            self.wave_command(c, cmd, param);
+        }
         noted
+    }
+
+    /// A wave-table command row ($F0 + `cmd`, parameter `param`), GT's
+    /// (gplay.c:529-680): the pattern command of that number run for this
+    /// frame, the slides and the vibrato as tick effects. 0, 8 and E stop the
+    /// song in GT; here they do nothing. D takes its volume only while the
+    /// row's own command parameter is below $10 (GT tests `newcmddata`).
+    fn wave_command(&mut self, c: usize, cmd: u8, param: u8) {
+        match cmd {
+            0x1 => {
+                let s = self.speed(c, param);
+                let ch = &mut self.channels[c];
+                ch.freq = ch.freq.wrapping_add(s);
+            }
+            0x2 => {
+                let s = self.speed(c, param);
+                let ch = &mut self.channels[c];
+                ch.freq = ch.freq.wrapping_sub(s);
+            }
+            0x3 => self.tone_porta(c, param),
+            0x4 => self.vibrato(c, param),
+            // AD/SR stand until the next note or hard restart.
+            0x5 => self.channels[c].ad = param,
+            0x6 => self.channels[c].sr = param,
+            0x7 => self.channels[c].waveform = param,
+            0x9 => {
+                let ch = &mut self.channels[c];
+                ch.pulse_ptr = param;
+                ch.pulse_time = 0;
+            }
+            0xA => {
+                self.filter_ptr = param;
+                self.filter_time = 0;
+            }
+            0xB => {
+                self.res_filt = param;
+                if param == 0 {
+                    self.filter_ptr = 0;
+                }
+            }
+            0xC => self.cutoff = (param as u16) << 3,
+            0xD if self.channels[c].param < 0x10 => self.volume = param,
+            _ => {}
+        }
     }
 
     /// A wave-table row's right column: the note it sets, under any command.
@@ -1021,101 +1156,123 @@ impl SidSongPlayer {
         true
     }
 
+    /// Frames GT leaves the pulse table alone. A note's first frame ends the
+    /// channel's frame before the tables (gplay.c:509-512). With GT's default
+    /// pulse optimisation (goattrk2.c:54 `optimizepulse = 1`, which its
+    /// packed player's option mirrors): the frame the next row is read, the
+    /// gate timer's (gplay.c:846-849), and the first frame of a pattern's last
+    /// row, where the sequencer has just moved on (gplay.c:853-857).
+    fn pulse_skipped(&self, c: usize) -> bool {
+        let ch = &self.channels[c];
+        if ch.first_frame {
+            return true;
+        }
+        if self.preview {
+            return false;
+        }
+        let timer = self.instrument(c).map(|i| i.gate_timer).unwrap_or(0);
+        if timer != 0 && ch.tick == timer {
+            return true;
+        }
+        ch.at_row_start && ch.row + 1 == self.song.patterns[ch.pattern].rows.len()
+    }
+
+    /// GT's pulse table (gplay.c:851-897). A jump lands on its target and
+    /// takes that row as data whatever it is (a second jump there is a width
+    /// row: `$FF xx` sets $Fxx), a jump to 0 stops; a width row (left $80 up)
+    /// sets the width; a left of 1-$7F adds the signed right that many frames
+    /// from this frame on; a left of 0 stalls the table there. Past the stored
+    /// rows GT's tables are zero, so the table stalls.
     fn pulse_step(&mut self, c: usize) {
         let table = &self.song.tables.pulse;
+        let row_at = |ptr: u8| table.get(ptr as usize - 1).copied().unwrap_or_default();
         let ch = &mut self.channels[c];
-        let modulate = |ch: &mut Channel| {
-            ch.pulse_width = ((ch.pulse_width as i32 + ch.pulse_speed as i32) & 0xFFF) as u16;
-            ch.pulse_time -= 1;
-        };
-        if ch.pulse_time > 0 {
-            modulate(ch);
+        if ch.pulse_ptr == 0 {
             return;
         }
-        let mut jumped = false;
-        while let Some(row) = table_row(table, ch.pulse_ptr) {
-            match row.left {
-                0xFF => {
-                    if jumped || row.right == 0 || row.right as usize > table.len() {
-                        ch.pulse_ptr = 0;
-                        return;
-                    }
-                    ch.pulse_ptr = row.right;
-                    jumped = true;
-                    continue;
-                }
-                0x80..=0xFE => ch.pulse_width = ((row.left as u16 & 0x0F) << 8) | row.right as u16,
-                0x01..=0x7F => {
-                    ch.pulse_time = row.left;
-                    ch.pulse_speed = row.right as i8;
-                    modulate(ch);
-                }
-                _ => {}
+        let jump = row_at(ch.pulse_ptr);
+        if jump.left == 0xFF {
+            ch.pulse_ptr = jump.right;
+            if ch.pulse_ptr == 0 {
+                return;
             }
-            ch.pulse_ptr = ch.pulse_ptr.wrapping_add(1);
-            break;
         }
-        if ch.pulse_ptr as usize > table.len() {
-            ch.pulse_ptr = 0;
+        if ch.pulse_time == 0 {
+            let row = row_at(ch.pulse_ptr);
+            if row.left >= 0x80 {
+                ch.pulse_width = ((row.left as u16 & 0x0F) << 8) | row.right as u16;
+                ch.pulse_ptr = ch.pulse_ptr.wrapping_add(1);
+            } else {
+                ch.pulse_time = row.left;
+                ch.pulse_speed = row.right as i8;
+            }
+        }
+        if ch.pulse_time > 0 {
+            ch.pulse_width = ((ch.pulse_width as i32 + ch.pulse_speed as i32) & 0xFFF) as u16;
+            ch.pulse_time -= 1;
+            if ch.pulse_time == 0 {
+                ch.pulse_ptr = ch.pulse_ptr.wrapping_add(1);
+            }
         }
     }
 
+    /// GT's filter table (gplay.c:253-296), at the top of the frame. A jump
+    /// lands on its target and takes that row as data; a left of $80 up sets
+    /// the mode and $17, and a cutoff row straight after it is taken with it;
+    /// 1-$7F adds the signed right to the cutoff that many frames from this
+    /// one on (the high byte, wrapping as GT's u8); 0 sets the cutoff. The
+    /// table stopping (pointer 0: a jump to 0, B 00) stops a sweep too. Past
+    /// the stored rows the table stops; GT would read zero rows there and set
+    /// the cutoff to 0 every frame, which only an unterminated table (an
+    /// app-made one) reaches.
     fn filter_step(&mut self) {
-        let table = &self.song.tables.filter;
-        let bump = |cutoff: u16, speed: i8| -> u16 { ((cutoff as i32 + ((speed as i32) << 3)).clamp(0, 0x7FF)) as u16 };
-        if self.filter_time > 0 {
-            self.cutoff = bump(self.cutoff, self.filter_speed);
-            self.filter_time -= 1;
+        if self.filter_ptr == 0 {
             return;
         }
-        let mut jumped = false;
-        while let Some(row) = table_row(table, self.filter_ptr) {
-            match row.left {
-                0xFF => {
-                    if jumped || row.right == 0 || row.right as usize > table.len() {
-                        self.filter_ptr = 0;
-                        return;
-                    }
-                    self.filter_ptr = row.right;
-                    jumped = true;
-                    continue;
-                }
-                0x00 => self.cutoff = (row.right as u16) << 3,
-                0x01..=0x7F => {
-                    self.filter_time = row.left - 1;
-                    self.filter_speed = row.right as i8;
-                    self.cutoff = bump(self.cutoff, self.filter_speed);
-                }
-                // Every left byte 0x80..=0xFE sets the mode and the
-                // resonance/routing (only 0xFF is a jump, gplay.c:265), and a
-                // cutoff row straight after it is taken on the same frame
-                // (gplay.c:271-275).
-                0x80..=0xFE => {
-                    self.mode = (row.left >> 4) & 0x07;
-                    self.res_filt = row.right;
-                    self.filter_ptr = self.filter_ptr.wrapping_add(1);
-                    if let Some(next) = table_row(table, self.filter_ptr) {
-                        if next.left == 0x00 {
-                            self.cutoff = (next.right as u16) << 3;
-                            self.filter_ptr = self.filter_ptr.wrapping_add(1);
-                        }
-                    }
-                    if self.filter_ptr as usize > table.len() {
-                        self.filter_ptr = 0;
-                    }
-                    return;
-                }
+        let table = &self.song.tables.filter;
+        let row_at = |ptr: u8| if ptr == 0 { TableRow::default() } else { table.get(ptr as usize - 1).copied().unwrap_or_default() };
+        let jump = row_at(self.filter_ptr);
+        if jump.left == 0xFF {
+            self.filter_ptr = jump.right;
+            if self.filter_ptr == 0 {
+                return;
             }
-            self.filter_ptr = self.filter_ptr.wrapping_add(1);
-            break;
         }
-        if self.filter_ptr as usize > table.len() {
-            self.filter_ptr = 0;
+        if self.filter_time == 0 {
+            if self.filter_ptr as usize > table.len() {
+                self.filter_ptr = 0;
+                return;
+            }
+            let row = row_at(self.filter_ptr);
+            if row.left >= 0x80 {
+                self.mode = (row.left >> 4) & 0x07;
+                self.res_filt = row.right;
+                self.filter_ptr = self.filter_ptr.wrapping_add(1);
+                let next = row_at(self.filter_ptr);
+                if self.filter_ptr != 0 && next.left == 0x00 {
+                    self.cutoff = (next.right as u16) << 3;
+                    self.filter_ptr = self.filter_ptr.wrapping_add(1);
+                }
+            } else if row.left != 0 {
+                self.filter_time = row.left;
+                self.filter_speed = row.right as i8;
+            } else {
+                self.cutoff = (row.right as u16) << 3;
+                self.filter_ptr = self.filter_ptr.wrapping_add(1);
+            }
+        }
+        if self.filter_time > 0 {
+            let hi = ((self.cutoff >> 3) as u8).wrapping_add(self.filter_speed as u8);
+            self.cutoff = (hi as u16) << 3 | (self.cutoff & 0x07);
+            self.filter_time -= 1;
+            if self.filter_time == 0 {
+                self.filter_ptr = self.filter_ptr.wrapping_add(1);
+            }
         }
     }
 
     fn hard_restart(&mut self, c: usize) {
-        let Some((timer, hr)) = self.instrument(c).map(|i| (i.gate_timer, i.hard_restart)) else {
+        let Some(timer) = self.instrument(c).map(|i| i.gate_timer) else {
             return;
         };
         // GT compares its countdown with the gate timer (gplay.c:898):
@@ -1133,6 +1290,22 @@ impl SidSongPlayer {
             return;
         }
         if !(NOTE_FIRST..=NOTE_LAST).contains(&next.note) || next.command == 3 {
+            return;
+        }
+        // GT switches the channel to the row's instrument as it reads the row,
+        // before it tests the flags (gplay.c:907-908, 924-926): whether the
+        // coming note is preceded by a gate-off and a hard restart is the NEXT
+        // note's instrument's say, not the sounding one's. The timer that got
+        // us here is the sounding one's.
+        let flags = if next.instrument > 0 {
+            self.song.instruments.get(next.instrument as usize - 1)
+        } else {
+            self.instrument(c)
+        };
+        let Some((no_gate_off, hr)) = flags.map(|i| (i.no_gate_off, i.hard_restart)) else {
+            return;
+        };
+        if no_gate_off {
             return;
         }
         let ch = &mut self.channels[c];
@@ -1161,19 +1334,21 @@ impl SidSongPlayer {
             chip.write_after(at, reg, val);
             at += WRITE_SPACING;
         };
-        put(&mut self.chip, REG_FC_LO, (self.cutoff & 0x07) as u8, false);
-        put(&mut self.chip, REG_FC_HI, (self.cutoff >> 3) as u8, false);
-        put(&mut self.chip, REG_MODE_VOL, (self.mode << 4) | self.volume, false);
-        put(&mut self.chip, REG_RES_FILT, self.res_filt, false);
+        let [fc_lo, fc_hi, res_filt, mode_vol] = self.filter_regs;
+        put(&mut self.chip, REG_FC_LO, fc_lo, false);
+        put(&mut self.chip, REG_FC_HI, fc_hi, false);
+        put(&mut self.chip, REG_MODE_VOL, mode_vol, false);
+        put(&mut self.chip, REG_RES_FILT, res_filt, false);
         for (c, ch) in self.channels.iter().enumerate() {
             let base = (c * 7) as u8;
-            let control = if ch.first_frame && ch.first_wave != 0 {
+            let control = if ch.first_frame && ch.first_wave != 0 && ch.first_wave < 0xFE {
                 ch.first_wave
             } else {
                 // `wave & gate` (gplay.c:945): the channel's gate is a mask.
                 ch.waveform & if ch.gate { 0xFF } else { !GATE }
             };
-            put(&mut self.chip, base + 2, (ch.pulse_width & 0xFF) as u8, false);
+            // GT writes the low byte with bit 0 clear (gplay.c:943).
+            put(&mut self.chip, base + 2, (ch.pulse_width & 0xFE) as u8, false);
             put(&mut self.chip, base + 3, (ch.pulse_width >> 8) as u8, false);
             put(&mut self.chip, base + 6, ch.sr, false);
             put(&mut self.chip, base + 5, ch.ad, false);

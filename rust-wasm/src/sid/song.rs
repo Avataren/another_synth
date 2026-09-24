@@ -16,7 +16,7 @@
 //!   instrument count 0..63; per instrument: name (length byte 0..16 +
 //!   latin-1), AD, SR, waveform (gate bit clear), pulse width lo, hi (0..15),
 //!   cutoff lo, hi (0..7), resonance<<4 | enabled<<3 | mode, first-frame
-//!   waveform, hard-restart<<7 | gate timer (bit 6 clear), vibrato delay,
+//!   waveform, hard-restart<<7 | no-gate-off<<6 | gate timer, vibrato delay,
 //!   wave, pulse, filter, speed table pointers.
 //!   four tables (wave, pulse, filter, speed): count 0..255, the left
 //!   column, then the right.
@@ -120,6 +120,9 @@ pub struct Instrument {
     pub first_wave: u8,
     pub gate_timer: u8,
     pub hard_restart: bool,
+    /// GT's gate-timer bit $40: a note of this instrument (named by the row
+    /// read `gate_timer` ticks early) gets no early gate-off or hard restart.
+    pub no_gate_off: bool,
     pub vibrato_delay: u8,
     pub wave_ptr: u8,
     pub pulse_ptr: u8,
@@ -296,7 +299,7 @@ impl SidSong {
             for v in b.iter_mut() {
                 *v = r.byte("an instrument")?;
             }
-            if b[2] & 0x01 != 0 || b[4] > 0x0F || b[6] > 0x07 || b[9] & 0x40 != 0 {
+            if b[2] & 0x01 != 0 || b[4] > 0x0F || b[6] > 0x07 {
                 return err("an instrument has a reserved bit set");
             }
             instruments.push(Instrument {
@@ -316,6 +319,7 @@ impl SidSong {
                 first_wave: b[8],
                 gate_timer: b[9] & 0x3F,
                 hard_restart: b[9] & 0x80 != 0,
+                no_gate_off: b[9] & 0x40 != 0,
                 vibrato_delay: b[10],
                 wave_ptr: b[11],
                 pulse_ptr: b[12],
@@ -440,7 +444,7 @@ impl SidSong {
                 (f.cutoff >> 8) as u8,
                 (f.resonance << 4) | if f.enabled { 0x08 } else { 0 } | f.mode,
                 ins.first_wave,
-                if ins.hard_restart { 0x80 } else { 0 } | ins.gate_timer,
+                if ins.hard_restart { 0x80 } else { 0 } | if ins.no_gate_off { 0x40 } else { 0 } | ins.gate_timer,
                 ins.vibrato_delay,
                 ins.wave_ptr,
                 ins.pulse_ptr,

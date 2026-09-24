@@ -332,7 +332,9 @@ fn pulse_table_sets_then_sweeps_the_width() {
             p.chip().voice(0).pulse_width()
         })
         .collect();
-    assert_eq!(widths, vec![0x400, 0x410, 0x420, 0x430, 0x410, 0x3F0, 0x3F0, 0x3F0]);
+    // The note's frame skips the pulse table as GT's does (gplay.c:509-512;
+    // S5.19): the instrument's own width, then the table from frame 1.
+    assert_eq!(widths, vec![0x800, 0x400, 0x410, 0x420, 0x430, 0x410, 0x3F0, 0x3F0]);
 }
 
 #[test]
@@ -357,17 +359,22 @@ fn filter_table_and_instrument_filter_drive_the_chip_filter() {
     let mut s = s;
     s.tempo = 1;
     let mut p = player(&s);
+    // The filter registers are the frame's first (GT's order, S5.19): a
+    // note's filter is heard from the next frame.
     frame(&mut p);
     let f = p.chip().filter();
+    assert_eq!((f.cutoff_reg(), f.resonance(), f.mode() & 0x70), (0, 0, 0));
+    frame(&mut p); // row 1: instrument 1's filter
+    let f = p.chip().filter();
     assert_eq!((f.cutoff_reg(), f.resonance(), f.mode() & 0x70), (0x123, 9, 0x20));
-    frame(&mut p); // row 1: nothing new
+    frame(&mut p); // row 2: instrument 2's table, heard from the next frame
     let mut cutoffs = Vec::new();
     for _ in 0..4 {
         frame(&mut p);
         let f = p.chip().filter();
         cutoffs.push((f.cutoff_reg(), f.resonance(), f.mode() & 0x70));
     }
-    // Row 2 frame: the mode row (LP, res 10) and the cutoff-set row after it
+    // The frame after row 2's: the mode row (LP, res 10) and the cutoff-set row after it
     // together (GT combines them on one frame, gplay.c:271-275; S5.16 -- this
     // used to be pinned a frame apart), so 0x200; then 0x208, 0x210; then the
     // table has ended and the cutoff holds.

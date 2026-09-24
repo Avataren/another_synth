@@ -61,6 +61,7 @@ export const DEFAULT_SID_INSTRUMENT: SidInstrument = Object.freeze({
   firstWave: 0,
   gateTimer: 0,
   hardRestart: false,
+  noGateOff: false,
   vibratoDelay: 0,
   wavePtr: 0,
   pulsePtr: 0,
@@ -163,6 +164,7 @@ export function sidInstrumentProblem(ins: SidInstrument, tableRows: Readonly<Rec
   if (!isInt(ins.firstWave, 0, 0xff)) return 'the first-frame waveform is not a byte';
   if (!isInt(ins.gateTimer, 0, 63)) return 'the gate timer is not 0-63';
   if (typeof ins.hardRestart !== 'boolean') return 'hard restart is not on or off';
+  if (typeof ins.noGateOff !== 'boolean') return 'no gate-off is not on or off';
   if (!isInt(ins.vibratoDelay, 0, 0xff)) return 'the vibrato delay is not a byte';
   const ptrs = [
     ['wavePtr', 'wave'],

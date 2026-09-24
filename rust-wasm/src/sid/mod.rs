@@ -62,6 +62,8 @@ mod tests_s516;
 mod tests_s517;
 #[cfg(test)]
 mod tests_s518;
+#[cfg(test)]
+mod tests_s519;
 
 pub use chip::Chip;
 pub use player::SidSongPlayer;

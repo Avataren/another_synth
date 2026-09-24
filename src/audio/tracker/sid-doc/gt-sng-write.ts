@@ -11,6 +11,7 @@ import {
   gtRepeatByte,
 } from './gt-sng-common';
 import {
+  GT_GATE_NO_GATEOFF,
   GT_GATE_NO_HARD_RESTART,
   GT_NOTE_FIRST,
   GT_NOTE_KEY_OFF,
@@ -151,7 +152,7 @@ export function exportGtSong(doc: SidDoc): GtSongExport {
       ins.filterPtr,
       ins.speedPtr,
       ins.vibratoDelay,
-      (ins.hardRestart ? 0 : GT_GATE_NO_HARD_RESTART) | ins.gateTimer,
+      (ins.hardRestart ? 0 : GT_GATE_NO_HARD_RESTART) | (ins.noGateOff ? GT_GATE_NO_GATEOFF : 0) | ins.gateTimer,
       ins.firstWave,
     );
     text(ins.name, GT_INSTRUMENT_NAME_LENGTH);

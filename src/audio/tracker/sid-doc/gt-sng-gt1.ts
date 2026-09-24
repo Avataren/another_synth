@@ -390,6 +390,7 @@ export function readGt1Song(
       firstWave: 0x09,
       gateTimer: 2,
       hardRestart: !noHardRestart,
+      noGateOff: false,
       vibratoDelay: 0,
       wavePtr: wave.add(program),
       pulsePtr,

@@ -275,16 +275,26 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
   const { wave, pulse: pulseTable, filter, speed } = doc.tables;
   const row = (table: readonly SidTableRow[], ptr: number): SidTableRow | undefined => (ptr === 0 ? undefined : table[ptr - 1]);
 
-  // trigger(0, note)
+  // trigger(0, note), on a fresh channel (frequency 0, gate off, waveform 0).
   const base = Math.max(0, Math.min(92, note));
-  let freq = sidTableFreqReg(base);
+  // GT sets no pitch on a note: the wave table's first step does, a frame
+  // later; an instrument with no wave table gets it at once.
+  let freq = ins.wavePtr === 0 ? sidTableFreqReg(base) : 0;
   let lastNote = base;
-  const gate = true;
+  let gate = true;
   let firstFrame = true;
   const firstWave = ins.firstWave;
+  // A GT-style instrument (no waveform of its own) runs GT's first-frame byte:
+  // $00 keeps waveform and gate, $FE/$FF set the gate only, else it is the
+  // channel's waveform until the table sets one.
+  const gtStyle = ins.waveform === 0;
   // The player's control byte (S5.9): the instrument's gate-clear waveform
   // with the gate bit set, then the table's bytes whole; written `& gate mask`.
-  let waveform = ins.waveform | 0x01;
+  let waveform = 0;
+  if (!gtStyle) waveform = ins.waveform | 0x01;
+  else if (firstWave === 0) gate = false;
+  else if (firstWave >= 0xfe) gate = firstWave === 0xff;
+  else waveform = firstWave;
   let pw = ins.pulseWidth;
   let wavePtr = ins.wavePtr;
   let waveWait = 0;
@@ -322,6 +332,58 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
     freq = (vibTime & 1 ? freq - step : freq + step) & 0xffff;
   };
 
+  // speed(): a slide speed from a speed row; from $8000 up the fine speed
+  // (the C64 player's shift: a count of 16 and up is 0).
+  const slideSpeed = (ptr: number): number => {
+    const r = row(speed, ptr);
+    if (!r) return 0;
+    const v = (r.left << 8) | r.right;
+    if (v < 0x8000) return v;
+    const at = (i: number) => (i < 0x80 ? sidTableFreqReg(i) : 0);
+    return r.right >= 16 ? 0 : ((at(lastNote + 1) - at(lastNote)) & 0xffff) >>> r.right;
+  };
+
+  // tone_porta(): toward the note, wrapping as GT's; arriving restarts the vibrato.
+  const tonePorta = (ptr: number) => {
+    const target = sidTableFreqReg(base);
+    if (ptr === 0) {
+      freq = target;
+      vibTime = 0;
+      return;
+    }
+    const s = slideSpeed(ptr);
+    if (freq < target) {
+      freq = (freq + s) & 0xffff;
+      if (freq > target) {
+        freq = target;
+        vibTime = 0;
+      }
+    }
+    if (freq > target) {
+      freq = (freq - s) & 0xffff;
+      if (freq < target) {
+        freq = target;
+        vibTime = 0;
+      }
+    }
+  };
+
+  // wave_command(): a wave-table $F0-$FE row, the pattern command for a frame.
+  // AD/SR and the volume are not in a frame's registers here.
+  const waveCommand = (cmd: number, param: number) => {
+    switch (cmd) {
+      case 0x1: freq = (freq + slideSpeed(param)) & 0xffff; break;
+      case 0x2: freq = (freq - slideSpeed(param)) & 0xffff; break;
+      case 0x3: tonePorta(param); break;
+      case 0x4: vibrato(row(speed, param) ?? { left: 0, right: 0 }); break;
+      case 0x7: waveform = param; break;
+      case 0x9: pulsePtr = param; pulseTime = 0; break;
+      case 0xa: filterPtr = param; filterTime = 0; break;
+      case 0xb: resFilt = param; if (param === 0) filterPtr = 0; break;
+      case 0xc: cutoff = param << 3; break;
+    }
+  };
+
   // wave_note(): GT's mod-128 note column (gplay.c:714-721); false for $80.
   const waveNote = (right: number): boolean => {
     if (right === 0x80) return false;
@@ -334,9 +396,10 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
 
   /** wave_step(): `true` when a step set a note (or ran a table command), ending the frame before the tick effects. */
   const waveStep = (): boolean => {
-    if (firstFrame && firstWave !== 0) return false;
+    if (firstFrame && (firstWave !== 0 || gtStyle)) return false;
     let jumped = false;
     let noted = false;
+    let command: [number, number] | null = null;
     for (;;) {
       const r = row(wave, wavePtr);
       if (!r) break;
@@ -360,96 +423,97 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
       } else {
         if (r.left >= 0x10 && r.left <= 0xdf) waveform = r.left;
         else if (r.left >= 0xe0 && r.left <= 0xef) waveform = r.left & 0x0f;
-        noted = r.left >= 0xf0 ? true : waveNote(r.right);
+        if (r.left >= 0xf0) {
+          command = [r.left & 0x0f, r.right];
+          noted = true;
+        } else {
+          noted = waveNote(r.right);
+        }
         wavePtr = (wavePtr + 1) & 0xff;
       }
       break;
     }
     if (wavePtr > wave.length) wavePtr = 0;
+    if (command) waveCommand(command[0], command[1]);
     return noted;
   };
 
+  // pulse_step(): GT's walk. A jump lands on its target and takes that row as
+  // data; a width row sets; 1-$7F modulates from this frame; 0 (or past the
+  // stored rows) stalls.
   const pulseStep = () => {
+    if (pulsePtr === 0) return;
+    const at = (ptr: number): SidTableRow => pulseTable[ptr - 1] ?? { left: 0, right: 0 };
+    const jump = at(pulsePtr);
+    if (jump.left === 0xff) {
+      pulsePtr = jump.right;
+      if (pulsePtr === 0) return;
+    }
+    if (pulseTime === 0) {
+      const r = at(pulsePtr);
+      if (r.left >= 0x80) {
+        pw = ((r.left & 0x0f) << 8) | r.right;
+        pulsePtr = (pulsePtr + 1) & 0xff;
+      } else {
+        pulseTime = r.left;
+        pulseSpeed = i8(r.right);
+      }
+    }
     if (pulseTime > 0) {
       pw = (pw + pulseSpeed) & 0xfff;
       pulseTime -= 1;
-      return;
+      if (pulseTime === 0) pulsePtr = (pulsePtr + 1) & 0xff;
     }
-    let jumped = false;
-    for (;;) {
-      const r = row(pulseTable, pulsePtr);
-      if (!r) break;
-      if (r.left === 0xff) {
-        if (jumped || r.right === 0 || r.right > pulseTable.length) {
-          pulsePtr = 0;
-          return;
-        }
-        pulsePtr = r.right;
-        jumped = true;
-        continue;
-      }
-      if (r.left >= 0x80) {
-        pw = ((r.left & 0x0f) << 8) | r.right;
-      } else if (r.left >= 0x01) {
-        pulseTime = r.left;
-        pulseSpeed = i8(r.right);
-        pw = (pw + pulseSpeed) & 0xfff;
-        pulseTime -= 1;
-      }
-      pulsePtr = (pulsePtr + 1) & 0xff;
-      break;
-    }
-    if (pulsePtr > pulseTable.length) pulsePtr = 0;
   };
 
-  const bump = (value: number, by: number) => Math.max(0, Math.min(0x7ff, value + (by << 3)));
+  // filter_step(): GT's walk, at the top of the frame. A jump takes its target
+  // as data; $80 up sets mode and $17 (and a cutoff row straight after); 1-$7F
+  // steps the cutoff's high byte (wrapping) from this frame; 0 sets it. The
+  // table stopping stops a sweep; past the stored rows it stops.
   const filterStep = () => {
-    if (filterTime > 0) {
-      cutoff = bump(cutoff, filterSpeed);
-      filterTime -= 1;
-      return;
+    if (filterPtr === 0) return;
+    const at = (ptr: number): SidTableRow => (ptr === 0 ? undefined : filter[ptr - 1]) ?? { left: 0, right: 0 };
+    const jump = at(filterPtr);
+    if (jump.left === 0xff) {
+      filterPtr = jump.right;
+      if (filterPtr === 0) return;
     }
-    let jumped = false;
-    for (;;) {
-      const r = row(filter, filterPtr);
-      if (!r) break;
-      if (r.left === 0xff) {
-        if (jumped || r.right === 0 || r.right > filter.length) {
-          filterPtr = 0;
-          return;
-        }
-        filterPtr = r.right;
-        jumped = true;
-        continue;
+    if (filterTime === 0) {
+      if (filterPtr > filter.length) {
+        filterPtr = 0;
+        return;
       }
-      if (r.left === 0x00) {
-        cutoff = r.right << 3;
-      } else if (r.left <= 0x7f) {
-        filterTime = r.left - 1;
-        filterSpeed = i8(r.right);
-        cutoff = bump(cutoff, filterSpeed);
-      } else {
-        // Every left byte 0x80..0xfe sets the mode and resonance/routing (only
-        // 0xff is a jump), and a cutoff row straight after it is taken on the
-        // same frame, as GoatTracker does (gplay.c:265-275; player.rs).
+      const r = at(filterPtr);
+      if (r.left >= 0x80) {
         mode = (r.left >> 4) & 0x07;
         resFilt = r.right;
         filterPtr = (filterPtr + 1) & 0xff;
-        const next = row(filter, filterPtr);
-        if (next && next.left === 0x00) {
-          cutoff = next.right << 3;
+        if (filterPtr !== 0 && at(filterPtr).left === 0x00) {
+          cutoff = at(filterPtr).right << 3;
           filterPtr = (filterPtr + 1) & 0xff;
         }
-        break;
+      } else if (r.left !== 0) {
+        filterTime = r.left;
+        filterSpeed = i8(r.right);
+      } else {
+        cutoff = r.right << 3;
+        filterPtr = (filterPtr + 1) & 0xff;
       }
-      filterPtr = (filterPtr + 1) & 0xff;
-      break;
     }
-    if (filterPtr > filter.length) filterPtr = 0;
+    if (filterTime > 0) {
+      cutoff = ((((cutoff >> 3) + filterSpeed) & 0xff) << 3) | (cutoff & 0x07);
+      filterTime -= 1;
+      if (filterTime === 0) filterPtr = (filterPtr + 1) & 0xff;
+    }
   };
 
   const out: SidInstrumentFrame[] = [];
   for (let f = 0; f < frames; f++) {
+    // The filter table runs at the top of the frame and its registers are
+    // what the frame writes (GT's order): a wave-table filter command lands
+    // on the next frame.
+    filterStep();
+    const filterRegs = [cutoff & 0x7ff, resFilt >> 4, mode & 0x07] as const;
     // The wave table first; a step that set a note ends the frame before
     // continuous(): no command on a preview note, so only the instrument
     // vibrato (command 0's: delay 0 never, above 1 counts down, at 1 swings;
@@ -459,10 +523,11 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
       if (vibDelay > 1) vibDelay -= 1;
       else vibrato(row(speed, ins.speedPtr) ?? { left: 0, right: 0 });
     }
-    pulseStep();
-    filterStep();
-    const control = firstFrame && firstWave !== 0 ? firstWave : waveform & (gate ? 0xff : 0xfe);
-    out.push([freq, pw & 0xfff, control, cutoff & 0x7ff, resFilt >> 4, mode & 0x07]);
+    // A note's frame ends before the pulse table (GT).
+    if (!firstFrame) pulseStep();
+    const control = firstFrame && firstWave !== 0 && firstWave < 0xfe ? firstWave : waveform & (gate ? 0xff : 0xfe);
+    // The low byte is written with bit 0 clear, as GT does.
+    out.push([freq, pw & 0xffe, control, ...filterRegs]);
     firstFrame = false;
   }
   return out;

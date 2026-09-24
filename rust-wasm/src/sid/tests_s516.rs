@@ -144,7 +144,8 @@ fn a_filter_set_row_takes_any_left_byte_from_0x80_to_0xfe() {
     // Only 0xFF is a jump (gplay.c:265). 0xF1 sets mode (0xF1 & 0x70 = LP+BP+HP)
     // and resonance 3 / voice 1; the player used to skip it (its range ended at
     // 0xF0), leaving the resonance of whatever instrument came before.
-    let (_, res, mode) = filter_after(&filter_song(vec![t(0xF1, 0x31), t(0xFF, 0x00)]), 1);
+    // (Frame 1: the note's table is heard from the frame after it, S5.19.)
+    let (_, res, mode) = filter_after(&filter_song(vec![t(0xF1, 0x31), t(0xFF, 0x00)]), 2);
     assert_eq!(res, 3);
     assert_eq!(mode, 0x70);
 }
@@ -152,8 +153,9 @@ fn a_filter_set_row_takes_any_left_byte_from_0x80_to_0xfe() {
 #[test]
 fn a_cutoff_row_straight_after_a_set_row_is_taken_on_the_same_frame() {
     // gplay.c:271-275 ("Can be combined with cutoff set"): set + cutoff in one
-    // frame, so the cutoff is 0x25 << 3 after frame 0, not a frame later.
-    let (cutoff, res, mode) = filter_after(&filter_song(vec![t(0x91, 0xF1), t(0x00, 0x25), t(0xFF, 0x00)]), 1);
+    // frame, so the cutoff is 0x25 << 3 with the mode, on the table's first
+    // frame (frame 1: the note's table is heard from the frame after it, S5.19).
+    let (cutoff, res, mode) = filter_after(&filter_song(vec![t(0x91, 0xF1), t(0x00, 0x25), t(0xFF, 0x00)]), 2);
     assert_eq!((cutoff, res, mode), (0x25 << 3, 15, 0x10));
 }
 
@@ -442,6 +444,9 @@ fn gate_bits_around(later: &[(usize, u8)], frames: usize) -> Vec<bool> {
     let ins = Instrument {
         name: b"g".to_vec(),
         sustain: 15,
+        // GT's default first-frame byte; $00 would leave a fresh channel's
+        // gate shut (S5.19).
+        first_wave: 0x09,
         gate_timer: 2,
         hard_restart: true,
         wave_ptr: 1,

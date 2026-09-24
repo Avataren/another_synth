@@ -227,6 +227,10 @@
               <input type="checkbox" :checked="instrument.hardRestart" data-testid="sid-hard-restart" @change="edit({ hardRestart: !instrument.hardRestart })" />
               Hard restart (the early gate-off also zeroes the envelope)
             </label>
+            <label class="sid-toggles">
+              <input type="checkbox" :checked="instrument.noGateOff" data-testid="sid-no-gate-off" @change="edit({ noGateOff: !instrument.noGateOff })" />
+              No gate-off (a note of this instrument skips the early gate-off and hard restart)
+            </label>
             <svg class="sid-lane" viewBox="0 0 256 48" preserveAspectRatio="none" data-testid="sid-pitch-lane">
               <path :d="pitchPath" />
             </svg>

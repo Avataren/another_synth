@@ -185,6 +185,7 @@ describe('the GTS5 writer', () => {
         attack: i % 16,
         gateTimer: i,
         hardRestart: i % 2 === 0,
+        noGateOff: i % 3 === 0,
         firstWave: 0xff - i,
         vibratoDelay: i * 4,
         wavePtr: 255,

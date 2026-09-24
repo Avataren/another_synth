@@ -46,8 +46,6 @@ export const GT_MAX_ORDERLIST_BYTES = 254;
 export type GtImportNoteKind =
   /** An instrument pointed past its table's stored rows: the table was padded with blank rows. */
   | 'table-padded'
-  /** HR/Gate Timer bit $40 (no gate-off): the doc has no such flag; imported as timer 0, no hard restart. */
-  | 'no-gateoff'
   /** An orderlist loops to a point where GT's running transpose/repeat differs from the first pass. */
   | 'loop-transpose'
   /** GoatTracker v1 conversions (each INFERRED from the corpus bytes, see the D-log). */
