@@ -4,8 +4,8 @@
  * of the Rust player and chip, not approximations, so a drawing cannot drift
  * from what plays:
  *
- * - waveforms: `waveform_output` and the 6581's `combined_6581` pass
- *   (`rust-wasm/src/sid/waveform.rs`);
+ * - waveforms: `waveform_output` and its neighbour-pull pass over combined
+ *   waveforms, per model and combination (`rust-wasm/src/sid/waveform.rs`);
  * - the envelope: `Envelope::clock` (`envelope.rs`), event-stepped (the same
  *   state machine, advanced to its next rate tick rather than one cycle at a
  *   time);
@@ -43,26 +43,38 @@ const triangle = (acc: number): number => triangleFolded(acc, (acc & MSB) !== 0)
 const triangleRing = (acc: number, source: number): number => triangleFolded(acc, ((acc & MSB) !== 0) !== !((source & MSB) !== 0));
 const pulse = (acc: number, pw: number): number => (sawtooth(acc) >= (pw & 0xfff) ? 0xfff : 0);
 
-/** Threshold of the 6581 neighbour pull (`PULL_THRESHOLD_6581`). */
+/** Threshold of the S2 6581 neighbour pull (`PULL_THRESHOLD_6581`), for the unfitted 6581 combinations. */
 const PULL_THRESHOLD_6581 = 1536;
+/** `FITTED_COMBINATIONS`: the combinations with a measured level, in threshold order. */
+const FITTED_COMBINATIONS: readonly number[] = [
+  SID_WAVE_PULSE | SID_WAVE_SAWTOOTH,
+  SID_WAVE_SAWTOOTH | SID_WAVE_TRIANGLE,
+  SID_WAVE_PULSE | SID_WAVE_SAWTOOTH | SID_WAVE_TRIANGLE,
+];
+/** `PULL_THRESHOLDS_8580` / `PULL_THRESHOLDS_6581` (S5.12 R2; DERIVED, disclosure in waveform.rs). */
+const PULL_THRESHOLDS: Record<SidChipModel, readonly number[]> = {
+  '8580': [1314, 1792, 2031],
+  '6581': [167, 1219, 761],
+};
 
-/** `combined_6581`: the 6581's pull-down pass over an ideal wired-AND value. */
-function combined6581(and: number): number {
+/** `neighbour_pull`: bit i of an ideal wired-AND value survives when its pull is below `threshold`. */
+function neighbourPull(and: number, threshold: number): number {
+  const zeroWeight = (i: number) => (((and >> i) & 1) === 0 ? 1024 : 0);
+  const left = new Array<number>(12).fill(0);
+  for (let i = 1; i < 12; i++) left[i] = (left[i - 1] as number) / 2 + zeroWeight(i - 1);
   let out = 0;
-  for (let i = 0; i < 12; i++) {
-    if (((and >> i) & 1) === 0) continue;
-    let pull = 0;
-    for (let j = 0; j < 12; j++) {
-      if (j !== i && ((and >> j) & 1) === 0) pull += 1 << (11 - Math.abs(i - j));
-    }
-    if (pull < PULL_THRESHOLD_6581) out |= 1 << i;
+  let right = 0;
+  for (let i = 11; i >= 0; i--) {
+    if (((and >> i) & 1) !== 0 && (left[i] as number) + right < threshold) out |= 1 << i;
+    right = right / 2 + zeroWeight(i);
   }
   return out;
 }
-const combinedCache = new Map<number, number>();
-const combined = (and: number): number => {
-  let v = combinedCache.get(and);
-  if (v === undefined) combinedCache.set(and, (v = combined6581(and)));
+const pullCache = new Map<number, number>();
+const pulled = (and: number, threshold: number): number => {
+  const key = threshold * 4096 + and;
+  let v = pullCache.get(key);
+  if (v === undefined) pullCache.set(key, (v = neighbourPull(and, threshold)));
   return v;
 };
 
@@ -80,7 +92,11 @@ export function sidWaveformOutput(model: SidChipModel, control: number, acc: num
   if (sel & SID_WAVE_PULSE) out &= control & SID_CONTROL_TEST ? 0xfff : pulse(acc, pulseWidth);
   if (sel & SID_WAVE_NOISE) out &= 0;
   const bits = [0x10, 0x20, 0x40, 0x80].filter((b) => sel & b).length;
-  return model === '6581' && bits >= 2 ? combined(out) : out;
+  if (bits < 2) return out;
+  const c = FITTED_COMBINATIONS.indexOf(sel);
+  if (c >= 0) return pulled(out, PULL_THRESHOLDS[model][c] as number);
+  // Pulse+tri and noise combinations: the 8580's plain AND, the 6581's S2 pull.
+  return model === '6581' ? pulled(out, PULL_THRESHOLD_6581) : out;
 }
 
 /**
@@ -185,18 +201,28 @@ export function sidEnvelopeLevels(ad: number, sr: number, gateFrames: number, fr
 // The filter
 // ---------------------------------------------------------------------------
 
-const sigmoid = (u: number): number => 1 / (1 + Math.exp(-u));
+type Anchors = readonly (readonly [number, number])[];
+/** `CUTOFF_ANCHORS_6581_LO` / `_HI` (S5.12 R2; measured anchors, disclosure in filter.rs). */
+const CUTOFF_ANCHORS_6581_LO: Anchors = [[0, 220], [0x200, 420], [0x300, 1_600], [0x3ff, 6_000]];
+const CUTOFF_ANCHORS_6581_HI: Anchors = [[0x400, 4_600], [0x500, 9_500], [0x600, 14_500], [0x7ff, 18_000]];
 
-/** `cutoff_hz_for`: the cutoff register's frequency on `model`. */
+/** `log_interp`: log-linear interpolation through `anchors` (`reg` inside their span). */
+function logInterp(anchors: Anchors, reg: number): number {
+  for (let k = 1; k < anchors.length; k++) {
+    const [r0, f0] = anchors[k - 1] as readonly [number, number];
+    const [r1, f1] = anchors[k] as readonly [number, number];
+    if (reg > r1) continue;
+    if (reg === r1) return f1;
+    return f0 * (f1 / f0) ** ((reg - r0) / (r1 - r0));
+  }
+  throw new Error(`reg ${reg} outside the anchor span`);
+}
+
+/** `cutoff_hz_for`: the cutoff register's frequency on `model` (6581: `cutoff_hz_6581`, two pieces with the 0x3FF -> 0x400 step down). */
 export function sidCutoffHz(model: SidChipModel, reg: number): number {
   const r = reg & 0x7ff;
   if (model === '8580') return 30 + (r * (12_000 - 30)) / 2047;
-  const k = 7;
-  const x = r / 2047;
-  const lo = sigmoid(-k / 2);
-  const hi = sigmoid(k / 2);
-  const s = Math.max(0, Math.min(1, (sigmoid(k * (x - 0.5)) - lo) / (hi - lo)));
-  return 220 * (18_000 / 220) ** s;
+  return logInterp(r < 0x400 ? CUTOFF_ANCHORS_6581_LO : CUTOFF_ANCHORS_6581_HI, r);
 }
 
 /** `resonance_q_for`: the resonance nibble's Q on `model`. */

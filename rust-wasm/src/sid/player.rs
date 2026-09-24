@@ -726,19 +726,19 @@ impl SidSongPlayer {
         }
         let (cmd, param) = (self.channels[c].run_cmd, self.channels[c].run_param);
         let speed = self.speed_row(param).map(|r| (r.left as u16) << 8 | r.right as u16);
-        // GT's realtime optimisation skips the tick effects on tick 0
-        // (goattrk2.c:55, gplay.c:728). Applied to the vibrato here (S5.10);
-        // the portamentos 1-3 still slide on tick 0 (a pre-existing
-        // difference, not this batch's). The preview voice has no rows.
+        // GT's realtime optimisation skips the tick effects on tick 0 of
+        // every row (goattrk2.c:55, gplay.c:728): the vibratos (S5.10) and
+        // the slides 1-2 and the portamento 3 (S5.12), so a slide steps
+        // tempo - 1 times per row. The preview voice has no rows.
         let tick0 = self.tick == 0 && !self.preview;
         match cmd {
-            0x1 => {
+            0x1 if !tick0 => {
                 if let Some(s) = speed {
                     let ch = &mut self.channels[c];
                     ch.freq = ch.freq.saturating_add(s);
                 }
             }
-            0x2 => {
+            0x2 if !tick0 => {
                 if let Some(s) = speed {
                     let ch = &mut self.channels[c];
                     ch.freq = ch.freq.saturating_sub(s);
@@ -761,6 +761,8 @@ impl SidSongPlayer {
                     if self.tick != 0 {
                         ch.freq = gt_note_freq_reg(ch.base_note);
                     }
+                } else if tick0 {
+                    // Portamento toward the target: tick 1 on (see above).
                 } else if let (Some(t), Some(s)) = (ch.target, speed) {
                     ch.freq = if ch.freq < t { ch.freq.saturating_add(s).min(t) } else { ch.freq.saturating_sub(s).max(t) };
                     if ch.freq == t {

@@ -785,20 +785,23 @@ fn combined_waveforms_through_osc3() {
     // v3 at 0x6000 for 256 cycles: acc = 24_576 * 256 = 6_291_456 =
     // 0x600000. Then freq 0 (parked). Waveform bits there:
     //   saw 0x600, tri 0xC00, pulse(PW 0x400) 0xFFF, pulse(PW 0x800) 0
-    //   SAW|TRI         = 0x400 -> OSC3 0x40
-    //   PULSE|SAW  (400)= 0x600 -> OSC3 0x60
-    //   PULSE|TRI  (400)= 0xC00 -> OSC3 0xC0
+    //   SAW|TRI         AND 0x400 -> pull -> 0     -> OSC3 0x00
+    //   PULSE|SAW  (400)AND 0x600 -> pull -> 0     -> OSC3 0x00
+    //   PULSE|TRI  (400)AND 0xC00 (plain AND)      -> OSC3 0xC0
     //   PULSE|SAW  (800)= 0     -> OSC3 0x00
+    // S5.12 R2: the 8580's saw+tri, pulse+saw and pulse+saw+tri go through
+    // the fitted neighbour pull (waveform.rs hand values: 0x400 and 0x600
+    // both vanish at every 8580 threshold); pulse+tri stays the AND.
     let mut c = chip();
     freq(&mut c, V3, 0x6000);
     run_to(&mut c, 256);
     freq(&mut c, V3, 0);
     assert_eq!(acc(&c, 2), 0x60_0000);
     let cases = [
-        (SAW | TRI, 0x400u16, 0x40u8),
-        (PULSE | SAW, 0x400, 0x60),
+        (SAW | TRI, 0x400u16, 0x00u8),
+        (PULSE | SAW, 0x400, 0x00),
         (PULSE | TRI, 0x400, 0xC0),
-        (PULSE | SAW | TRI, 0x400, 0x40),
+        (PULSE | SAW | TRI, 0x400, 0x00),
         (PULSE | SAW, 0x800, 0x00),
         (SAW, 0x800, 0x60),
         (TRI, 0x800, 0xC0),
