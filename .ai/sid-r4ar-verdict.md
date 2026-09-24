@@ -151,3 +151,37 @@ The volume weights are an original INFERRED guess.
   old (linear-volume) 6581 until then.
 - The app's TS visuals port (`sid-instrument-visuals.ts`) mirrors the cutoff anchors,
   which did not change, and does not model volume. No port or fixture update was needed.
+
+## 7. Reference-implementation addendum (Morten, 14:26 — post-code research pass)
+
+Full detail: `.ai/s515-reference-addendum.md`. Method: direct fetches (web_search still
+unavailable). Zero bytes copied from any reference (GPL or otherwise).
+
+### Reference-implementation table
+
+| Reference | Revision-parameterized? | Cutoff facts (file:line) | Volume-DAC facts | Output DC |
+|---|---|---|---|---|
+| reSID (daglem/reSID) | **NO** — `chip_model` only, `model_filter[2]` (src/filter.h:448) | 11-bit `DAC<11> f0_dac` (src/filter.h:438), `Vw = Vw_bias + f0_dac[fc]` (filter.cc set_w0); 8580 linear marked "FIXME: temporary" | ideal ladder, "gain ~ vol/8" from die photos (src/filter.cc:284-285); ~linear, no per-bit table, no digi model | not modeled |
+| reSIDfp (drfiemost/residfp) | **NO** — chip-model class split: Filter6581/Filter8580 (repo root listing) | revision-generic | revision-generic | not modeled |
+| jsSID v0.9.1 (Hermit, og2t/jsSID) | **NO** — `SIDm` ∈ {6581.0, 8580.0} | single exp curve to 20 kHz, `1-1.263*exp(ctf*ctf_ratio_6581)`, clamp at ctf<24 (jsSID.js) | linear `(output/SCALE)*(M[..0x18]&0xF)` (jsSID.js) | not modeled |
+| kevtris remarked-SIDs page | measurements on genuine R2/R3/R4AR; R2 & R4AR used interchangeably as controls; no per-revision traits; chip-to-chip variance dominant (URL in addendum) | — | — | — |
+| siliconpr0n / cSID_lite / dSID die writeups | UNREACHABLE (403/404, search down) — data UNVERIFIED, not absent | — | — | — |
+
+### Cross-check conclusion
+
+Three independent engines agree: the 6581 model is parameterized by CHIP MODEL only, never
+by die revision. Combined with the prose record (no substantial R2→R4AR alterations),
+**no trait qualifies as R4AR-specific under the two-source rule** — the R4AR profile stays
+GENERIC-6581 exactly as landed: cutoff = S5.12 measured anchors, DC/gain = S2, volume
+weights = INFERRED (still single-source, still flagged). Profile values unchanged by this
+addendum; it is a documentation-only pass.
+
+Conflict noted honestly: jsSID's generic 6581 cutoff (exp to 20 kHz) differs in shape from
+S5.12's measured anchors — competing approximations of the same revision-generic trait;
+the measured anchors are preferred. reSID's ideal-ladder volume (~linear) vs our INFERRED
+mild nonlinearity: consistent in spirit; the digi-loud trait rides on the S2 mixer DC.
+
+### Gate delta for this addendum
+
+Documentation-only commit: no Rust/TS source changed, so cargo/vitest/lint results from
+section 5 stand. gitleaks re-run on the new tree: .ai/checks-s515-addendum-gitleaks.txt.
