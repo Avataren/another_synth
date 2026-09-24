@@ -20,7 +20,8 @@
 //! - Cutoff curve: GENERIC-6581. The public record gives 6581-vs-8580
 //!   nonlinearity but no per-revision anchors. The R4AR profile carries the
 //!   S5.12 measured-anchor curve as is. The published nominal curve's range
-//!   (220 Hz..18 kHz) is quoted for 6581R4AR, which fits.
+//!   (220 Hz..18 kHz) is quoted for the 6581 generally — the record does not
+//!   break it down per die revision; R4AR is consistent with it.
 //! - FC_HI $7F -> $80 step: GENERIC-6581. It is the 0x3FF -> 0x400 drop
 //!   between the two anchor sets. No revision-specific position or shape is
 //!   invented.
