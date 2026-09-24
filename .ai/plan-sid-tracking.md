@@ -334,3 +334,6 @@ Morten's transpose hypothesis (07:31) + concrete bug report: Streets (metal_warr
 
 ## EAR-ACCEPT (Morten, 2026-09-24 08:28): S5.9 gate-bit fix — "drums sounds much better btw"
 Verified on phone (cubed.no, post-ad2a2bb6 deploy). White-noise drum symptom resolved by the wave&gate fix. S5.9 fully accepted.
+
+## Queued (Morten, 2026-09-24 08:30): S5.7 now URGENT — chip-model switcher UI on tracker page ("Chip ui? Is it in?")
+Not yet — S5.7 was queued behind S5.5/S5.6 landings and got displaced by S5.9 (gate-bit) + S5.10 (transpose/vibrato) pipeline work. Morten is on phone wanting to A/B chip models NOW. Scope unchanged: 8580↔6581 toggle on tracker page when SID song loaded, defaults to song's tagged model, switch retags + rebuilds player (SidModel::Sid8580/Sid6581 param path proven by A/B renderer). Bundled: mono spectrum/oscilloscope display for SID (fake stereo fix, 22:06 report). Spawn as next batch after S5.10 lands.
