@@ -176,6 +176,7 @@
             :node="masterOutputNode"
             :track-nodes="spectrumTrackNodes"
             :is-playing="isPlaying"
+            :mono="trackerStore.isSidSong"
           />
           <div
             ref="patternAreaRef"

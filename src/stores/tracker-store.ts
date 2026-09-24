@@ -77,7 +77,9 @@ import {
   sidEntriesToRows,
   sidGridLayout,
   sidPositionPatternId,
+  setSidChipModel,
   setSidPatternSlice,
+  type SidChipModel,
   type SidDoc,
   type SidDocRow,
   type SidOpResult,
@@ -1507,6 +1509,17 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.pushHistory();
       this.commitSidDoc(result.doc);
       return true;
+    },
+    /**
+     * Retags the song's chip (plan-sid-tracking.md S5.7): an undoable doc
+     * edit like any other, so a save or export writes the new model and a
+     * playing song reloads with it (the `sidRevision` watch in the playback
+     * store: `SidSongTransport.onDocChange`, back at the row it was on).
+     */
+    setSidChip(chipModel: SidChipModel): boolean {
+      const doc = this.sidDoc;
+      if (doc === null) return false;
+      return this.editSidDoc(setSidChipModel(doc, chipModel));
     },
     /** Sets the doc and everything projected from it; `index` is the grid position to show. */
     showSidDoc(doc: SidDoc, index: number) {

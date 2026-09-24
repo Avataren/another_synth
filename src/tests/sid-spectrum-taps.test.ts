@@ -224,6 +224,13 @@ describe('both pages take the SID taps from the host', () => {
       expect(src, name).toContain(':scope-source="isAhxSong ? playbackStore.getAhxChannelWaveform : null"');
     }
   });
+  it('S5.7: both pages tell the analyzer a SID song is mono (per source, not a global setting)', () => {
+    expect(page('TrackerPage.vue')).toContain(':mono="isSidSong"');
+    expect(page('JukeboxPage.vue')).toContain(':mono="trackerStore.isSidSong"');
+    for (const name of ['TrackerPage.vue', 'JukeboxPage.vue']) {
+      expect(page(name).match(/<TrackerSpectrumAnalyzer[\s\S]*?\/>/)?.[0], name).toMatch(/:mono=/);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -282,6 +289,42 @@ describe('TrackerSpectrumAnalyzer with a SID song\'s three taps', () => {
     }
     expect(ctx.analysers).toHaveLength(3);
     w.unmount();
+  });
+
+  it('S5.7 mono (a SID song): ONE analyser straight on the master -- no splitter, no voice spread over both strips', async () => {
+    const ctx = fakeAnalyzerContext();
+    const master = tap(ctx);
+    const voices = [0, 1, 2].map(() => tap(ctx));
+    const w = mount(TrackerSpectrumAnalyzer, { props: { node: master, trackNodes: voices, isPlaying: true, mono: true } });
+    await twoFrames();
+    expect(ctx.analysers).toHaveLength(1);
+    const fromMaster = connections.filter((c) => c.from === master);
+    expect(fromMaster).toHaveLength(1);
+    expect(fromMaster[0]!.to).toBe(ctx.analysers[0]);
+    for (const voice of voices) expect(connections.filter((c) => c.from === voice)).toHaveLength(0);
+    // Leaving mono (the next song is a MOD) rebuilds the per-track graph.
+    await w.setProps({ mono: false });
+    expect(connections.filter((c) => c.from === master)).toHaveLength(0);
+    expect(ctx.analysers).toHaveLength(4); // the mono one (torn down) + one per voice
+    for (const voice of voices) expect(connections.filter((c) => c.from === voice)).toHaveLength(1);
+    w.unmount();
+  });
+
+  it('S5.7 mono with no taps: still one trace; the same props without mono keep the L/R pair', async () => {
+    const monoCtx = fakeAnalyzerContext();
+    const monoMaster = tap(monoCtx);
+    const m = mount(TrackerSpectrumAnalyzer, { props: { node: monoMaster, trackNodes: [], isPlaying: false, mono: true } });
+    await twoFrames();
+    expect(monoCtx.analysers).toHaveLength(1);
+    m.unmount();
+
+    connections = [];
+    const stereoCtx = fakeAnalyzerContext();
+    const stereoMaster = tap(stereoCtx);
+    const s = mount(TrackerSpectrumAnalyzer, { props: { node: stereoMaster, trackNodes: [], isPlaying: false } });
+    await twoFrames();
+    expect(stereoCtx.analysers).toHaveLength(2);
+    s.unmount();
   });
 
   it('three null taps (nothing looking yet) -> the stereo master graph, like four', async () => {

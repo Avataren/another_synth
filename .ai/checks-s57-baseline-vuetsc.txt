@@ -1,0 +1,808 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm notice run synth@0.3.65 npx
+npm notice run 'vue-tsc' --noEmit
+error TS5083: Cannot read file '/home/openclaw/.openclaw/workspace/another_synth/.ai/worktrees/sid-chipui/.quasar/tsconfig.json'.
+packages/tracker-playback/src/__tests__/engine-display-latency.spec.ts(74,17): error TS2550: Property 'at' does not exist on type 'number[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+packages/tracker-playback/src/__tests__/engine-display-latency.spec.ts(84,17): error TS2550: Property 'at' does not exist on type 'number[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+packages/tracker-playback/src/__tests__/engine-display-latency.spec.ts(95,17): error TS2550: Property 'at' does not exist on type 'number[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+packages/tracker-playback/src/__tests__/engine-display-latency.spec.ts(113,17): error TS2550: Property 'at' does not exist on type 'number[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+packages/tracker-playback/src/__tests__/postfx-stage.spec.ts(213,32): error TS2550: Property 'at' does not exist on type '{ type: string; args: unknown[]; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+packages/tracker-playback/src/__tests__/postfx-stage.spec.ts(214,32): error TS2550: Property 'at' does not exist on type '{ type: string; args: unknown[]; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+packages/tracker-playback/src/__tests__/standalone-sink.spec.ts(116,16): error TS2802: Type 'IterableIterator<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/__tests__/standalone-sink.spec.ts(127,16): error TS2802: Type 'IterableIterator<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/engine.ts(454,46): error TS2802: Type 'Map<number, string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/engine.ts(1554,22): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/engine.ts(1646,28): error TS2802: Type 'ListenerMap[K]' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/import/mod-samples.ts(98,34): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/import/s3m-samples.ts(106,38): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/import/xm-samples.ts(184,38): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/mod-vblank.ts(57,22): error TS2802: Type 'Generator<ModPatternCell, any, unknown>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/postfx/registry.ts(28,30): error TS2802: Type 'Set<(registration: PostFxRegistration) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/sampler-instrument.ts(834,35): error TS2802: Type 'IterableIterator<[number, ActiveVoice]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/sampler-instrument.ts(972,33): error TS2802: Type 'IterableIterator<[number, ActiveVoice]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/sampler-instrument.ts(1090,39): error TS2802: Type 'IterableIterator<[number, ActiveVoice]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/sampler-instrument.ts(1095,34): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/sampler-instrument.ts(1110,34): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/sampler-instrument.ts(1115,25): error TS2802: Type 'IterableIterator<ActiveVoice>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/sampler-instrument.ts(1599,35): error TS2802: Type 'IterableIterator<[number, ActiveVoice]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/sampler-instrument.ts(1798,39): error TS2802: Type 'IterableIterator<[number, ActiveVoice]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/standalone-sink.ts(123,34): error TS2802: Type 'IterableIterator<LoadedInstrument>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/standalone-sink.ts(134,34): error TS2802: Type 'IterableIterator<LoadedInstrument>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/standalone-sink.ts(422,26): error TS2802: Type 'IterableIterator<LoadedInstrument>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/standalone-sink.ts(431,26): error TS2802: Type 'IterableIterator<LoadedInstrument>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/standalone-sink.ts(439,26): error TS2802: Type 'IterableIterator<LoadedInstrument>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+packages/tracker-playback/src/standalone-sink.ts(448,26): error TS2802: Type 'IterableIterator<LoadedInstrument>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+quasar.config.ts(8,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+quasar.config.ts(9,8): error TS1192: Module '"fs"' has no default export.
+src/audio/AudioSystem.ts(285,34): error TS2802: Type 'Set<() => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/adapters/message-handler.ts(353,27): error TS2802: Type 'IterableIterator<PendingRequest>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/audio-processor-loader.ts(28,8): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/audio/audio-processor-loader.ts(28,20): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/audio/audio-processor-loader.ts(50,30): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/audio/audio-processor-loader.ts(50,42): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/audio/audio-processor-loader.ts(176,8): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/audio/audio-processor-loader.ts(176,20): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/audio/instrument-v2.ts(205,46): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(241,48): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(246,48): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(251,48): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(437,49): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(484,47): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1314,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1339,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1347,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1370,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1414,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1442,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1451,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1485,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1503,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1519,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1526,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1530,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1551,55): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1558,55): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1562,55): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1580,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1628,55): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1636,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1685,55): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1693,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1731,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(1738,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/instrument-v2.ts(2027,25): error TS2802: Type 'IterableIterator<GlideState>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/midi-input.ts(147,28): error TS2802: Type 'Set<MidiPortLike>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/midi-input.ts(154,24): error TS2802: Type 'Set<MidiPortLike>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/midi-input.ts(176,28): error TS2802: Type 'Set<MidiPortLike>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/pooled-instrument-factory.ts(244,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(251,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(258,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(290,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(312,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(320,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(349,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(385,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(400,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(408,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(429,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(451,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(481,51): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(507,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(559,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(566,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(588,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(595,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(599,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(638,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(645,53): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(776,25): error TS2802: Type 'IterableIterator<GlideState>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/pooled-instrument-factory.ts(807,47): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/pooled-instrument-factory.ts(830,49): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/sync-manager.ts(110,40): error TS2802: Type 'Map<string, NodeConnection>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/sync-manager.ts(116,39): error TS2802: Type 'Map<string, WasmConnection>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-doc/ahx-file-codec.ts(22,38): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-doc/entries.ts(13,34): error TS2802: Type 'string' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-doc/ops.ts(205,21): error TS2322: Type 'AhxOpResult' is not assignable to type 'AhxOpResult<{ track: number; }>'.
+  Type '{ readonly ok: true; readonly doc: AhxDoc; } & object' is not assignable to type 'AhxOpResult<{ track: number; }>'.
+    Type '{ readonly ok: true; readonly doc: AhxDoc; } & object' is not assignable to type '{ readonly ok: true; readonly doc: AhxDoc; } & { track: number; }'.
+      Property 'track' is missing in type '{ readonly ok: true; readonly doc: AhxDoc; }' but required in type '{ track: number; }'.
+src/audio/tracker/ahx-doc/ops.ts(275,20): error TS2322: Type 'AhxOpResult<{ track: number; }>' is not assignable to type 'AhxOpResult<{ mapPosition: AhxPositionMap; }>'.
+  Type '{ readonly ok: true; readonly doc: AhxDoc; } & { track: number; }' is not assignable to type 'AhxOpResult<{ mapPosition: AhxPositionMap; }>'.
+    Type '{ readonly ok: true; readonly doc: AhxDoc; } & { track: number; }' is not assignable to type '{ readonly ok: true; readonly doc: AhxDoc; } & { mapPosition: AhxPositionMap; }'.
+      Property 'mapPosition' is missing in type '{ readonly ok: true; readonly doc: AhxDoc; } & { track: number; }' but required in type '{ mapPosition: AhxPositionMap; }'.
+src/audio/tracker/ahx-doc/ops.ts(277,23): error TS2322: Type 'AhxOpResult' is not assignable to type 'AhxOpResult<{ mapPosition: AhxPositionMap; }>'.
+  Type '{ readonly ok: true; readonly doc: AhxDoc; } & object' is not assignable to type 'AhxOpResult<{ mapPosition: AhxPositionMap; }>'.
+    Type '{ readonly ok: true; readonly doc: AhxDoc; } & object' is not assignable to type '{ readonly ok: true; readonly doc: AhxDoc; } & { mapPosition: AhxPositionMap; }'.
+      Property 'mapPosition' is missing in type '{ readonly ok: true; readonly doc: AhxDoc; }' but required in type '{ mapPosition: AhxPositionMap; }'.
+src/audio/tracker/ahx-doc/projection.ts(42,22): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-instrument-display.ts(83,14): error TS2802: Type 'IterableIterator<AhxWaveformUse>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-instrument-sync.ts(44,23): error TS2802: Type 'IterableIterator<[number, Uint8Array]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-notices.ts(53,11): error TS2802: Type 'IterableIterator<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-player.ts(387,27): error TS2802: Type 'IterableIterator<{ resolve: () => void; reject: (error: Error) => void; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-player.ts(396,28): error TS2802: Type 'Set<(error: Error) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-player.ts(429,32): error TS2802: Type 'Set<(p: AhxPosition) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-player.ts(438,32): error TS2802: Type 'Set<(w: AhxWaveforms) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-player.ts(443,32): error TS2802: Type 'Set<(r: AhxPListRow) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-player.ts(447,32): error TS2802: Type 'Set<() => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-player.ts(485,8): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/audio/tracker/ahx-player.ts(485,20): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/audio/tracker/ahx-player.ts(505,16): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/audio/tracker/ahx-player.ts(505,28): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/audio/tracker/ahx-preview.ts(213,36): error TS2802: Type 'Set<(r: AhxPListRow) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-preview.ts(219,32): error TS2802: Type 'Set<(node: AudioNode) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-preview.ts(232,45): error TS2802: Type 'Set<(r: AhxPListRow) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-preview.ts(233,45): error TS2802: Type 'Set<(node: AudioNode) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-song-transport.ts(529,28): error TS2802: Type 'Set<() => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-song-transport.ts(761,23): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-source.ts(176,26): error TS2802: Type 'Set<() => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-source.ts(250,32): error TS2802: Type 'Set<(change: AhxStructureChange) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-source.ts(303,26): error TS2802: Type 'Set<(edit: AhxInstrumentEdit) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-source.ts(309,14): error TS2802: Type 'IterableIterator<[number, Uint8Array]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-transport.ts(115,38): error TS2802: Type 'Set<(kind: 2 | 1) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-transport.ts(117,36): error TS2802: Type 'Set<(p: AhxPosition) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-transport.ts(120,36): error TS2802: Type 'Set<() => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/ahx-transport.ts(123,36): error TS2802: Type 'Set<(w: AhxWaveforms) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/exporter.ts(37,23): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/audio/tracker/exporter.ts(37,35): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/audio/tracker/instrument-lifecycle.ts(793,30): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/plist-edit.ts(442,32): error TS2339: Property 'reason' does not exist on type 'PListOpResult<{ readonly notice?: string; }>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly instrument: AhxInstrument; readonly changed: boolean; } & { readonly notice?: string; }'.
+src/audio/tracker/plist-edit.ts(443,5): error TS2322: Type 'PListOpResult<{ readonly notice?: string; }>' is not assignable to type 'PListCommitResult'.
+  Type '{ readonly ok: true; readonly instrument: AhxInstrument; readonly changed: boolean; } & { readonly notice?: string; }' is not assignable to type 'PListCommitResult'.
+    Property 'outcome' is missing in type '{ readonly ok: true; readonly instrument: AhxInstrument; readonly changed: boolean; } & { readonly notice?: string; }' but required in type '{ readonly ok: true; readonly outcome: "applied" | "kept"; readonly changed: boolean; }'.
+src/audio/tracker/recorder.ts(61,10): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/audio/tracker/recorder.ts(61,22): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/audio/tracker/sid-doc/doc.ts(208,28): error TS2802: Type 'IterableIterator<[number, any]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/doc.ts(218,26): error TS2802: Type 'IterableIterator<[number, any]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/doc.ts(222,30): error TS2802: Type 'IterableIterator<[number, any]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/doc.ts(227,28): error TS2802: Type 'IterableIterator<[number, any]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/doc.ts(235,30): error TS2802: Type 'IterableIterator<[number, any]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/doc.ts(238,29): error TS2802: Type 'IterableIterator<[number, any]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/grid.ts(111,22): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/grid.ts(187,21): error TS2802: Type 'Set<keyof TrackerEntryData>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/grid.ts(239,36): error TS2802: Type 'string' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/gt-sng-common.ts(117,19): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/gt-sng-gt1.ts(315,17): error TS2550: Property 'at' does not exist on type 'SidTableRow[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/audio/tracker/sid-doc/gt-sng-write.ts(68,26): error TS2802: Type 'IterableIterator<[number, SidInstrument]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/gt-sng-write.ts(69,152): error TS2367: This comparison appears to be unintentional because the types 'string' and 'boolean' have no overlap.
+src/audio/tracker/sid-doc/gt-sng-write.ts(71,90): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/audio/tracker/sid-doc/gt-sng-write.ts(75,30): error TS2802: Type 'IterableIterator<[number, SidSubsong]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/gt-sng-write.ts(101,24): error TS2802: Type 'IterableIterator<[number, SidOrderEntry]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-doc/sid-file-codec.ts(246,82): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-import.ts(53,86): error TS2339: Property 'reason' does not exist on type 'GtSongImport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }'.
+src/audio/tracker/sid-instrument-edit.ts(88,14): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-player.ts(197,28): error TS2802: Type 'Set<(error: Error) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-player.ts(219,32): error TS2802: Type 'Set<(p: SidPosition) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-player.ts(223,32): error TS2802: Type 'Set<() => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-player.ts(235,48): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/audio/tracker/sid-player.ts(235,60): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/audio/tracker/sid-player.ts(252,43): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/audio/tracker/sid-player.ts(252,55): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/audio/tracker/sid-song-transport.ts(307,23): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-song-transport.ts(371,28): error TS2802: Type 'Set<() => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-song-transport.ts(394,32): error TS2802: Type 'Set<(node: AudioNode) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/sid-song-transport.ts(443,28): error TS2802: Type 'Set<(node: AudioNode) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(315,27): error TS2802: Type 'IterableIterator<GainNode>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(447,42): error TS2802: Type 'IterableIterator<[string, ActiveInstrument]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(567,33): error TS2802: Type 'IterableIterator<[string, Patch]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(575,26): error TS2802: Type 'IterableIterator<[string, ActiveInstrument]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(657,34): error TS2802: Type 'IterableIterator<[string, ActiveInstrument]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(729,42): error TS2802: Type 'IterableIterator<[string, ActiveInstrument]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(732,29): error TS2802: Type 'IterableIterator<Set<number>>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(752,42): error TS2802: Type 'IterableIterator<[string, ActiveInstrument]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(799,26): error TS2802: Type 'IterableIterator<ActiveInstrument>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(845,26): error TS2802: Type 'IterableIterator<ActiveInstrument>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(919,42): error TS2802: Type 'IterableIterator<[string, ActiveInstrument]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(1101,28): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(1233,26): error TS2802: Type 'IterableIterator<ActiveInstrument>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(1247,32): error TS2802: Type 'IterableIterator<[string, ActiveInstrument]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-bank.ts(1426,44): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/tracker/song-bank.ts(1427,44): error TS2339: Property 'get' does not exist on type 'AudioParamMap'.
+src/audio/tracker/song-bank.ts(1501,28): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-export/ahx-exporter.ts(72,7): error TS2322: Type 'HvlToAhx | { ok: true; baseBytes: Uint8Array; base: AhxSong; ahx: AhxSong; converted: true; }' is not assignable to type 'Plan'.
+  Type '{ ok: true; song: AhxSong; }' is not assignable to type 'Plan'.
+    Type '{ ok: true; song: AhxSong; }' is missing the following properties from type '{ ok: true; file?: Uint8Array; baseBytes?: Uint8Array; base: AhxSong; ahx: AhxSong; converted: boolean; }': base, ahx, converted
+src/audio/tracker/song-export/ahx-exporter.ts(78,18): error TS2322: Type 'SourceLookup' is not assignable to type 'Plan'.
+  Type '{ ok: true; record: AhxSource; }' is not assignable to type 'Plan'.
+    Type '{ ok: true; record: AhxSource; }' is missing the following properties from type '{ ok: true; file?: Uint8Array; baseBytes?: Uint8Array; base: AhxSong; ahx: AhxSong; converted: boolean; }': base, ahx, converted
+src/audio/tracker/song-export/ahx-exporter.ts(88,3): error TS2322: Type 'HvlToAhx | { ok: true; baseBytes: Uint8Array; base: AhxSong; ahx: AhxSong; converted: true; }' is not assignable to type 'Plan'.
+  Type '{ ok: true; song: AhxSong; }' is not assignable to type 'Plan'.
+src/audio/tracker/song-export/ahx-exporter.ts(134,54): error TS2339: Property 'reason' does not exist on type 'Plan'.
+  Property 'reason' does not exist on type '{ ok: true; file?: Uint8Array; baseBytes?: Uint8Array; base: AhxSong; ahx: AhxSong; converted: boolean; }'.
+src/audio/tracker/song-export/ahx-writer.ts(263,24): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-export/hvl-exporter.ts(51,18): error TS2322: Type 'SourceLookup' is not assignable to type 'Plan'.
+  Type '{ ok: true; record: AhxSource; }' is not assignable to type 'Plan'.
+    Property 'base' is missing in type '{ ok: true; record: AhxSource; }' but required in type '{ ok: true; file?: Uint8Array; source?: Uint8Array; base: AhxSong; }'.
+src/audio/tracker/song-export/hvl-exporter.ts(76,54): error TS2339: Property 'reason' does not exist on type 'Plan'.
+  Property 'reason' does not exist on type '{ ok: true; file?: Uint8Array; source?: Uint8Array; base: AhxSong; }'.
+src/audio/tracker/song-export/hvl-to-ahx.ts(58,14): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-export/hvl-to-ahx.ts(78,23): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/tracker/song-export/registry.ts(52,88): error TS2339: Property 'reason' does not exist on type 'SongExportCheck'.
+  Property 'reason' does not exist on type '{ ok: true; }'.
+src/audio/tracker/xm-import.ts(113,37): error TS2802: Type 'IterableIterator<[number, XmInstrument]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/worklet-pool.ts(210,41): error TS2802: Type 'IterableIterator<[string, VoiceAllocation]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/worklet-pool.ts(344,46): error TS2802: Type 'IterableIterator<[string, VoiceAllocation]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/worklet-pool.ts(366,27): error TS2802: Type 'IterableIterator<{ startVoice: number; endVoice: number; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/worklet-pool.ts(394,25): error TS2802: Type 'IterableIterator<{ startVoice: number; endVoice: number; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/worklets/synth-worklet.ts(452,26): error TS2802: Type 'IterableIterator<InstrumentSlot>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/worklets/synth-worklet.ts(531,26): error TS2802: Type 'IterableIterator<InstrumentSlot>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/audio/worklets/synth-worklet.ts(1501,11): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/audio/worklets/synth-worklet.ts(1501,23): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/audio/worklets/synth-worklet.ts(2527,28): error TS2802: Type 'IterableIterator<InstrumentSlot>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/components/FrequencyAnalyzerComponent.vue(111,7): error TS2578: Unused '@ts-expect-error' directive.
+src/components/PatchPicker.vue(213,62): error TS2802: Type 'Map<string, { bankName: string; patches: PatchOption[]; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/components/PatchPicker.vue(248,14): error TS1252: Function declarations are not allowed inside blocks in strict mode when targeting 'ES5'. Modules are automatically in strict mode.
+src/components/PatchPicker.vue(291,14): error TS1252: Function declarations are not allowed inside blocks in strict mode when targeting 'ES5'. Modules are automatically in strict mode.
+src/components/PatchPicker.vue(293,27): error TS2802: Type 'IterableIterator<CategoryAccumulator>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/components/PatchPicker.vue(426,25): error TS2802: Type 'IterableIterator<BankCategoryAccumulator>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/components/tracker/pattern-canvas/pattern-diff.ts(133,32): error TS2802: Type 'Map<number, TrackerEntryData>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/components/tracker/pattern-canvas/pattern-diff.ts(136,25): error TS2802: Type 'Map<number, TrackerEntryData>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/components/tracker/pattern-canvas/pattern-diff.ts(149,26): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/composables/bug-report-context.ts(121,22): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/composables/bug-report.ts(235,19): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/composables/bug-report.ts(236,24): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/composables/demo-deep-link.ts(35,30): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/composables/demo-deep-link.ts(35,42): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/composables/useAhxPListEditing.ts(152,42): error TS2339: Property 'reason' does not exist on type 'PListOpResult<{ readonly notice?: string; }>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly instrument: AhxInstrument; readonly changed: boolean; } & { readonly notice?: string; }'.
+src/composables/useAhxPlayInput.ts(88,22): error TS2802: Type 'IterableIterator<[number, Holding]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/composables/useAhxPlayInput.ts(129,21): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/composables/useAhxPlayInput.ts(149,39): error TS2802: Type 'Map<number, Holding>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/composables/useAhxPlayInput.ts(159,39): error TS2802: Type 'Map<number, Holding>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/composables/useAnimationLoop.ts(20,28): error TS2802: Type 'Set<AnimationCallback>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/composables/useJukeboxPlayer.ts(22,20): error TS2554: Expected 0-1 arguments, but got 2.
+src/composables/useTrackerFileIO.ts(2,8): error TS1259: Module '"/home/openclaw/.openclaw/workspace/another_synth/node_modules/jszip/index"' can only be default-imported using the 'esModuleInterop' flag
+src/composables/useTrackerInstruments.ts(271,39): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/composables/useTrackerInstruments.ts(271,51): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/composables/useTrackerSongHost.ts(253,10): error TS2802: Type 'Set<number> & Omit<Set<number>, keyof Set<any>>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/asset-store.ts(15,59): error TS2802: Type 'Map<string, AudioAsset>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/keyboard-store.ts(230,21): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/keyboard-store.ts(247,21): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/layout-store.ts(151,23): error TS2339: Property 'forEach' does not exist on type 'unknown'.
+src/stores/layout-store.ts(371,21): error TS2339: Property 'forEach' does not exist on type 'unknown'.
+src/stores/layout-store.ts(382,21): error TS2339: Property 'forEach' does not exist on type 'unknown'.
+src/stores/patch-store.ts(175,14): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/stores/patch-store.ts(175,26): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/stores/patch-store.ts(236,22): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/stores/patch-store.ts(236,34): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/stores/patch-store.ts(759,14): error TS2802: Type 'Map<string, { id: string; type: AudioAssetType; base64Data: string; sampleRate: number; channels: number; rootNote?: number; fileName?: string; duration?: number; }> & Omit<...>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/patch-store.ts(760,14): error TS2802: Type 'Map<string, AudioAsset>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/patch-store.ts(795,11): error TS2322: Type 'Map<unknown, unknown>' is not assignable to type 'Map<string, AudioAsset>'.
+  Type 'unknown' is not assignable to type 'string'.
+src/stores/patch-store.ts(840,14): error TS2802: Type 'Map<string, { id: string; type: AudioAssetType; base64Data: string; sampleRate: number; channels: number; rootNote?: number; fileName?: string; duration?: number; }> & Omit<...>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/patch-store.ts(841,14): error TS2802: Type 'Map<string, AudioAsset>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/patch-store.ts(865,11): error TS2322: Type 'Map<unknown, unknown>' is not assignable to type 'Map<string, AudioAsset>'.
+src/stores/patch-store.ts(928,14): error TS2802: Type 'Map<string, { id: string; type: AudioAssetType; base64Data: string; sampleRate: number; channels: number; rootNote?: number; fileName?: string; duration?: number; }> & Omit<...>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/patch-store.ts(929,14): error TS2802: Type 'Map<string, AudioAsset>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/patch-store.ts(981,11): error TS2322: Type 'Map<unknown, unknown>' is not assignable to type 'Map<string, AudioAsset>'.
+src/stores/patch-store.ts(1139,37): error TS2802: Type 'IterableIterator<[string, ConvolverState]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/patch-store.ts(1239,12): error TS2802: Type 'Map<string, { id: string; type: AudioAssetType; base64Data: string; sampleRate: number; channels: number; rootNote?: number; fileName?: string; duration?: number; }> & Omit<...>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/patch-store.ts(1240,12): error TS2802: Type 'Map<string, AudioAsset>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/patch-store.ts(1265,9): error TS2322: Type 'Map<unknown, unknown>' is not assignable to type 'Map<string, AudioAsset>'.
+src/stores/tracker-playback-store.ts(525,32): error TS2802: Type 'Set<SongEndListener>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/tracker-playback-store.ts(891,28): error TS2802: Type 'Set<SongEndListener>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/tracker-store.ts(1242,29): error TS2802: Type 'Set<unknown>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/tracker-store.ts(1429,29): error TS2802: Type 'Set<unknown>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/tracker-store.ts(1464,107): error TS2339: Property 'reason' does not exist on type 'SidFileDecoding'.
+  Property 'reason' does not exist on type '{ ok: true; doc: SidDoc; bytes: Uint8Array; }'.
+src/stores/tracker-store.ts(1502,36): error TS2339: Property 'reason' does not exist on type 'SidOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; }'.
+src/stores/tracker-store.ts(1608,37): error TS2802: Type 'Map<number, Map<number, SidDocRow>>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/stores/tracker-store.ts(1614,31): error TS2339: Property 'reason' does not exist on type 'SidOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; }'.
+src/stores/tracker-store.ts(1693,106): error TS2339: Property 'reason' does not exist on type 'AhxFileDecoding'.
+  Property 'reason' does not exist on type '{ ok: true; bytes: Uint8Array; format: AhxSongFormat; }'.
+src/stores/tracker-store.ts(1832,31): error TS2339: Property 'reason' does not exist on type 'AhxOpResult<{ track: number; }>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & { track: number; }'.
+src/stores/tracker-store.ts(1838,34): error TS2339: Property 'reason' does not exist on type 'AhxOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & object'.
+src/stores/tracker-store.ts(1847,31): error TS2339: Property 'reason' does not exist on type 'AhxOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & object'.
+src/stores/tracker-store.ts(1982,37): error TS2339: Property 'reason' does not exist on type 'AhxOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & object'.
+src/tests/ahx-doc-corpus.test.ts(98,44): error TS2339: Property 'reason' does not exist on type 'AhxOpResult<object>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & object'.
+src/tests/ahx-doc-corpus.test.ts(211,21): error TS2339: Property 'reason' does not exist on type 'AhxOpResult<{ track: number; }>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & { track: number; }'.
+src/tests/ahx-doc-corpus.test.ts(238,26): error TS2339: Property 'reason' does not exist on type 'AhxOpResult<{ track: number; }>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & { track: number; }'.
+src/tests/ahx-doc-ops.test.ts(52,54): error TS2339: Property 'reason' does not exist on type 'AhxOpResult<T>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & T'.
+src/tests/ahx-doc-ops.test.ts(306,24): error TS2339: Property 'reason' does not exist on type 'AhxOpResult<{ track: number; }>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & { track: number; }'.
+src/tests/ahx-doc-ops.test.ts(598,43): error TS2339: Property 'reason' does not exist on type 'AhxOpResult<object>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & object'.
+src/tests/ahx-doc-ops.test.ts(599,23): error TS2339: Property 'reason' does not exist on type 'AhxOpResult<object>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & object'.
+src/tests/ahx-doc-ops.test.ts(664,23): error TS2339: Property 'reason' does not exist on type 'AhxOpResult<{ mapPosition: AhxPositionMap; }>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & { mapPosition: AhxPositionMap; }'.
+src/tests/ahx-engine-sync.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/ahx-engine-sync.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/ahx-engine-sync.test.ts(223,42): error TS2339: Property 'reason' does not exist on type '{ ok: true; doc: AhxDoc; mapPosition: (old: number) => number; } | { ok: false; reason: string; }'.
+  Property 'reason' does not exist on type '{ ok: true; doc: AhxDoc; mapPosition: (old: number) => number; }'.
+src/tests/ahx-engine-sync.test.ts(307,36): error TS2550: Property 'at' does not exist on type 'Uint8Array[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-engine-sync.test.ts(364,42): error TS2550: Property 'at' does not exist on type 'Uint8Array[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-engine-sync.test.ts(381,42): error TS2550: Property 'at' does not exist on type 'Uint8Array[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-engine-sync.test.ts(599,40): error TS2339: Property 'reason' does not exist on type 'AhxOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & object'.
+src/tests/ahx-engine-sync.test.ts(702,42): error TS2550: Property 'at' does not exist on type 'Uint8Array[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-engine-sync.test.ts(733,42): error TS2550: Property 'at' does not exist on type 'Uint8Array[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-engine-sync.test.ts(740,27): error TS2550: Property 'at' does not exist on type 'Uint8Array[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-envelope-editor.test.ts(125,40): error TS2550: Property 'at' does not exist on type 'unknown[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-envelope-sim.test.ts(6,20): error TS2732: Cannot find module './fixtures/ahx-envelope-parity.json'. Consider using '--resolveJsonModule' to import module with '.json' extension.
+src/tests/ahx-exporter-corpus.test.ts(79,26): error TS2339: Property 'reason' does not exist on type 'SongExportCheck'.
+  Property 'reason' does not exist on type '{ ok: true; }'.
+src/tests/ahx-exporter-corpus.test.ts(81,26): error TS2339: Property 'reason' does not exist on type 'SongExportCheck'.
+  Property 'reason' does not exist on type '{ ok: true; }'.
+src/tests/ahx-import.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/ahx-import.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/ahx-instrument-display.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/ahx-instrument-display.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/ahx-instrument-page-b2.test.ts(240,28): error TS2461: Type 'NodeListOf<Element>' is not an array type.
+src/tests/ahx-instrument-page-plist-edit.test.ts(420,34): error TS2550: Property 'at' does not exist on type 'AhxPListEntry[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-instrument-page-ux.test.ts(166,26): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-instrument-visuals.test.ts(30,20): error TS2732: Cannot find module './fixtures/ahx-visuals-parity.json'. Consider using '--resolveJsonModule' to import module with '.json' extension.
+src/tests/ahx-new-song.test.ts(26,32): error TS2339: Property 'reason' does not exist on type 'AhxOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & object'.
+src/tests/ahx-parser.test.ts(18,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/ahx-parser.test.ts(19,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/ahx-parser.test.ts(155,36): error TS2550: Property 'at' does not exist on type 'AhxPosition[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-patterns.test.ts(13,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/ahx-patterns.test.ts(14,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/ahx-play-input-suspended.test.ts(93,16): error TS2802: Type 'Reactive<Set<number>>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-play-input-suspended.test.ts(130,16): error TS2802: Type 'Reactive<Set<number>>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-play-input-suspended.test.ts(133,16): error TS2802: Type 'Reactive<Set<number>>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-play-input.test.ts(147,19): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-play-input.test.ts(153,19): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-play-input.test.ts(256,16): error TS2802: Type 'Reactive<Set<number>>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-play-input.test.ts(260,16): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-play-input.test.ts(269,18): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-play-input.test.ts(275,18): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-play-input.test.ts(294,18): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-play-input.test.ts(321,18): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-play-input.test.ts(331,18): error TS2802: Type 'Reactive<Set<number>>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-play-input.test.ts(336,18): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-play-input.test.ts(346,18): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-play-input.test.ts(379,18): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-play-input.test.ts(393,16): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-play-input.test.ts(395,16): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-play-input.test.ts(428,18): error TS2802: Type 'Reactive<Set<number>>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-player-client.test.ts(191,20): error TS2550: Property 'at' does not exist on type '{ channels: number; points: number; data: Int16Array; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-player-client.test.ts(217,49): error TS2802: Type 'Float32Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-player-client.test.ts(497,67): error TS2802: Type 'Float32Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-plist-row-client.test.ts(70,30): error TS2802: Type 'Set<(r: AhxPListRow) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-plist-row-client.test.ts(173,18): error TS2550: Property 'at' does not exist on type 'AhxPListRow[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-plist-row-core.test.ts(291,19): error TS2802: Type 'IterableIterator<Candidate>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-plist-row-core.test.ts(345,16): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-plist-row-core.test.ts(358,42): error TS2802: Type 'IterableIterator<[number, { c: Candidate; instrument: number; }]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-plist-row-core.test.ts(389,22): error TS2550: Property 'at' does not exist on type '{ quantum: number; instrument: number; row: number; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-plist-row-core.test.ts(464,16): error TS4112: This member cannot have an 'override' modifier because its containing class 'Counting' does not extend another class.
+src/tests/ahx-plist-row-core.test.ts(468,16): error TS4112: This member cannot have an 'override' modifier because its containing class 'Counting' does not extend another class.
+src/tests/ahx-plist-row-core.test.ts(504,19): error TS2550: Property 'at' does not exist on type '{ type: "plist-row"; instrument: number; row: number; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-plist-row-core.test.ts(506,19): error TS2550: Property 'at' does not exist on type '{ type: "plist-row"; instrument: number; row: number; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-plist-row-core.test.ts(528,21): error TS2802: Type 'IterableIterator<Candidate>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-position-transpose.test.ts(1,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/ahx-position-transpose.test.ts(2,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/ahx-preview-output.test.ts(69,30): error TS2802: Type 'Set<(r: AhxPListRow) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-readonly-audit.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/ahx-readonly-audit.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/ahx-runtime-reload.test.ts(51,32): error TS2339: Property 'reason' does not exist on type '{ ok: true; doc: AhxDoc; } | { ok: false; reason: string; }'.
+  Property 'reason' does not exist on type '{ ok: true; doc: AhxDoc; }'.
+src/tests/ahx-runtime-reload.test.ts(180,30): error TS2550: Property 'at' does not exist on type '{ type: "position"; position: number; row: number; tempo: number; ticks: number; seekKind?: 2 | 1; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-runtime-reload.test.ts(190,30): error TS2550: Property 'at' does not exist on type '{ type: "position"; position: number; row: number; tempo: number; ticks: number; seekKind?: 2 | 1; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-runtime-reload.test.ts(203,19): error TS2550: Property 'at' does not exist on type 'AhxEvent[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-runtime-reload.test.ts(226,30): error TS2802: Type 'Set<(p: AhxPosition) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-runtime-reload.test.ts(359,21): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-runtime-reload.test.ts(390,29): error TS2802: Type 'IterableIterator<[number, CorpusFile]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-store-persistence.test.ts(1,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/ahx-store-persistence.test.ts(2,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/ahx-store-persistence.test.ts(3,8): error TS1259: Module '"/home/openclaw/.openclaw/workspace/another_synth/node_modules/jszip/index"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/ahx-worklet-core.test.ts(28,11): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/tests/ahx-worklet-core.test.ts(29,19): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-worklet-core.test.ts(31,14): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/tests/ahx-worklet-core.test.ts(31,32): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/tests/ahx-worklet-core.test.ts(139,60): error TS2550: Property 'at' does not exist on type '{ type: "error"; message: string; id?: number; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-worklet-core.test.ts(324,27): error TS2550: Property 'at' does not exist on type '{ type: "waveforms"; channels: number; points: number; data: Int16Array; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-worklet-core.test.ts(346,38): error TS2550: Property 'at' does not exist on type '{ type: "waveforms"; channels: number; points: number; data: Int16Array; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-worklet-core.test.ts(398,32): error TS2550: Property 'at' does not exist on type '{ type: "waveforms"; channels: number; points: number; data: Int16Array; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-worklet-core.test.ts(490,39): error TS2550: Property 'at' does not exist on type '{ type: "waveforms"; channels: number; points: number; data: Int16Array; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-worklet-core.test.ts(491,27): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-worklet-core.test.ts(498,39): error TS2550: Property 'at' does not exist on type '{ type: "waveforms"; channels: number; points: number; data: Int16Array; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-worklet-core.test.ts(507,39): error TS2550: Property 'at' does not exist on type '{ type: "waveforms"; channels: number; points: number; data: Int16Array; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-worklet-core.test.ts(508,24): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-worklet-core.test.ts(511,39): error TS2550: Property 'at' does not exist on type '{ type: "waveforms"; channels: number; points: number; data: Int16Array; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-worklet-core.test.ts(626,65): error TS2550: Property 'at' does not exist on type '{ type: "hifi-stats"; enabled: boolean; locked: boolean; tables: number; misses: number; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-worklet-core.test.ts(691,16): error TS2802: Type 'Float32Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-worklet-core.test.ts(691,26): error TS2802: Type 'Float32Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-worklet-core.test.ts(706,47): error TS2550: Property 'at' does not exist on type '{ type: "position"; position: number; row: number; tempo: number; ticks: number; seekKind?: 2 | 1; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-worklet-core.test.ts(728,16): error TS2802: Type 'Float32Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-worklet-core.test.ts(736,16): error TS2802: Type 'Float32Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-worklet-core.test.ts(757,16): error TS2802: Type 'Float32Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-worklet-core.test.ts(784,30): error TS2550: Property 'at' does not exist on type '{ type: "position"; position: number; row: number; tempo: number; ticks: number; seekKind?: 2 | 1; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/ahx-worklet-shell.test.ts(100,11): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/tests/ahx-worklet-shell.test.ts(101,19): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-worklet-shell.test.ts(103,14): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/tests/ahx-worklet-shell.test.ts(103,32): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/tests/ahx-writeback.test.ts(1,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/ahx-writeback.test.ts(2,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/ahx-writeback.test.ts(54,50): error TS2339: Property 'reason' does not exist on type 'AhxOpResult<{ mapPosition: AhxPositionMap; }>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & { mapPosition: AhxPositionMap; }'.
+src/tests/ahx-writeback.test.ts(56,40): error TS2339: Property 'reason' does not exist on type 'AhxOpResult<{ mapPosition: AhxPositionMap; }>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & { mapPosition: AhxPositionMap; }'.
+src/tests/ahx-writeback.test.ts(60,34): error TS2339: Property 'reason' does not exist on type 'AhxOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & object'.
+src/tests/ahx-writeback.test.ts(389,36): error TS2339: Property 'reason' does not exist on type 'AhxOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & object'.
+src/tests/ahx-writeback.test.ts(1150,38): error TS2339: Property 'reason' does not exist on type 'AhxOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: AhxDoc; } & object'.
+src/tests/ahx-writer-corpus.test.ts(106,45): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer-corpus.test.ts(106,75): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(91,47): error TS2802: Type 'string' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(99,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(100,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(101,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(103,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(150,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(151,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(167,20): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(179,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(184,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(190,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(201,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(252,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(260,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(295,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(302,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(323,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/ahx-writer.test.ts(331,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/artifact-freshness.test.ts(26,33): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+src/tests/boot-suspended-context.test.ts(176,28): error TS2802: Type 'Set<() => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/butterfly-syndrome-pump.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/butterfly-syndrome-pump.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/butterfly-syndrome-pump.test.ts(163,74): error TS2550: Property 'at' does not exist on type '{ time: number; gain: number; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/demo-collection.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/demo-collection.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/demo-collection.test.ts(108,16): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/demo-collection.test.ts(108,44): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/demo-collection.test.ts(122,28): error TS2802: Type 'IterableIterator<string[]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/demo-collection.test.ts(155,52): error TS2339: Property 'reason' does not exist on type 'GtSongImport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }'.
+src/tests/demo-deep-link-router.test.ts(41,5): error TS2322: Type '({ path: string; redirect: string; component?: undefined; } | { path: string; component: DefineComponent<{}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, ... 12 more ..., any>; redirect?: undefined; })[]' is not assignable to type 'readonly RouteRecordRaw[]'.
+  Type '{ path: string; redirect: string; component?: undefined; } | { path: string; component: DefineComponent<{}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, ... 12 more ..., any>; redirect?: undefined; }' is not assignable to type 'RouteRecordRaw'.
+    Type '{ path: string; redirect: string; component?: undefined; }' is not assignable to type 'RouteRecordRaw'.
+      Type '{ path: string; redirect: string; component?: undefined; }' is not assignable to type 'RouteRecordRedirect'.
+        Types of property 'component' are incompatible.
+          Type 'undefined' is not assignable to type 'never'.
+src/tests/dope-mod-tuning.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/dope-mod-tuning.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/helpers/ahx-doc-fixtures.ts(62,19): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/helpers/sid-chain-song.ts(39,42): error TS2339: Property 'reason' does not exist on type 'SidOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; }'.
+src/tests/helpers/synth-worklet-harness.ts(174,38): error TS2802: Type 'Set<Listener>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/helpers/synth-worklet-harness.ts(238,11): error TS2802: Type 'Map<string, FakeAudioParam>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/helpers/synth-worklet-harness.ts(297,23): error TS2802: Type 'Float32Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/hvl-doc-channels.test.ts(1,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/hvl-doc-channels.test.ts(2,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/hvl-doc-corpus.test.ts(83,35): error TS2802: Type 'IterableIterator<[number, AhxDocPosition]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/hvl-doc-corpus.test.ts(197,24): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/hvl-edit-matrix.test.ts(1,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/hvl-edit-matrix.test.ts(2,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/hvl-engine-sync.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/hvl-engine-sync.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/hvl-engine-sync.test.ts(314,33): error TS2550: Property 'at' does not exist on type 'Uint8Array[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/hvl-engine-sync.test.ts(338,37): error TS2550: Property 'at' does not exist on type 'Uint8Array[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/hvl-engine-sync.test.ts(339,36): error TS2550: Property 'at' does not exist on type 'Uint8Array[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/hvl-engine-sync.test.ts(353,49): error TS2550: Property 'at' does not exist on type 'Uint8Array[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/hvl-save-export.test.ts(1,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/hvl-save-export.test.ts(2,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/hvl-save-export.test.ts(90,66): error TS2339: Property 'reason' does not exist on type 'AhxFileDecoding'.
+  Property 'reason' does not exist on type '{ ok: true; bytes: Uint8Array; format: AhxSongFormat; }'.
+src/tests/hvl-writeback-10ch.test.ts(1,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/hvl-writeback-10ch.test.ts(2,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/mod-channel-volume-carry.test.ts(134,26): error TS2802: Type 'IterableIterator<SamplerState>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/mod-effect-depths.test.ts(31,16): error TS2352: Conversion of type '{ kind: string; }' to type '{ frequency: number; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Property 'frequency' is missing in type '{ kind: string; }' but required in type '{ frequency: number; }'.
+src/tests/mod-extended-period-range.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/mod-extended-period-range.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/mod-extended-period-range.test.ts(125,26): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/mod-extended-period-range.test.ts(126,26): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/mod-extended-period-range.test.ts(175,34): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/mod-extended-period-range.test.ts(176,35): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/mod-import.test.ts(10,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/mod-pal-tuning.test.ts(24,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/mod-pal-tuning.test.ts(25,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/mod-sample-conversion.test.ts(12,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/mod-toneporta-pattern-boundary.test.ts(24,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/mod-toneporta-pattern-boundary.test.ts(25,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/mod-toneporta-pattern-boundary.test.ts(111,33): error TS2550: Property 'at' does not exist on type 'number[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/mod-ultimate-soundtracker.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/mod-ultimate-soundtracker.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/mod-vblank-timing.test.ts(55,25): error TS2802: Type 'IterableIterator<[number, any]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/mod-vblank-timing.test.ts(55,29): error TS2802: Type '"M.K."' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/pattern-canvas-bright-row-text.test.ts(185,23): error TS2802: Type 'IterableIterator<(t: number) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/pattern-canvas-bright-row-text.test.ts(319,44): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas-bright-row-text.test.ts(349,42): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas-bright-row-text.test.ts(487,52): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas-bright-row-text.test.ts(542,52): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas-bright-row-text.test.ts(574,44): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas-bright-row-text.test.ts(619,25): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas-bright-row-text.test.ts(688,25): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(252,30): error TS2550: Property 'at' does not exist on type 'ResizeCallback[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(259,23): error TS2802: Type 'IterableIterator<FrameCallback>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/pattern-canvas.test.ts(1050,8): error TS2550: Property 'at' does not exist on type 'PathCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(1090,10): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(1177,33): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(1186,33): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(1246,33): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(1313,33): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(1360,39): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(1385,33): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(1838,37): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(2163,22): error TS2550: Property 'at' does not exist on type '{ timeout?: number; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(2264,41): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(2450,33): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-canvas.test.ts(2461,33): error TS2550: Property 'at' does not exist on type 'DrawImageCall[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/pattern-draw.test.ts(478,16): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/playback-diagnostics.test.ts(76,23): error TS2802: Type 'IterableIterator<[number, FrameCb]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/playback-diagnostics.test.ts(265,31): error TS2550: Property 'at' does not exist on type 'LongTaskSample[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/plist-canvas-parity.test.ts(167,74): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/plist-edit.test.ts(58,44): error TS2339: Property 'reason' does not exist on type 'PListOpResult<{ notice?: string; }>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly instrument: AhxInstrument; readonly changed: boolean; } & { notice?: string; }'.
+src/tests/plist-edit.test.ts(63,12): error TS2339: Property 'reason' does not exist on type 'PListOpResult<object>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly instrument: AhxInstrument; readonly changed: boolean; } & object'.
+src/tests/plist-edit.test.ts(85,29): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/plist-edit.test.ts(103,71): error TS2339: Property 'reason' does not exist on type 'PListOpResult<object>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly instrument: AhxInstrument; readonly changed: boolean; } & object'.
+src/tests/plist-edit.test.ts(131,29): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/plist-edit.test.ts(613,16): error TS1252: Function declarations are not allowed inside blocks in strict mode when targeting 'ES5'. Modules are automatically in strict mode.
+src/tests/plist-edit.test.ts(656,25): error TS2339: Property 'reason' does not exist on type 'PListOpResult<{ notice?: string; }>'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly instrument: AhxInstrument; readonly changed: boolean; } & { notice?: string; }'.
+src/tests/plist-track.test.ts(192,26): error TS2550: Property 'at' does not exist on type 'TrackerEntryData[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/postfx-control.test.ts(60,25): error TS2802: Type 'IterableIterator<(time: number) => void>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/raw-effect-bytes.test.ts(19,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/raw-effect-bytes.test.ts(20,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/s3m-corpus.test.ts(35,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/s3m-corpus.test.ts(36,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/sample-conditioning.test.ts(180,21): error TS2802: Type 'Float32Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sample-conditioning.test.ts(206,21): error TS2802: Type 'Float32Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-doc.test.ts(38,32): error TS2339: Property 'reason' does not exist on type '{ ok: true; doc: SidDoc; } | { ok: false; reason: string; }'.
+  Property 'reason' does not exist on type '{ ok: true; doc: SidDoc; }'.
+src/tests/sid-doc.test.ts(171,27): error TS2339: Property 'reason' does not exist on type 'SidOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; }'.
+src/tests/sid-doc.test.ts(204,16): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-doc.test.ts(219,32): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-format-chain.test.ts(1,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/sid-format-chain.test.ts(2,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/sid-format-chain.test.ts(179,44): error TS2339: Property 'reason' does not exist on type 'SidFileDecoding'.
+  Property 'reason' does not exist on type '{ ok: true; doc: SidDoc; bytes: Uint8Array; }'.
+src/tests/sid-format-chain.test.ts(282,27): error TS2550: Property 'at' does not exist on type 'Song[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/sid-format-chain.test.ts(317,44): error TS2339: Property 'reason' does not exist on type 'SidOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; }'.
+src/tests/sid-gate-off.test.ts(36,46): error TS2339: Property 'reason' does not exist on type 'GtSongImport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }'.
+src/tests/sid-gate-off.test.ts(61,48): error TS2339: Property 'reason' does not exist on type 'GtSongImport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }'.
+src/tests/sid-grid-writeback.test.ts(254,36): error TS2339: Property 'reason' does not exist on type 'SidOpResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; }'.
+src/tests/sid-grid-writeback.test.ts(385,46): error TS2339: Property 'reason' does not exist on type 'SidFileDecoding'.
+  Property 'reason' does not exist on type '{ ok: true; doc: SidDoc; bytes: Uint8Array; }'.
+src/tests/sid-grid-writeback.test.ts(403,46): error TS2339: Property 'reason' does not exist on type 'SidFileDecoding'.
+  Property 'reason' does not exist on type '{ ok: true; doc: SidDoc; bytes: Uint8Array; }'.
+src/tests/sid-instrument-page.test.ts(184,40): error TS2339: Property 'reason' does not exist on type 'SidFileDecoding'.
+  Property 'reason' does not exist on type '{ ok: true; doc: SidDoc; bytes: Uint8Array; }'.
+src/tests/sid-playback-chain.test.ts(6,8): error TS1259: Module '"/home/openclaw/.openclaw/workspace/another_synth/node_modules/jszip/index"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/sid-playback-chain.test.ts(186,19): error TS2802: Type 'Float32Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-playback-chain.test.ts(329,32): error TS2550: Property 'at' does not exist on type 'SidCommand[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/sid-playback-chain.test.ts(344,26): error TS2550: Property 'at' does not exist on type 'SidCommand[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/sid-playback-chain.test.ts(357,26): error TS2550: Property 'at' does not exist on type 'SidCommand[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/sid-playback-chain.test.ts(360,26): error TS2550: Property 'at' does not exist on type 'SidCommand[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/sid-playback-chain.test.ts(368,26): error TS2550: Property 'at' does not exist on type 'SidCommand[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/sid-sng-corpus.test.ts(46,57): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(106,39): error TS2339: Property 'reason' does not exist on type 'GtSongImport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }'.
+src/tests/sid-sng-corpus.test.ts(109,29): error TS2802: Type 'Map<string, { readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(115,29): error TS2802: Type 'Map<string, { readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(162,34): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(162,68): error TS1501: This regular expression flag is only available when targeting 'es2018' or later.
+src/tests/sid-sng-corpus.test.ts(200,29): error TS2802: Type 'Map<string, { readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(282,29): error TS2802: Type 'Map<string, { readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(285,52): error TS2339: Property 'reason' does not exist on type 'GtSongExport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly bytes: Uint8Array; readonly notes: readonly string[]; }'.
+src/tests/sid-sng-corpus.test.ts(286,37): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(288,56): error TS2339: Property 'reason' does not exist on type 'GtSongImport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }'.
+src/tests/sid-sng-corpus.test.ts(304,29): error TS2802: Type 'Map<string, { readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(317,16): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(321,16): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(322,16): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(324,23): error TS2802: Type 'Map<string, { readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(329,26): error TS2802: Type 'Map<string, { readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(345,16): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(363,16): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(372,23): error TS2802: Type 'Map<string, { readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(376,22): error TS2802: Type 'Map<string, { readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-corpus.test.ts(386,16): error TS2802: Type 'IterableIterator<{ readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-export.test.ts(52,36): error TS2339: Property 'reason' does not exist on type 'GtSongExport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly bytes: Uint8Array; readonly notes: readonly string[]; }'.
+src/tests/sid-sng-export.test.ts(58,28): error TS2339: Property 'reason' does not exist on type 'GtSongExport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly bytes: Uint8Array; readonly notes: readonly string[]; }'.
+src/tests/sid-sng-gt1-fix.test.ts(69,44): error TS2339: Property 'reason' does not exist on type 'GtSongImport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }'.
+src/tests/sid-sng-import.test.ts(74,44): error TS2339: Property 'reason' does not exist on type 'GtSongImport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }'.
+src/tests/sid-sng-import.test.ts(80,24): error TS2339: Property 'reason' does not exist on type 'GtSongImport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }'.
+src/tests/sid-sng-import.test.ts(541,40): error TS2802: Type 'Uint8Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-sng-load-chain.test.ts(55,48): error TS2339: Property 'reason' does not exist on type 'GtSongImport'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly doc: SidDoc; readonly variant: GtSongVariant; readonly notes: readonly GtImportNote[]; }'.
+src/tests/sid-spectrum-taps.test.ts(7,8): error TS1259: Module '"/home/openclaw/.openclaw/workspace/another_synth/node_modules/jszip/index"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/sid-worklet-core.test.ts(60,19): error TS2802: Type 'Float32Array' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/sid-worklet-core.test.ts(85,19): error TS2550: Property 'at' does not exist on type 'SidEvent[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/sid-worklet-core.test.ts(86,20): error TS2550: Property 'at' does not exist on type 'SidEvent[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/sid-worklet-core.test.ts(153,17): error TS2550: Property 'at' does not exist on type 'number[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/sid-worklet-core.test.ts(155,19): error TS2550: Property 'at' does not exist on type 'SidEvent[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/song-export-hvl.test.ts(205,44): error TS2339: Property 'reason' does not exist on type 'HvlToAhx'.
+  Property 'reason' does not exist on type '{ ok: true; song: AhxSong; }'.
+src/tests/song-export-hvl.test.ts(312,35): error TS2339: Property 'reason' does not exist on type 'HvlToAhx'.
+  Property 'reason' does not exist on type '{ ok: true; song: AhxSong; }'.
+src/tests/song-export-hvl.test.ts(363,50): error TS2339: Property 'reason' does not exist on type 'HvlToAhx'.
+  Property 'reason' does not exist on type '{ ok: true; song: AhxSong; }'.
+src/tests/stores/tracker-playback-ahx-edits.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/stores/tracker-playback-ahx-edits.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/stores/tracker-playback-ahx-edits.test.ts(340,26): error TS2550: Property 'at' does not exist on type '{ instrument: number; bytes: number[]; }[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-edits.test.ts(341,29): error TS2550: Property 'at' does not exist on type '{ instrument: number; bytes: number[]; }[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/stores/tracker-playback-ahx-routing.test.ts(325,24): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(365,31): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(369,31): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(451,30): error TS2550: Property 'at' does not exist on type 'boolean[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(527,30): error TS2550: Property 'at' does not exist on type 'boolean[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(542,31): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(733,34): error TS2550: Property 'at' does not exist on type '[number, number][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(735,34): error TS2550: Property 'at' does not exist on type '[number, number][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(737,34): error TS2550: Property 'at' does not exist on type '[number, number][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(744,34): error TS2550: Property 'at' does not exist on type '[number, number][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(763,34): error TS2550: Property 'at' does not exist on type '[number, number][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(806,32): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(820,32): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(822,32): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(824,32): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(873,32): error TS2550: Property 'at' does not exist on type 'string[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-playback-ahx-routing.test.ts(994,40): error TS2550: Property 'at' does not exist on type 'Uint8Array[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-store-ahx-edit.test.ts(1,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/stores/tracker-store-ahx-edit.test.ts(2,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/stores/tracker-store-ahx-edit.test.ts(85,64): error TS2550: Property 'at' does not exist on type '{ note: number; waveform: number; fixed: boolean; fx: [number, number]; fxParam: [number, number]; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-store-ahx-edit.test.ts(85,101): error TS2550: Property 'at' does not exist on type '{ note: number; waveform: number; fixed: boolean; fx: [number, number]; fxParam: [number, number]; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/stores/tracker-store-instrument-tags.test.ts(1,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/stores/tracker-store-instrument-tags.test.ts(2,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/stores/tracker-store-plist-guard.test.ts(212,28): error TS2339: Property 'reason' does not exist on type 'PListCommitResult'.
+  Property 'reason' does not exist on type '{ readonly ok: true; readonly outcome: "applied" | "kept"; readonly changed: boolean; }'.
+src/tests/synth-worklet-pooled-scoping.test.ts(37,25): error TS1378: Top-level 'await' expressions are only allowed when the 'module' option is set to 'es2022', 'esnext', 'system', 'node16', 'nodenext', or 'preserve', and the 'target' option is set to 'es2017' or higher.
+src/tests/synth-worklet-pooled-scoping.test.ts(38,30): error TS1378: Top-level 'await' expressions are only allowed when the 'module' option is set to 'es2022', 'esnext', 'system', 'node16', 'nodenext', or 'preserve', and the 'target' option is set to 'es2017' or higher.
+src/tests/synth-worklet-pooled-scoping.test.ts(39,35): error TS1378: Top-level 'await' expressions are only allowed when the 'module' option is set to 'es2022', 'esnext', 'system', 'node16', 'nodenext', or 'preserve', and the 'target' option is set to 'es2017' or higher.
+src/tests/synth-worklet-pooled-scoping.test.ts(161,16): error TS2802: Type 'IterableIterator<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/synth-worklet-pooled-scoping.test.ts(162,16): error TS2802: Type 'IterableIterator<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/synth-worklet-testable.ts(10,16): error TS1378: Top-level 'await' expressions are only allowed when the 'module' option is set to 'es2022', 'esnext', 'system', 'node16', 'nodenext', or 'preserve', and the 'target' option is set to 'es2017' or higher.
+src/tests/synth-worklet-truncated-wav.test.ts(46,25): error TS1378: Top-level 'await' expressions are only allowed when the 'module' option is set to 'es2022', 'esnext', 'system', 'node16', 'nodenext', or 'preserve', and the 'target' option is set to 'es2017' or higher.
+src/tests/synth-worklet-truncated-wav.test.ts(47,30): error TS1378: Top-level 'await' expressions are only allowed when the 'module' option is set to 'es2022', 'esnext', 'system', 'node16', 'nodenext', or 'preserve', and the 'target' option is set to 'es2017' or higher.
+src/tests/track-accents.test.ts(27,19): error TS2550: Property 'at' does not exist on type 'number[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/tracker-break-position-lag.test.ts(101,17): error TS2550: Property 'at' does not exist on type '{ row: number; patternId?: string; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/tracker-break-position-lag.test.ts(113,17): error TS2550: Property 'at' does not exist on type '{ row: number; patternId?: string; }[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/tracker-corpus-voice-addressing.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/tracker-corpus-voice-addressing.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/tracker-corpus-voice-addressing.test.ts(130,20): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/tracker-file-io-ahx.test.ts(1,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/tracker-file-io-ahx.test.ts(2,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/tracker-initial-speed.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/tracker-initial-speed.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/tracker-note-delay-without-volume.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/tracker-note-delay-without-volume.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/tracker-pattern-row-text.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/tracker-playback-event-stream.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/tracker-playback-event-stream.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/tracker-sequence-walk.test.ts(110,43): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/tracker-sequence-walk.test.ts(111,43): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/tracker-sequence-walk.test.ts(125,43): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/tracker-sequence-walk.test.ts(126,43): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/tracker-sequence-walk.test.ts(141,43): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/tracker-sequence-walk.test.ts(142,43): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/tracker-sequence-walk.test.ts(143,43): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/tracker-sequence-walk.test.ts(144,43): error TS2802: Type 'IterableIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/tracker-set-volume-is-instant.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/tracker-set-volume-is-instant.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/tracker-volume-row-without-instrument.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/tracker-volume-row-without-instrument.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/turbulence-s3m-pitch-slide.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/turbulence-s3m-pitch-slide.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/useAhxDrag.test.ts(26,23): error TS2802: Type 'IterableIterator<[number, () => void]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/xm-arpeggio-tick-order.test.ts(14,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/xm-arpeggio-tick-order.test.ts(15,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/xm-arpeggio-tick-order.test.ts(115,26): error TS2802: Type 'IterableIterator<[number, Scheduled[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/xm-autovibrato.test.ts(43,14): error TS2802: Type 'IterableIterator<SamplerState>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/xm-autovibrato.test.ts(212,66): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-autovibrato.test.ts(229,57): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-autovibrato.test.ts(308,66): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-autovibrato.test.ts(329,69): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-autovibrato.test.ts(338,71): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-autovibrato.test.ts(360,63): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-autovibrato.test.ts(470,90): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-autovibrato.test.ts(522,63): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-global-volume-and-period-limits.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/xm-global-volume-and-period-limits.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/xm-keyoff-no-sustain.test.ts(2,8): error TS1192: Module '"node:fs"' has no default export.
+src/tests/xm-keyoff-no-sustain.test.ts(3,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+src/tests/xm-keyoff-no-sustain.test.ts(80,25): error TS2802: Type 'IterableIterator<SamplerState>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/xm-panning-envelope.test.ts(40,14): error TS2802: Type 'IterableIterator<SamplerState>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/xm-panning-envelope.test.ts(65,25): error TS2802: Type 'IterableIterator<SamplerState>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/xm-panning-envelope.test.ts(170,67): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-panning-envelope.test.ts(186,58): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-panning-envelope.test.ts(221,61): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-panning-envelope.test.ts(273,65): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-panning-envelope.test.ts(292,51): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-sample-panning.test.ts(26,14): error TS2802: Type 'IterableIterator<SamplerState>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/tests/xm-sample-panning.test.ts(177,63): error TS2550: Property 'at' does not exist on type 'any[][]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+src/tests/xm-volume-envelope.test.ts(501,25): error TS2802: Type 'IterableIterator<SamplerState>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+tests/patch-node-edit-persistence.test.ts(4,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+tests/patch-node-edit-persistence.test.ts(42,43): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+tests/patch-roundtrip-fixed-point.test.ts(4,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+tests/patch-roundtrip-fixed-point.test.ts(60,43): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+vitest.config.ts(5,8): error TS1259: Module '"node:path"' can only be default-imported using the 'esModuleInterop' flag
+vitest.config.ts(8,51): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+vitest.config.ts(26,56): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', or 'nodenext'.
+../../../node_modules/@quasar/app-vite/node_modules/vite/dist/node/chunks/moduleRunnerTransport.d.ts(1,28): error TS2307: Cannot find module '#types/hmrPayload' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/node_modules/vite/dist/node/index.d.ts(3,223): error TS2307: Cannot find module '#types/hmrPayload' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/node_modules/vite/dist/node/index.d.ts(4,139): error TS2307: Cannot find module '#types/customEvent' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/node_modules/vite/dist/node/index.d.ts(7,41): error TS2307: Cannot find module 'rollup/parseAst' or its corresponding type declarations.
+  There are types at '/home/openclaw/.openclaw/workspace/another_synth/node_modules/rollup/dist/parseAst.d.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+../../../node_modules/@quasar/app-vite/node_modules/vite/dist/node/index.d.ts(21,45): error TS2307: Cannot find module '#types/internal/terserOptions' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/node_modules/vite/dist/node/index.d.ts(23,109): error TS2307: Cannot find module '#types/internal/cssPreprocessorOptions' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/node_modules/vite/dist/node/index.d.ts(24,101): error TS2307: Cannot find module '#types/internal/lightningcssOptions' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/node_modules/vite/dist/node/index.d.ts(25,97): error TS2307: Cannot find module '#types/importGlob' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/node_modules/vite/dist/node/index.d.ts(26,56): error TS2307: Cannot find module '#types/metadata' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/node_modules/vite/dist/node/module-runner.d.ts(2,49): error TS2307: Cannot find module '#types/hot' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/node_modules/vite/dist/node/module-runner.d.ts(3,36): error TS2307: Cannot find module '#types/hmrPayload' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/node_modules/vite/dist/node/module-runner.d.ts(4,41): error TS2307: Cannot find module '#types/customEvent' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/types/bex/bridge.d.ts(137,38): error TS2503: Cannot find namespace 'chrome'.
+../../../node_modules/@quasar/app-vite/types/configuration/context.d.ts(2,34): error TS2307: Cannot find module 'electron-builder' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/types/configuration/electron-conf.d.ts(1,38): error TS2307: Cannot find module 'builder-util' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/types/configuration/electron-conf.d.ts(2,34): error TS2307: Cannot find module 'electron-builder' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/types/configuration/electron-conf.d.ts(3,35): error TS2307: Cannot find module '@electron/packager' or its corresponding type declarations.
+../../../node_modules/@quasar/app-vite/types/configuration/pwa-conf.d.ts(2,58): error TS2307: Cannot find module 'workbox-build' or its corresponding type declarations.
+../../../node_modules/typescript/lib/lib.dom.d.ts(23,1): error TS6200: Definitions of the following identifiers conflict with those in another file: ImportExportKind, TableKind, ExportValue, Exports, ImportValue, Imports, ModuleImports, ValueType, name, AlgorithmIdentifier, AllowSharedBufferSource, BigInteger, BinaryData, BlobPart, BodyInit, BufferSource, CSSKeywordish, CSSNumberish, CSSPerspectiveValue, CSSUnparsedSegment, CanvasImageSource, DOMHighResTimeStamp, EpochTimeStamp, EventListenerOrEventListenerObject, FileSystemWriteChunkType, Float32List, FormDataEntryValue, GLbitfield, GLboolean, GLclampf, GLenum, GLfloat, GLint, GLint64, GLintptr, GLsizei, GLsizeiptr, GLuint, GLuint64, HashAlgorithmIdentifier, HeadersInit, IDBValidKey, ImageBitmapSource, Int32List, MessageEventSource, NamedCurve, OffscreenRenderingContext, OnErrorEventHandler, PerformanceEntryList, ReadableStreamController, ReadableStreamReadResult, ReadableStreamReader, ReportList, RequestInfo, TexImageSource, TimerHandler, Transferable, Uint32List, XMLHttpRequestBodyInit, AlphaOption, AvcBitstreamFormat, BinaryType, CSSMathOperator, CSSNumericBaseType, CanvasDirection, CanvasFillRule, CanvasFontKerning, CanvasFontStretch, CanvasFontVariantCaps, CanvasLineCap, CanvasLineJoin, CanvasTextAlign, CanvasTextBaseline, CanvasTextRendering, ClientTypes, CodecState, ColorGamut, ColorSpaceConversion, CompressionFormat, DocumentVisibilityState, EncodedVideoChunkType, EndingType, FileSystemHandleKind, FontDisplay, FontFaceLoadStatus, FontFaceSetLoadStatus, GlobalCompositeOperation, HardwareAcceleration, HdrMetadataType, IDBCursorDirection, IDBRequestReadyState, IDBTransactionDurability, IDBTransactionMode, ImageOrientation, ImageSmoothingQuality, KeyFormat, KeyType, KeyUsage, LatencyMode, LockMode, MediaDecodingType, MediaEncodingType, NotificationDirection, NotificationPermission, OffscreenRenderingContextId, PermissionName, PermissionState, PredefinedColorSpace, PremultiplyAlpha, PushEncryptionKeyName, RTCEncodedVideoFrameType, ReadableStreamReaderMode, ReadableStreamType, ReferrerPolicy, RequestCache, RequestCredentials, RequestDestination, RequestMode, RequestPriority, RequestRedirect, ResizeQuality, ResponseType, SecurityPolicyViolationEventDisposition, ServiceWorkerState, ServiceWorkerUpdateViaCache, TransferFunction, VideoColorPrimaries, VideoEncoderBitrateMode, VideoMatrixCoefficients, VideoPixelFormat, VideoTransferCharacteristics, WebGLPowerPreference, WebTransportCongestionControl, WebTransportErrorSource, WorkerType, WriteCommandType, XMLHttpRequestResponseType
+../../../node_modules/typescript/lib/lib.dom.d.ts(3632,5): error TS2374: Duplicate index signature for type 'number'.
+../../../node_modules/typescript/lib/lib.dom.d.ts(5234,5): error TS2374: Duplicate index signature for type 'number'.
+../../../node_modules/typescript/lib/lib.dom.d.ts(5290,5): error TS2374: Duplicate index signature for type 'number'.
+../../../node_modules/typescript/lib/lib.dom.d.ts(6471,5): error TS2374: Duplicate index signature for type 'number'.
+../../../node_modules/typescript/lib/lib.dom.d.ts(8412,5): error TS2374: Duplicate index signature for type 'number'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(23,1): error TS6200: Definitions of the following identifiers conflict with those in another file: ImportExportKind, TableKind, ExportValue, Exports, ImportValue, Imports, ModuleImports, ValueType, name, AlgorithmIdentifier, AllowSharedBufferSource, BigInteger, BinaryData, BlobPart, BodyInit, BufferSource, CSSKeywordish, CSSNumberish, CSSPerspectiveValue, CSSUnparsedSegment, CanvasImageSource, DOMHighResTimeStamp, EpochTimeStamp, EventListenerOrEventListenerObject, FileSystemWriteChunkType, Float32List, FormDataEntryValue, GLbitfield, GLboolean, GLclampf, GLenum, GLfloat, GLint, GLint64, GLintptr, GLsizei, GLsizeiptr, GLuint, GLuint64, HashAlgorithmIdentifier, HeadersInit, IDBValidKey, ImageBitmapSource, Int32List, MessageEventSource, NamedCurve, OffscreenRenderingContext, OnErrorEventHandler, PerformanceEntryList, ReadableStreamController, ReadableStreamReadResult, ReadableStreamReader, ReportList, RequestInfo, TexImageSource, TimerHandler, Transferable, Uint32List, XMLHttpRequestBodyInit, AlphaOption, AvcBitstreamFormat, BinaryType, CSSMathOperator, CSSNumericBaseType, CanvasDirection, CanvasFillRule, CanvasFontKerning, CanvasFontStretch, CanvasFontVariantCaps, CanvasLineCap, CanvasLineJoin, CanvasTextAlign, CanvasTextBaseline, CanvasTextRendering, ClientTypes, CodecState, ColorGamut, ColorSpaceConversion, CompressionFormat, DocumentVisibilityState, EncodedVideoChunkType, EndingType, FileSystemHandleKind, FontDisplay, FontFaceLoadStatus, FontFaceSetLoadStatus, GlobalCompositeOperation, HardwareAcceleration, HdrMetadataType, IDBCursorDirection, IDBRequestReadyState, IDBTransactionDurability, IDBTransactionMode, ImageOrientation, ImageSmoothingQuality, KeyFormat, KeyType, KeyUsage, LatencyMode, LockMode, MediaDecodingType, MediaEncodingType, NotificationDirection, NotificationPermission, OffscreenRenderingContextId, PermissionName, PermissionState, PredefinedColorSpace, PremultiplyAlpha, PushEncryptionKeyName, RTCEncodedVideoFrameType, ReadableStreamReaderMode, ReadableStreamType, ReferrerPolicy, RequestCache, RequestCredentials, RequestDestination, RequestMode, RequestPriority, RequestRedirect, ResizeQuality, ResponseType, SecurityPolicyViolationEventDisposition, ServiceWorkerState, ServiceWorkerUpdateViaCache, TransferFunction, VideoColorPrimaries, VideoEncoderBitrateMode, VideoMatrixCoefficients, VideoPixelFormat, VideoTransferCharacteristics, WebGLPowerPreference, WebTransportCongestionControl, WebTransportErrorSource, WorkerType, WriteCommandType, XMLHttpRequestResponseType
+../../../node_modules/typescript/lib/lib.webworker.d.ts(1234,5): error TS2374: Duplicate index signature for type 'number'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(1266,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'CSSNumericValue' must be of type '{ new (): CSSNumericValue; prototype: CSSNumericValue; parse(cssText: string): CSSNumericValue; }', but here has type '{ new (): CSSNumericValue; prototype: CSSNumericValue; }'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(1355,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'CSSStyleValue' must be of type '{ new (): CSSStyleValue; prototype: CSSStyleValue; parse(property: string, cssText: string): CSSStyleValue; parseAll(property: string, cssText: string): CSSStyleValue[]; }', but here has type '{ new (): CSSStyleValue; prototype: CSSStyleValue; }'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(1383,5): error TS2374: Duplicate index signature for type 'number'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(1424,5): error TS2374: Duplicate index signature for type 'number'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(2247,5): error TS2374: Duplicate index signature for type 'number'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(2763,5): error TS2374: Duplicate index signature for type 'number'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(3075,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'FormData' must be of type '{ new (form?: HTMLFormElement, submitter?: HTMLElement): FormData; prototype: FormData; }', but here has type '{ new (): FormData; prototype: FormData; }'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(4185,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'Notification' must be of type '{ new (title: string, options?: NotificationOptions): Notification; prototype: Notification; readonly permission: NotificationPermission; requestPermission(deprecatedCallback?: NotificationPermissionCallback): Promise<...>; }', but here has type '{ new (title: string, options?: NotificationOptions): Notification; prototype: Notification; readonly permission: NotificationPermission; }'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(5693,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'URL' must be of type '{ new (url: string | URL, base?: string | URL): URL; prototype: URL; canParse(url: string | URL, base?: string): boolean; createObjectURL(obj: Blob | MediaSource): string; revokeObjectURL(url: string): void; }', but here has type '{ new (url: string | URL, base?: string | URL): URL; prototype: URL; canParse(url: string | URL, base?: string): boolean; createObjectURL(obj: Blob): string; revokeObjectURL(url: string): void; }'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(9187,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'onmessage' must be of type '(this: Window, ev: MessageEvent<any>) => any', but here has type '(this: DedicatedWorkerGlobalScope, ev: MessageEvent<any>) => any'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(9189,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'onmessageerror' must be of type '(this: Window, ev: MessageEvent<any>) => any', but here has type '(this: DedicatedWorkerGlobalScope, ev: MessageEvent<any>) => any'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(9216,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'location' must be of type 'Location', but here has type 'WorkerLocation'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(9222,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'navigator' must be of type 'Navigator', but here has type 'WorkerNavigator'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(9224,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'onerror' must be of type 'OnErrorEventHandlerNonNull', but here has type '(this: DedicatedWorkerGlobalScope, ev: ErrorEvent) => any'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(9226,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'onlanguagechange' must be of type '(this: Window, ev: Event) => any', but here has type '(this: DedicatedWorkerGlobalScope, ev: Event) => any'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(9228,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'onoffline' must be of type '(this: Window, ev: Event) => any', but here has type '(this: DedicatedWorkerGlobalScope, ev: Event) => any'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(9230,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'ononline' must be of type '(this: Window, ev: Event) => any', but here has type '(this: DedicatedWorkerGlobalScope, ev: Event) => any'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(9231,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'onrejectionhandled' must be of type '(this: Window, ev: PromiseRejectionEvent) => any', but here has type '(this: DedicatedWorkerGlobalScope, ev: PromiseRejectionEvent) => any'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(9232,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'onunhandledrejection' must be of type '(this: Window, ev: PromiseRejectionEvent) => any', but here has type '(this: DedicatedWorkerGlobalScope, ev: PromiseRejectionEvent) => any'.
+../../../node_modules/typescript/lib/lib.webworker.d.ts(9238,13): error TS2403: Subsequent variable declarations must have the same type.  Variable 'self' must be of type 'Window & typeof globalThis', but here has type 'WorkerGlobalScope & typeof globalThis'.
+../../../node_modules/vite/dist/node/index.d.ts(5,41): error TS2307: Cannot find module 'rollup/parseAst' or its corresponding type declarations.
+  There are types at '/home/openclaw/.openclaw/workspace/another_synth/node_modules/rollup/dist/parseAst.d.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+../../../node_modules/vitest/dist/chunks/reporters.D7Jzd9GS.d.ts(639,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../../../node_modules/vitest/dist/chunks/reporters.D7Jzd9GS.d.ts(683,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../../../node_modules/vitest/dist/chunks/reporters.D7Jzd9GS.d.ts(725,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+vue-tsc exit: 2

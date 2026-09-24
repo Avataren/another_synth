@@ -71,6 +71,13 @@
           >
             <q-icon name="stop" size="20px" />
           </button>
+          <SidChipModelToggle
+            v-if="sidChipModel"
+            compact
+            :model="sidChipModel"
+            :disabled="isLoadingSong"
+            @select="onSidChipSelect"
+          />
 
           <span class="strip-divider" aria-hidden="true"></span>
 
@@ -495,6 +502,12 @@
             >
               <q-icon name="stop" size="20px" />
             </button>
+            <SidChipModelToggle
+              v-if="sidChipModel"
+              :model="sidChipModel"
+              :disabled="isLoadingSong"
+              @select="onSidChipSelect"
+            />
             <div class="volume-control">
               <q-icon name="volume_up" size="14px" class="volume-icon" />
               <input
@@ -745,6 +758,7 @@
           :node="masterOutputNode"
           :track-nodes="spectrumTrackNodes"
           :is-playing="isPlaying"
+          :mono="isSidSong"
         />
         <div
           ref="patternAreaRef"
@@ -947,6 +961,7 @@ import {
   demoFileDisplayName,
 } from 'src/composables/demo-deep-link';
 import StereoLevelMeter from 'src/components/tracker/StereoLevelMeter.vue';
+import SidChipModelToggle from 'src/components/tracker/SidChipModelToggle.vue';
 import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import PatchPicker from 'src/components/PatchPicker.vue';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
@@ -976,6 +991,7 @@ import BugReportDialog from 'src/components/tracker/BugReportDialog.vue';
 import SongExportDialog from 'src/components/tracker/SongExportDialog.vue';
 import { snapshotEditorSong } from 'src/audio/tracker/ahx-source';
 import type { AhxEditGate } from 'src/audio/tracker/ahx-doc/edit-guard';
+import type { SidChipModel } from 'src/audio/tracker/sid-doc';
 import { reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
   channelsFromSelection,
@@ -1125,6 +1141,16 @@ const isReadOnly = computed(() => trackerStore.isReadOnly);
 const isAhxSong = computed(() => trackerStore.isAhxSong);
 /** A SID song (plan-sid-tracking.md S4): played by the SID worklet, edited through its doc. */
 const isSidSong = computed(() => trackerStore.isSidSong);
+/**
+ * The SID song's chip (plan-sid-tracking.md S5.7), `null` for any other song:
+ * the toggle beside the transport shows it and retags the doc, which a
+ * playing song reloads with, back at its row (`setSidChip`).
+ */
+const sidChipModel = computed(() => (isSidSong.value ? trackerStore.sidDoc?.chipModel ?? null : null));
+function onSidChipSelect(model: SidChipModel): void {
+  trackerStore.setSidChip(model);
+  refocusTracker();
+}
 /**
  * The song's structure is its doc's (AHX/HVL or SID): channels, positions,
  * lengths, tempo and slots are not the pattern list's to change. The cells of
