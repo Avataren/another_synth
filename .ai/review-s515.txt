@@ -1,0 +1,230 @@
+S5.15 REVIEW — 6581 R4AR die-revision calibration
+Reviewer: independent review subagent, 2026-09-24
+Branch agent/sid-r4ar-0924a, tip f8b50e99 (reviewed at this tip)
+Read-only review; only this file written in the worktree.
+
+=====================================================================
+VERDICT: PASS-with-should-fix
+=====================================================================
+All 8 coder claims confirmed with cited evidence. Three minor
+should-fix items (documentation/evidence hygiene, non-blocking).
+Nothing glossed over in substance; one small wording stretch flagged
+below (6b).
+
+---------------------------------------------------------------------
+CLAIM 1 — Branch commits, clean tree, parent = main tip: CONFIRMED
+---------------------------------------------------------------------
+Evidence: git log --oneline -3 → f8b50e99 (docs: verdict+gate
+records), 38991b25 (feat: profile + INFERRED volume DAC); git status
+--porcelain empty; git rev-parse HEAD~2 = 4e1da056248ed39470f2fbbc
+80eba3f08e143f4d = git rev-parse main (v0.3.68). Branch =
+agent/sid-r4ar-0924a. Commit stats: 38991b25 = 7 files code+tests
+(+422/−28); f8b50e99 = 12 files docs+gate records (+59,828).
+
+---------------------------------------------------------------------
+CLAIM 2 — revision.rs swappable profile; consumers read it: CONFIRMED
+---------------------------------------------------------------------
+Evidence: rust-wasm/src/sid/revision.rs (new, 131 lines):
+- DieRevision { R4AR } + profile() (revision.rs:36-47);
+  SID6581_REVISION single swap point (revision.rs:50);
+  profile_6581() (revision.rs:54).
+- RevisionProfile fields: cutoff anchors lo/hi, volume_bit_weights,
+  voice_dc, mix_dc; chip_gain() holds the S2 headroom rule
+  (revision.rs:107-110); volume_level()/volume_table()
+  (revision.rs:112-130).
+- Consumers: chip.rs MIX_DC_6581 = profile_6581().mix_dc,
+  CHIP_GAIN_6581 = profile_6581().chip_gain(CHIP_GAIN), per-chip
+  volume_dac: [f64;16] built from profile on 6581 / v/15 on 8580,
+  render_inner uses self.volume_level() for mix AND tap_gain
+  (chip.rs diff, render_inner: "let volume = self.volume_level(self.mode_vol)").
+  filter.rs CUTOFF_ANCHORS_6581_LO/_HI = profile anchors, F_LO_6581
+  = anchors[0].1. voice.rs VOICE_DC_6581 = profile_6581().voice_dc.
+  mod.rs: pub mod revision; mod tests_s515.
+- LINEAR-weights bit-exactness: structurally true, verified by
+  arithmetic, not just by the coder's record. With weights
+  [1,2,4,8] (sum 15 exactly), level(v) = (sum of set-bit weights)/15
+  = v/15 in f64 exactly (integers ≤ 15 are exact in f64, same
+  division operands as the old `(vol & 0x0F) as f64 / 15.0`), and
+  the volume_dac array then holds the same values as the 8580 path.
+  Corroborated by .ai/checks-s515-pin-linear-reproduce.txt
+  (pin_6581 + pin_8580 both bit-exact, 2 passed, exit 0).
+
+---------------------------------------------------------------------
+CLAIM 3 — R4AR profile content: CONFIRMED
+---------------------------------------------------------------------
+Evidence: revision.rs:86-105 (R4AR const):
+- Cutoff anchors lo [(0,220),(0x200,420),(0x300,1600),(0x3FF,6000)]
+  and hi [(0x400,4600),(0x500,9500),(0x600,14500),(0x7FF,18000)]
+  = S5.12 measured anchors (comment cites
+  filter::CUTOFF_ANCHORS_6581_LO disclosure). The $80 discontinuity
+  is the 0x3FF→0x400 drop (6000→4600), no revision-specific step
+  invented.
+- S2 DC/gain unchanged: voice_dc 0.25, mix_dc 0.5;
+  chip_gain = CHIP_GAIN*3/(3*1.25+0.5) = 0.84/4.25 = 0.197647.
+- Volume DAC weights [1.0, 2.0, 3.9, 7.6] (sum 14.5), INFERRED,
+  marked in the struct doc, R4AR doc, tests_s515.rs header, and
+  research notes. Arithmetic check (mine): level(0)=0 and
+  level(15)=14.5/14.5=1 exact; level(7)=6.9/14.5=0.475862 vs
+  7/15=0.466667 (error 0.0092), level(8)=7.6/14.5=0.524138 vs
+  0.533333 (error 0.0092) — ≤1% FS at 7/8 as claimed; 7→8 step
+  0.048276 vs 1/15=0.066667; monotonic by construction.
+- 8580 stays linear: chip.rs volume_dac match arm → v as f64/15.0;
+  asserted per-value in tests_s515.rs:207-209.
+
+---------------------------------------------------------------------
+CLAIM 4 — Red→green evidence real: CONFIRMED (spot-verified)
+---------------------------------------------------------------------
+Evidence:
+- .ai/checks-s515-red-stage1.txt: exit 101, 3 tests_s515 behavioral
+  tests FAILED (tests_s515.rs:73, :133, :89), 0 passed, 250
+  filtered out → total 253 = 250 baseline lib + 3 new, consistent.
+  The "constant G6 never used (tests_s515.rs:20)" warning matches
+  the stage-1 file state (API tests not yet appended) — internally
+  airtight staging.
+  Spot-verification of OLD-engine signature (my arithmetic):
+  printed failures are the exact linear-model values —
+  vol 5 step 0.03294117748737335 = 0.5*(5/15)*0.197647;
+  vol 8 tone ratio 0.5333333332210732 = 8/15;
+  7→8 step 0.006588233975946246 = 0.5*(1/15)*0.197647.
+  A mock would print table values; these are genuinely the old
+  linear engine. I did not need a throwaway clone — the printed
+  values are self-authenticating against the pre-change semantics.
+- .ai/checks-s515-red-stage2.txt: exit 101, E0432 unresolved import
+  `super::revision` (tests_s515.rs:140) + 2× E0599 no method
+  `volume_level` on Chip (tests_s515.rs:207/208) — compile-fail
+  against old engine, as claimed.
+- .ai/checks-s515-green-sid.txt: exit 0, 137 passed / 120 filtered
+  (137+120=257 = final lib count); all 7 tests_s515 names present
+  ok (green lines 191-195, 239, 245); S2/S5.12 anchor and tick-0
+  tests pass (e.g. slide_up_skips_tick_0_of_every_row ok;
+  pin_8580/pin_6581 in pin-linear record).
+
+---------------------------------------------------------------------
+CLAIM 5 — Gates real, numbers match, pre-existing failures unchanged
+---------------------------------------------------------------------
+Evidence (mtimes all 2026-09-24 14:38–14:50, strictly before the
+14:50:53 commit; plausible sequential capture order):
+- Baseline cargo (checks-s515-baseline-cargo.txt): sum of passed
+  across targets = 408; lib 250; exit 101; failure =
+  manifest_covers_every_fixture (baseline line 656, ahx_render_golden
+  target, panicked tests/ahx_render_golden.rs:419).
+- Post cargo (checks-s515-cargo.txt): 415; lib 257 (+7 = new tests);
+  failure set IDENTICAL — same single manifest_covers_every_fixture
+  (post line 590, same panic site). NOT presented as new. ✓
+  Other target durations differ between the two runs (119.32 vs
+  118.50 s, 140.98 vs 140.13 s), so these are two genuine distinct
+  executions.
+- Vitest (checks-s515-vitest.txt, 50.5 MB): 4208 passed / 2 failed
+  (4210), 261 files; both failures in
+  src/tests/artifact-freshness.test.ts (lines 52387, 57440, 57461)
+  — wasm SOURCE_HASH staleness, the known deferred-refresh class.
+  checks-s515-freshness-at-parent.txt: same test 5/5 passes at
+  parent 4e1da056 in a clean temp worktree → the failure is caused
+  by the branch's Rust sources vs not-rebuilt wasm, not by a
+  broken main. Matches S5.12 precedent.
+- eslint exit 0, vue-tsc --noEmit exit 0 (checks-s515-lint.txt).
+- gitleaks: no leaks found, exit 0 (checks-s515-gitleaks.txt,
+  352.92 MB scanned at 2:49PM = mtime 14:49).
+
+---------------------------------------------------------------------
+CLAIM 6 — Research integrity: CONFIRMED
+---------------------------------------------------------------------
+Evidence:
+- .ai/sid-r4ar-research-notes.md (63 lines): R2–R4AR "no substantial
+  alterations" (Wikipedia, F1); R4AR 22/1986–06/1987 (C64-Wiki, F2);
+  $D418 click trait generic-6581 vs 8580 (F3); NO per-revision
+  filter parameters in public record (F4). Traits classified:
+  cutoff GENERIC-6581, $80 step GENERIC-6581, output DC GENERIC-6581,
+  volume-DAC 6581-vs-8580 with weights INFERRED. Caveat present:
+  web_search down, die-analysis pages unreachable → UNVERIFIED, not
+  absent.
+- Verdict §1 mirrors the classification; no trait forced R4AR-
+  specific. Grep of revision.rs, tests_s515.rs and the chip/filter/
+  voice header diffs: INFERRED appears at every weight/DC
+  reference; no comment or test claims R4AR-specific measured data.
+- No GPL bytes: .ai/checks-s515-gplguard.txt — no 16+-entry hex
+  table added in the diff; only keyword hit is the "GPL-free"
+  disclaimer line itself. Cutoff anchors are S5.12's (moved, not
+  re-derived); weights are an original disclosed guess. I read
+  revision.rs in full — nothing sourced from reSID/libsidplayfp.
+
+---------------------------------------------------------------------
+CLAIM 7 — Regression guards intact: CONFIRMED
+---------------------------------------------------------------------
+Evidence:
+- S5.6 pin: `3 00` tie-branch tests live in rust-wasm/src/sid/
+  tests_s5.rs (tone_portamento_zero_is_gt_tie_note_the_pitch_jumps_
+  without_a_trigger at tests_s5.rs:56, tick-0 skip scoping cited to
+  gplay.c:728). tests_s5.rs is NOT in the branch diff
+  (git diff --name-only 4e1da056 f8b50e99: only the 12 gate-record
+  files + chip.rs filter.rs mod.rs revision.rs tests_s2.rs
+  tests_s515.rs voice.rs). Green shows the S5/S5.12 tests ok.
+- S5.12 anchors asserted both by untouched tests_s512.rs (file not
+  in diff) and by the new r4ar_cutoff_is_the_s512_measured_curve
+  (tests_s515.rs:159-186), including the S5.12 hand point
+  sqrt(420*1600)=819.756 at 0x280.
+- Count math: 408→415 total (+7), lib 250→257 (+7), consistent
+  across baseline/post/green/red records (see Claim 5).
+
+---------------------------------------------------------------------
+CLAIM 8 — Verdict honest: CONFIRMED
+---------------------------------------------------------------------
+Evidence: .ai/sid-r4ar-verdict.md = exactly 153 lines (wc -l).
+Caveats present in §6: literature-based, no chip on bench, INFERRED
+table disclosed as a tuning guess, web_search down / die-analysis
+unreachable (unverified-not-absent), wasm stale until deploy,
+"R3 will likely be near-identical" honestly stated. §3 also
+discloses that the digi test's loud/silent assertions passed on the
+old code too — the red is only the table-shaped step size. That is
+exactly the honesty the brief asked for.
+
+---------------------------------------------------------------------
+vue-tsc DISCREPANCY (brief said 11 standing errors; coder claims 0)
+---------------------------------------------------------------------
+Resolved, non-blocking: the brief's premise is stale. Main-side
+gate records from TODAY all show vue-tsc exit 0 before this branch
+existed: .ai/checks-s510-vuetsc.txt (08:48, exit 0),
+.ai/checks-s513-vuetsc.txt (13:52, exit 0), .ai/checks-s514-vuetsc
+.txt (13:47). The only error-bearing record today is .ai/checks-
+s57-baseline-vuetsc.txt (09:07, 712 "error TS" lines, exit 2) —
+all TS18028 "Private identifiers... ECMAScript 2015" from
+node_modules/vitest .d.ts, i.e. a mis-scoped baseline run; its
+same-second re-run checks-s57-baseline2-vuetsc.txt shows 0 errors.
+So main's vue-tsc has been clean at least since 08:48 under the
+correct scope; the "11 standing errors" figure does not appear in
+any 2026-09-24 record. The branch touches zero .ts/.vue files, so
+0 at branch is the expected, verified state (lint record exit 0).
+I could not reproduce the "11" from any record; recorded as
+resolved with that caveat.
+
+---------------------------------------------------------------------
+SHOULD-FIX (non-blocking)
+---------------------------------------------------------------------
+1. checks-s515-pin-linear-reproduce.txt does not record which
+   PIN_6581_HASH was in effect during the run. The pass is only
+   meaningful with the OLD hash (0xffd4c8a5a72afed7) + linear
+   weights; the file alone cannot prove that. The structural
+   argument (linear weights ⇒ level(v)=v/15 in f64, verified in
+   Claim 2) plus the new-hash green run make the conclusion safe,
+   but future pin-reproduce records should state the hash under
+   test.
+2. revision.rs module doc, cutoff bullet: "The published nominal
+   curve's range (220 Hz..18 kHz) is quoted for 6581R4AR, which
+   fits." The public record (research notes F4) quotes the range
+   for the 6581 generally, not for R4AR specifically — slight
+   wording stretch; soften to "quoted for the 6581, compatible
+   with R4AR".
+3. checks-s515-vitest.txt is 50.5 MB committed as a gate artifact.
+   Consider truncating future vitest logs to the summary + failed-
+   test sections (the failure detail is in the last ~250 lines).
+
+---------------------------------------------------------------------
+NOTHING ELSE GLOSSED OVER
+---------------------------------------------------------------------
+- Taps path scales with volume_level (chip.rs render_inner
+  tap_gain), so per-voice scopes stay consistent with the mix.
+- Full-volume renders unchanged (level(15)=1 exact) — S2's VOL 15
+  step/digi tests untouched and passing.
+- mod.rs registers tests_s515 only under #[cfg(test)].
+- No wasm build, no push, no merge by the coder (verdict states it;
+  branch still unmerged at review time; main tip unchanged).
