@@ -327,3 +327,6 @@ Overnight discipline: verify everything fresh (git/subagents), land only review-
 
 ## Standing authorization (Morten, 2026-09-24 07:01): "Why are you waiting for my go?"
 Stop asking permission for fix batches that are direct continuations of authorized work (S5.x series, drum fixes, report findings). Spawn, review, land per the established pipeline; ear-verification stays with Morten after each deploy.
+
+## S5.10 (queued, authorized): orderlist transpose semantics + vibrato rate verification (one batch)
+Morten's transpose hypothesis (07:31) + concrete bug report: Streets (metal_warrior_4_streets.sng, sha 34da331c..., orders 81 rows 0-15, ALL channels out of pitch — .ai/s5.10-bugreport-streets.txt). Vibrato-too-fast hunch (07:36, unverified). Both are player.rs semantics vs gplay.c — verify together. Transpose prime suspects: encoding/sign (GT TRANSUP/TRANSDOWN marker arithmetic gplay.c:970 vs our plain i8 read), out-of-range note handling (clamp vs wrap). Vibrato suspects: command-4 speed/half-swing rate math, instrument vibrato delay, command+instrument double-apply. Red-first from Streets bytes, citations vs gplay.c/gfile.c/gsong.c. Spawn after S5.9 gate-bit lands (player.rs writer exclusivity).
