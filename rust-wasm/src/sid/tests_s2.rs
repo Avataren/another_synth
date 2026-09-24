@@ -142,11 +142,18 @@ fn pin_8580_render_is_bit_identical_to_s1() {
 /// [1, 2, 4, 8] the old pin reproduced bit-exactly
 /// (`.ai/checks-s515-pin-linear-reproduce.txt`), so the table is the whole
 /// change.
-const PIN_6581_HASH: u64 = 0x2d13_44bc_eadb_4e1f;
+/// Re-captured again in S5.16 for the drive-segmented cutoff map (kinked
+/// 11-bit f0 DAC + VCR square law): the program's fc 0x305 write at 0 moves
+/// 1642.0 Hz -> 1699.0 Hz, so the filtered values change; the unfiltered
+/// tail stays bit-identical. With the S5.12 log-linear map restored the
+/// whole pin reproduced bit-exactly
+/// (`.ai/checks-s516-pin-oldmap-reproduce.txt`), so the map is the whole
+/// change.
+const PIN_6581_HASH: u64 = 0x7575_57cc_bd4c_481b;
 const PIN_6581_VALUES: [u32; 33] = [
-    0x3dca67b2, 0x3befbbea, 0x3cddd8cd, 0x3e42cdc6, 0x3e68d0f0, 0xbdad0da8, 0xbe455549,
-    0x3d82138f, 0x3e990a41, 0x3da4a948, 0xbc0520f5, 0xbe04e05e, 0xbd01f36c, 0xbcbd8bb0,
-    0xbcbb2204, 0x3ce2f218, 0x3cc519f6, 0x3d089adc, 0xbc2d3190, 0x3d9109f0, 0x3c62e24a,
+    0x3dca67af, 0x3b8000b6, 0x3cdf36b2, 0x3e3e7b07, 0x3e683142, 0xbdaf33de, 0xbe449ed8,
+    0x3d804117, 0x3e987cdc, 0x3da6d0bc, 0xbbeee58a, 0xbe0559c2, 0xbd010e0b, 0xbcba2069,
+    0xbcb8998d, 0x3cde1d15, 0x3cc17cf9, 0x3d08994a, 0xbc2d3285, 0x3d9109ec, 0x3c62e244,
     0x3d8f135a, 0x3e0556cb, 0x3cfaf9e0, 0x3c39bce7, 0x3b3f7d7a, 0x3a97a591, 0xbe5cf034,
     0xbd200d68, 0xbc44d81b, 0xbbfaac70, 0xbbe32eac, 0xbbfa8232,
 ];
@@ -274,13 +281,16 @@ fn filter_6581_peak_gain_depends_on_level_the_8580_does_not() {
     // saw part is linear up to the filter, whose band-pass state is
     // soft-limited at 1.0: the loud note is compressed, so its ratio falls
     // below 15 (derived direction). The size is MEASURED, not derived:
-    // first run gave 11.225 (the loud note 2.5 dB compressed), pinned
-    // +-0.1 so a retune of SAT/Q shows up here.
+    // first run gave 11.225 (the loud note 2.5 dB compressed); re-measured
+    // 11.794 in S5.16 under the drive-segmented cutoff map (with the S5.12
+    // log-linear map restored the 11.225 pin reproduced bit-exactly,
+    // `.ai/checks-s516-pin-oldmap-reproduce.txt`), pinned +-0.1 so a
+    // retune of SAT/Q shows up here.
     let r8 = filtered_saw_rms(SidModel::Sid8580, 15) / filtered_saw_rms(SidModel::Sid8580, 1);
     assert!((r8 - 15.0).abs() < 1e-3, "8580 {r8}");
     let r6 = filtered_saw_rms(SidModel::Sid6581, 15) / filtered_saw_rms(SidModel::Sid6581, 1);
     assert!(r6 < 15.0 * 0.9, "6581 {r6}");
-    assert!((r6 - 11.225).abs() < 0.1, "6581 {r6}");
+    assert!((r6 - 11.794).abs() < 0.1, "6581 {r6}");
 }
 
 // ---------------------------------------------------------------------------

@@ -146,20 +146,25 @@ fn volume_digi_is_loud_on_the_6581_and_silent_on_the_8580() {
 // API: the revision profile is the one place revision data lives
 // ---------------------------------------------------------------------------
 
-use super::revision::{profile_6581, DieRevision, RevisionProfile, R4AR, SID6581_REVISION};
+use super::revision::{profile_6581, DieRevision, RevisionProfile, R3, R4AR, SID6581_REVISION};
 
 #[test]
-fn sid6581_plays_the_r4ar_profile() {
-    assert_eq!(SID6581_REVISION, DieRevision::R4AR);
+fn sid6581_plays_the_r3_profile() {
+    // S5.16: the one swap point — most real SID songs were written for R3.
+    // R4AR stays intact and selectable; its profile is the measured one R3
+    // inherits (no R3-specific measurement exists in the public record).
+    assert_eq!(SID6581_REVISION, DieRevision::R3);
+    assert_eq!(profile_6581(), &R3);
+    assert_eq!(DieRevision::R3.profile(), &R3);
+    assert_eq!(R3.revision, DieRevision::R3);
     assert_eq!(DieRevision::R4AR.profile(), &R4AR);
-    assert_eq!(profile_6581(), &R4AR);
     assert_eq!(R4AR.revision, DieRevision::R4AR);
 }
 
 #[test]
-fn r4ar_cutoff_is_the_s512_measured_curve() {
-    // GENERIC-6581 (research notes): the R4AR profile carries S5.12 R2's
-    // anchors unchanged, and the filter reads its anchors from the profile.
+fn r4ar_cutoff_anchors_are_the_measured_skeleton() {
+    // The R4AR profile carries S5.12 R2's anchors unchanged. S5.16: they
+    // calibrate the drive-segmented map (each anchor pair is hit exactly);
     let p: &RevisionProfile = &R4AR;
     assert_eq!(
         p.cutoff_anchors_lo,
@@ -182,10 +187,10 @@ fn r4ar_cutoff_is_the_s512_measured_curve() {
     assert_eq!(filter::CUTOFF_ANCHORS_6581_LO, p.cutoff_anchors_lo);
     assert_eq!(filter::CUTOFF_ANCHORS_6581_HI, p.cutoff_anchors_hi);
     for &(reg, hz) in p.cutoff_anchors_lo.iter().chain(p.cutoff_anchors_hi.iter()) {
-        assert_eq!(filter::cutoff_hz_6581(reg), hz, "reg {reg:#05x}");
+        assert!((filter::cutoff_hz_6581(reg) - hz).abs() < 1e-6, "reg {reg:#05x}");
     }
-    // S5.12 hand point: sqrt(420 * 1600) = 819.756 Hz at 0x280.
-    assert!((filter::cutoff_hz_6581(0x280) - 819.756).abs() < 0.01);
+    // The S5.12 log-linear hand point (0x280 -> 819.756 Hz) is superseded;
+    // the drive-segmented map puts 0x280 at 985.861 Hz (tests_s516).
 }
 
 #[test]
