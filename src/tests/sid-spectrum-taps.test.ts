@@ -327,6 +327,24 @@ describe('TrackerSpectrumAnalyzer with a SID song\'s three taps', () => {
     s.unmount();
   });
 
+  it('S5.13 per-source discrimination unchanged: the stereo master keeps its splitter and a distinct analyser per side', async () => {
+    const ctx = fakeAnalyzerContext();
+    const master = tap(ctx);
+    const w = mount(TrackerSpectrumAnalyzer, { props: { node: master, trackNodes: [], isPlaying: true } });
+    await twoFrames();
+    expect(ctx.analysers).toHaveLength(2);
+    const fromMaster = connections.filter((c) => c.from === master);
+    expect(fromMaster).toHaveLength(1);
+    expect(ctx.analysers).not.toContain(fromMaster[0]!.to); // the splitter, not an analyser
+    const splitterOut = connections.filter((c) => c.from === fromMaster[0]!.to);
+    expect(splitterOut.map((c) => [c.output, c.to])).toEqual([
+      [0, ctx.analysers[0]],
+      [1, ctx.analysers[1]],
+    ]);
+    expect(ctx.analysers[0]).not.toBe(ctx.analysers[1]);
+    w.unmount();
+  });
+
   it('three null taps (nothing looking yet) -> the stereo master graph, like four', async () => {
     const ctx = fakeAnalyzerContext();
     const master = tap(ctx);
@@ -334,6 +352,131 @@ describe('TrackerSpectrumAnalyzer with a SID song\'s three taps', () => {
     await twoFrames();
     expect(connections.filter((c) => c.from === master)).toHaveLength(1);
     expect(ctx.analysers).toHaveLength(2);
+    w.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S5.13: what the strips actually paint. A recording 2D context per canvas and
+// a fixed strip size, so the draw loop runs in jsdom; each analyser returns a
+// ramp (bin i -> i), so every bar differs and a mismatch can't hide.
+// ---------------------------------------------------------------------------
+
+type Rect = [number, number, number, number];
+const STRIP_W = 160;
+const STRIP_H = 40;
+
+function paintingAnalyzerContext() {
+  const ctx = fakeAnalyzerContext();
+  const reads: unknown[] = [];
+  const createAnalyser = ctx.createAnalyser.bind(ctx);
+  ctx.createAnalyser = () => {
+    const a = createAnalyser();
+    (a as { getByteFrequencyData: (arr: Uint8Array) => void }).getByteFrequencyData = (arr: Uint8Array) => {
+      reads.push(a);
+      for (let i = 0; i < arr.length; i++) arr[i] = Math.min(255, 40 + i);
+    };
+    return a;
+  };
+  return { ...ctx, reads };
+}
+
+function recordCanvases() {
+  const painted = new Map<HTMLCanvasElement, { rects: Rect[]; frames: number }>();
+  vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockImplementation(
+    () => ({ left: 0, top: 0, right: STRIP_W, bottom: STRIP_H, width: STRIP_W, height: STRIP_H, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect,
+  );
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
+    let rec = painted.get(this);
+    if (!rec) painted.set(this, (rec = { rects: [], frames: 0 }));
+    const r = rec;
+    return {
+      fillStyle: '',
+      scale: () => undefined,
+      clearRect: () => {
+        r.frames++;
+        r.rects = []; // keep only the latest frame
+      },
+      fillRect: (x: number, y: number, w: number, h: number) => r.rects.push([x, y, w, h]),
+      createLinearGradient: () => ({ addColorStop: () => undefined }),
+    } as unknown as CanvasRenderingContext2D;
+  } as unknown as typeof HTMLCanvasElement.prototype.getContext);
+  return painted;
+}
+
+function strips(w: ReturnType<typeof mount>) {
+  const [l, r] = w.findAll('canvas').map((c) => c.element as HTMLCanvasElement);
+  return { l: l!, r: r! };
+}
+
+/** A left-strip rect reflected about the screen center (the left strip's right edge). */
+const reflect = ([x, y, w, h]: Rect): Rect => [STRIP_W - x - w, y, w, h];
+const round = (rects: Rect[]) => rects.map((rect) => rect.map((v) => Math.round(v * 1000) / 1000));
+
+describe('S5.13: a mono (SID) trace is mirrored across the screen center', () => {
+  beforeEach(() => {
+    connections = [];
+  });
+
+  it('mono: ONE analyser, painted in BOTH strips -- the right strip is the left one mirrored', async () => {
+    const painted = recordCanvases();
+    const ctx = paintingAnalyzerContext();
+    const master = tap(ctx);
+    const voices = [0, 1, 2].map(() => tap(ctx));
+    const w = mount(TrackerSpectrumAnalyzer, { props: { node: master, trackNodes: voices, isPlaying: true, mono: true } });
+    await twoFrames();
+    await twoFrames();
+
+    // Still one analyser on the master, nothing on the voices.
+    expect(ctx.analysers).toHaveLength(1);
+    expect(connections.filter((c) => c.from === master).map((c) => c.to)).toEqual([ctx.analysers[0]]);
+    for (const voice of voices) expect(connections.filter((c) => c.from === voice)).toHaveLength(0);
+
+    const { l, r } = strips(w);
+    const left = painted.get(l)!;
+    const right = painted.get(r);
+    expect(left.rects.length).toBeGreaterThan(0);
+    expect(right?.rects.length ?? 0).toBeGreaterThan(0);
+    // Same bars, same heights, reflected about the center line.
+    expect(round(right!.rects)).toEqual(round(left.rects.map(reflect)));
+    // The shared analyser is read once per frame, not once per strip (a second
+    // read would advance its smoothing/peaks twice and break the mirror).
+    expect(ctx.reads.length).toBe(left.frames);
+    w.unmount();
+  });
+
+  it('stereo (not mono): each strip paints its own analyser, as before', async () => {
+    const painted = recordCanvases();
+    const ctx = paintingAnalyzerContext();
+    const master = tap(ctx);
+    const w = mount(TrackerSpectrumAnalyzer, { props: { node: master, trackNodes: [], isPlaying: true } });
+    await twoFrames();
+    await twoFrames();
+    expect(ctx.analysers).toHaveLength(2);
+    const { l, r } = strips(w);
+    expect(painted.get(l)!.rects.length).toBeGreaterThan(0);
+    expect(painted.get(r)!.rects.length).toBeGreaterThan(0);
+    // Both analysers read, each once per frame of its own strip.
+    expect(ctx.reads.filter((a) => a === ctx.analysers[0]).length).toBe(painted.get(l)!.frames);
+    expect(ctx.reads.filter((a) => a === ctx.analysers[1]).length).toBe(painted.get(r)!.frames);
+    w.unmount();
+  });
+
+  it('per-track (three live taps): quad layout unchanged -- two voices left, one right, one analyser each', async () => {
+    const painted = recordCanvases();
+    const ctx = paintingAnalyzerContext();
+    const master = tap(ctx);
+    const voices = [0, 1, 2].map(() => tap(ctx));
+    const w = mount(TrackerSpectrumAnalyzer, { props: { node: master, trackNodes: voices, isPlaying: true } });
+    await twoFrames();
+    await twoFrames();
+    expect(ctx.analysers).toHaveLength(3);
+    const { l, r } = strips(w);
+    const left = painted.get(l)!;
+    const right = painted.get(r)!;
+    // Left overlays two channels, right draws one: twice the fills per frame.
+    expect(left.rects.length).toBeGreaterThan(right.rects.length);
+    expect(ctx.reads.length).toBe(left.frames * 2 + right.frames);
     w.unmount();
   });
 });
