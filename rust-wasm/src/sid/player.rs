@@ -16,8 +16,8 @@
 //!      number selects the instrument; a note 1..=93 (transposed by the
 //!      orderlist entry as GT's u8 arithmetic does, never clamped: S5.10,
 //!      `note_index`) triggers it: the
-//!      instrument's AD/SR, waveform, pulse width and table pointers are
-//!      loaded, the gate goes on and the first-frame waveform (if any) is
+//!      instrument's AD/SR, waveform, pulse width (unless it is 0: then the
+//!      channel keeps its own, as GT does) and table pointers are loaded, the gate goes on and the first-frame waveform (if any) is
 //!      written this frame; key off clears the gate, key on sets it; then
 //!      the row's command;
 //!   2. per channel the wave table, then, unless a wave step set a note
@@ -676,7 +676,15 @@ impl SidSongPlayer {
         // instrument, whose table sets the waveform); GT itself would hold the
         // first-frame byte here (gplay.c:361), see the verdict.
         ch.waveform = ins.waveform | GATE;
-        ch.pulse_width = ins.pulse_width;
+        // GT never sets the pulse width on a note (gplay.c:375-381): only its
+        // pulse table does, so the channel's width carries over from the last
+        // note. A GT instrument has no width of its own (the importer writes
+        // 0), so 0 here means "keep the channel's"; without this a pulse
+        // instrument that has no pulse table restarted at width 0 (DC, silent)
+        // whenever another instrument had set the width before it.
+        if ins.pulse_width != 0 {
+            ch.pulse_width = ins.pulse_width;
+        }
         ch.first_wave = ins.first_wave;
         ch.wave_ptr = ins.wave_ptr;
         ch.wave_wait = 0;
