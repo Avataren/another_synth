@@ -2,7 +2,16 @@
   <q-layout view="lHh Lpr lFf" class="app-layout">
     <q-header elevated class="app-header">
       <q-toolbar class="app-toolbar" :class="{ 'is-mobile': isMobileLayout }">
-        <q-toolbar-title>Synthesizer</q-toolbar-title>
+        <q-toolbar-title class="app-title">
+          <span>{{ APP_NAME }}</span>
+          <!-- The active song's format; the app's own songs need no badge beside its name. -->
+          <FormatBadge
+            v-if="activeBrand.id !== 'native'"
+            data-testid="header-format-badge"
+            :brand="activeBrand.id"
+            :variant="activeBrand.variant"
+          />
+        </q-toolbar-title>
 
         <q-tabs
           dense
@@ -76,6 +85,9 @@
 import { storeToRefs } from 'pinia';
 import { computed } from 'vue';
 import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
+import FormatBadge from 'src/components/FormatBadge.vue';
+import { APP_NAME } from 'src/branding/format-brands';
+import { useFormatBrandTheme } from 'src/composables/useFormatBrand';
 import { useThemeStore } from 'src/stores/theme-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { useMobileLayout } from 'src/composables/useMobileLayout';
@@ -89,6 +101,9 @@ const isMobileLayout = useMobileLayout();
 
 // Initialize theme store - this will automatically apply the saved theme from localStorage
 useThemeStore();
+
+// The active song's format, on the root for every page (plan-format-branding).
+const activeBrand = useFormatBrandTheme();
 
 // Playback state for header indicator
 const playbackStore = useTrackerPlaybackStore();
@@ -222,6 +237,12 @@ const statusLabel = computed(() =>
 
 .app-toolbar :deep(.q-toolbar__title) {
   color: var(--text-primary, #e8f3ff);
+}
+
+.app-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .main-tabs {

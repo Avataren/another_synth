@@ -18,6 +18,18 @@ export type TransportState = 'stopped' | 'playing' | 'paused';
 export type ModuleFormat = 'native' | 'protracker' | 'xm' | 's3m' | 'ahx' | 'sid';
 
 /**
+ * Every `ModuleFormat`, for code that must cover them all at run time (the
+ * app's format branding registry is tested against it). The check below
+ * fails to compile when the union and this list disagree.
+ */
+export const MODULE_FORMATS = ['native', 'protracker', 'xm', 's3m', 'ahx', 'sid'] as const satisfies readonly ModuleFormat[];
+type AssertTrue<T extends true> = T;
+/** Compiles only while every `ModuleFormat` is in `MODULE_FORMATS`. */
+export type ModuleFormatsAreComplete = AssertTrue<
+  [Exclude<ModuleFormat, (typeof MODULE_FORMATS)[number]>] extends [never] ? true : false
+>;
+
+/**
  * Format assumed for songs saved before the format tag existed, when nothing
  * in the song suggests otherwise.
  */

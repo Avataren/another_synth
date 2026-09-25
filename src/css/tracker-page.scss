@@ -3,6 +3,9 @@
   position: relative;
   height: var(--q-page-container-height, 100vh);
   background: var(--app-background, #0b111a);
+  /* The active song's format (format-theme.ts): a band across the top. */
+  border-top: 3px solid var(--format-accent, transparent);
+  transition: border-color 0.3s ease;
   box-sizing: border-box;
   overflow: hidden;
   display: flex;
@@ -415,6 +418,31 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+/* What the song is: its format's badge, name and (MOD) variant. */
+.song-format {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.song-format__name {
+  color: var(--format-accent, var(--tracker-accent-primary, #9cc7ff));
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.song-format__variant {
+  color: var(--text-muted, rgba(255, 255, 255, 0.55));
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .transport {

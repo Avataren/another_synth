@@ -2,7 +2,7 @@
   <q-page class="sid-page" data-testid="sid-instrument-editor">
     <div class="sid-banner">
       <div class="sid-banner__info">
-        <q-icon name="memory" size="sm" />
+        <FormatBadge data-testid="sid-format-badge" brand="goat" />
         <span class="sid-banner__label">SID Instrument Editor</span>
         <span v-if="slotNumber !== null" class="sid-dim">Slot #{{ formatInstrumentId(slotNumber) }}</span>
         <span class="sid-banner__name" data-testid="sid-instrument-name">{{ displayName }}</span>
@@ -566,6 +566,7 @@ import { ahxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import AhxSliderField from 'src/components/ahx/AhxSliderField.vue';
 import AhxSegmented from 'src/components/ahx/AhxSegmented.vue';
 import AhxAuditionBar from 'src/components/ahx/AhxAuditionBar.vue';
+import FormatBadge from 'src/components/FormatBadge.vue';
 import PreviewScopeBand from 'src/components/tracker/PreviewScopeBand.vue';
 import SidRowPointer from 'src/components/sid/SidRowPointer.vue';
 import SidTableCard from 'src/components/sid/SidTableCard.vue';

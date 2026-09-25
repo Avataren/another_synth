@@ -28,7 +28,8 @@
     "build": "npm run demos:refresh && npm run build:wasm && npm run build:worklets && quasar build",
     "postinstall": "quasar prepare",
     "start": "npx serve .",
-    "generate:port-ids": "node scripts/generate-port-ids.js"
+    "generate:port-ids": "node scripts/generate-port-ids.js",
+    "generate:format-brand-art": "node scripts/generate-format-brand-art.mjs"
   },
   "dependencies": {
     "@quasar/extras": "^1.16.4",

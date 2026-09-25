@@ -1,6 +1,7 @@
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { CURRENT_SONG_FILE_VERSION } from 'src/stores/tracker-store';
 import { buildSlotsAndPatches } from 'src/audio/tracker/instrument-slots';
+import { modOriginOf } from 'src/audio/tracker/mod-origin';
 import {
   looksLikeMod as looksLikeModInternal,
   parseMod,
@@ -87,6 +88,8 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
       // the `false` that carries information -- absent means the narrow range.
       amigaLimits: mod.amigaLimits,
       ...(vblankTiming ? { vblankTiming: true } : {}),
+      // Which kind of .mod this is, for the format badge (display only).
+      modOrigin: modOriginOf(mod),
       patternRows: MOD_PATTERN_ROWS,
       stepSize: DEFAULT_STEP_SIZE,
       patterns,

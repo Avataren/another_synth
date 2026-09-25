@@ -2,8 +2,8 @@
   <q-page class="ahx-page" data-testid="ahx-instrument-display">
     <div class="ahx-banner">
       <div class="ahx-banner__info">
-        <q-icon name="tune" size="sm" />
-        <span class="ahx-banner__label">AHX Instrument Editor</span>
+        <FormatBadge data-testid="ahx-format-badge" :brand="ahxBrand" />
+        <span class="ahx-banner__label">{{ ahxBrand === 'hvl' ? 'HVL' : 'AHX' }} Instrument Editor</span>
         <span v-if="slotNumber !== null" class="ahx-banner__slot"
           >Slot #{{ formatInstrumentId(slotNumber) }}</span
         >
@@ -665,6 +665,8 @@ import {
   useAhxPlayInput,
 } from 'src/composables/useAhxPlayInput';
 import AhxAuditionBar from 'src/components/ahx/AhxAuditionBar.vue';
+import FormatBadge from 'src/components/FormatBadge.vue';
+import { useActiveFormatBrand } from 'src/composables/useFormatBrand';
 import { ahxSourceInfo } from 'src/audio/tracker/ahx-source';
 import { ahxPListPlayhead } from 'src/audio/tracker/ahx-plist-playhead';
 import { ahxPreviewOutputNode } from 'src/audio/tracker/ahx-preview-output';
@@ -730,6 +732,9 @@ import {
 const route = useRoute();
 const router = useRouter();
 const trackerStore = useTrackerStore();
+// AHX or HVL: the song's own variant; this page edits nothing else.
+const activeBrand = useActiveFormatBrand();
+const ahxBrand = computed(() => (activeBrand.value.id === 'hvl' ? 'hvl' : 'ahx'));
 const playbackStore = useTrackerPlaybackStore();
 const userSettings = useUserSettingsStore();
 
