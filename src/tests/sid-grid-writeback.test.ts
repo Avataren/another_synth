@@ -37,24 +37,47 @@ afterEach(() => {
 });
 
 describe('a SID song with a doc is editable (S4)', () => {
-  it('opens editable; its structure stays the doc\'s', () => {
+  it('opens editable: its voices and slots are the doc\'s, its patterns and sequence are edited like any song\'s', () => {
     const h = harness();
     expect(h.store.isSidSong).toBe(true);
     expect(h.store.isSidEditable).toBe(true);
     expect(h.store.isReadOnly).toBe(false);
     expect(h.store.hasDocStructure).toBe(true);
-    expect(h.store.patterns.map((p) => p.rows)).toEqual([16, 16]);
-    // The pattern list's structural edits are not the grid's: the orderlists decide.
-    expect(h.store.addTrack()).toBe(false);
-    expect(h.store.removeTrack(0)).toBe(false);
-    expect(h.store.createPattern()).toBe('');
-    const before = h.sid();
-    h.store.setPatternRows(8);
-    h.store.moveSequenceItem(0, 1);
-    h.store.removePatternFromSequence(0);
+    expect(h.store.hasFixedSequence).toBe(false);
     expect(h.store.patterns.map((p) => p.rows)).toEqual([16, 16]);
     expect(h.store.sequence).toEqual(['sid-pos-0', 'sid-pos-1']);
+    // Voices are the chip's.
+    expect(h.store.addTrack()).toBe(false);
+    expect(h.store.removeTrack(0)).toBe(false);
+    // Unedited, the doc is the one adopted (it saves byte for byte).
+    const before = h.sid();
+    expect(before).toBe(h.store.sidDoc);
+    // A new pattern: three blank voices, not in the sequence yet (the doc does not change).
+    const id = h.store.createPattern();
+    expect(h.store.patterns.find((p) => p.id === id)?.tracks).toHaveLength(3);
     expect(h.sid()).toBe(before);
+    // Into the sequence: every voice's orderlist gains an entry.
+    h.store.addPatternToSequence(id);
+    const added = h.sid();
+    expect(added).not.toBe(before);
+    expect(added.subsongs[0]!.orderlists.map((l) => l.entries.reduce((n, e) => n + e.repeat, 0))).toEqual([2, 2, 3]);
+    // Move it first, shorten it: the doc follows.
+    h.store.moveSequenceItem(2, 0);
+    h.store.setPatternRows(8, id);
+    expect(h.store.sequence).toEqual([id, 'sid-pos-0', 'sid-pos-1']);
+    const moved = h.sid();
+    expect(moved.subsongs[0]!.orderlists.map((l) => moved.patterns[l.entries[0]!.pattern]!.rows.length)).toEqual([8, 8, 8]);
+    // Removing it gives the original song's music back.
+    h.store.removePatternFromSequence(0);
+    const back = h.sid();
+    expect(back.subsongs[0]!.orderlists.map((l) => l.entries.map((e) => [back.patterns[e.pattern]!.rows.length, e.transpose, e.repeat]))).toEqual(
+      before.subsongs[0]!.orderlists.map((l) => l.entries.map((e) => [before.patterns[e.pattern]!.rows.length, e.transpose, e.repeat])),
+    );
+    // The last pattern cannot leave the sequence: the song would be empty.
+    h.store.removePatternFromSequence(1);
+    h.store.removePatternFromSequence(0);
+    expect(h.store.sequence).toEqual(['sid-pos-0']);
+    expect(noticeText()).toBe('The song needs at least one pattern in its sequence.');
   });
 
   it('a SID song without a doc stays a display', () => {
@@ -69,30 +92,30 @@ describe('a SID song with a doc is editable (S4)', () => {
   });
 });
 
-describe('the edit mapping: a cell is a slice of one shared pattern', () => {
-  it('a note typed in a transposed, repeated cell lands un-transposed in the pattern, and shows in every cell of it', () => {
+describe('the edit mapping: a cell is its position\'s own rows of one voice', () => {
+  it('a note typed in a transposed cell is stored un-transposed, in that position only', () => {
     const h = harness();
     const before = h.sid();
-    // Position 1, voice 3, row 3: pattern 2 row 3 (the repeat), transpose +5.
+    // Position 1, voice 3, row 3: the repeat of pattern 2, transpose +5.
     h.at(1, 2, 3);
     h.editing.handleNoteEntry(60); // C-4 (base octave 4): table index 48
     const after = h.sid();
     expect(after).not.toBe(before);
     // Stored un-transposed: index 48 - 5 = 43, row note 44 (index + 1).
-    expect(h.patternRow(2, 3)).toEqual({ note: 44, instrument: 1, command: 0, param: 0 });
-    // Only pattern 2 changed; everything else is shared with the old doc.
-    expect(after.patterns[0]).toBe(before.patterns[0]);
-    expect(after.patterns[1]).toBe(before.patterns[1]);
+    expect(h.flatRow(1, 2, 3)).toEqual({ note: 44, instrument: 1, command: 0, param: 0 });
+    // Position 0's cell is its own copy: untouched.
+    expect(h.entryAt(0, 2, 3)).toBeUndefined();
+    const entry = h.entryAt(1, 2, 3);
+    expect(entry?.note).toBe('C-4');
+    expect(entry?.instrument).toBe('01');
+    expect(entry?.frequency).toBeCloseTo(sidFreqRegToHz(sidNoteFreqReg(48)), 6);
+    // Compiled: voice 3 now plays two patterns, both at +5; voices 1 and 2 as before.
+    const v3 = after.subsongs[0]!.orderlists[2]!.entries;
+    expect(v3.map((e) => e.transpose)).toEqual([5, 5]);
+    expect(v3[0]!.pattern).not.toBe(v3[1]!.pattern);
+    expect(after.patterns[v3[1]!.pattern]!.rows[3]).toEqual({ note: 44, instrument: 1, command: 0, param: 0 });
+    expect(after.patterns[v3[0]!.pattern]!.rows).toEqual(before.patterns[2]!.rows);
     expect(after.instruments).toBe(before.instruments);
-    expect(after.subsongs).toBe(before.subsongs);
-    expect(after.patterns[2]!.rows[10]).toBe(before.patterns[2]!.rows[10]);
-    // Both cells showing pattern 2 show it, as it sounds, with the chip's pitch.
-    for (const position of [0, 1]) {
-      const entry = h.entryAt(position, 2, 3);
-      expect(entry?.note).toBe('C-4');
-      expect(entry?.instrument).toBe('01');
-      expect(entry?.frequency).toBeCloseTo(sidFreqRegToHz(sidNoteFreqReg(48)), 6);
-    }
     expect(h.store.undoStack).toHaveLength(1);
     expect(noticeText()).toBeNull();
   });
@@ -157,15 +180,15 @@ describe('the edit mapping: a cell is a slice of one shared pattern', () => {
     expect(h.patternRow(1, 24).note).toBe(SID_NOTE_KEY_OFF);
   });
 
-  it('transposing a track goes through the doc (shown notes move, stored under the cell\'s transpose)', () => {
+  it('transposing a track goes through the doc (shown notes move, stored under the cell\'s transpose), in that position only', () => {
     const h = harness();
     h.at(0, 2, 0);
     h.selection.transposeTrack(2);
-    // P2 row 10: E-3 (row note 41) +2 = F#-3, row note 43.
-    expect(h.patternRow(2, 10).note).toBe(43);
-    // Shown as it sounds (+5): B-3, in both positions.
+    // Voice 3 row 10: E-3 (row note 41) +2 = F#-3, row note 43.
+    expect(h.flatRow(0, 2, 10).note).toBe(43);
+    // Shown as it sounds (+5): B-3; position 1 still A-3.
     expect(h.entryAt(0, 2, 10)?.note).toBe('B-3');
-    expect(h.entryAt(1, 2, 10)?.note).toBe('B-3');
+    expect(h.entryAt(1, 2, 10)?.note).toBe('A-3');
   });
 });
 

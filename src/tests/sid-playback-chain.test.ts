@@ -271,10 +271,14 @@ describe('a SID song plays through the playback store, the SID transport and the
     const node = await startPlaying(h);
     expect(h.playbackStore.isPlaying).toBe(true);
     expect(node.options).toMatchObject({ numberOfOutputs: 4, outputChannelCount: [2, 1, 1, 1] });
-    // The worklet got the doc as its file, then a seek to the top and a play.
+    // The worklet got the doc as its file, reduced to the subsong the grid shows
+    // (the chain song has two; the player plays the file's first), then a seek to the top and a play.
     const load = node.received.find((c) => c.type === 'load-song') as Extract<SidCommand, { type: 'load-song' }>;
-    const { serializeSidFile } = await import('src/audio/tracker/sid-doc');
-    expect(Array.from(new Uint8Array(load.bytes as ArrayBuffer))).toEqual(Array.from(serializeSidFile(h.trackerStore.sidDoc!)));
+    const { serializeSidFile, sidDocForSubsong } = await import('src/audio/tracker/sid-doc');
+    const doc = h.trackerStore.sidDoc!;
+    expect(doc.subsongs).toHaveLength(2);
+    expect(Array.from(new Uint8Array(load.bytes as ArrayBuffer))).toEqual(Array.from(serializeSidFile(sidDocForSubsong(doc, 0))));
+    expect(sidDocForSubsong(doc, 0).subsongs).toEqual([doc.subsongs[0]]);
     expect(node.received.map((c) => c.type)).toEqual(expect.arrayContaining(['load-song', 'seek', 'play']));
 
     node.pump(ROW);
@@ -283,6 +287,21 @@ describe('a SID song plays through the playback store, the SID transport and the
     expect(Array.from(right)).toEqual(Array.from(mix));
     expect(power(mix, A4)).toBeGreaterThan(100 * power(mix, 466.16));
     expect(power(taps[0]!, A4)).toBeGreaterThan(100 * power(taps[0]!, 466.16));
+  }, 30000);
+
+  it('the subsong the grid shows is the one that plays: subsong 1 sounds A-5 on voice 3 (P0 up an octave)', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const h = await setup();
+    h.trackerStore.selectSidSubsong(1);
+    const node = await startPlaying(h);
+    // The song was loaded (subsong 0) when it was set up; Play loads it again as the subsong shown (the worklet keeps the newest).
+    const loads = node.received.filter((c) => c.type === 'load-song') as Extract<SidCommand, { type: 'load-song' }>[];
+    const load = loads[loads.length - 1]!;
+    const { serializeSidFile, sidDocForSubsong } = await import('src/audio/tracker/sid-doc');
+    expect(Array.from(new Uint8Array(load.bytes as ArrayBuffer))).toEqual(Array.from(serializeSidFile(sidDocForSubsong(h.trackerStore.sidDoc!, 1))));
+    node.pump(ROW);
+    const { taps } = node.pump(6 * ROW);
+    expect(power(taps[2]!, 2 * A4)).toBeGreaterThan(100 * power(taps[2]!, A4));
   }, 30000);
 
   it('the voices leave the worklet into the bank\'s per-track taps (the analyzer\'s and scopes\' nodes); the mix into the bus', async () => {

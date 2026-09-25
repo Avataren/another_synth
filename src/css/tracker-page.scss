@@ -1328,3 +1328,60 @@
   height: 34px;
   min-width: 34px;
 }
+
+/* A SID song's settings in the song header (plan-sid-authoring.md phase 2). */
+.song-meta .sid-setting-field {
+  flex: 0 0 auto;
+  min-width: 64px;
+  max-width: 80px;
+}
+
+.song-meta .sid-subsong-field {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.sid-subsong-controls {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.sid-select {
+  background: var(--input-background, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--input-border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  padding: 5px 6px;
+  color: var(--text-primary, #e8f3ff);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.sid-select option {
+  background: var(--panel-background, #10151f);
+}
+
+.sid-subsong-btn {
+  min-width: 26px;
+  border: 1px solid var(--input-border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  background: var(--input-background, rgba(255, 255, 255, 0.04));
+  color: var(--text-primary, #e8f3ff);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sid-subsong-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Why the last edit of an AHX/SID song was refused (`ahx-edit-notice.ts`); it clears itself. */
+.tracker-edit-notice {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(255, 170, 60, 0.12);
+  color: var(--text-primary, #e8f3ff);
+  font-size: 12px;
+}

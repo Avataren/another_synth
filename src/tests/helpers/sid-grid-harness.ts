@@ -112,10 +112,15 @@ export function sidGridHarness(doc: SidDoc = buildSidChainSong(), adopt?: () => 
     return store.sidDoc as SidDoc;
   };
   const patternRow = (pattern: number, row: number): SidDocRow => sid().patterns[pattern]!.rows[row]!;
+  /** Row `row` of voice `voice` of grid pattern `sid-pos-<position>` in the flat song (what the editor edits). */
+  const flatRow = (position: number, voice: number, row: number): SidDocRow => {
+    store.syncSidWriteBack();
+    return store.sidFlat[store.sidSubsong]!.patterns[`sid-pos-${position}`]!.cells[voice]!.rows[row]!;
+  };
   const entryAt = (position: number, track: number, row: number) => {
     store.syncSidWriteBack();
     return store.patterns[position]!.tracks[track]!.entries.find((e) => e.row === row);
   };
-  return { store, editing, selection, at, sid, patternRow, entryAt, activeInstrumentId };
+  return { store, editing, selection, at, sid, patternRow, flatRow, entryAt, activeInstrumentId };
 }
 

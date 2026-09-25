@@ -35,11 +35,41 @@
           :disable="doc.instruments.length >= SID_MAX_INSTRUMENTS"
           @click="addInstrument"
         />
+        <q-btn
+          v-if="doc && instrument"
+          flat
+          dense
+          color="white"
+          icon="content_copy"
+          label="Copy"
+          data-testid="sid-clone-instrument"
+          title="A copy of this instrument, with copies of its table rows (editing one never changes the other)"
+          :disable="doc.instruments.length >= SID_MAX_INSTRUMENTS"
+          @click="cloneInstrument"
+        />
+        <q-btn
+          v-if="doc && instrument"
+          flat
+          dense
+          color="white"
+          icon="delete"
+          label="Delete"
+          data-testid="sid-delete-instrument"
+          title="Delete this instrument; the ones after it move down a number, and the song's rows follow them"
+          @click="deleteInstrument(false)"
+        />
         <q-btn flat dense color="white" icon="arrow_back" label="Back to Tracker" title="Press Escape to return" @click="backToTracker" />
       </div>
     </div>
 
     <div v-if="editNotice" class="sid-notice" role="alert" data-testid="sid-notice">{{ editNotice.message }}</div>
+
+    <div v-if="pendingDelete !== null" class="sid-notice sid-confirm" role="alert" data-testid="sid-delete-confirm">
+      Instrument {{ formatInstrumentId(instrumentNumber) }} is named on {{ pendingDelete }} row{{ pendingDelete === 1 ? '' : 's' }}. Delete it, and
+      leave those rows without an instrument (their voice keeps the one it had)?
+      <q-btn dense flat color="white" label="Delete" data-testid="sid-delete-confirm-yes" @click="deleteInstrument(true)" />
+      <q-btn dense flat color="white" label="Cancel" @click="pendingDelete = null" />
+    </div>
 
     <div v-if="!instrument || !doc" class="sid-empty" data-testid="sid-instrument-missing">
       This slot has no SID instrument. Open a SID song in the tracker and edit one of its instruments from the list.
@@ -477,6 +507,9 @@ import {
   SID_MAX_INSTRUMENTS,
   SID_TABLE_NAMES,
   setSidChipModel,
+  cloneSidInstrument,
+  deleteSidInstrument,
+  sidInstrumentUses,
   type SidChipModel,
   type SidOpResult,
   type SidTableName,
@@ -604,6 +637,32 @@ function edit(patch: SidInstrumentPatch): void {
 }
 function setChip(model: SidChipModel): void {
   if (doc.value) commit(setSidChipModel(doc.value, model));
+}
+/** Rows naming the instrument, when a delete waits for the user to say yes; `null` otherwise. */
+const pendingDelete = ref<number | null>(null);
+watch(instrumentNumber, () => {
+  pendingDelete.value = null;
+});
+function cloneInstrument(): void {
+  if (!doc.value) return;
+  if (trackerStore.editSidDoc(cloneSidInstrument(doc.value, instrumentNumber.value))) {
+    void router.push({ name: 'sid-instrument-editor', params: { slot: String(trackerStore.sidDoc?.instruments.length ?? 1) } });
+  }
+}
+/** Deletes the instrument; one that rows name asks first (in the page), then clears them. */
+function deleteInstrument(confirmed = false): void {
+  if (!doc.value) return;
+  const n = instrumentNumber.value;
+  const uses = sidInstrumentUses(doc.value, n).length;
+  if (uses > 0 && !confirmed) {
+    pendingDelete.value = uses;
+    return;
+  }
+  pendingDelete.value = null;
+  if (trackerStore.editSidDoc(deleteSidInstrument(doc.value, n, { clearUses: true }))) {
+    const left = trackerStore.sidDoc?.instruments.length ?? 0;
+    if (left > 0) void router.push({ name: 'sid-instrument-editor', params: { slot: String(Math.min(n, left)) } });
+  }
 }
 function addInstrument(): void {
   if (!doc.value) return;

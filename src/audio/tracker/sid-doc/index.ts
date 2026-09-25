@@ -27,12 +27,13 @@ export {
   serializeSidFile,
   type SidFileDecoding,
 } from './sid-file-codec';
-export { projectSidPatterns, sidDocTiming, sidNoteIndex, sidPositionIndexOf, sidPositionPatternId } from './projection';
+export { projectSidFlatPattern, projectSidFlatSubsong, projectSidPatterns, sidDocTiming, sidNoteIndex, sidPositionIndexOf, sidPositionPatternId } from './projection';
 export {
   SID_INDEX_TO_MIDI,
   SID_MAX_INPUT_MIDI,
   SID_MIN_INPUT_MIDI,
   sidCellEntries,
+  sidCellRowsFromEntries,
   sidEditRefusal,
   sidEntriesEqual,
   sidEntriesToRows,
@@ -50,4 +51,6 @@ export {
   type GtSongHints,
 } from './gt-sng-common';
 export { importGtSong, looksLikeGtSong, type GtSongImport, type GtSongVariant } from './gt-sng-read';
-export { exportGtSong, gtSongExportProblem, type GtSongExport } from './gt-sng-write';
+export { exportGtSong, gtOrderlistByteLength, gtSongExportProblem, type GtSongExport } from './gt-sng-write';
+export * from './instrument-ops';
+export * from './flat';

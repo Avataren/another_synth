@@ -1,5 +1,6 @@
 import type { TrackerPattern, TrackerTrackData } from '@another-synth/tracker-playback';
-import { sidCellEntries, sidGridLayout } from './grid';
+import type { SidFlatPattern, SidFlatSubsong } from './flat';
+import { sidCellEntries, sidGridLayout, sidRowToEntry } from './grid';
 import type { SidDoc } from './types';
 
 export { sidNoteIndex } from './grid';
@@ -65,4 +66,26 @@ export function sidDocTiming(doc: SidDoc): { bpm: number; initialSpeed: number }
   const bpm = 125 * doc.speedMultiplier;
   if (bpm <= 255) return { bpm, initialSpeed: Math.min(31, doc.tempo) };
   return { bpm: 250, initialSpeed: Math.max(1, Math.min(31, Math.round((doc.tempo * 2) / doc.speedMultiplier))) };
+}
+
+/** The grid pattern of flat pattern `id` (`flat.ts`): its voices' rows as they sound, named `name`. */
+export function projectSidFlatPattern(id: string, pattern: SidFlatPattern, name: string): TrackerPattern {
+  const tracks: TrackerTrackData[] = pattern.cells.map((cell, c) => {
+    const entries = [];
+    for (let r = 0; r < pattern.rows; r++) {
+      const entry = sidRowToEntry(cell.rows[r] as NonNullable<(typeof cell.rows)[number]>, r, cell.transpose);
+      if (entry) entries.push(entry);
+    }
+    return { id: `sid-ch-${c + 1}`, name: `Voice ${c + 1}`, entries };
+  });
+  return { id, name, rows: pattern.rows, tracks, positionTranspose: pattern.cells.map((cell) => cell.transpose) };
+}
+
+/**
+ * The grid of a flat subsong: one grid pattern per flat pattern, in the
+ * flat's order, each named by `names` (a grid pattern's name is the editor's
+ * own; the doc has none) or `Pattern <n>`.
+ */
+export function projectSidFlatSubsong(flat: SidFlatSubsong, names: Readonly<Record<string, string>> = {}): TrackerPattern[] {
+  return Object.entries(flat.patterns).map(([id, pattern], index) => projectSidFlatPattern(id, pattern, names[id] ?? `Pattern ${index}`));
 }
