@@ -1,6 +1,7 @@
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { ahxExporter } from './ahx-exporter';
 import { hvlExporter } from './hvl-exporter';
+import { sidExporter } from './sid-exporter';
 import { sngExporter } from './sng-exporter';
 import { SongExportError, type SongExportFormatId, type SongExporter } from './types';
 
@@ -31,6 +32,7 @@ export const SONG_EXPORTERS: readonly SongExporter[] = [
   ahxExporter,
   hvlExporter,
   sngExporter,
+  sidExporter,
   createPlaceholderExporter('mod', 'ProTracker MOD', '.mod'),
   createPlaceholderExporter('xm', 'FastTracker 2 XM', '.xm'),
   createPlaceholderExporter('s3m', 'Scream Tracker 3 S3M', '.s3m'),

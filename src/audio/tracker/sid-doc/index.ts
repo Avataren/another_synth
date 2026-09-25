@@ -51,6 +51,13 @@ export {
   type GtSongHints,
 } from './gt-sng-common';
 export { importGtSong, looksLikeGtSong, type GtSongImport, type GtSongVariant } from './gt-sng-read';
-export { exportGtSong, gtOrderlistByteLength, gtSongExportProblem, type GtSongExport } from './gt-sng-write';
+export {
+  exportGtSong,
+  gtNoteByte,
+  gtOrderlistByteLength,
+  gtOrderlistBytes,
+  gtSongExportProblem,
+  type GtSongExport,
+} from './gt-sng-write';
 export * from './instrument-ops';
 export * from './flat';

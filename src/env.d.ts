@@ -10,3 +10,9 @@ declare namespace NodeJS {
     VUE_ROUTER_BASE: string | undefined;
   }
 }
+
+/** Vite's `?raw` import of GoatTracker's playroutine source (sid-export/gt2/player.s). */
+declare module '*.s?raw' {
+  const source: string;
+  export default source;
+}

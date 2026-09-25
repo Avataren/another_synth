@@ -32,7 +32,8 @@ const FORMAT_NAMES: Partial<Record<string, string>> = {
   s3m: 'S3M',
 };
 
-type Plan = { ok: true; doc: SidDoc; altered: boolean } | { ok: false; reason: string };
+/** A SID song's doc as the exporters write it, or why the song has none. */
+export type SidExportPlan = { ok: true; doc: SidDoc; altered: boolean } | { ok: false; reason: string };
 
 /** `edited` as a doc text, or `original` when the store still shows the import's derivation of it. */
 function textFor(original: string, edited: string, fallback: string): { text: string; altered: boolean } {
@@ -42,14 +43,20 @@ function textFor(original: string, edited: string, fallback: string): { text: st
   return { text, altered: latin.altered || text.length < latin.text.length };
 }
 
-function plan(song: TrackerSongFile): Plan {
+/**
+ * The doc a SID song's snapshot carries, with the store's title and author
+ * written into it when they were edited (`altered`: shortened or re-encoded
+ * to fit). `as` finishes the refusal for other formats ("saved as ...").
+ * Shared by the `.sng` and `.sid` exporters.
+ */
+export function planSidExport(song: TrackerSongFile, as = 'saved as GoatTracker .sng'): SidExportPlan {
   const format = song.data.moduleFormat;
   if (format !== 'sid') {
     if (format === undefined || format === 'native') {
       return { ok: false, reason: "Songs made from scratch can't be exported yet." };
     }
     const name = FORMAT_NAMES[format];
-    return { ok: false, reason: `${name ? `${name} songs` : 'This song'} can't be saved as GoatTracker .sng.` };
+    return { ok: false, reason: `${name ? `${name} songs` : 'This song'} can't be ${as}.` };
   }
   if (song.data.sidFile === undefined) return { ok: false, reason: 'This song has no SID song data to export.' };
   const decoded = decodeSidFile(song.data.sidFile);
@@ -63,17 +70,17 @@ function plan(song: TrackerSongFile): Plan {
 }
 
 /** Capitalized, with a full stop: the writer's reasons and notes are clauses. */
-const sentence = (clause: string): string => `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`;
+export const sentence = (clause: string): string => `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`;
 
 function check(song: TrackerSongFile): SongExportCheck {
-  const planned = plan(song);
+  const planned = planSidExport(song);
   if (!planned.ok) return planned;
   const written = exportGtSong(planned.doc);
   return written.ok ? { ok: true } : { ok: false, reason: `This song can't be saved as a .sng: ${written.reason}.` };
 }
 
 function warnings(song: TrackerSongFile): string[] {
-  const planned = plan(song);
+  const planned = planSidExport(song);
   if (!planned.ok) return [];
   const written = exportGtSong(planned.doc);
   if (!written.ok) return [];
@@ -81,7 +88,7 @@ function warnings(song: TrackerSongFile): string[] {
 }
 
 function serialize(song: TrackerSongFile): Uint8Array {
-  const planned = plan(song);
+  const planned = planSidExport(song);
   if (!planned.ok) throw new SongExportError(planned.reason);
   const written = exportGtSong(planned.doc);
   if (!written.ok) throw new SongExportError(`This song can't be saved as a .sng: ${written.reason}.`);
