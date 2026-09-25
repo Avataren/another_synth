@@ -47,6 +47,10 @@ describe('SID table rows: words', () => {
     expect(describeSidTableRow('wave', { left: 0x81, right: 0xbc }, 4)).toBe('Noise, gate on, note C-5 (fixed)');
     expect(describeSidTableRow('wave', { left: 0xe8, right: 0 }, 4)).toBe('no waveform, test, gate off, note +0');
     expect(describeSidTableRow('wave', { left: 0xf9, right: 3 }, 4)).toBe('Command 9: pulse table from row 03');
+    // GT's illegal wave commands (gplay.c:534-538 stops the song on them).
+    for (const left of [0xf0, 0xf8, 0xfe]) {
+      expect(describeSidTableRow('wave', { left, right: 1 }, 4)).toContain('illegal in GoatTracker');
+    }
     expect(describeSidTableRow('wave', { left: 0xff, right: 0 }, 4)).toBe('Stop (the table ends here)');
     expect(describeSidTableRow('wave', { left: 0xff, right: 9 }, 4)).toContain('does not exist');
     expect(describeSidTableRow('pulse', { left: 0x88, right: 0x00 }, 4)).toBe('Set width 800 (50.0 %)');

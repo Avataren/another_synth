@@ -88,8 +88,11 @@
 //!     gate bit kept in both (gplay.c:525, 527; S5.9), 0x00 keeps it,
 //!     0xF0..=0xFE (GT's table commands, `wave_command`): the pattern
 //!     command of the low nibble with the right column as its parameter,
-//!     for that frame (S5.17: $F5/$F6; S5.19: the rest; $F0, $F8 and $FE,
-//!     which stop GT's song, only advance). right, GT's arithmetic
+//!     for that frame (S5.17: $F5/$F6; S5.19: the rest). $F0, $F8 and $FE
+//!     have no GT meaning: they are illegal (readme §3.4.1), GT's editor
+//!     stops the song on them (gplay.c:534-538) and its packer refuses to
+//!     export one (greloc.c:401-409); here the row only advances, as GT's
+//!     does on that frame, and the song plays on. right, GT's arithmetic
 //!     (S5.10, gplay.c:714-721): 0x00..=0x7F added to the channel's note,
 //!     0x80 no change, 0x81..=0xFF the absolute note, then `& 0x7F`, into the
 //!     128-entry table (96 notes, then zeros: `gt_note_freq_reg`). This right
@@ -1096,9 +1099,13 @@ impl SidSongPlayer {
 
     /// A wave-table command row ($F0 + `cmd`, parameter `param`), GT's
     /// (gplay.c:529-680): the pattern command of that number run for this
-    /// frame, the slides and the vibrato as tick effects. 0, 8 and E stop the
-    /// song in GT; here they do nothing. D takes its volume only while the
-    /// row's own command parameter is below $10 (GT tests `newcmddata`).
+    /// frame, the slides and the vibrato as tick effects. 0, 8 and E are
+    /// illegal in GT (its editor stops the song, gplay.c:534-538); here they
+    /// do nothing. D sets the volume when its own parameter is below $10,
+    /// as GT's C64 player does (player.s:291-305; $10 up is its "timing
+    /// mark", nothing audible). GT's editor tests the pattern row's
+    /// `newcmddata` instead and stores the parameter unmasked (gplay.c:
+    /// 686-689), so `$FD 1F` put $10 into $D418's filter-mode bits there.
     fn wave_command(&mut self, c: usize, cmd: u8, param: u8) {
         match cmd {
             0x1 => {
@@ -1133,7 +1140,7 @@ impl SidSongPlayer {
                 }
             }
             0xC => self.cutoff = (param as u16) << 3,
-            0xD if self.channels[c].param < 0x10 => self.volume = param,
+            0xD if param < 0x10 => self.volume = param,
             _ => {}
         }
     }

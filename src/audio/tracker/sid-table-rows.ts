@@ -121,7 +121,9 @@ export function describeSidTableRow(table: SidTableName, row: SidTableRow, lengt
       if (left <= 0xef) return `${sidControlName(left & 0x0f)}, ${sidWaveNoteText(right)}`;
       const cmd = left & 0x0f;
       const what = WAVE_COMMANDS[cmd];
-      if (!what) return `Command ${cmd.toString(16).toUpperCase()} (not played: the table moves on)`;
+      // $F0, $F8, $FE: illegal in GoatTracker, whose editor stops the song
+      // there (gplay.c:534-538) and whose packer refuses it (greloc.c:401-409).
+      if (!what) return `Command ${cmd.toString(16).toUpperCase()}: illegal in GoatTracker, which stops the song here (this player moves on)`;
       if (cmd === 0x7) return `Command 7: waveform ${hexByte(right)} (${sidControlName(right)})`;
       return `Command ${cmd.toString(16).toUpperCase()}: ${what} ${hexByte(right)}`;
     }

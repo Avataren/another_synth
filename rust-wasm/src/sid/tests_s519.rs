@@ -332,3 +332,46 @@ fn filter_control_0_stops_the_table_and_volume_from_10_is_ignored() {
     assert_eq!(hi[8], hi[15], "the cutoff stands after B 00: {hi:02x?}");
     assert_eq!(column(&r, 24)[15] & 0x0F, 0x0F, "the volume stays 15 after D 13");
 }
+
+#[test]
+fn wave_command_fd_tests_its_own_parameter() {
+    // GT-parity 0925b: $FD sets the volume only below $10, testing the wave
+    // row's own parameter as GT's C64 player does (player.s:291-305). The
+    // old test of the pattern row's parameter (the editor's, gplay.c:
+    // 686-689) let `$FD 1F` under a row with parameter 0 write $1F: $D418
+    // read $1F (low-pass on) from frame 3; now it stays $0F.
+    let tables = Tables { wave: vec![t(0x41, 0x00), t(0xFD, 0x1F), t(0xFD, 0x07), t(0xFF, 0x00)], ..Default::default() };
+    let mut rows = vec![Row::default(); 4];
+    rows[0] = row(49, 1);
+    let r = regs(song(vec![gt_ins()], tables, rows), 6);
+    let mv = column(&r, 24);
+    // $FD 1F runs on frame 2, $FD 07 on frame 3; $D418 is written at the top
+    // of the frame (gplay.c:299-302), so each is heard a frame later.
+    assert_eq!(&mv[2..6], &[0x0F, 0x0F, 0x07, 0x07], "mode/volume: {mv:02x?}");
+}
+
+#[test]
+fn illegal_wave_commands_only_advance() {
+    // $F0, $F8, $FE are illegal in GT (readme §3.4.1; its editor stops the
+    // song, gplay.c:534-538). Here the row costs its frame, changes nothing
+    // (no wave, no note, no jump, no tempo) and the table moves on.
+    for illegal in [0xF0u8, 0xF8, 0xFE] {
+        let tables = Tables {
+            wave: vec![t(0x41, 0x00), t(illegal, 0x01), t(0x21, 0x0C), t(0xFF, 0x00)],
+            speed: vec![t(0x02, 0x02)],
+            ..Default::default()
+        };
+        let mut rows = vec![Row::default(); 4];
+        rows[0] = row(49, 1);
+        rows[1] = row(49, 1);
+        let r = regs(song(vec![gt_ins()], tables, rows), 8);
+        let ctl = column(&r, 4);
+        let f = freq(&r);
+        let n = gt_note_freq_reg(48);
+        assert_eq!(&ctl[1..4], &[0x41, 0x41, 0x21], "${illegal:02X}: controls {ctl:02x?}");
+        assert_eq!(&f[1..4], &[n, n, gt_note_freq_reg(60)], "${illegal:02X}: freqs {f:04x?}");
+        // Row 1's hard restart (gate timer 2) still comes on frame 4: the
+        // tempo stands (no funktempo from $FE).
+        assert_eq!(ctl[4], 0x20, "${illegal:02X}: controls {ctl:02x?}");
+    }
+}
