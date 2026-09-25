@@ -262,6 +262,28 @@ export type SidInstrumentFrame = readonly [number, number, number, number, numbe
 
 const i8 = (v: number): number => (v << 24) >> 24;
 
+/** What set the waveform byte a frame plays: the instrument, its first-frame byte, a wave-table row, or a `$F7` wave-table command. */
+export type SidWaveSource =
+  | { readonly kind: 'instrument' }
+  | { readonly kind: 'first-frame' }
+  | { readonly kind: 'wave-row'; readonly row: number }
+  | { readonly kind: 'wave-command'; readonly row: number }
+  | { readonly kind: 'none' };
+
+/**
+ * Why a frame sounds as it does (the page's frame cursor): the waveform byte
+ * before the gate mask and the gate, what set that byte, and the table rows
+ * (1-based, 0 = none) the frame's steps read.
+ */
+export interface SidFrameTrace {
+  readonly waveform: number;
+  readonly gate: boolean;
+  readonly waveSource: SidWaveSource;
+  readonly waveRow: number;
+  readonly pulseRow: number;
+  readonly filterRow: number;
+}
+
 /**
  * The first `frames` frames of instrument `instrument` (1-based) of `doc`
  * played at note table index `note` on its own (the page's preview voice:
@@ -269,7 +291,7 @@ const i8 = (v: number): number => (v << 24) >> 24;
  * after each frame. A port of the player's trigger and per-frame steps for one
  * voice; `[]` for an instrument the doc lacks.
  */
-export function simulateSidInstrument(doc: SidDoc, instrument: number, note: number, frames: number): SidInstrumentFrame[] {
+export function simulateSidInstrument(doc: SidDoc, instrument: number, note: number, frames: number, trace?: SidFrameTrace[]): SidInstrumentFrame[] {
   const ins = doc.instruments[instrument - 1];
   if (!ins) return [];
   const { wave, pulse: pulseTable, filter, speed } = doc.tables;
@@ -291,10 +313,20 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
   // The player's control byte (S5.9): the instrument's gate-clear waveform
   // with the gate bit set, then the table's bytes whole; written `& gate mask`.
   let waveform = 0;
-  if (!gtStyle) waveform = ins.waveform | 0x01;
-  else if (firstWave === 0) gate = false;
+  let waveSource: SidWaveSource = { kind: 'none' };
+  if (!gtStyle) {
+    waveform = ins.waveform | 0x01;
+    waveSource = { kind: 'instrument' };
+  } else if (firstWave === 0) gate = false;
   else if (firstWave >= 0xfe) gate = firstWave === 0xff;
-  else waveform = firstWave;
+  else {
+    waveform = firstWave;
+    waveSource = { kind: 'first-frame' };
+  }
+  // The rows this frame's steps read, for `trace`.
+  let waveRow = 0;
+  let pulseRow = 0;
+  let filterRow = 0;
   let pw = ins.pulseWidth;
   let wavePtr = ins.wavePtr;
   let waveWait = 0;
@@ -376,7 +408,7 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
       case 0x2: freq = (freq - slideSpeed(param)) & 0xffff; break;
       case 0x3: tonePorta(param); break;
       case 0x4: vibrato(row(speed, param) ?? { left: 0, right: 0 }); break;
-      case 0x7: waveform = param; break;
+      case 0x7: waveform = param; waveSource = { kind: 'wave-command', row: waveRow }; break;
       case 0x9: pulsePtr = param; pulseTime = 0; break;
       case 0xa: filterPtr = param; filterTime = 0; break;
       case 0xb: resFilt = param; if (param === 0) filterPtr = 0; break;
@@ -412,6 +444,7 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
         jumped = true;
         continue;
       }
+      waveRow = wavePtr;
       if (r.left >= 0x01 && r.left <= 0x0f) {
         // A delayed step: `left` frames of waiting, then its note (S5 pin).
         if (waveWait === 0) waveWait = r.left + 1;
@@ -423,6 +456,7 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
       } else {
         if (r.left >= 0x10 && r.left <= 0xdf) waveform = r.left;
         else if (r.left >= 0xe0 && r.left <= 0xef) waveform = r.left & 0x0f;
+        if (r.left >= 0x10 && r.left <= 0xef) waveSource = { kind: 'wave-row', row: wavePtr };
         if (r.left >= 0xf0) {
           command = [r.left & 0x0f, r.right];
           noted = true;
@@ -449,6 +483,7 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
       pulsePtr = jump.right;
       if (pulsePtr === 0) return;
     }
+    pulseRow = pulsePtr;
     if (pulseTime === 0) {
       const r = at(pulsePtr);
       if (r.left >= 0x80) {
@@ -483,6 +518,7 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
         filterPtr = 0;
         return;
       }
+      filterRow = filterPtr;
       const r = at(filterPtr);
       if (r.left >= 0x80) {
         mode = (r.left >> 4) & 0x07;
@@ -501,6 +537,7 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
       }
     }
     if (filterTime > 0) {
+      filterRow ||= filterPtr;
       cutoff = ((((cutoff >> 3) + filterSpeed) & 0xff) << 3) | (cutoff & 0x07);
       filterTime -= 1;
       if (filterTime === 0) filterPtr = (filterPtr + 1) & 0xff;
@@ -509,6 +546,9 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
 
   const out: SidInstrumentFrame[] = [];
   for (let f = 0; f < frames; f++) {
+    waveRow = 0;
+    pulseRow = 0;
+    filterRow = 0;
     // The filter table runs at the top of the frame and its registers are
     // what the frame writes (GT's order): a wave-table filter command lands
     // on the next frame.
@@ -528,6 +568,17 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
     const control = firstFrame && firstWave !== 0 && firstWave < 0xfe ? firstWave : waveform & (gate ? 0xff : 0xfe);
     // The low byte is written with bit 0 clear, as GT does.
     out.push([freq, pw & 0xffe, control, ...filterRegs]);
+    if (trace) {
+      const own = firstFrame && firstWave !== 0 && firstWave < 0xfe;
+      trace.push({
+        waveform: own ? firstWave : waveform,
+        gate: (control & 0x01) !== 0,
+        waveSource: own ? { kind: 'first-frame' } : waveSource,
+        waveRow,
+        pulseRow,
+        filterRow,
+      });
+    }
     firstFrame = false;
   }
   return out;
