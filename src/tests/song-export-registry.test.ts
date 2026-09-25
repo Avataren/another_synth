@@ -11,6 +11,8 @@ import {
   getSongExporter,
   hvlExporter,
   sidExporter,
+  prgExporter,
+  binExporter,
   sngExporter,
   SONG_EXPORTERS,
   SongExportError,
@@ -27,17 +29,19 @@ const ahxSong = (): TrackerSongFile => importAhxToTrackerSong(demo('karma.ahx'))
 const withoutSource = (song: TrackerSongFile): TrackerSongFile => ({ ...song, data: { ...song.data } });
 
 describe('the exporter registry', () => {
-  it('lists ahx, hvl, sng, sid, mod, xm, s3m in that order with unique ids', () => {
-    expect(SONG_EXPORTERS.map((e) => e.id)).toEqual(['ahx', 'hvl', 'sng', 'sid', 'mod', 'xm', 's3m']);
+  it('lists ahx, hvl, sng, sid, prg, bin, mod, xm, s3m in that order with unique ids', () => {
+    expect(SONG_EXPORTERS.map((e) => e.id)).toEqual(['ahx', 'hvl', 'sng', 'sid', 'prg', 'bin', 'mod', 'xm', 's3m']);
     expect(new Set(SONG_EXPORTERS.map((e) => e.id)).size).toBe(SONG_EXPORTERS.length);
   });
 
-  it('has a writer for ahx, hvl, sng and sid only', () => {
+  it('has a writer for ahx, hvl, sng, sid, prg and bin only', () => {
     expect(SONG_EXPORTERS.map((e) => [e.id, e.available])).toEqual([
       ['ahx', true],
       ['hvl', true],
       ['sng', true],
       ['sid', true],
+      ['prg', true],
+      ['bin', true],
       ['mod', false],
       ['xm', false],
       ['s3m', false],
@@ -46,6 +50,8 @@ describe('the exporter registry', () => {
     expect(getSongExporter('hvl')).toBe(hvlExporter);
     expect(getSongExporter('sng')).toBe(sngExporter);
     expect(getSongExporter('sid')).toBe(sidExporter);
+    expect(getSongExporter('prg')).toBe(prgExporter);
+    expect(getSongExporter('bin')).toBe(binExporter);
     expect(getSongExporter('xm')?.extension).toBe('.xm');
   });
 
@@ -77,6 +83,8 @@ describe('the exporter registry', () => {
       hvl: { state: 'unavailable', reason: "AHX songs can't be saved as HVL." },
       sng: { state: 'unavailable', reason: "AHX and HVL songs can't be saved as GoatTracker .sng." },
       sid: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .sid." },
+      prg: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .prg." },
+      bin: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .bin." },
       mod: notYet,
       xm: notYet,
       s3m: notYet,
@@ -88,6 +96,8 @@ describe('the exporter registry', () => {
       hvl: { state: 'enabled' },
       sng: { state: 'unavailable', reason: "AHX and HVL songs can't be saved as GoatTracker .sng." },
       sid: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .sid." },
+      prg: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .prg." },
+      bin: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .bin." },
       mod: notYet,
       xm: notYet,
       s3m: notYet,
@@ -97,12 +107,16 @@ describe('the exporter registry', () => {
       hvl: { state: 'unavailable', reason: "XM songs can't be saved as HVL." },
       sng: { state: 'unavailable', reason: "XM songs can't be saved as GoatTracker .sng." },
       sid: { state: 'unavailable', reason: "XM songs can't be exported as a C64 .sid." },
+      prg: { state: 'unavailable', reason: "XM songs can't be exported as a C64 .prg." },
+      bin: { state: 'unavailable', reason: "XM songs can't be exported as a C64 .bin." },
     });
     expect(rows(native)).toMatchObject({
       ahx: { state: 'unavailable', reason: "Songs made from scratch can't be exported yet." },
       hvl: { state: 'unavailable', reason: "Songs made from scratch can't be exported yet." },
       sng: { state: 'unavailable', reason: "Songs made from scratch can't be exported yet." },
       sid: { state: 'unavailable', reason: "Songs made from scratch can't be exported yet." },
+      prg: { state: 'unavailable', reason: "Songs made from scratch can't be exported yet." },
+      bin: { state: 'unavailable', reason: "Songs made from scratch can't be exported yet." },
     });
     expect(rows(withoutSource(ahxSong()))).toMatchObject({
       ahx: { state: 'unavailable', reason: 'This song has no original file to export from.' },

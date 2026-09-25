@@ -396,6 +396,52 @@ imported multispeed songs without an F) is still open. New songs avoid it by wri
 - Size guard: refuse (true reason) when player + data would overflow the chosen memory map.
 
 ### Phase 5 — `.prg` export, plain (S/M)
+
+**Progress (2026-09-25, branch `agent/sid-authoring-p5-0925`, uncommitted): DONE.**
+- `sid-export/c64-prg.ts`: the shell, written in `asm6502.ts`'s dialect and assembled by it. Memory map:
+  `$0801` `10 SYS 2061`, `$080D` shell + screen text (~0.5 KB), zeros, `$1000` player + song (the
+  `.sid`'s bytes), a copy of the player's pages in the page after the tune; all below `$D000`. `$01 = $36`
+  (BASIC ROM out so a tune may lie under it; KERNAL + I/O stay). Zero page: the shell uses none.
+  - 1x: raster IRQ (`$D012 = $80`), CIA 1 IRQs off; N x: CIA 1 timer A, latch `$4CC7/N` (the `.sid`
+    stub's). Handler: `jsr play`, then `$EA31` once per frame (keyboard scan, CIA ack), else `$EA81`.
+  - Main loop: GETIN; `1`-`9` < songs: `sei`, SID `$D400-$D418` zeroed, **player pages copied back as
+    loaded**, init (A = subsong), digit on screen, `cli`.
+  - Screen: lower/upper case set (case switch locked), title / author / copyright, "Playing subsong n of
+    m", "Press 1-m for another subsong", "made with another_synth"; accents stripped, other characters `?`.
+- **Found by the gate:** GoatTracker's `mt_init` resets only 14 bytes a channel and the filter step; the
+  channels' frequency, pulse, filter type/cutoff and self-modified operands stay from the subsong before.
+  A SID player reloads the file for another subsong, so the shell restores the player (up to
+  `mt_freqtbllo`: the song data is never written) before every init. Without it, 73 of 118 subsongs differed
+  audibly after a mid-song switch; with it, none (`sid_decisions.md`).
+- `exportPrg(doc)`, `exportBin(doc)` (`sid-export/index.ts`, shared `buildTune`: same refusals, notes and
+  `$D000` guard as `.sid`; `.prg` also refuses a shell running into the player, or no room for the copy).
+  `.bin`: player + song raw at `$1000`, no load address (GoatTracker's BIN).
+- Dialog rows "Commodore 64 program (.prg)" and "Commodore 64 player + song, raw (.bin)"
+  (`song-export/sid-exporter.ts`, one builder for the three). Notes: text cut/re-encoded (`PRG_TEXT_NOTE`),
+  characters the screen lacks (`PRG_SCREEN_TEXT_NOTE`), subsongs past 9 have no key, `.bin` at N x speed:
+  call play N times a frame (`binSpeedNote`).
+- Test C64: `tests/helpers/cpu6502.ts` got cycle counts and `irq()`; `tests/helpers/c64-boot.ts` RUNs a
+  `.prg` (its SYS line; stand-ins of our own for the KERNAL's IRQ entry, `$EA31`/`$EA81`, GETIN; no ROM
+  image), fires the IRQ the program armed at its rate in cycles, types keys.
+- Tests: `sid-prg-export` (stub/shell bytes, same bytes as `.sid`/`.bin` at `$1000`, 1x/2x/16x on the
+  test C64 = `.sid`, keys early and mid-song, screen, refusals), `song-export-sid` (rows), registry/dialog.
+  vitest 4379, vue-tsc, eslint clean. No Rust change.
+- **Gates, measured:**
+  - `.ai/sid-oracle/prg_play_gate.ts` (corpus + the new-song gate's 16 songs via `EXTRA`): the `.prg` RUN on
+    the test C64 vs the `.sid` on `runPsid`, 30 000 play calls, every subsong by its key, from boot and
+    after 50 frames of subsong 1: **118/118 identical**, IRQ source/rate as expected, longest handler 17.7%
+    of its period.
+  - VICE 3.10 `x64sc` (autostart, `-autostartprgmode 1`, `-limitcycles`, `-sounddev wav`,
+    `-exitscreenshot`) vs `vsid` on the `.sid`, 20 s, 6581: 1x lag constant to the sample, correlation
+    0.98 (0.997 in 0.25 s windows); subsong 3 by `-keybuf 3` vs `vsid -tune 3`: 0.95; 2x: same tempo
+    (lag constant to 1 sample over 8 s), correlation 0.70, which is oscillator phase: the same `.prg`
+    against itself restarted by a key gives 0.78 (1x: 1.000). Screenshots show the text screen and
+    "Playing subsong 3 of 3" after the key. Real hardware: Morten.
+
+**Next:** Morten's review/merge. Open: a load-address / zero-page option in the dialog (`.bin` especially);
+NTSC: the shell assumes PAL, so on an NTSC C64 a 1x song (raster, 60 frames/s) plays 20% fast and a
+multispeed one (CIA latch at NTSC's 1.02 MHz) 4% fast; the shell could read the machine's line count and pick.
+
 - BASIC stub (`10 SYS 2061`), IRQ shell calling play once per frame (or CIA-timed at
   multispeed), subsong keys 1-9, a text screen with title/author/"made with another_synth".
 - Also offer raw `.bin` at an address (GT's third format) for people linking the tune

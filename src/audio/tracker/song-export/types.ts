@@ -1,7 +1,7 @@
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 
 /** The formats the registry has a slot for. A later batch replaces a placeholder; nothing else changes. */
-export type SongExportFormatId = 'ahx' | 'hvl' | 'sng' | 'sid' | 'mod' | 'xm' | 's3m';
+export type SongExportFormatId = 'ahx' | 'hvl' | 'sng' | 'sid' | 'prg' | 'bin' | 'mod' | 'xm' | 's3m';
 
 export type SongExportCheck = { ok: true } | { ok: false; reason: string };
 
