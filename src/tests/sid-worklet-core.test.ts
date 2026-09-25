@@ -6,6 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 // mocked for every other test, and this one is about the real bytes.
 import { SidPlayer, initSync } from '../../public/wasm/audio_processor.js';
 import { SidProcessorCore, type SidEvent, type SidWasmPlayerCtor } from 'src/audio/worklets/sid-core';
+import { SID_CYCLES_PER_FRAME, SID_PAL_CLOCK_HZ } from 'src/audio/tracker/sid-instrument-visuals';
 
 /**
  * plan-sid-tracking.md S4: the SID worklet's render-thread core over the REAL
@@ -18,8 +19,8 @@ import { SidProcessorCore, type SidEvent, type SidWasmPlayerCtor } from 'src/aud
  * command/event protocol the main thread speaks. The browser only adds the
  * `AudioWorkletProcessor` around it.
  *
- * The chain song (see `helpers/sid-chain-song.ts`): tempo 6 at 50 Hz, so a
- * row is 6 x 882 samples at 44.1 kHz; voice 1 plays A-4 (triangle) from row
+ * The chain song (see `helpers/sid-chain-song.ts`): tempo 6 PAL frames, so a
+ * row is 6 x 879.8 samples at 44.1 kHz; voice 1 plays A-4 (triangle) from row
  * 0 to its key off at row 16; voice 2 starts C-4 (the arpeggio pulse) at row
  * 8; voice 3 plays A-3 (E-3 +5, filtered saw) from row 10. 6581 chip. The
  * song is 32 rows (every voice's first pass is 32).
@@ -28,7 +29,8 @@ import { SidProcessorCore, type SidEvent, type SidWasmPlayerCtor } from 'src/aud
 const ROOT = resolve(__dirname, '../..');
 const SAMPLE_RATE = 44100;
 const QUANTUM = 128;
-const ROW = 6 * 882;
+/** One row, tempo 6 PAL frames (879.8 samples each at 44.1 kHz; GT-parity 0925b, was 6 x 882 at 50 Hz). */
+const ROW = Math.round((6 * 44_100 * SID_CYCLES_PER_FRAME) / SID_PAL_CLOCK_HZ);
 const chainBytes = () => new Uint8Array(readFileSync(resolve(ROOT, 'rust-wasm/tests/fixtures/sid/s3-chain.asid')));
 
 let nextId = 0;
