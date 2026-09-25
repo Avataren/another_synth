@@ -82,6 +82,43 @@ def('txa', { imp: 0x8a });
 def('txs', { imp: 0x9a });
 def('tya', { imp: 0x98 });
 
+const STORES = new Set(['sta', 'stx', 'sty']);
+const RMW = new Set(['asl', 'lsr', 'rol', 'ror', 'inc', 'dec']);
+
+/** Cycles of one instruction, before a taken branch's penalty. */
+function cyclesOf(m: string, mode: Mode, crossed: boolean): number {
+  switch (mode) {
+    case 'imp':
+      if (m === 'pha' || m === 'php') return 3;
+      if (m === 'pla' || m === 'plp') return 4;
+      if (m === 'rts' || m === 'rti') return 6;
+      if (m === 'brk') return 7;
+      return 2;
+    case 'imm':
+    case 'rel':
+      return 2;
+    case 'zp':
+      return RMW.has(m) ? 5 : 3;
+    case 'zpx':
+    case 'zpy':
+      return RMW.has(m) ? 6 : 4;
+    case 'abs':
+      if (m === 'jmp') return 3;
+      if (m === 'jsr') return 6;
+      return RMW.has(m) ? 6 : 4;
+    case 'absx':
+    case 'absy':
+      if (RMW.has(m)) return 7;
+      return STORES.has(m) ? 5 : 4 + (crossed ? 1 : 0);
+    case 'ind':
+      return 5;
+    case 'indx':
+      return 6;
+    case 'indy':
+      return STORES.has(m) ? 6 : 5 + (crossed ? 1 : 0);
+  }
+}
+
 export class Cpu6502 {
   readonly mem = new Uint8Array(0x10000);
   a = 0;
@@ -92,6 +129,10 @@ export class Cpu6502 {
   pc = 0;
   /** Instructions executed so far. */
   steps = 0;
+  /** Clock cycles so far (documented NMOS timings, page-crossing and branch penalties included). */
+  cycles = 0;
+  /** The last operand address crossed a page from its base (absolute,X/Y, (zp),Y). */
+  private crossed = false;
 
   private rd(addr: number): number {
     return this.mem[addr & 0xffff]!;
@@ -122,6 +163,12 @@ export class Cpu6502 {
     this.p = on ? this.p | f : this.p & ~f;
   }
 
+  private indexed(base: number, index: number): number {
+    const addr = (base + index) & 0xffff;
+    this.crossed = (addr & 0xff00) !== (base & 0xff00);
+    return addr;
+  }
+
   /** The effective address of the operand (after the opcode byte at `pc - 1`). */
   private ea(mode: Mode): number {
     const pc = this.pc;
@@ -143,10 +190,10 @@ export class Cpu6502 {
         return this.word(pc);
       case 'absx':
         this.pc += 2;
-        return (this.word(pc) + this.x) & 0xffff;
+        return this.indexed(this.word(pc), this.x);
       case 'absy':
         this.pc += 2;
-        return (this.word(pc) + this.y) & 0xffff;
+        return this.indexed(this.word(pc), this.y);
       case 'ind': {
         // The 6502's page-wrap bug: the high byte comes from the same page.
         this.pc += 2;
@@ -158,7 +205,7 @@ export class Cpu6502 {
         return this.zpWord(this.rd(pc) + this.x);
       case 'indy':
         this.pc += 1;
-        return (this.zpWord(this.rd(pc)) + this.y) & 0xffff;
+        return this.indexed(this.zpWord(this.rd(pc)), this.y);
       case 'rel': {
         this.pc += 1;
         const d = this.rd(pc);
@@ -191,7 +238,10 @@ export class Cpu6502 {
     this.steps++;
     const [m, mode] = entry;
     const acc = mode === 'imp';
+    this.crossed = false;
     const addr = this.ea(mode);
+    const next = this.pc;
+    this.cycles += cyclesOf(m, mode, this.crossed);
     const load = (): number => this.rd(addr);
     const rmw = (fn: (v: number) => number): void => {
       if (acc) this.a = fn(this.a);
@@ -393,6 +443,23 @@ export class Cpu6502 {
       default:
         throw new Error(`unimplemented ${m}`);
     }
+    if (mode === 'rel' && this.pc !== next) this.cycles += (this.pc & 0xff00) === (next & 0xff00) ? 1 : 2;
+  }
+
+  /**
+   * Take an interrupt request, as the 6502 does when I is clear: push PC and
+   * P (break flag clear), set I, jump through $FFFE. False (nothing done)
+   * while I is set.
+   */
+  irq(): boolean {
+    if (this.p & I) return false;
+    this.push(this.pc >> 8);
+    this.push(this.pc & 0xff);
+    this.push((this.p & ~0x10) | 0x20);
+    this.p |= I;
+    this.pc = this.word(0xfffe);
+    this.cycles += 7;
+    return true;
   }
 
   /**

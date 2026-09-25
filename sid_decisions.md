@@ -136,6 +136,20 @@ past the table, jumps onto jumps: `gt-pack.ts` `tableDifferences` /
 own. `player.rs` is unchanged. Every non-identical subsong in the gate is one
 the exporter warns about.
 
+## A subsong switch in the `.prg` (plan-sid-authoring phase 5, found by `prg_play_gate.ts`)
+
+GoatTracker's `mt_init` only stores the subsong; the next play resets 14
+bytes a channel (sequencer, counters) and the filter step. The channels'
+frequency, pulse, filter type and cutoff, and the operands the player
+modifies in its own code stay as the subsong before left them. A SID
+player reloads the whole `.sid` for another subsong, so there every
+subsong starts from the loaded player. In the `.prg`, a key pressed
+mid-song with init alone changed 73 of 118 subsongs audibly (from frame 1;
+b_o_f_h subsong 4 for the whole run). **The shell copies the player's pages
+(up to the song data, which is never written) aside at start and back
+before every init**, so each subsong starts as its `.sid` does: 118/118
+identical, from boot and after a switch.
+
 ## The flat song model (plan-sid-authoring phase 2)
 
 What the editor edits is a flat song compiled to GT's orderlists
