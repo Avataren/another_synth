@@ -201,6 +201,49 @@ is why the grid refuses them), so this is a dedicated **Song panel** in GT's own
   match `gtref`; undo restores byte-identical docs.
 
 ### Phase 3 — new SID song from scratch (S)
+
+**Progress (2026-09-25, branch `agent/sid-authoring-p3-0925`, uncommitted): SID part DONE; AHX not joined.**
+- `createNewSidDoc(options)` (`sid-doc/doc.ts`): chip model, multispeed (1-16), pattern rows
+  (1-128), `songName`/`author`, tempo per D6. `doc.tempo` is always 6. The tempo option is
+  frames per row at the multispeed rate (GT's F semantics), 3-127, default 6 × multiplier
+  (GT's own start). It is written as `F<tempo>` on row 0 of voice 1's pattern whenever it is not
+  6 at 1x. So at multispeed the command is always there, and GT and our player start alike
+  without the §4 fix. New refusal, measured: a tempo ≤ the new instrument's gate timer
+  (2 × mult) makes GT **stop the song** (`gplay.c:333`, "illegally high gatetimer"; ours plays
+  on). So the minimum tempo is 2 × mult + 1. All refusals are thrown with the true reason.
+- Store `resetToNewSidSong(options)` = `adoptSidDoc(createNewSidDoc(options))`.
+  `useTrackerFileIO.applyNewSong(reset)` shares `applySongFile`'s tail (`replaceSong`: stop, bank
+  reset, module format, slot sync, post-FX AUTO reset, `initializePlayback`), so a new SID song
+  is wired exactly like a `.sng` load. The host exposes it.
+- `components/tracker/NewSongDialog.vue` replaces the old confirm. It offers Native / SID
+  (GoatTracker) and SID options: chip, speed, tempo (follows 6×mult until edited; min follows
+  the gate timer), and pattern rows. `createNewSidDoc`'s refusal is the dialog's message and
+  disables the button. TrackerPage: native → the old path; SID →
+  `applyNewSong(() => resetToNewSidSong(opts))`.
+- Tests: `sid-new-song.test.ts` (doc, store, and a gate test: notes typed through the real grid
+  composables → `sngExporter` from `serializeSong()` → imports doc-equal), and
+  `new-song-dialog.test.ts`. The grid harness moved to `tests/helpers/sid-grid-harness.ts`
+  (shared with `sid-grid-writeback.test.ts`).
+- **Gate, measured:** `.ai/sid-oracle/new_song_gate.ts` makes 16 new songs (1x/2x/4x; default
+  tempo, the lowest legal one, and 9; 16 and 64 rows; both chips) with notes and key-offs on all
+  three voices. Each `.sng` imports back doc-equal. `run_new_song_gate.sh` compares `gtref` with
+  our Rust player (new dev tool `rust-wasm/examples/sid_regs.rs`, which dumps the 25 registers
+  per frame in `gtref`'s format): **16/16 register-identical, 4000 frames, all 25 registers**.
+  GT's start offset is 6×mult−1 frames (5/11/23).
+- **Oracle caveat found:** the `/tmp/gtref/gtref` binary predated `harness.c`'s `MULT` support
+  and played every song at 1x. It was relinked from the objects in `/tmp/gtref` (`gcc -I. -Ibme
+  -c harness.c; g++ harness.o gplay.o gsid.o resid_*.o resid-fp_*.o -lm`); check with MULT=1 vs
+  MULT=2 on a song with no F command, whose outputs must differ. Phase 1's export round-trip was
+  re-run with the relinked binary: the result is unchanged (162 pairs, the one known GT1
+  difference).
+
+**Next:** (a) AHX joins the dialog (`createNewAhxDoc` exists; needs an `adoptAhxDoc`-style
+entry from a doc, not a file); (b) the song settings tempo (Phase 2 / D6) should apply the
+same gate-timer rule, and the `.sng` exporter might warn when any instrument's gate timer is
+≥ a row length the song sets (GT stops); (c) `sid_decisions.md` §4 (start tempo 6×mult for
+imported multispeed songs without an F) is still open. New songs avoid it by writing F.
+(d) Not yet tried in a browser: New Song → SID → type → play → export.
+
 - New Song dialog gains a format choice (Native / SID-GoatTracker; AHX's `createNewAhxDoc`
   is in the same unwired state and can join the same dialog).
 - `createNewSidDoc`: chip model, multispeed, pattern length; GT-native instrument 1;

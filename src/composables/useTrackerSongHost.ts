@@ -367,6 +367,7 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
     loadSongFromUrl,
     parseSongBuffer,
     applySongFile,
+    applyNewSong,
   } = useTrackerFileIO(fileIOContext);
 
   return {
@@ -416,6 +417,7 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
     loadSongFromUrl,
     parseSongBuffer,
     applySongFile,
+    applyNewSong,
 
     // identity helpers, so callers do not import them separately
     formatInstrumentId,

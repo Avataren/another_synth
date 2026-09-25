@@ -105,21 +105,63 @@ export const sidDocChannels = (doc: SidDoc): number => doc.channels;
 
 export interface NewSidDocOptions {
   songName?: string;
+  author?: string;
   chipModel?: SidDoc['chipModel'];
+  /** 1-16 (GoatTracker's `-S`). Default 1. */
   speedMultiplier?: number;
+  /**
+   * Frames per row at the song's multispeed rate, as GoatTracker's F command
+   * counts them: 3-127, and longer than the new instrument's gate timer (2
+   * per 1x). Default GoatTracker's own start, 6 per 1x.
+   */
   tempo?: number;
+  /** Rows of each voice's pattern, 1-128. Default 64. */
   patternRows?: number;
 }
+
+/** The lowest tempo GoatTracker's F command sets (F00-F02 are funktempo and GT's stored row lengths). */
+export const SID_MIN_NEW_TEMPO = 3;
 
 /**
  * A new song: one subsong whose three orderlists each play their own blank
  * pattern, and instrument 1, GoatTracker's new instrument on its own wave and
  * pulse rows (a plain pulse).
+ *
+ * The tempo (plan-sid-authoring.md D6): `doc.tempo` stays GoatTracker's 6,
+ * the one start tempo a `.sng` can say, and a song that starts at another
+ * speed gets an F command on row 0 of voice 1's pattern, GoatTracker's own
+ * way (it sets every voice, before any of them plays a row). At multispeed it
+ * is always written: GoatTracker starts a song at 6 frames per row per 1x,
+ * our player at `doc.tempo` (sid_decisions.md §4), and the command makes both
+ * start where the user chose. Throws for options GoatTracker cannot hold.
  */
 export function createNewSidDoc(options: NewSidDocOptions = {}): SidDoc {
   const rows = options.patternRows ?? 64;
   const speedMultiplier = options.speedMultiplier ?? 1;
+  const tempo = options.tempo ?? SID_DEFAULT_TEMPO * speedMultiplier;
+  if (!isInt(rows, SID_MIN_PATTERN_ROWS, SID_MAX_PATTERN_ROWS)) {
+    throw new Error(`Not a new SID song: a pattern has ${SID_MIN_PATTERN_ROWS}-${SID_MAX_PATTERN_ROWS} rows.`);
+  }
+  if (!isInt(speedMultiplier, 1, SID_MAX_SPEED_MULTIPLIER)) {
+    throw new Error(`Not a new SID song: the speed multiplier is not 1-${SID_MAX_SPEED_MULTIPLIER}.`);
+  }
+  if (!isInt(tempo, SID_MIN_NEW_TEMPO, SID_MAX_TEMPO)) {
+    throw new Error(`Not a new SID song: the tempo is not ${SID_MIN_NEW_TEMPO}-${SID_MAX_TEMPO} (GoatTracker's F command).`);
+  }
+  // GoatTracker stops the song when a row's frames, less one, fall below the
+  // gate timer (gplay.c:333 "illegally high gatetimer"); ours would play on.
+  const gateTimer = newSidGateTimer(speedMultiplier);
+  if (tempo <= gateTimer) {
+    throw new Error(
+      `Not a new SID song: at ${speedMultiplier}x the tempo is at least ${gateTimer + 1}: the instrument's gate timer is ${gateTimer} frames, and GoatTracker stops a song whose rows are not longer than that.`,
+    );
+  }
   const patterns = Array.from({ length: SID_CHANNELS }, () => blankSidPattern(rows));
+  if (tempo !== SID_DEFAULT_TEMPO || speedMultiplier !== 1) {
+    const first = patterns[0]!.rows.slice();
+    first[0] = { ...BLANK_SID_ROW, command: 0xf, param: tempo };
+    patterns[0] = { rows: first };
+  }
   const orderlists: SidOrderlist[] = patterns.map((_, channel) => ({
     entries: [{ pattern: channel, transpose: 0, repeat: 1 }],
     restart: 0,
@@ -128,15 +170,15 @@ export function createNewSidDoc(options: NewSidDocOptions = {}): SidDoc {
     format: 'sid',
     version: SID_FILE_VERSION,
     songName: options.songName ?? '',
-    author: '',
+    author: options.author ?? '',
     copyright: '',
     chipModel: options.chipModel ?? SID_DEFAULT_CHIP_MODEL,
     channels: SID_CHANNELS,
     speedMultiplier,
-    tempo: options.tempo ?? SID_DEFAULT_TEMPO,
+    tempo: SID_DEFAULT_TEMPO,
     subsongs: [{ orderlists }],
     patterns,
-    instruments: [{ ...DEFAULT_SID_INSTRUMENT, gateTimer: newSidGateTimer(speedMultiplier), wavePtr: 1, pulsePtr: 1 }],
+    instruments: [{ ...DEFAULT_SID_INSTRUMENT, gateTimer, wavePtr: 1, pulsePtr: 1 }],
     tables: { wave: NEW_SID_INSTRUMENT_WAVE_ROWS, pulse: NEW_SID_INSTRUMENT_PULSE_ROWS, filter: [], speed: [] },
   });
 }

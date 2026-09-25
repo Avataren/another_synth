@@ -7,7 +7,7 @@ import { looksLikeMod, importModToTrackerSong } from 'src/audio/tracker/mod-impo
 import { looksLikeXm, importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { looksLikeS3m, importS3mToTrackerSong } from 'src/audio/tracker/s3m-import';
 import { looksLikeAhxModule, importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
-import { attachAhxSource, ahxSourceRecordOf, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
+import { attachAhxSource, ahxSourceRecordOf, setCurrentAhxSource, type AhxSource } from 'src/audio/tracker/ahx-source';
 import { decodeAhxFile } from 'src/audio/tracker/ahx-doc';
 import { importGtSongToTrackerSong, looksLikeGtSongFile } from 'src/audio/tracker/sid-import';
 import { recordLoadedSongHash } from 'src/composables/song-identity';
@@ -391,6 +391,26 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
    * still shows as one continuous load rather than flickering.
    */
   async function applySongFile(songFile: TrackerSongFile): Promise<void> {
+    await replaceSong(() => context.trackerStore.loadSongFile(songFile), ahxSourceRecordOf(songFile));
+  }
+
+  /**
+   * Put a new song into the tracker the way a load does: `reset` makes it the
+   * store's song (`resetToNewSidSong`, plan-sid-authoring.md phase 3), and
+   * everything after is `applySongFile`'s, so a new SID song is wired to the
+   * song bank and the SID transport exactly as a loaded `.sng` is.
+   */
+  async function applyNewSong(reset: () => void): Promise<void> {
+    try {
+      context.isLoadingSong.value = true;
+      await replaceSong(reset, null);
+    } finally {
+      context.isLoadingSong.value = false;
+    }
+  }
+
+  /** `applySongFile` and `applyNewSong`: `put` makes the song the store's; `ahxSource` is the song file's AHX source record. */
+  async function replaceSong(put: () => void, ahxSource: AhxSource | null): Promise<void> {
     // Stop playback before loading new song to cleanup audio nodes
     console.log('[FileIO] Stopping playback before load');
     context.stopPlayback();
@@ -429,7 +449,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     context.songBank.resetForNewSong();
     // Load song data and rebuild instruments
     console.log('[FileIO] Loading song data');
-    context.trackerStore.loadSongFile(songFile);
+    put();
     // An AHX/HVL song is played from its file, not from the store: keep the
     // bytes the import attached for the playback store to hand to the worklet.
     // Any other song clears them.
@@ -446,7 +466,6 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     const store = context.trackerStore;
     const doc = store.ahxDoc;
     const ahxBytes = doc?.format === 'ahx' ? store.currentAhxBytes() : null;
-    const ahxSource = ahxSourceRecordOf(songFile);
     if (ahxBytes !== null && doc !== null) {
       setCurrentAhxSource(ahxBytes, { format: 'ahx', version: doc.version, edits: [] });
     } else if (!ahxSource && doc?.format === 'hvl' && doc.base !== undefined) {
@@ -508,6 +527,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     loadSongFromFile,
     loadSongFromUrl,
     parseSongBuffer,
-    applySongFile
+    applySongFile,
+    applyNewSong
   };
 }

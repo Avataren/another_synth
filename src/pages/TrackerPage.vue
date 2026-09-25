@@ -892,6 +892,7 @@
     </div>
     <DemoSongBrowser v-model="showDemoBrowser" @select="handleDemoSelect" />
     <SongExportDialog :open="showSongExport" :get-song="getExportSong" @close="showSongExport = false" />
+    <NewSongDialog :open="showNewSong" @close="showNewSong = false" @create="createNewSong" />
 
     <div v-if="showBugReport" class="bug-report-float">
       <BugReportDialog :preset="bugReportPreset" @close="closeBugReport" />
@@ -990,6 +991,7 @@ import type { TrackerNavigationContext } from 'src/composables/useTrackerNavigat
 import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
 import BugReportDialog from 'src/components/tracker/BugReportDialog.vue';
 import SongExportDialog from 'src/components/tracker/SongExportDialog.vue';
+import NewSongDialog, { type NewSongChoice } from 'src/components/tracker/NewSongDialog.vue';
 import { snapshotEditorSong } from 'src/audio/tracker/ahx-source';
 import type { AhxEditGate } from 'src/audio/tracker/ahx-doc/edit-guard';
 import type { SidChipModel } from 'src/audio/tracker/sid-doc';
@@ -1103,6 +1105,7 @@ const {
   handleLoadSongFile,
   loadSongFromFile,
   loadSongFromUrl,
+  applyNewSong,
   formatInstrumentId,
   normalizeInstrumentId,
 } = host;
@@ -2346,32 +2349,35 @@ function openJukebox() {
   void router.push('/jukebox');
 }
 
-// New Song with confirmation
+// New Song: the dialog asks for the format (and a SID song's options).
+const showNewSong = ref(false);
 function handleNewSong() {
-  $q.dialog({
-    title: 'New Song',
-    message:
-      'Are you sure you want to start a new song? All unsaved changes will be lost.',
-    cancel: {
-      label: 'Cancel',
-      flat: true,
-    },
-    ok: {
-      label: 'New Song',
-      color: 'negative',
-    },
-    persistent: true,
-  }).onOk(() => {
-    // Stop any playback first
-    handleStop();
-    // Reset the store to a fresh state
-    trackerStore.resetToNewSong();
-    // Resync the song bank with empty instruments
-    syncSongBankFromSlots();
-    // New Song replaces the song without going through applySongFile, so the
-    // AUTO load-reset must be hooked here too (plan review M6).
-    usePostFxStore().onSongLoad(trackerStore.moduleFormat);
-  });
+  showNewSong.value = true;
+}
+
+async function createNewSong(choice: NewSongChoice) {
+  showNewSong.value = false;
+  if (choice.format === 'sid') {
+    // A new SID song goes through the load path (plan-sid-authoring.md
+    // phase 3): song bank, module format, the SID transport and the AUTO
+    // load-reset, exactly as a loaded .sng.
+    try {
+      await applyNewSong(() => trackerStore.resetToNewSidSong(choice.options));
+    } catch (err) {
+      console.error('[New song] could not create the SID song', err);
+      $q.notify({ type: 'negative', message: `Could not create the SID song: ${(err as Error).message}`, timeout: 5000 });
+    }
+    return;
+  }
+  // Stop any playback first
+  handleStop();
+  // Reset the store to a fresh state
+  trackerStore.resetToNewSong();
+  // Resync the song bank with empty instruments
+  await syncSongBankFromSlots();
+  // New Song replaces the song without going through applySongFile, so the
+  // AUTO load-reset must be hooked here too (plan review M6).
+  usePostFxStore().onSongLoad(trackerStore.moduleFormat);
 }
 
 // Set up keyboard command system
