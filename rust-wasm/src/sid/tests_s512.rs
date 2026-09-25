@@ -112,3 +112,17 @@ fn portamento_to_a_target_skips_tick_0_of_every_row() {
     assert_eq!(f[11] - f[5], 5 * S);
     assert_eq!(f[17] - f[5], 10 * S);
 }
+
+#[test]
+fn a_wave_table_slide_steps_on_tick_0_too() {
+    // The skip is the tick-N effects block's (gplay.c:728); a wave-table
+    // command runs in WAVEEXEC before it, on any tick (gplay.c:529-555,
+    // player.s:1520-1537). Wave table: the note, then `F1 01` every frame
+    // (`FF 02` jumps back). The rows' own frames 6 and 12 step like the rest.
+    let rows = vec![row(49, 1, 0, 0), row(0, 0, 0, 0), row(0, 0, 0, 0)];
+    let mut s = song(rows, TEMPO, t(0, 4));
+    s.tables.wave = vec![t(0x41, 0x00), t(0xF1, 0x01), t(0xFF, 0x02)];
+    let f = freqs(&s, 14);
+    let steps: Vec<i32> = f[2..14].windows(2).map(|w| w[1] - w[0]).collect();
+    assert_eq!(steps, vec![S; 11], "one step every frame, row starts included: {f:?}");
+}

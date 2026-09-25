@@ -73,9 +73,12 @@
 //!   it to 0 with the instrument's speed row and vibrato delay; commands 0-4
 //!   replace it; 5-F leave it, so a vibrato or a slide runs on under them.
 //!   Command 0 runs the instrument vibrato: a delay of 0 never, above 1
-//!   counting down, at 1 swinging (gplay.c:767-772). The vibrato skips tick
-//!   0 as GT's realtime optimisation does (gplay.c:728); commands 1-3 do
-//!   not yet (pre-existing, unchanged here).
+//!   counting down, at 1 swinging (gplay.c:767-772). Every tick effect (the
+//!   vibratos 0 and 4, the slides 1-2, the portamento 3 and `3 00`) skips
+//!   tick 0 of a row, as GT's realtime optimisation (on by default,
+//!   goattrk2.c:55; readme "-R") does (gplay.c:728; player.s:971-979): S5.10
+//!   for the vibratos, S5.12 for 1-3 (`tests_s512.rs`). Wave-table commands
+//!   $F1-$F4 are not tick effects and run on any tick (gplay.c:529-691).
 //!
 //! Tables (1-based rows; left 0xFF = jump to row `right`, 0 = stop; one
 //! jump per frame):
