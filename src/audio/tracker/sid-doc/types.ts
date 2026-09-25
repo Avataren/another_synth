@@ -65,11 +65,6 @@ export const SID_NOTE_KEY_OFF = 126;
 /** Row note: gate on again, no retrigger of pitch or tables. */
 export const SID_NOTE_KEY_ON = 127;
 
-/** Filter mode bits of `SidInstrumentFilter.mode` (the chip's $D418 bits 4..6, shifted down). */
-export const SID_FILTER_LP = 1;
-export const SID_FILTER_BP = 2;
-export const SID_FILTER_HP = 4;
-
 /** One pattern row. Never edited in place: an edit makes a new one. */
 export interface SidDocRow {
   /** `SID_NOTE_NONE`, `SID_NOTE_FIRST..SID_NOTE_LAST`, `SID_NOTE_KEY_OFF` or `SID_NOTE_KEY_ON`. */
@@ -143,18 +138,11 @@ export interface SidTables {
 export type SidTableName = keyof SidTables;
 export const SID_TABLE_NAMES: readonly SidTableName[] = ['wave', 'pulse', 'filter', 'speed'];
 
-/** The instrument's own filter setting, used when it has no filter table (`filterPtr` 0). */
-export interface SidInstrumentFilter {
-  /** Whether a note of this instrument routes its voice through the filter. */
-  readonly enabled: boolean;
-  /** The 11-bit cutoff register, 0..2047. */
-  readonly cutoff: number;
-  /** 0..15. */
-  readonly resonance: number;
-  /** `SID_FILTER_LP | SID_FILTER_BP | SID_FILTER_HP` bits, 0..7. */
-  readonly mode: number;
-}
-
+/**
+ * A GoatTracker instrument. It has no waveform, pulse width or filter of its
+ * own: its wave, pulse and filter tables set them (plan-sid-authoring.md D1),
+ * and until they do the channel keeps what it had.
+ */
 export interface SidInstrument {
   /** Up to 16 latin-1 characters. */
   readonly name: string;
@@ -164,19 +152,10 @@ export interface SidInstrument {
   readonly sustain: number;
   readonly release: number;
   /**
-   * The control register's waveform and modulation bits (noise 0x80, pulse
-   * 0x40, saw 0x20, triangle 0x10, test 0x08, ring 0x04, sync 0x02), used
-   * when the instrument has no wave table. The gate bit (0x01) is the
-   * player's, so it is always clear here.
-   */
-  readonly waveform: number;
-  /** The 12-bit pulse width, 0..4095, set on every note (the pulse table then moves it). */
-  readonly pulseWidth: number;
-  readonly filter: SidInstrumentFilter;
-  /**
-   * The control byte written on a note's first frame, before the waveform
-   * (GoatTracker's "first frame waveform", commonly 0x09 = test + gate, which
-   * restarts the oscillator). 0 = none: the first frame plays the waveform.
+   * GoatTracker's "first frame waveform": the control byte a note's first
+   * frame plays, held until the wave table sets one (commonly 0x09 = test +
+   * gate, which restarts the oscillator). 0x00 leaves the waveform and gate
+   * as they are; 0xFE/0xFF set only the gate (off/on).
    */
   readonly firstWave: number;
   /**

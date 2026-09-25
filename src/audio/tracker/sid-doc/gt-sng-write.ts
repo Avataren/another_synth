@@ -26,7 +26,6 @@ import {
   SID_NOTE_NONE,
   SID_TABLE_NAMES,
   type SidDoc,
-  type SidInstrument,
   type SidOrderlist,
 } from './types';
 
@@ -37,8 +36,7 @@ import {
  *
  * It refuses (the reason is TRUE and written for the user) what a `.sng`
  * cannot hold without changing the music: a starting tempo other than GT's 6,
- * an instrument with its own waveform, pulse width or filter (a GT instrument
- * has none: its tables set them), a transpose outside GT's orderlist range, an
+ * a transpose outside GT's orderlist range, an
  * orderlist longer than GT's 254 bytes, a NUL inside a text. What the file has
  * no field for but GT takes from its command line (the chip model, the speed
  * multiplier) is written anyway and reported in `notes`.
@@ -47,9 +45,6 @@ import {
 export type GtSongExport =
   | { readonly ok: true; readonly bytes: Uint8Array; readonly notes: readonly string[] }
   | { readonly ok: false; readonly reason: string };
-
-const NEUTRAL_FILTER = (ins: SidInstrument): boolean =>
-  !ins.filter.enabled && ins.filter.cutoff === 0 && ins.filter.resonance === 0 && ins.filter.mode === 0;
 
 /** Why `doc` cannot be written as a `.sng`, or null. */
 export function gtSongExportProblem(doc: SidDoc): string | null {
@@ -65,13 +60,6 @@ export function gtSongExportProblem(doc: SidDoc): string | null {
     ...doc.instruments.map((ins, i) => [ins.name, `instrument ${i + 1}'s name`] as const),
   ] as const) {
     if (text.includes('\0')) return `${what} contains a NUL character, which ends a .sng text field early`;
-  }
-  for (const [i, ins] of doc.instruments.entries()) {
-    const own = [ins.waveform !== 0 && 'waveform', ins.pulseWidth !== 0 && 'pulse width', !NEUTRAL_FILTER(ins) && 'filter'].filter((x): x is string => x !== false);
-    if (own.length > 0) {
-      const what = own.length === 1 ? own[0] : `${own.slice(0, -1).join(', ')} and ${own.at(-1)}`;
-      return `instrument ${i + 1} has its own ${what}, which a GoatTracker instrument cannot hold (its wave, pulse and filter tables set them); set them with table rows instead`;
-    }
   }
   for (const [s, subsong] of doc.subsongs.entries()) {
     for (const [c, list] of subsong.orderlists.entries()) {

@@ -62,8 +62,9 @@ describe('SID table rows: words', () => {
 
   it('knows which instruments reach which rows', () => {
     const users = sidTableUsers(buildSidChainSong(), 'wave');
-    expect([...users.keys()].sort()).toEqual([1, 2, 3, 4]);
+    expect([...users.keys()].sort()).toEqual([1, 2, 3, 4, 5, 6]);
     expect(users.get(1)).toEqual([2]);
+    expect(users.get(5)).toEqual([4]);
     expect(sidTableUsers(buildSidChainSong(), 'speed').get(1)).toEqual([4]);
   });
 });
@@ -112,8 +113,8 @@ describe('SID table rows: insert, delete, clear', () => {
 
   it('refuses rows that do not exist and a full table', () => {
     const doc = buildSidChainSong();
-    expect(insertSidTableRow(doc, 'wave', 6).ok).toBe(false);
-    expect(deleteSidTableRow(doc, 'wave', 5).ok).toBe(false);
+    expect(insertSidTableRow(doc, 'wave', 8).ok).toBe(false);
+    expect(deleteSidTableRow(doc, 'wave', 7).ok).toBe(false);
     expect(clearSidTableRow(doc, 'wave', 0).ok).toBe(false);
     let full = doc;
     while (full.tables.speed.length < 255) full = must(insertSidTableRow(full, 'speed', full.tables.speed.length + 1));
@@ -136,21 +137,24 @@ describe('SID table rows: starter sequences', () => {
       { left: 0x40, right: 0xe0 },
       { left: 0xff, right: 6 },
     ]);
-    // What it plays: the instrument's width on the note's frame, row 5's 0x400 on the next, then the sweep up.
+    // What it plays: a fresh channel's width 0 on the note's frame (GT sets
+    // it only from the table), row 5's 0x400 on the next, then the sweep up.
     const widths = simulateSidInstrument(next, 1, 48, 4).map((f) => f[1]);
-    expect(widths).toEqual([0x800, 0x400, 0x420, 0x440]);
+    expect(widths).toEqual([0, 0x400, 0x420, 0x440]);
     expect(appendSidTableTemplate(doc, 'wave', 'nope', 1).ok).toBe(false);
     expect(appendSidTableTemplate(doc, 'wave', 'major', 9).ok).toBe(false);
   });
 
   it('a wave sequence uses the instrument\'s waveform, gated; a drum ends released', () => {
     const doc = buildSidChainSong();
+    // "Filt saw" has no wave table: its first-frame byte ($21) is its waveform.
     const hold = must(appendSidTableTemplate(doc, 'wave', 'hold', 3));
-    expect(hold.tables.wave[4]).toEqual({ left: 0x21, right: 0 });
+    expect(hold.tables.wave[6]).toEqual({ left: 0x21, right: 0 });
     const drum = must(appendSidTableTemplate(doc, 'wave', 'drum', 1));
     const trace: SidFrameTrace[] = [];
     simulateSidInstrument(drum, 1, 48, 8, trace);
-    expect(trace[0]!.waveform).toBe(0x81);
+    // The note's frame plays the first-frame byte; the noise hit is frame 1.
+    expect(trace[1]!.waveform).toBe(0x81);
     expect(trace[7]!.gate).toBe(false);
   });
 });
@@ -170,14 +174,13 @@ describe('SID waveform boxes: the byte they edit', () => {
     expect(toggleSidWaveTargetBit(ps, 2, row, 0x80)).toMatchObject({ ok: false, reason: expect.stringContaining('F7') });
   });
 
-  it('the first-frame byte stays one; the instrument\'s own never takes the gate', () => {
+  it('the first-frame byte stays one', () => {
     const doc = buildSidChainSong();
     const first = { kind: 'first-frame' } as const;
     expect(must(toggleSidWaveTargetBit(doc, 4, first, 0x40)).instruments[3]!.firstWave).toBe(0x49);
     // 09 without test and gate would be 00, "none".
     const noTest = must(toggleSidWaveTargetBit(doc, 4, first, 0x08));
     expect(toggleSidWaveTargetBit(noTest, 4, first, 0x01).ok).toBe(false);
-    expect(toggleSidWaveTargetBit(doc, 1, { kind: 'instrument' }, 0x01).ok).toBe(false);
     const cmd = must(setSidTableRow(doc, 'wave', 4, { left: 0xf7, right: 0x21 }));
     expect(must(toggleSidWaveTargetBit(cmd, 1, { kind: 'wave-command', row: 5 }, 0x40)).tables.wave[4]).toEqual({ left: 0xf7, right: 0x61 });
   });
@@ -197,18 +200,20 @@ describe('SID simulator trace', () => {
     const doc = buildSidChainSong();
     const trace: SidFrameTrace[] = [];
     simulateSidInstrument(doc, 2, 48, 6, trace);
-    // Arp pulse: its wave table runs from the first frame (no first-frame byte): rows 1, 2, 3, then the jump to 1.
-    expect(trace.map((t) => t.waveRow)).toEqual([1, 2, 3, 1, 2, 3]);
-    expect(trace.map((t) => t.waveSource)).toEqual([1, 2, 3, 1, 2, 3].map((row) => ({ kind: 'wave-row', row })));
+    // Arp pulse: the first-frame byte ($41) on the note's frame, then its
+    // wave table: rows 1, 2, 3, then the jump to 1.
+    expect(trace.map((t) => t.waveRow)).toEqual([0, 1, 2, 3, 1, 2]);
+    expect(trace.map((t) => t.waveSource)).toEqual([{ kind: 'first-frame' }, ...[1, 2, 3, 1, 2].map((row) => ({ kind: 'wave-row', row }))]);
     // The pulse table from frame 1: row 1 sets the width, then row 2 sweeps.
     expect(trace.map((t) => t.pulseRow)).toEqual([0, 1, 2, 2, 2, 2]);
     const tri: SidFrameTrace[] = [];
     simulateSidInstrument(doc, 1, 48, 2, tri);
-    expect(tri[1]).toEqual({ waveform: 0x11, gate: true, waveSource: { kind: 'instrument' }, waveRow: 0, pulseRow: 0, filterRow: 0 });
+    // Tri lead: no wave table, so its first-frame byte plays on.
+    expect(tri[1]).toEqual({ waveform: 0x11, gate: true, waveSource: { kind: 'first-frame' }, waveRow: 0, pulseRow: 0, filterRow: 0 });
     const vib: SidFrameTrace[] = [];
     simulateSidInstrument(doc, 4, 48, 2, vib);
     expect(vib[0]).toMatchObject({ waveform: 0x09, waveSource: { kind: 'first-frame' } });
-    expect(vib[1]).toMatchObject({ waveform: 0x11, waveSource: { kind: 'instrument' } });
+    expect(vib[1]).toMatchObject({ waveform: 0x11, waveSource: { kind: 'wave-row', row: 5 } });
     const filt: SidFrameTrace[] = [];
     simulateSidInstrument(doc, 3, 48, 3, filt);
     expect(filt.map((t) => t.filterRow)).toEqual([1, 3, 3]);

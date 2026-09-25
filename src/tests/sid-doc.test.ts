@@ -50,9 +50,6 @@ function limitsDoc(): SidDoc {
     decay: i % 16,
     sustain: 15,
     release: 15,
-    waveform: 0xfe,
-    pulseWidth: 0xfff,
-    filter: { enabled: true, cutoff: 0x7ff, resonance: 15, mode: 7 },
     firstWave: 0xff,
     gateTimer: 63,
     hardRestart: true,
@@ -103,8 +100,9 @@ describe('the doc', () => {
     expect(doc.subsongs).toHaveLength(1);
     expect(doc.subsongs[0]!.orderlists.map((l) => l.entries[0]!.pattern)).toEqual([0, 1, 2]);
     expect(doc.patterns.every((p) => p.rows.length === 16 && p.rows.every((r) => r === BLANK_SID_ROW))).toBe(true);
-    expect(doc.instruments).toEqual([DEFAULT_SID_INSTRUMENT]);
-    expect(doc.tables).toEqual({ wave: [], pulse: [], filter: [], speed: [] });
+    // GoatTracker's new instrument on its own wave and pulse rows: a plain pulse.
+    expect(doc.instruments).toEqual([{ ...DEFAULT_SID_INSTRUMENT, wavePtr: 1, pulsePtr: 1 }]);
+    expect(doc.tables).toEqual({ wave: [{ left: 0x41, right: 0 }, { left: 0xff, right: 0 }], pulse: [{ left: 0x88, right: 0 }, { left: 0xff, right: 0 }], filter: [], speed: [] });
   });
 
   it('refuses to exist when it breaks a rule of the model', () => {
@@ -120,8 +118,8 @@ describe('the doc', () => {
       [{ patterns: [{ rows: [] }, ...good.patterns.slice(1)] }, /pattern 0/],
       [{ patterns: [{ rows: [{ note: 94, instrument: 0, command: 0, param: 0 }] }, ...good.patterns.slice(1)] }, /not a note/],
       [{ patterns: [{ rows: [{ note: 1, instrument: 2, command: 0, param: 0 }] }, ...good.patterns.slice(1)] }, /instrument 2 does not exist/],
-      [{ instruments: [{ ...DEFAULT_SID_INSTRUMENT, waveform: 0x41 }] }, /gate bit/],
-      [{ instruments: [{ ...DEFAULT_SID_INSTRUMENT, wavePtr: 1 }] }, /past the wave table/],
+      [{ instruments: [{ ...DEFAULT_SID_INSTRUMENT, gateTimer: 64 }] }, /gate timer/],
+      [{ instruments: [{ ...DEFAULT_SID_INSTRUMENT, wavePtr: 3 }] }, /past the wave table/],
       [{ subsongs: [{ orderlists: good.subsongs[0]!.orderlists.slice(0, 2) }] }, /one orderlist per channel/],
       [{ subsongs: [{ orderlists: good.subsongs[0]!.orderlists.map((l) => ({ ...l, restart: 1 })) }] }, /restart/],
       [{ tables: { ...good.tables, speed: [{ left: 256, right: 0 }] } }, /two bytes/],
@@ -159,7 +157,7 @@ describe('ops', () => {
       setSidRow(doc, 0, 32, BLANK_SID_ROW),
       setSidRow(doc, 0, 0, { note: 1, instrument: 5, command: 0, param: 0 }),
       setSidInstrument(doc, 5, DEFAULT_SID_INSTRUMENT),
-      setSidInstrument(doc, 1, { ...DEFAULT_SID_INSTRUMENT, pulseWidth: 0x1000 }),
+      setSidInstrument(doc, 1, { ...DEFAULT_SID_INSTRUMENT, firstWave: 0x100 }),
       setSidTableRow(doc, 'wave', 9, { left: 0, right: 0 }),
       setSidTableRow(doc, 'wave', 0, { left: -1, right: 0 }),
       setSidOrderEntry(doc, 0, 0, 0, { pattern: 3, transpose: 0, repeat: 1 }),
@@ -202,7 +200,7 @@ describe('the file (round-trip gate)', () => {
     expect(back).toEqual(doc);
     expect(serializeSidFile(back)).toEqual(bytes);
     // A fixed header: magic, version, 6581, 3 voices, 50 Hz, tempo 6.
-    expect([...bytes.subarray(0, 9)]).toEqual([0x41, 0x53, 0x49, 0x44, 1, 1, 3, 1, 6]);
+    expect([...bytes.subarray(0, 9)]).toEqual([0x41, 0x53, 0x49, 0x44, 2, 1, 3, 1, 6]);
   });
 
   it('holds at every limit of every field (and after every kind of edit)', () => {
@@ -223,8 +221,10 @@ describe('the file (round-trip gate)', () => {
     magic[0] = 0x42;
     refuse(magic, /no ASID magic/);
     const version = bytes.slice();
-    version[4] = 2;
-    refuse(version, /version 2/);
+    // Version 1 (instruments with a waveform, pulse width and filter of
+    // their own) is not read (plan-sid-authoring.md D1).
+    version[4] = 1;
+    refuse(version, /version 1/);
     const chip = bytes.slice();
     chip[5] = 9;
     refuse(chip, /chip model 9/);

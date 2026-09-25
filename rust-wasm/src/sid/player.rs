@@ -25,9 +25,10 @@
 //!      number selects the instrument; a note 1..=93 (transposed by the
 //!      orderlist entry as GT's u8 arithmetic does, never clamped: S5.10,
 //!      `note_index`) triggers it: the
-//!      instrument's AD/SR, waveform, pulse width (unless it is 0: then the
-//!      channel keeps its own, as GT does) and table pointers are loaded, the gate goes on and the first-frame waveform (if any) is
-//!      written this frame; key off clears the gate, key on sets it; then
+//!      instrument's AD/SR and table pointers are loaded (a GT instrument has
+//!      no waveform, pulse width or filter of its own: the channel keeps its
+//!      own until a table sets them), the gate goes on and the first-frame
+//!      waveform is held as the waveform (`trigger`); key off clears the gate, key on sets it; then
 //!      the row's command;
 //!   2. per channel the wave table, then, unless a wave step set a note
 //!      (GT ends the frame there, gplay.c:722), the running command (1, 2,
@@ -48,9 +49,7 @@
 //! a wave-table row or command 7 with the gate bit clear releases the note
 //! even while the channel's gate is on (the classic drum ending, `$80` noise
 //! or `$40` pulse), a gate-set row after it retriggers, and after a key off
-//! no waveform byte raises the gate. An instrument's own `waveform` is the
-//! doc's gate-clear control byte (`song.rs`): a trigger stores it with the
-//! gate bit set, so it sounds as it always has.
+//! no waveform byte raises the gate.
 //!
 //! Commands (the row's command nibble and parameter; GoatTracker's command
 //! set, from its format documentation, interpreted here, not copied):
@@ -146,7 +145,7 @@ const CONTROL_EXTRA: u64 = 4;
 /// note at level for ~33 ms before it releases: GT's audible tail after a hit.
 const HARD_RESTART_AD: u8 = 0x0F;
 use super::song::{
-    Instrument, InstrumentFilter, Row, SidSong, TableRow, NOTE_FIRST, NOTE_KEY_OFF, NOTE_KEY_ON, NOTE_LAST,
+    Instrument, Row, SidSong, TableRow, NOTE_FIRST, NOTE_KEY_OFF, NOTE_KEY_ON, NOTE_LAST,
     SID_CHANNELS,
 };
 use super::waveform::GATE;
@@ -847,7 +846,6 @@ impl SidSongPlayer {
 
     fn trigger(&mut self, c: usize, note: u8) {
         let ins = self.instrument(c).cloned();
-        let bit = 1u8 << c;
         let ch = &mut self.channels[c];
         // GT sets no pitch on a note: its wave table's first step does, on the
         // frame after the note's (a row with note column $00 is
@@ -869,33 +867,17 @@ impl SidSongPlayer {
         };
         ch.ad = ins.ad();
         ch.sr = ins.sr();
-        // The doc's instrument waveform has no gate bit (`song.rs`); under the
-        // AND-mask write it carries one, so the note sounds until a table row,
-        // command 7, key off or hard restart says otherwise. A GT instrument
-        // has none (the importer's neutral 0): GT holds the first-frame byte
-        // as the channel's waveform (gplay.c:359-365) until the wave table
-        // sets one, so a table that starts with `00` rows keeps $09 (test and
-        // gate) on, not the $01 the S5.9 player wrote.
-        // GT's first-frame byte (gplay.c:359-365): $00 leaves the waveform
-        // and the gate as they are (after a hard restart's gate-off the note
-        // stays off until something gates it), $FE/$FF set only the gate.
-        if ins.waveform != 0 {
-            ch.waveform = ins.waveform | GATE;
-        } else {
-            match ins.first_wave {
-                0 => ch.gate = gate_before,
-                0xFE | 0xFF => ch.gate = ins.first_wave == 0xFF,
-                fw => ch.waveform = fw,
-            }
-        }
-        // GT never sets the pulse width on a note (gplay.c:375-381): only its
-        // pulse table does, so the channel's width carries over from the last
-        // note. A GT instrument has no width of its own (the importer writes
-        // 0), so 0 here means "keep the channel's"; without this a pulse
-        // instrument that has no pulse table restarted at width 0 (DC, silent)
-        // whenever another instrument had set the width before it.
-        if ins.pulse_width != 0 {
-            ch.pulse_width = ins.pulse_width;
+        // GT holds the first-frame byte as the channel's waveform
+        // (gplay.c:359-365) until the wave table sets one, so a table that
+        // starts with `00` rows keeps $09 (test and gate) on. $00 leaves the
+        // waveform and the gate as they are (after a hard restart's gate-off
+        // the note stays off until something gates it), $FE/$FF set only the
+        // gate. GT never sets the pulse width on a note (gplay.c:375-381):
+        // only its pulse table does, so the channel's width carries over.
+        match ins.first_wave {
+            0 => ch.gate = gate_before,
+            0xFE | 0xFF => ch.gate = ins.first_wave == 0xFF,
+            fw => ch.waveform = fw,
         }
         ch.first_wave = ins.first_wave;
         ch.wave_ptr = ins.wave_ptr;
@@ -908,22 +890,10 @@ impl SidSongPlayer {
             ch.pulse_time = 0;
         }
         // GT never touches the routing on a note: only its filter table and
-        // command B do (gplay.c:268, 469). A GT instrument has no filter of its
-        // own (the importer writes the neutral all-zero one), so, as with the
-        // pulse width above, the neutral filter keeps the channel's routing;
-        // clearing it cut a voice out of the filter the table had put it in.
-        if ins.filter.enabled {
-            self.res_filt |= bit;
-        } else if ins.filter != InstrumentFilter::default() {
-            self.res_filt &= !bit;
-        }
+        // command B do (gplay.c:268, 469).
         if ins.filter_ptr > 0 {
             self.filter_ptr = ins.filter_ptr;
             self.filter_time = 0;
-        } else if ins.filter.enabled {
-            self.cutoff = ins.filter.cutoff;
-            self.res_filt = (ins.filter.resonance << 4) | (self.res_filt & 0x0F);
-            self.mode = ins.filter.mode;
         }
     }
 
@@ -1064,11 +1034,8 @@ impl SidSongPlayer {
     /// table command), which ends GT's frame before the tick effects.
     fn wave_step(&mut self, c: usize) -> bool {
         let ch = &self.channels[c];
-        // A note's frame ends before the wave table in GT (gplay.c:509-512);
-        // the doc's own instruments (a waveform of their own) with no
-        // first-frame byte play their table from that frame, as before.
-        let gt_style = self.instrument(c).map_or(false, |i| i.waveform == 0);
-        if ch.first_frame && (ch.first_wave != 0 || gt_style) {
+        // A note's frame ends before the wave table in GT (gplay.c:509-512).
+        if ch.first_frame {
             return false;
         }
         let table = &self.song.tables.wave;

@@ -28,10 +28,11 @@ import {
   type SidDocRow,
   type SidInstrument,
   type SidOrderlist,
+  type SidTableRow,
 } from './types';
 
 /** The codec version a doc is written as (`sid-file-codec.ts`). */
-export const SID_FILE_VERSION = 1;
+export const SID_FILE_VERSION = 2;
 
 /** The one empty row. Shared by every blank cell of every pattern. */
 export const BLANK_SID_ROW: SidDocRow = Object.freeze({ note: SID_NOTE_NONE, instrument: 0, command: 0, param: 0 });
@@ -46,8 +47,10 @@ export const sidRowsEqual = (a: SidDocRow, b: SidDocRow): boolean =>
 export const blankSidPattern = (rows: number): SidDocPattern => ({ rows: Array.from({ length: rows }, () => BLANK_SID_ROW) });
 
 /**
- * A plain instrument: a pulse wave at half width with a short envelope, no
- * tables, no filter, no hard restart. What a new song's instrument 1 is.
+ * GoatTracker's new instrument (ginstr.c:214-220): first-frame $09 (test and
+ * gate, which restarts the oscillator), gate timer 2 with hard restart, no
+ * tables. Its envelope is a short pluck. `newSidInstrument` gives it the wave
+ * and pulse rows that make it sound (`sid-instrument-edit.ts`).
  */
 export const DEFAULT_SID_INSTRUMENT: SidInstrument = Object.freeze({
   name: '',
@@ -55,12 +58,9 @@ export const DEFAULT_SID_INSTRUMENT: SidInstrument = Object.freeze({
   decay: 9,
   sustain: 0,
   release: 0,
-  waveform: 0x40,
-  pulseWidth: 0x800,
-  filter: Object.freeze({ enabled: false, cutoff: 0, resonance: 0, mode: 0 }),
-  firstWave: 0,
-  gateTimer: 0,
-  hardRestart: false,
+  firstWave: 0x09,
+  gateTimer: 2,
+  hardRestart: true,
   noGateOff: false,
   vibratoDelay: 0,
   wavePtr: 0,
@@ -68,6 +68,23 @@ export const DEFAULT_SID_INSTRUMENT: SidInstrument = Object.freeze({
   filterPtr: 0,
   speedPtr: 0,
 });
+
+/**
+ * The table rows a new instrument starts with, appended for it alone: wave
+ * `41 00` (pulse and gate at the played note), `FF 00` (stop); pulse `88 00`
+ * (50 %), `FF 00`. With its first-frame $09 that is GoatTracker's plain pulse.
+ */
+export const NEW_SID_INSTRUMENT_WAVE_ROWS: readonly SidTableRow[] = Object.freeze([
+  Object.freeze({ left: 0x41, right: 0x00 }),
+  Object.freeze({ left: 0xff, right: 0x00 }),
+]);
+export const NEW_SID_INSTRUMENT_PULSE_ROWS: readonly SidTableRow[] = Object.freeze([
+  Object.freeze({ left: 0x88, right: 0x00 }),
+  Object.freeze({ left: 0xff, right: 0x00 }),
+]);
+
+/** GoatTracker's new-instrument gate timer at `speedMultiplier` (ginstr.c:216: 2 frames per 1x). */
+export const newSidGateTimer = (speedMultiplier: number): number => Math.min(63, 2 * speedMultiplier);
 
 /**
  * The single place a doc is made: raw (never a Vue Proxy: the store compares
@@ -96,10 +113,12 @@ export interface NewSidDocOptions {
 
 /**
  * A new song: one subsong whose three orderlists each play their own blank
- * pattern, one default instrument, empty tables.
+ * pattern, and instrument 1, GoatTracker's new instrument on its own wave and
+ * pulse rows (a plain pulse).
  */
 export function createNewSidDoc(options: NewSidDocOptions = {}): SidDoc {
   const rows = options.patternRows ?? 64;
+  const speedMultiplier = options.speedMultiplier ?? 1;
   const patterns = Array.from({ length: SID_CHANNELS }, () => blankSidPattern(rows));
   const orderlists: SidOrderlist[] = patterns.map((_, channel) => ({
     entries: [{ pattern: channel, transpose: 0, repeat: 1 }],
@@ -113,12 +132,12 @@ export function createNewSidDoc(options: NewSidDocOptions = {}): SidDoc {
     copyright: '',
     chipModel: options.chipModel ?? SID_DEFAULT_CHIP_MODEL,
     channels: SID_CHANNELS,
-    speedMultiplier: options.speedMultiplier ?? 1,
+    speedMultiplier,
     tempo: options.tempo ?? SID_DEFAULT_TEMPO,
     subsongs: [{ orderlists }],
     patterns,
-    instruments: [DEFAULT_SID_INSTRUMENT],
-    tables: { wave: [], pulse: [], filter: [], speed: [] },
+    instruments: [{ ...DEFAULT_SID_INSTRUMENT, gateTimer: newSidGateTimer(speedMultiplier), wavePtr: 1, pulsePtr: 1 }],
+    tables: { wave: NEW_SID_INSTRUMENT_WAVE_ROWS, pulse: NEW_SID_INSTRUMENT_PULSE_ROWS, filter: [], speed: [] },
   });
 }
 
@@ -154,13 +173,6 @@ export function sidInstrumentProblem(ins: SidInstrument, tableRows: Readonly<Rec
   for (const key of ['attack', 'decay', 'sustain', 'release'] as const) {
     if (!isInt(ins[key], 0, 15)) return `${key} is not 0-15`;
   }
-  if (!isInt(ins.waveform, 0, 0xff) || (ins.waveform & 0x01) !== 0) return 'the waveform is not a control byte without the gate bit';
-  if (!isInt(ins.pulseWidth, 0, 0xfff)) return 'the pulse width is not 0-4095';
-  const f = ins.filter;
-  if (typeof f !== 'object' || f === null || typeof f.enabled !== 'boolean') return 'the filter is not a filter setting';
-  if (!isInt(f.cutoff, 0, 0x7ff)) return 'the filter cutoff is not 0-2047';
-  if (!isInt(f.resonance, 0, 15)) return 'the filter resonance is not 0-15';
-  if (!isInt(f.mode, 0, 7)) return 'the filter mode is not 0-7';
   if (!isInt(ins.firstWave, 0, 0xff)) return 'the first-frame waveform is not a byte';
   if (!isInt(ins.gateTimer, 0, 63)) return 'the gate timer is not 0-63';
   if (typeof ins.hardRestart !== 'boolean') return 'hard restart is not on or off';

@@ -62,13 +62,13 @@ export function setSidPatternSlice(doc: SidDoc, pattern: number, offset: number,
 export function setSidInstrument(doc: SidDoc, n: number, next: SidInstrument): SidOpResult {
   if (doc.instruments[n - 1] === undefined) return { ok: false, reason: `There is no instrument ${n}.` };
   const instruments = doc.instruments.slice();
-  instruments[n - 1] = { ...next, filter: { ...next.filter } };
+  instruments[n - 1] = { ...next };
   return result({ ...doc, instruments });
 }
 
 /** Appends an instrument; the new one is number `instruments.length`. */
 export function addSidInstrument(doc: SidDoc, next: SidInstrument): SidOpResult {
-  return result({ ...doc, instruments: [...doc.instruments, { ...next, filter: { ...next.filter } }] });
+  return result({ ...doc, instruments: [...doc.instruments, { ...next }] });
 }
 
 /** Writes row `index` (0-based) of a table, or appends one when `index` is the table's length. */

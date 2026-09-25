@@ -96,10 +96,10 @@ async function setFrame(w: VueWrapper, frame: number): Promise<void> {
 
 const checked = (w: VueWrapper, testid: string): boolean => (w.get(`[data-testid="${testid}"]`).element as HTMLInputElement).checked;
 
-/** The chain song with instrument 2 made GoatTracker-style: no waveform of its own, first frame $09, its wave table sets the rest. */
+/** The chain song with instrument 2 on GoatTracker's usual first frame, $09 (test and gate); its wave table sets the rest. */
 function gtStyleChainSong(): SidDoc {
   const doc = buildSidChainSong();
-  const result = setSidInstrument(doc, 2, { ...doc.instruments[1]!, waveform: 0, firstWave: 0x09 });
+  const result = setSidInstrument(doc, 2, { ...doc.instruments[1]!, firstWave: 0x09 });
   if (!result.ok) throw new Error(result.reason);
   return result.doc;
 }
@@ -136,7 +136,10 @@ describe('SidInstrumentPage', () => {
       expect(w.get(`[data-testid="${id}"] path`).attributes('d'), id).toMatch(/^M0,/);
     }
     expect((w.get('[data-testid="sid-bit-saw"]').element as HTMLInputElement).checked).toBe(true);
-    expect((w.get('[data-testid="sid-filter-enabled"]').element as HTMLInputElement).checked).toBe(true);
+    // Its filter table's mode row (90 C4): low-pass, resonance 12, voice 3 filtered.
+    expect(checked(w, 'sid-filter-LP')).toBe(true);
+    expect(checked(w, 'sid-filter-voice-3')).toBe(true);
+    expect(checked(w, 'sid-filter-voice-1')).toBe(false);
     // Filt saw starts on filter table row 1: rows 1-4 (a stop at row 4) are marked as its own.
     expect(w.findAll('[data-testid="sid-table-filter"] .sid-table__mine')).toHaveLength(4);
   });
@@ -153,14 +156,21 @@ describe('SidInstrumentPage', () => {
     expect(store.undoStack).toHaveLength(1);
 
     field(w, AhxSliderField, 'sid-field-attack').vm.$emit('update:modelValue', 7);
-    field(w, AhxSliderField, 'sid-field-cutoff').vm.$emit('update:modelValue', 0x400);
+    // Tri lead has no filter table: the cutoff adds one of its own (mode,
+    // cutoff, stop), low-pass with every voice filtered, and points at it.
+    field(w, AhxSliderField, 'sid-field-cutoff').vm.$emit('update:modelValue', 0x60);
     await typeInto(w, 'sid-field-pulsePtr', '01');
+    // No wave table: the boxes edit the first-frame byte ($11 -> $51).
     await w.get('[data-testid="sid-bit-pulse"]').trigger('change');
     await w.get('[data-testid="sid-filter-HP"]').trigger('change');
     await w.get('[data-testid="sid-hard-restart"]').trigger('change');
     const ins = sid().instruments[0]!;
-    expect(ins).toMatchObject({ attack: 7, pulsePtr: 1, waveform: 0x50, hardRestart: true });
-    expect(ins.filter).toMatchObject({ cutoff: 0x400, mode: 4 });
+    expect(ins).toMatchObject({ attack: 7, pulsePtr: 1, firstWave: 0x51, hardRestart: true, filterPtr: 5 });
+    expect(sid().tables.filter.slice(4)).toEqual([
+      { left: 0xd0, right: 0x07 },
+      { left: 0x00, right: 0x60 },
+      { left: 0xff, right: 0x00 },
+    ]);
     // The other instruments are the old doc's, untouched.
     expect(sid().instruments[1]).toBe(before.instruments[1]);
     expect(store.undoStack).toHaveLength(7);
@@ -270,7 +280,8 @@ describe('SidInstrumentPage', () => {
     const back = decodeSidFile(encodeSidFile(edited));
     if (!back.ok) throw new Error(back.reason);
     expect(back.doc).toEqual(edited);
-    expect(back.doc.instruments[3]).toMatchObject({ gateTimer: 5, filter: { resonance: 9 } });
+    expect(back.doc.instruments[3]).toMatchObject({ gateTimer: 5, filterPtr: 5 });
+    expect(back.doc.tables.filter[4]).toEqual({ left: 0x90, right: 0x97 });
     // Through the store's own save and load.
     const file = useTrackerStore().serializeSong();
     setActivePinia(createPinia());
@@ -299,29 +310,49 @@ describe('SidInstrumentPage', () => {
     await setFrame(w, 2);
     await w.get('[data-testid="sid-bit-saw"]').trigger('change');
     expect(sid().tables.wave[1]).toEqual({ left: 0x61, right: 0x04 });
-    expect(sid().instruments[1]!.waveform).toBe(0);
+    expect(sid().instruments[1]!.firstWave).toBe(0x09);
     expect(w.get('[data-testid="sid-now-wave"]').text()).toContain('Saw+Pulse');
     // The wave lane draws every frame, coloured by waveform.
     expect(w.findAll('[data-testid="sid-wave-lane"] rect.sid-wave--mixed').length).toBeGreaterThan(0);
   });
 
-  it('an instrument waveform the wave table hides is called out, and can still be edited on purpose', async () => {
-    // Arp pulse has its own pulse waveform, but its wave table sets one from the first frame.
-    const { w } = await mountEditor(2);
-    field(w, AhxSegmented, 'sid-seg-wave-target').vm.$emit('update:modelValue', 1);
-    await nextTick();
-    expect(w.get('[data-testid="sid-wave-status"]').text()).toMatch(/^Not heard/);
-    expect(w.get('[data-testid="sid-wave-status"]').classes()).toContain('sid-warn');
-    await w.get('[data-testid="sid-bit-noise"]').trigger('change');
-    expect(sid().instruments[1]!.waveform).toBe(0xc0);
-    expect(w.find('[data-testid="sid-bit-gate"]').exists()).toBe(false);
+  it('an instrument with no wave table plays its first-frame byte all through, and the boxes edit that byte', async () => {
+    const { w } = await mountEditor(1);
+    expect(w.get('[data-testid="sid-wave-status"]').text()).toContain('first-frame byte 11');
+    expect(checked(w, 'sid-bit-triangle')).toBe(true);
+    expect(checked(w, 'sid-bit-gate')).toBe(true);
+    await w.get('[data-testid="sid-bit-saw"]').trigger('change');
+    expect(sid().instruments[0]!.firstWave).toBe(0x31);
   });
 
-  it('a plain instrument edits its own waveform, with no chooser', async () => {
-    const { w } = await mountEditor(1);
-    expect(w.find('[data-testid="sid-seg-wave-target"]').exists()).toBe(false);
-    expect(w.get('[data-testid="sid-wave-status"]').text()).toContain('all through the note');
-    expect(checked(w, 'sid-bit-triangle')).toBe(true);
+  it('the start width edits the pulse table\'s first row, or adds one for an instrument with none', async () => {
+    // Arp pulse starts on pulse row 1, 84 00 (width 400).
+    const { w } = await mountEditor(2);
+    expect((field(w, AhxSliderField, 'sid-field-pulseWidth').props() as { modelValue: number }).modelValue).toBe(0x400);
+    field(w, AhxSliderField, 'sid-field-pulseWidth').vm.$emit('update:modelValue', 0x6a0);
+    expect(sid().tables.pulse[0]).toEqual({ left: 0x86, right: 0xa0 });
+    expect(sid().tables.pulse).toHaveLength(4);
+    // Tri lead has no pulse table: a width row and a stop of its own.
+    await w.vm.$router.push({ name: 'sid-instrument-editor', params: { slot: '1' } });
+    await nextTick();
+    field(w, AhxSliderField, 'sid-field-pulseWidth').vm.$emit('update:modelValue', 0x800);
+    expect(sid().instruments[0]!.pulsePtr).toBe(5);
+    expect(sid().tables.pulse.slice(4)).toEqual([{ left: 0x88, right: 0x00 }, { left: 0xff, right: 0x00 }]);
+  });
+
+  it('a pulse table that starts with a sweep is edited in the table, not by the start width', async () => {
+    const { w } = await mountEditor(2);
+    await typeInto(w, 'sid-field-pulsePtr', '02');
+    await nextTick();
+    expect((field(w, AhxSliderField, 'sid-field-pulseWidth').props() as { disabled?: boolean }).disabled).toBe(true);
+    expect(w.get('[data-testid="sid-field-pulseWidth-hint"]').text()).toContain('sweep or a jump');
+  });
+
+  it('the filter voices are the mode row\'s routing bits', async () => {
+    const { w } = await mountEditor(3);
+    await w.get('[data-testid="sid-filter-voice-1"]').trigger('change');
+    // 90 C4 -> 90 C5: voice 1 filtered too, resonance and mode kept.
+    expect(sid().tables.filter[0]).toEqual({ left: 0x90, right: 0xc5 });
   });
 
   it('pointers are hex rows like the tables\', with none, bounds and a readout', async () => {
@@ -331,9 +362,9 @@ describe('SidInstrumentPage', () => {
     expect(sid().instruments[0]!.wavePtr).toBe(3);
     expect(input.value).toBe('03');
     await nextTick();
-    expect(w.get('[data-testid="sid-field-wavePtr-state"]').text()).toBe('row 03 of 04');
+    expect(w.get('[data-testid="sid-field-wavePtr-state"]').text()).toBe('row 03 of 06');
     // Past the table, or not hex: refused, the kept value shown again.
-    input = await typeInto(w, 'sid-field-wavePtr', '05');
+    input = await typeInto(w, 'sid-field-wavePtr', '07');
     expect(sid().instruments[0]!.wavePtr).toBe(3);
     expect(input.value).toBe('03');
     await typeInto(w, 'sid-field-wavePtr', 'g');
@@ -348,10 +379,11 @@ describe('SidInstrumentPage', () => {
     expect(w.get('[data-testid="sid-pulse-2-desc"]').text()).toContain('Sweep +16 a frame for 32 frames');
     expect(w.get('[data-testid="sid-wave-4-desc"]').text()).toContain('Jump to row 01');
     expect(w.get('[data-testid="sid-filter-4-desc"]').text()).toContain('Stop');
-    expect(w.get('[data-testid="sid-wave-length"]').text()).toBe('4 of 255 rows');
+    expect(w.get('[data-testid="sid-wave-length"]').text()).toBe('6 of 255 rows');
     expect(w.get('[data-testid="sid-wave-starts"]').text()).toContain('01');
     expect(w.findAll('[data-testid="sid-wave-start-marker"]')).toHaveLength(1);
-    await setFrame(w, 2);
+    // The first-frame byte plays frame 0; the wave table runs from frame 1, so row 03 is frame 3.
+    await setFrame(w, 3);
     expect(w.get('[data-testid="sid-wave-row-3"]').classes()).toContain('sid-table__now');
     // Pulse row 02 is swept from frame 1.
     await setFrame(w, 5);
@@ -363,7 +395,7 @@ describe('SidInstrumentPage', () => {
     const before = sid();
     await w.get('[data-testid="sid-wave-row-1"]').trigger('click');
     await w.get('[data-testid="sid-wave-insert"]').trigger('click');
-    expect(sid().tables.wave).toHaveLength(5);
+    expect(sid().tables.wave).toHaveLength(7);
     expect(sid().tables.wave[0]).toEqual({ left: 0, right: 0 });
     expect(sid().instruments[1]!.wavePtr).toBe(2);
     expect(sid().tables.wave[4]).toEqual({ left: 0xff, right: 0x02 });
@@ -394,12 +426,12 @@ describe('SidInstrumentPage', () => {
     const select = w.get('[data-testid="sid-wave-template"]');
     (select.element as HTMLSelectElement).value = 'major';
     await select.trigger('change');
-    expect(sid().instruments[0]!.wavePtr).toBe(5);
-    expect(sid().tables.wave.slice(4)).toEqual([
+    expect(sid().instruments[0]!.wavePtr).toBe(7);
+    expect(sid().tables.wave.slice(6)).toEqual([
       { left: 0x11, right: 0 },
       { left: 0x11, right: 4 },
       { left: 0x11, right: 7 },
-      { left: 0xff, right: 5 },
+      { left: 0xff, right: 7 },
     ]);
     expect((select.element as HTMLSelectElement).value).toBe('');
   });

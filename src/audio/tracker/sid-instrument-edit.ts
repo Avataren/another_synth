@@ -1,13 +1,18 @@
 import {
   DEFAULT_SID_INSTRUMENT,
-  addSidInstrument,
+  NEW_SID_INSTRUMENT_PULSE_ROWS,
+  NEW_SID_INSTRUMENT_WAVE_ROWS,
+  SID_MAX_TABLE_ROWS,
+  makeSidDoc,
+  newSidGateTimer,
   setSidInstrument,
   setSidTableRow,
+  sidDocProblem,
   type SidDoc,
   type SidInstrument,
-  type SidInstrumentFilter,
   type SidOpResult,
   type SidTableName,
+  type SidTableRow,
 } from 'src/audio/tracker/sid-doc';
 
 /**
@@ -23,35 +28,19 @@ export const SID_INSTRUMENT_NUMBER_FIELDS = {
   decay: 15,
   sustain: 15,
   release: 15,
-  pulseWidth: 0xfff,
   firstWave: 0xff,
   gateTimer: 63,
   vibratoDelay: 0xff,
 } as const;
 export type SidInstrumentNumberField = keyof typeof SID_INSTRUMENT_NUMBER_FIELDS;
 
-export type SidInstrumentPatch = Partial<Omit<SidInstrument, 'filter'>> & { filter?: Partial<SidInstrumentFilter> };
+export type SidInstrumentPatch = Partial<SidInstrument>;
 
 /** Instrument `n` (1-based) with `patch` applied. */
 export function editSidInstrument(doc: SidDoc, n: number, patch: SidInstrumentPatch): SidOpResult {
   const ins = doc.instruments[n - 1];
   if (!ins) return { ok: false, reason: `There is no instrument ${n}.` };
-  return setSidInstrument(doc, n, { ...ins, ...patch, filter: { ...ins.filter, ...(patch.filter ?? {}) } });
-}
-
-/** Flips one bit of the instrument's control byte (a waveform, ring, sync or test). Never the gate. */
-export function toggleSidControlBit(doc: SidDoc, n: number, bit: number): SidOpResult {
-  const ins = doc.instruments[n - 1];
-  if (!ins) return { ok: false, reason: `There is no instrument ${n}.` };
-  if (bit === 0x01) return { ok: false, reason: 'The gate bit is the player\'s: an instrument never sets it.' };
-  return editSidInstrument(doc, n, { waveform: ins.waveform ^ bit });
-}
-
-/** Flips one filter mode bit (LP 1, BP 2, HP 4). */
-export function toggleSidFilterMode(doc: SidDoc, n: number, bit: number): SidOpResult {
-  const ins = doc.instruments[n - 1];
-  if (!ins) return { ok: false, reason: `There is no instrument ${n}.` };
-  return editSidInstrument(doc, n, { filter: { mode: ins.filter.mode ^ bit } });
+  return setSidInstrument(doc, n, { ...ins, ...patch });
 }
 
 /**
@@ -59,7 +48,6 @@ export function toggleSidFilterMode(doc: SidDoc, n: number, bit: number): SidOpR
  * plays (`SidFrameTrace.waveSource`), so a box ticked is heard at that frame.
  */
 export type SidWaveTarget =
-  | { readonly kind: 'instrument' }
   | { readonly kind: 'first-frame' }
   | { readonly kind: 'wave-row'; readonly row: number }
   | { readonly kind: 'wave-command'; readonly row: number };
@@ -73,8 +61,6 @@ export function sidWaveTargetByte(doc: SidDoc, n: number, target: SidWaveTarget)
   const ins = doc.instruments[n - 1];
   if (!ins) return 0;
   switch (target.kind) {
-    case 'instrument':
-      return ins.waveform;
     case 'first-frame':
       return ins.firstWave;
     case 'wave-row': {
@@ -94,7 +80,6 @@ export function sidWaveTargetByte(doc: SidDoc, n: number, target: SidWaveTarget)
  * stays one (not 00, FE or FF, which mean something else).
  */
 export function toggleSidWaveTargetBit(doc: SidDoc, n: number, target: SidWaveTarget, bit: number): SidOpResult {
-  if (target.kind === 'instrument') return toggleSidControlBit(doc, n, bit);
   const ins = doc.instruments[n - 1];
   if (!ins) return { ok: false, reason: `There is no instrument ${n}.` };
   const next = sidWaveTargetByte(doc, n, target) ^ bit;
@@ -112,9 +97,163 @@ export function toggleSidWaveTargetBit(doc: SidDoc, n: number, target: SidWaveTa
   }
 }
 
-/** A new instrument at the end of the list (the default pulse, named): number `instruments.length`. */
+/**
+ * A new instrument at the end of the list: number `instruments.length`.
+ * GoatTracker's defaults (`DEFAULT_SID_INSTRUMENT`, its gate timer at the
+ * song's multispeed) with rows of its own appended to the wave and pulse
+ * tables (`NEW_SID_INSTRUMENT_WAVE_ROWS`, `..._PULSE_ROWS`), so it sounds and
+ * can be shaped without touching another instrument.
+ */
 export function newSidInstrument(doc: SidDoc, name = ''): SidOpResult {
-  return addSidInstrument(doc, { ...DEFAULT_SID_INSTRUMENT, name });
+  const wave = doc.tables.wave.length + 1;
+  const pulse = doc.tables.pulse.length + 1;
+  if (wave + 1 > SID_MAX_TABLE_ROWS || pulse + 1 > SID_MAX_TABLE_ROWS) {
+    return { ok: false, reason: `The wave or pulse table has no room for a new instrument's 2 rows (${SID_MAX_TABLE_ROWS} at most).` };
+  }
+  const tables = {
+    ...doc.tables,
+    wave: [...doc.tables.wave, ...NEW_SID_INSTRUMENT_WAVE_ROWS],
+    pulse: [...doc.tables.pulse, ...NEW_SID_INSTRUMENT_PULSE_ROWS],
+  };
+  const ins: SidInstrument = { ...DEFAULT_SID_INSTRUMENT, name, gateTimer: newSidGateTimer(doc.speedMultiplier), wavePtr: wave, pulsePtr: pulse };
+  return finish({ ...doc, instruments: [...doc.instruments, ins], tables });
+}
+
+const STOP: SidTableRow = { left: 0xff, right: 0x00 };
+
+function finish(fields: SidDoc): SidOpResult {
+  const problem = sidDocProblem(fields);
+  return problem === null ? { ok: true, doc: makeSidDoc(fields) } : { ok: false, reason: `That edit would break the song: ${problem}.` };
+}
+
+/** Appends `rows` to `table` and points instrument `n` at the first. */
+function appendAndPoint(doc: SidDoc, n: number, table: 'pulse' | 'filter', rows: readonly SidTableRow[]): SidOpResult {
+  const ins = doc.instruments[n - 1];
+  if (!ins) return { ok: false, reason: `There is no instrument ${n}.` };
+  const start = doc.tables[table].length + 1;
+  if (start - 1 + rows.length > SID_MAX_TABLE_ROWS) return { ok: false, reason: `The ${table} table has no room for ${rows.length} more rows.` };
+  const instruments = doc.instruments.slice();
+  instruments[n - 1] = { ...ins, [table === 'pulse' ? 'pulsePtr' : 'filterPtr']: start };
+  return finish({ ...doc, instruments, tables: { ...doc.tables, [table]: [...doc.tables[table], ...rows] } });
+}
+
+// ---------------------------------------------------------------------------
+// The start of the pulse and filter tables: what the page's simple controls
+// edit. A GoatTracker instrument has no width or filter of its own; its first
+// table rows set them.
+// ---------------------------------------------------------------------------
+
+/** A pulse-table row that sets the width (`80-FE`: high nibble in the left byte's low digit). */
+const isWidthRow = (row: SidTableRow | undefined): row is SidTableRow => !!row && row.left >= 0x80 && row.left !== 0xff;
+
+/**
+ * The width instrument `n`'s pulse table starts at: its first row, when that
+ * row sets one. `null` when it has no pulse table (the channel keeps its
+ * width) or starts with a sweep or a jump.
+ */
+export function sidInstrumentStartWidth(doc: SidDoc, n: number): { readonly row: number; readonly width: number } | null {
+  const ptr = doc.instruments[n - 1]?.pulsePtr ?? 0;
+  const row = ptr ? doc.tables.pulse[ptr - 1] : undefined;
+  return isWidthRow(row) ? { row: ptr, width: ((row.left & 0x0f) << 8) | row.right } : null;
+}
+
+/**
+ * Sets the width instrument `n`'s pulse table starts at (0..4095): its first
+ * row when that sets a width; with no pulse table, a new `set, stop` pair it
+ * points at. A table starting with a sweep or jump is refused (edit the
+ * table itself: a row inserted there would move the other instruments' rows).
+ */
+export function setSidInstrumentStartWidth(doc: SidDoc, n: number, width: number): SidOpResult {
+  const ins = doc.instruments[n - 1];
+  if (!ins) return { ok: false, reason: `There is no instrument ${n}.` };
+  if (!Number.isInteger(width) || width < 0 || width > 0xfff) return { ok: false, reason: `${width} is not a pulse width (0-FFF).` };
+  const row: SidTableRow = { left: 0x80 | (width >> 8), right: width & 0xff };
+  if (ins.pulsePtr === 0) return appendAndPoint(doc, n, 'pulse', [row, STOP]);
+  if (!isWidthRow(doc.tables.pulse[ins.pulsePtr - 1])) {
+    return { ok: false, reason: `Pulse table row ${hexByte(ins.pulsePtr)} is a sweep or a jump, not a width: set the width in the table.` };
+  }
+  return setSidTableRow(doc, 'pulse', ins.pulsePtr - 1, row);
+}
+
+/** What instrument `n`'s filter table starts with: a mode row (`80-F0`), and the cutoff row after it if there is one. */
+export interface SidInstrumentFilterStart {
+  /** 1-based row of the mode row. */
+  readonly row: number;
+  /** LP 1 | BP 2 | HP 4 (0: the filter's output is off). */
+  readonly mode: number;
+  readonly resonance: number;
+  /** Which voices go through the filter: bit 0 voice 1, bit 1 voice 2, bit 2 voice 3. */
+  readonly voices: number;
+  /** The cutoff row's value (the register's high 8 bits), or null when the next row sets none. */
+  readonly cutoff: number | null;
+}
+
+export type SidInstrumentFilterPatch = Partial<Pick<SidInstrumentFilterStart, 'mode' | 'resonance' | 'voices'>> & { readonly cutoff?: number };
+
+/** A filter-table row that sets the mode, resonance and routing. */
+const isModeRow = (row: SidTableRow | undefined): row is SidTableRow => !!row && row.left >= 0x80 && row.left <= 0xf0 && (row.left & 0x0f) === 0;
+
+/** What instrument `n`'s filter table starts with, or null (no filter table, or it starts with a cutoff, sweep or jump). */
+export function sidInstrumentFilterStart(doc: SidDoc, n: number): SidInstrumentFilterStart | null {
+  const ptr = doc.instruments[n - 1]?.filterPtr ?? 0;
+  const table = doc.tables.filter;
+  const row = ptr ? table[ptr - 1] : undefined;
+  if (!isModeRow(row)) return null;
+  const next = table[ptr];
+  return {
+    row: ptr,
+    mode: (row.left >> 4) & 0x07,
+    resonance: row.right >> 4,
+    voices: row.right & 0x07,
+    cutoff: next && next.left === 0x00 ? next.right : null,
+  };
+}
+
+/**
+ * Edits the start of instrument `n`'s filter table. With no filter table it
+ * appends mode, cutoff and stop rows (low-pass, resonance 0, cutoff $40,
+ * every voice filtered, unless `patch` says otherwise) and points at them.
+ * A table that does not start with a mode row, or a cutoff edit where no
+ * cutoff row follows it, is refused: edit the table itself.
+ */
+export function setSidInstrumentFilterStart(doc: SidDoc, n: number, patch: SidInstrumentFilterPatch): SidOpResult {
+  const ins = doc.instruments[n - 1];
+  if (!ins) return { ok: false, reason: `There is no instrument ${n}.` };
+  const start = sidInstrumentFilterStart(doc, n);
+  if (ins.filterPtr !== 0 && start === null) {
+    return { ok: false, reason: `Filter table row ${hexByte(ins.filterPtr)} does not set a mode: edit the filter in the table.` };
+  }
+  const mode = patch.mode ?? start?.mode ?? 1;
+  const resonance = patch.resonance ?? start?.resonance ?? 0;
+  const voices = patch.voices ?? start?.voices ?? 0x07;
+  const cutoff = patch.cutoff ?? start?.cutoff ?? 0x40;
+  if (!Number.isInteger(mode) || mode < 0 || mode > 7) return { ok: false, reason: `${mode} is not a filter mode (0-7).` };
+  if (!Number.isInteger(resonance) || resonance < 0 || resonance > 15) return { ok: false, reason: `${resonance} is not a resonance (0-F).` };
+  if (!Number.isInteger(voices) || voices < 0 || voices > 7) return { ok: false, reason: `${voices} is not a set of voices (0-7).` };
+  if (!Number.isInteger(cutoff) || cutoff < 0 || cutoff > 0xff) return { ok: false, reason: `${cutoff} is not a cutoff (00-FF).` };
+  const modeRow: SidTableRow = { left: 0x80 | (mode << 4), right: (resonance << 4) | voices };
+  const cutoffRow: SidTableRow = { left: 0x00, right: cutoff };
+  if (start === null) return appendAndPoint(doc, n, 'filter', [modeRow, cutoffRow, STOP]);
+  if (patch.cutoff !== undefined && start.cutoff === null) {
+    return { ok: false, reason: `Filter table row ${hexByte(start.row + 1)} is not a cutoff row: set the cutoff in the table.` };
+  }
+  const rows = doc.tables.filter.slice();
+  rows[start.row - 1] = modeRow;
+  if (start.cutoff !== null) rows[start.row] = cutoffRow;
+  return finish({ ...doc, tables: { ...doc.tables, filter: rows } });
+}
+
+/**
+ * The waveform bits (no gate) instrument `n` starts with: its wave table's
+ * first waveform row, else its first-frame byte when that is a waveform,
+ * else 0. What the table templates build on.
+ */
+export function sidInstrumentWaveform(doc: SidDoc, n: number): number {
+  const ins = doc.instruments[n - 1];
+  if (!ins) return 0;
+  const first = ins.wavePtr ? doc.tables.wave[ins.wavePtr - 1] : undefined;
+  if (first && first.left >= 0x10 && first.left <= 0xdf) return first.left & 0xfe;
+  return ins.firstWave < 0xfe && (ins.firstWave & 0xf0) !== 0 ? ins.firstWave & 0xfe : 0;
 }
 
 /** Writes one byte of a table row (`side` left or right); `index` = the table's length appends a row. */

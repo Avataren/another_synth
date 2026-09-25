@@ -44,8 +44,6 @@ fn ins() -> Instrument {
     Instrument {
         name: b"t".to_vec(),
         sustain: 15,
-        waveform: 0x10,
-        pulse_width: 0x800,
         first_wave: 0x09,
         wave_ptr: 1,
         ..Default::default()

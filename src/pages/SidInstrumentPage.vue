@@ -146,22 +146,13 @@
               label="Wave table"
               :model-value="instrument.wavePtr"
               :table-length="doc.tables.wave.length"
-              none-text="none: the waveform below plays all through the note"
+              none-text="none: the first-frame byte plays all through the note"
               testid="sid-field-wavePtr"
               title="The wave table row the note starts on: it sets the waveform and the arpeggio frame by frame."
               @update:model-value="edit({ wavePtr: $event })"
               @reveal="reveal('wave', $event)"
             />
-            <AhxSegmented
-              v-if="soundingTarget.kind !== 'instrument'"
-              label="Boxes edit"
-              :model-value="targetMode"
-              :options="targetOptions"
-              testid="sid-seg-wave-target"
-              title="What the waveform boxes change: the byte that sets the waveform at the frame cursor (what you hear there), or the instrument's own waveform."
-              @update:model-value="targetMode = $event"
-            />
-            <p class="sid-wave-status" :class="{ 'sid-warn': ownUnheard }" data-testid="sid-wave-status">{{ waveStatus }}</p>
+            <p class="sid-wave-status" data-testid="sid-wave-status">{{ waveStatus }}</p>
             <div class="sid-toggles" data-testid="sid-waveform-bits">
               <label v-for="bit in CONTROL_BITS" :key="bit.bit" :title="bit.title" :class="`sid-bit sid-bit--${bit.name}`">
                 <input
@@ -172,7 +163,7 @@
                 />
                 {{ bit.label }}
               </label>
-              <label v-if="waveTarget.kind !== 'instrument'" title="The gate bit: set, the note sounds; clear, it releases (41 is pulse with the gate on, 40 pulse released)">
+              <label title="The gate bit: set, the note sounds; clear, it releases (41 is pulse with the gate on, 40 pulse released)">
                 <input
                   type="checkbox"
                   :checked="(targetByte & 0x01) !== 0"
@@ -193,19 +184,20 @@
             <legend>Pulse</legend>
             <AhxSliderField
               label="Start width"
-              :model-value="instrument.pulseWidth"
+              :model-value="startWidth?.width ?? 0"
               :max="0xfff"
-              :suffix="instrument.pulseWidth === 0 ? '(0 = keep the channel\'s)' : `(${((instrument.pulseWidth / 4096) * 100).toFixed(1)} %)`"
+              :disabled="instrument.pulsePtr !== 0 && startWidth === null"
+              :suffix="startWidth ? `(${((startWidth.width / 4096) * 100).toFixed(1)} %)` : ''"
               :hint="pulseHint"
               testid="sid-field-pulseWidth"
-              title="The width set on every note (0 keeps what the channel had). 50 % is a square wave; near 0 or 100 % it gets thin and nasal."
-              @update:model-value="edit({ pulseWidth: $event })"
+              title="The width the pulse table's first row sets on the note's second frame. 50 % is a square wave; near 0 or 100 % it gets thin and nasal."
+              @update:model-value="commit(setSidInstrumentStartWidth(doc, instrumentNumber, $event))"
             />
             <SidRowPointer
               label="Pulse table"
               :model-value="instrument.pulsePtr"
               :table-length="doc.tables.pulse.length"
-              none-text="none: the width stays where it starts"
+              none-text="none: the channel keeps the width it had"
               testid="sid-field-pulsePtr"
               title="The pulse table row the note starts on: it sets and sweeps the width frame by frame."
               @update:model-value="edit({ pulsePtr: $event })"
@@ -220,20 +212,11 @@
 
           <fieldset class="sid-card" data-testid="sid-card-filter">
             <legend>Filter</legend>
-            <label class="sid-check">
-              <input
-                type="checkbox"
-                :checked="instrument.filter.enabled"
-                data-testid="sid-filter-enabled"
-                @change="edit({ filter: { enabled: !instrument.filter.enabled } })"
-              />
-              Route this voice through the filter on each note
-            </label>
             <SidRowPointer
               label="Filter table"
               :model-value="instrument.filterPtr"
               :table-length="doc.tables.filter.length"
-              none-text="none: the settings below"
+              none-text="none: the filter stays as the song left it"
               testid="sid-field-filterPtr"
               title="The filter table row the note starts on. The filter is the chip's one: a table row changes it for every voice."
               @update:model-value="edit({ filterPtr: $event })"
@@ -241,31 +224,48 @@
             />
             <AhxSliderField
               label="Cutoff"
-              :model-value="instrument.filter.cutoff"
-              :max="0x7ff"
-              :suffix="`(${Math.round(sidCutoffHz(doc.chipModel, instrument.filter.cutoff))} Hz on the ${doc.chipModel})`"
-              :hint="filterOverridden"
+              :model-value="filterStart?.cutoff ?? 0"
+              :max="0xff"
+              :disabled="filterLocked || (filterStart !== null && filterStart.cutoff === null)"
+              :suffix="filterStart?.cutoff != null ? `(${Math.round(sidCutoffHz(doc.chipModel, filterStart.cutoff << 3))} Hz on the ${doc.chipModel})` : ''"
+              :hint="filterHint"
               testid="sid-field-cutoff"
-              @update:model-value="edit({ filter: { cutoff: $event } })"
+              title="The cutoff the filter table's cutoff row sets (the register's high 8 bits)."
+              @update:model-value="setFilter({ cutoff: $event })"
             />
             <AhxSliderField
               label="Resonance"
-              :model-value="instrument.filter.resonance"
+              :model-value="filterStart?.resonance ?? 0"
               :max="15"
-              :suffix="`(Q ${sidResonanceQ(doc.chipModel, instrument.filter.resonance).toFixed(2)})`"
+              :disabled="filterLocked"
+              :suffix="filterStart ? `(Q ${sidResonanceQ(doc.chipModel, filterStart.resonance).toFixed(2)})` : ''"
               testid="sid-field-resonance"
-              @update:model-value="edit({ filter: { resonance: $event } })"
+              @update:model-value="setFilter({ resonance: $event })"
             />
             <div class="sid-toggles">
               <span class="sid-dim">Mode</span>
               <label v-for="mode in FILTER_MODES" :key="mode.bit" :title="mode.title">
                 <input
                   type="checkbox"
-                  :checked="(instrument.filter.mode & mode.bit) !== 0"
+                  :checked="((filterStart?.mode ?? 0) & mode.bit) !== 0"
+                  :disabled="filterLocked"
                   :data-testid="`sid-filter-${mode.label}`"
-                  @change="commit(toggleSidFilterMode(doc, instrumentNumber, mode.bit))"
+                  @change="setFilter({ mode: (filterStart?.mode ?? 0) ^ mode.bit })"
                 />
                 {{ mode.label }}
+              </label>
+            </div>
+            <div class="sid-toggles" title="The chip has one filter: these pick which voices go through it.">
+              <span class="sid-dim">Voices</span>
+              <label v-for="v in [1, 2, 3]" :key="v">
+                <input
+                  type="checkbox"
+                  :checked="((filterStart?.voices ?? 0) & (1 << (v - 1))) !== 0"
+                  :disabled="filterLocked"
+                  :data-testid="`sid-filter-voice-${v}`"
+                  @change="setFilter({ voices: (filterStart?.voices ?? 0) ^ (1 << (v - 1)) })"
+                />
+                {{ v }}
               </label>
             </div>
             <svg class="sid-lane" viewBox="0 0 256 48" preserveAspectRatio="none" data-testid="sid-filter-response">
@@ -488,9 +488,13 @@ import {
   hexByte,
   newSidInstrument,
   sidTableRowsFrom,
+  setSidInstrumentFilterStart,
+  setSidInstrumentStartWidth,
+  sidInstrumentFilterStart,
+  sidInstrumentStartWidth,
   sidWaveTargetByte,
-  toggleSidFilterMode,
   toggleSidWaveTargetBit,
+  type SidInstrumentFilterPatch,
   type SidInstrumentPatch,
   type SidWaveTarget,
 } from 'src/audio/tracker/sid-instrument-edit';
@@ -667,8 +671,6 @@ function pickFrame(event: MouseEvent): void {
 
 function sourceText(source: SidWaveSource): string {
   switch (source.kind) {
-    case 'instrument':
-      return "the instrument's own waveform";
     case 'first-frame':
       return 'the first-frame byte';
     case 'wave-row':
@@ -701,36 +703,19 @@ const pitchText = computed(() => {
 // The waveform: the boxes edit the byte that sets what is heard
 // ---------------------------------------------------------------------------
 
-/** The byte that set the waveform at the cursor's frame. */
-const soundingTarget = computed<SidWaveTarget>(() => {
+/**
+ * The byte that set the waveform at the cursor's frame: what the boxes edit.
+ * Before anything has set one, the first-frame byte (what a note plays first).
+ */
+const waveTarget = computed<SidWaveTarget>(() => {
   const source = now.value.waveSource;
-  return source.kind === 'none' ? { kind: 'instrument' } : source;
+  return source.kind === 'none' ? { kind: 'first-frame' } : source;
 });
-/** 0: the boxes follow the cursor's frame; 1: they edit the instrument's own waveform. */
-const targetMode = ref(0);
-const waveTarget = computed<SidWaveTarget>(() => (targetMode.value === 1 ? { kind: 'instrument' } : soundingTarget.value));
-const targetOptions = computed(() => [
-  { value: 0, label: `Sounding at frame ${cursor.value}`, title: sourceText(now.value.waveSource) },
-  { value: 1, label: "Instrument's own", title: 'The waveform the instrument sets on a note, before its wave table' },
-]);
 const targetByte = computed(() => (doc.value ? sidWaveTargetByte(doc.value, instrumentNumber.value, waveTarget.value) : 0));
-/** The instrument has a waveform of its own that no frame plays (its wave table sets one at once). */
-const ownUnheard = computed(() => {
-  const ins = instrument.value;
-  return !!ins && ins.waveform !== 0 && trace.value.length > 0 && !trace.value.some((t) => t.waveSource.kind === 'instrument');
-});
 const waveStatus = computed(() => {
   const ins = instrument.value;
   if (!ins) return '';
   const target = waveTarget.value;
-  if (target.kind === 'instrument') {
-    if (ins.waveform === 0 && ins.wavePtr !== 0) {
-      return 'No waveform of its own (GoatTracker style): the first-frame byte and the wave table set it. Tick a box to give it one, played until a table row sets another.';
-    }
-    if (ownUnheard.value) return `Not heard: the wave table sets the waveform from the note's first frame, so this ${sidWaveformName(ins.waveform)} never plays. Edit the sounding row instead.`;
-    if (ins.wavePtr !== 0) return 'The instrument\'s own waveform, until a wave table row sets another.';
-    return 'The instrument\'s waveform, all through the note.';
-  }
   const shared = target.kind === 'wave-row' || target.kind === 'wave-command' ? sharedText('wave', target.row) : '';
   if (target.kind === 'first-frame') return `Editing the first-frame byte ${hexByte(ins.firstWave)}: it plays until a wave table row sets a waveform.`;
   return `Editing wave table row ${hexByte(target.row)}, what sounds at frame ${cursor.value}.${shared}`;
@@ -753,26 +738,39 @@ const waveCaption = computed(() => {
 // Pulse, filter, envelope, vibrato
 // ---------------------------------------------------------------------------
 
+const startWidth = computed(() => (doc.value ? sidInstrumentStartWidth(doc.value, instrumentNumber.value) : null));
 const pulseHint = computed(() => {
   const ins = instrument.value;
-  const first = ins && ins.pulsePtr ? doc.value?.tables.pulse[ins.pulsePtr - 1] : undefined;
-  if (first && first.left >= 0x80 && first.left !== 0xff) return `Heard for one frame only: pulse table row ${hexByte(ins!.pulsePtr)} sets its own width from the note's second frame.`;
-  return '';
+  if (!ins) return '';
+  if (ins.pulsePtr === 0) return 'No pulse table: the channel keeps the width it had. Moving this adds a width row for this instrument.';
+  if (startWidth.value === null) return `Pulse table row ${hexByte(ins.pulsePtr)} is a sweep or a jump: set the width in the table.`;
+  return `Pulse table row ${hexByte(startWidth.value.row)}, from the note's second frame.${sharedText('pulse', startWidth.value.row)}`;
 });
-const usesFilter = computed(() => !!instrument.value && (instrument.value.filter.enabled || instrument.value.filterPtr !== 0));
-const filterOverridden = computed(() =>
-  instrument.value?.filterPtr ? `The filter table (row ${hexByte(instrument.value.filterPtr)}) sets the cutoff, resonance and mode: these three are not used.` : '',
-);
+const filterStart = computed(() => (doc.value ? sidInstrumentFilterStart(doc.value, instrumentNumber.value) : null));
+/** The filter table starts with something the controls cannot edit (a cutoff, sweep or jump row). */
+const filterLocked = computed(() => !!instrument.value?.filterPtr && filterStart.value === null);
+function setFilter(patch: SidInstrumentFilterPatch): void {
+  if (doc.value) commit(setSidInstrumentFilterStart(doc.value, instrumentNumber.value, patch));
+}
+const usesFilter = computed(() => !!instrument.value && instrument.value.filterPtr !== 0);
+const filterHint = computed(() => {
+  const ins = instrument.value;
+  if (!ins) return '';
+  if (ins.filterPtr === 0) return 'No filter table: the filter stays as the song left it. Changing a control here adds a filter row for this instrument.';
+  if (filterStart.value === null) return `Filter table row ${hexByte(ins.filterPtr)} does not set a mode: edit the filter in the table.`;
+  if (filterStart.value.cutoff === null) return `Row ${hexByte(filterStart.value.row + 1)} is not a cutoff row: set the cutoff in the table.`;
+  return `Filter table rows ${hexByte(filterStart.value.row)}-${hexByte(filterStart.value.row + 1)}.${sharedText('filter', filterStart.value.row)}`;
+});
 const filterCaption = computed(() =>
   instrument.value?.filterPtr
     ? `The response at frame ${cursor.value}, from the filter table, 30 Hz to 18 kHz (the ideal curve; the 6581's saturation is not drawn).`
-    : "The filter's ideal response, 30 Hz to 18 kHz (the 6581's saturation is not drawn).",
+    : 'No filter table: nothing to draw.',
 );
 const filterPath = computed(() => {
   const ins = instrument.value;
   const d = doc.value;
-  if (!ins || !d) return '';
-  const [, , , cutoff, res, mode] = ins.filterPtr ? nowFrame.value : [0, 0, 0, ins.filter.cutoff, ins.filter.resonance, ins.filter.mode];
+  if (!ins || !d || !ins.filterPtr) return '';
+  const [, , , cutoff, res, mode] = nowFrame.value;
   const points = Array.from({ length: 128 }, (_, i) => {
     const hz = 30 * (18_000 / 30) ** (i / 127);
     const db = sidFilterResponseDb(d.chipModel, cutoff, res, mode, hz);
@@ -814,11 +812,10 @@ const firstWaveMeaning = computed(() => {
   const ins = instrument.value;
   if (!ins) return '';
   const fw = ins.firstWave;
-  const gt = ins.waveform === 0;
-  if (fw === 0) return gt ? '00: the note keeps the channel\'s waveform and gate until the wave table sets them.' : '00: the first frame already plays the waveform.';
+  if (fw === 0) return '00: the note keeps the channel\'s waveform and gate until the wave table sets them.';
   if (fw === 0xff) return 'FF: the first frame only sets the gate.';
   if (fw === 0xfe) return 'FE: the first frame only clears the gate.';
-  return `${hexByte(fw)} (${sidControlName(fw)}) is written on the note's first frame${gt ? ', and plays on until the wave table sets a waveform' : ', then the waveform takes over'}.`;
+  return `${hexByte(fw)} (${sidControlName(fw)}) is written on the note's first frame, and plays on until the wave table sets a waveform.`;
 });
 
 // ---------------------------------------------------------------------------
@@ -893,10 +890,6 @@ watch([instrument, () => doc.value?.tables], () => {
     restrikeTimer = null;
     play.restrikeHeld();
   }, RESTRIKE_DELAY_MS);
-});
-// Another instrument: the boxes follow its sounding frame again.
-watch(instrumentNumber, () => {
-  targetMode.value = 0;
 });
 // Ready the preview voice, so the first key sounds at once.
 onMounted(() => {

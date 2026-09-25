@@ -76,13 +76,22 @@ const T: fn(u8, u8) -> TableRow = |left, right| TableRow { left, right };
 
 /// One channel, one instrument (AD $09: instant attack, a slow decay to
 /// sustain 0, so a retrigger shows as the level jumping back up), no hard
-/// restart, no first-frame waveform (the table runs from the trigger frame).
-/// Row 0 triggers C-4 with `row0_cmd`; row 1 carries `row1`; tempo 8.
+/// restart. GT plays the first-frame byte on the note's frame and the wave
+/// table from the next (gplay.c:359-365, 509-512), so the instrument's
+/// first-frame byte is row 1's waveform and its table starts at row 2: the
+/// register reads row 1, row 2, ... from the trigger frame on, and a jump to
+/// row 1 loops through it. Row 0 triggers C-4 with `row0_cmd`; row 1 carries
+/// `row1`; tempo 8.
 fn one_voice(wave: Vec<TableRow>, row0_cmd: (u8, u8), row1: Row) -> SidSongPlayer {
     let mut p0 = Pattern { rows: vec![Row::default(); 4] };
     p0.rows[0] = Row { note: 49, instrument: 1, command: row0_cmd.0, param: row0_cmd.1 };
     p0.rows[1] = row1;
     let blank = Pattern { rows: vec![Row::default(); 4] };
+    // Row 1's waveform, as the table plays it (`$E0-$EF` are their low nibble).
+    let first_wave = match wave[0].left {
+        l @ 0xE0..=0xEF => l & 0x0F,
+        l => l,
+    };
     let list = |pattern: u8| Orderlist { entries: vec![OrderEntry { pattern, transpose: 0, repeat: 1 }], restart: 0 };
     let song = SidSong {
         version: SONG_FILE_VERSION,
@@ -95,10 +104,7 @@ fn one_voice(wave: Vec<TableRow>, row0_cmd: (u8, u8), row1: Row) -> SidSongPlaye
         copyright: Vec::new(),
         subsongs: vec![Subsong { orderlists: vec![list(0), list(1), list(1)] }],
         patterns: vec![p0, blank],
-        // A waveform of its own (the table overwrites it on the trigger frame):
-        // a GT-style instrument (waveform 0) with first-frame $00 would keep a
-        // fresh channel's gate shut and skip the table on that frame (S5.19).
-        instruments: vec![Instrument { name: b"g".to_vec(), decay: 9, waveform: 0x10, wave_ptr: 1, ..Default::default() }],
+        instruments: vec![Instrument { name: b"g".to_vec(), decay: 9, first_wave, wave_ptr: 2, ..Default::default() }],
         tables: Tables { wave, ..Default::default() },
     };
     let song = SidSong::parse(&song.to_bytes()).expect("parses");
@@ -155,13 +161,15 @@ fn after_a_key_off_no_table_byte_sets_the_gate_again() {
 fn e0_to_ef_rows_keep_the_low_nibble_gate_bit_included() {
     // gplay.c:527: `$E0-$EF` set the waveform to `wave & $0F` — test, ring,
     // sync AND the gate bit. $E9 (the readme's "testbit+gate") holds the
-    // gate; $E8 (test, gate bit clear) releases.
-    let wave = vec![T(0xE9, 0x80), T(0x41, 0x80), T(0xE8, 0x80), T(0xFF, 0x00)];
+    // gate; $E8 (test, gate bit clear) releases. (Row 1 is the first-frame
+    // byte, so the rows under test start at row 2.)
+    let wave = vec![T(0x41, 0x80), T(0xE9, 0x80), T(0x41, 0x80), T(0xE8, 0x80), T(0xFF, 0x00)];
     let mut p = one_voice(wave, (0, 0), Row::default());
-    let t = trace(&mut p, 0, 4);
+    let t = trace(&mut p, 0, 5);
     let controls: Vec<u8> = t.iter().map(|x| x.0).collect();
-    assert_eq!(controls, vec![0x09, 0x41, 0x08, 0x08]);
-    assert_eq!(t[2].1, Stage::Release);
+    assert_eq!(controls, vec![0x41, 0x09, 0x41, 0x08, 0x08]);
+    assert_eq!(t[1].1, Stage::DecaySustain, "$E9 holds the gate");
+    assert_eq!(t[3].1, Stage::Release);
 }
 
 #[test]

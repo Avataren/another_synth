@@ -78,7 +78,7 @@ fn the_apps_file_round_trips_byte_exact_in_rust() {
     let names: Vec<&[u8]> = s.instruments.iter().map(|i| i.name.as_slice()).collect();
     assert_eq!(names, vec![&b"Tri lead"[..], b"Arp pulse", b"Filt saw", b"Vib lead"]);
     let t = &s.tables;
-    assert_eq!((t.wave.len(), t.pulse.len(), t.filter.len(), t.speed.len()), (4, 4, 4, 2));
+    assert_eq!((t.wave.len(), t.pulse.len(), t.filter.len(), t.speed.len()), (6, 4, 4, 2));
     assert_eq!(s.subsongs[0].orderlists[2].entries[0].transpose, 5);
     assert_eq!(s.subsongs[0].orderlists[2].entries[0].repeat, 2);
 }
@@ -104,20 +104,23 @@ fn the_song_plays_on_a_chip_of_its_own_model_frame_by_frame() {
                 assert_eq!(v1.control(), 0x11);
                 assert_eq!((v2.control(), v3.control()), (0, 0));
             }
-            // Row 8 = frame 48: voice 2 C-4 "Arp pulse": the wave table walks
-            // C, E, G (pulse + gate), jumps back, one row a frame.
-            48..=53 => {
-                let arp = [c4, e4, g4][(f - 48) % 3];
+            // Row 8 = frame 48: voice 2 C-4 "Arp pulse": its first-frame byte
+            // $41 (pulse + gate) and no pitch yet (GT leaves the pitch to the
+            // wave table, gplay.c:509-512; a fresh channel's is 0); from frame
+            // 49 the wave table walks C, E, G, jumps back, one row a frame.
+            48 => assert_eq!((v2.frequency(), v2.control()), (0, 0x41)),
+            49..=54 => {
+                let arp = [c4, e4, g4][(f - 49) % 3];
                 assert_eq!((v2.frequency(), v2.control()), (arp, 0x41), "frame {f}");
             }
             _ => {}
         }
         // The pulse table: the note's frame skips it as GT's does (S5.19), so
-        // the instrument's own 0x400 there; the table's 0x400 on frame 49,
+        // a fresh channel's width 0 there; the table's 0x400 on frame 49,
         // then +0x10 a frame for 32 frames (0x600 at frame 81), then -0x10
         // (0x5F0 at frame 82).
         match f {
-            48 => assert_eq!(v2.pulse_width(), 0x400),
+            48 => assert_eq!(v2.pulse_width(), 0),
             49..=53 => assert_eq!(v2.pulse_width(), 0x400 + 0x10 * (f as u16 - 49), "frame {f}"),
             81 => assert_eq!(v2.pulse_width(), 0x600),
             82 => assert_eq!(v2.pulse_width(), 0x5F0),
@@ -146,32 +149,33 @@ fn the_song_plays_on_a_chip_of_its_own_model_frame_by_frame() {
             assert_eq!(v1.envelope_stage(), Stage::Release);
         }
         // Row 20 = frame 120: C-5 on "Vib lead": first-frame waveform 0x09
-        // (test + gate), then triangle + gate. S5.10, GoatTracker's vibrato
-        // (gplay.c:767-800): delay 10 counts down on the tick-N frames only
-        // (121-125, 127-130; 126 is tick 0), swings from 131 at 0x28 a frame,
-        // turn value 4: 3 frames up, then 6 each way, tick-0 frames (132,
-        // 138) holding. (S3 pinned its own model: 10 frames, then centred
-        // half-swings of 4.)
+        // (test + gate) at voice 1's old pitch (A-4: the wave table sets the
+        // note), then wave row 5, triangle + gate at C-5. S5.10, GoatTracker's vibrato
+        // (gplay.c:767-800): delay 10 counts down on the tick-N frames that
+        // run effects only (122-125, 127-131: 126 is tick 0, and 121's wave
+        // step set the note, which ends GT's frame before them, gplay.c:722),
+        // swings from 133 (132 is tick 0) at 0x28 a frame, turn value 4: 3
+        // frames up, then 6 each way, tick-0 frames (138, 144) holding.
         match f {
-            120 => assert_eq!((v1.frequency(), v1.control()), (c5, 0x09)),
-            121..=130 => assert_eq!((v1.frequency(), v1.control()), (c5, 0x11), "frame {f}"),
-            131..=141 => {
-                let off = [40i32, 40, 80, 120, 80, 40, 0, 0, -40, -80, -120][f - 131];
+            120 => assert_eq!((v1.frequency(), v1.control()), (7494, 0x09)),
+            121..=132 => assert_eq!((v1.frequency(), v1.control()), (c5, 0x11), "frame {f}"),
+            133..=144 => {
+                let off = [40i32, 80, 120, 80, 40, 40, 0, -40, -80, -120, -80, -80][f - 133];
                 assert_eq!(v1.frequency() as i32, c5 as i32 + off, "frame {f}");
             }
             _ => {}
         }
         // Row 28 = frame 168: porta up at speed-table row 2 (0x0040) from
         // where the vibrato left the register (S5.10: GT's vibrato moves the
-        // frequency itself; -40 at frame 167). Tick 0 (168) holds and ticks
+        // frequency itself; +0 at frame 167). Tick 0 (168) holds and ticks
         // 1-5 slide (S5.12: GT skips every row's tick-0 effects, gplay.c:728).
         // Row 29 has command 0: tick 0 (174) holds, then the instrument
         // vibrato runs on (GT's command 0 falls through to it,
         // gplay.c:767-772; the portamento restarted its phase, gplay.c:413):
         // +0x28 at 175.
-        let slid = c5 - 40 + 0x40 * 5;
+        let slid = c5 + 0x40 * 5;
         match f {
-            168..=173 => assert_eq!(p.channel_freq(0), c5 - 40 + 0x40 * (f as u16 - 168), "frame {f}"),
+            168..=173 => assert_eq!(p.channel_freq(0), c5 + 0x40 * (f as u16 - 168), "frame {f}"),
             174 => assert_eq!(p.channel_freq(0), slid),
             175 => assert_eq!(p.channel_freq(0), slid + 0x28),
             _ => {}

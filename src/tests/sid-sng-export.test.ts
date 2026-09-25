@@ -16,6 +16,7 @@ import {
   type SidInstrument,
   type SidOrderlist,
 } from 'src/audio/tracker/sid-doc';
+import { newSidInstrument } from 'src/audio/tracker/sid-instrument-edit';
 
 /**
  * The GTS5 writer (plan-sid-tracking.md S5): the exact bytes of a small song
@@ -23,8 +24,8 @@ import {
  * command encoding (§3.1), the model's limits, and the round trip back.
  */
 
-/** A GT-shaped instrument: no waveform, pulse width or filter of its own. */
-const GT_INSTRUMENT: SidInstrument = { ...DEFAULT_SID_INSTRUMENT, waveform: 0, pulseWidth: 0 };
+/** Every instrument is GoatTracker's (plan-sid-authoring.md D1). */
+const GT_INSTRUMENT: SidInstrument = DEFAULT_SID_INSTRUMENT;
 const list = (entries: SidOrderlist['entries'], restart = 0): SidOrderlist => ({ entries, restart });
 const once = (pattern: number) => ({ pattern, transpose: 0, repeat: 1 });
 
@@ -135,12 +136,14 @@ describe('the GTS5 writer', () => {
     );
   });
 
-  it('refuses an instrument with its own waveform, pulse width or filter (a GT instrument has none): a new SID song\'s default instrument is one', () => {
-    expect(reason(createNewSidDoc())).toBe(
-      'instrument 1 has its own waveform and pulse width, which a GoatTracker instrument cannot hold (its wave, pulse and filter tables set them); set them with table rows instead',
-    );
-    const filtered = { ...GT_INSTRUMENT, filter: { enabled: true, cutoff: 0x400, resonance: 3, mode: 1 } };
-    expect(reason(song({ instruments: [filtered] }))).toMatch(/^instrument 1 has its own filter, /);
+  it('writes a new SID song and an instrument added to it, and reads both back unchanged (plan-sid-authoring.md phase 1)', () => {
+    const fresh = createNewSidDoc();
+    const back = importGtSong(bytesOf(fresh));
+    expect(back.ok && back.doc).toEqual(fresh);
+    const added = newSidInstrument(fresh, 'Second');
+    if (!added.ok) throw new Error(added.reason);
+    const again = importGtSong(bytesOf(added.doc));
+    expect(again.ok && again.doc).toEqual(added.doc);
   });
 
   it('refuses a transpose outside GT\'s $E0-$FE range, and an orderlist over 254 bytes', () => {
