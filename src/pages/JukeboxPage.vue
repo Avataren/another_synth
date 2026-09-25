@@ -73,6 +73,12 @@
       </div>
 
       <div class="now-playing" :title="nowPlayingTitle">
+        <FormatBadge
+          v-if="nowPlayingBrand"
+          data-testid="now-playing-format"
+          :brand="nowPlayingBrand"
+          :variant="nowPlayingVariant"
+        />
         <div class="now-playing-title">
           {{ nowPlayingTitle }}
           <span v-if="isBusy" class="loading-tag">loading…</span>
@@ -284,6 +290,9 @@ import { selectUpcomingPattern } from 'src/components/tracker/pattern-buffering'
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import JukeboxPanel from 'src/components/tracker/JukeboxPanel.vue';
+import FormatBadge from 'src/components/FormatBadge.vue';
+import { brandIdForDemoLabel } from 'src/branding/format-brands';
+import { useActiveFormatBrand } from 'src/composables/useFormatBrand';
 import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
 import BugReportDialog from 'src/components/tracker/BugReportDialog.vue';
 import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
@@ -473,6 +482,21 @@ function leaveToTracker(): void {
 
 const nowPlayingTitle = computed(
   () => jukebox.current?.title ?? 'Nothing queued',
+);
+
+/**
+ * The entry's format, from its index label: right for a song still loading or
+ * queued, which the tracker store does not hold yet. Once it is the store's
+ * song, a MOD also says which kind it is.
+ */
+const activeBrand = useActiveFormatBrand();
+const nowPlayingBrand = computed(() =>
+  jukebox.current ? brandIdForDemoLabel(jukebox.current.format) : null,
+);
+const nowPlayingVariant = computed(() =>
+  nowPlayingBrand.value !== null && nowPlayingBrand.value === activeBrand.value.id && !isBusy.value
+    ? activeBrand.value.variant
+    : null,
 );
 
 const nowPlayingMeta = computed(() => {
@@ -754,6 +778,10 @@ onBeforeUnmount(() => {
   align-items: baseline;
   gap: 10px;
   overflow: hidden;
+}
+
+.now-playing .format-badge {
+  align-self: center;
 }
 
 .now-playing-title {

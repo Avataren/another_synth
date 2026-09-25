@@ -22,6 +22,11 @@
             :class="{ active: collection.id === activeCollectionId }"
             @click="activeCollectionId = collection.id"
           >
+            <FormatBadge
+              v-if="collection.songs[0]"
+              :brand="brandIdForDemoLabel(collection.songs[0].format)"
+              mark-only
+            />
             {{ collection.name }}
             <span class="demo-tab-count">{{ collection.songs.length }}</span>
           </button>
@@ -58,8 +63,10 @@
             class="demo-song"
             :disabled="busyFile !== null || (isAddMode && isQueued(song))"
             :class="{ busy: busyFile === song.file, queued: isQueued(song) }"
+            :style="formatBrandVars(brandIdForDemoLabel(song.format))"
             @click="select(song)"
           >
+            <FormatBadge :brand="brandIdForDemoLabel(song.format)" mark-only />
             <span class="demo-song-title">{{ song.title }}</span>
             <span class="demo-song-meta">
               <span v-if="isAddMode && isQueued(song)" class="demo-song-queued"
@@ -104,6 +111,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
+import FormatBadge from 'src/components/FormatBadge.vue';
+import { brandIdForDemoLabel, formatBrandVars } from 'src/branding/format-brands';
 import {
   useDemoManifest,
   DEMO_BASE_URL,
@@ -298,6 +307,9 @@ watch(
 }
 
 .demo-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
   border-radius: 6px;
@@ -383,11 +395,13 @@ watch(
 
 .demo-song {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid transparent;
+  /* The song's own format (a scoped --format-accent on the row). */
+  border-left: 3px solid var(--format-accent, transparent);
   border-radius: 6px;
   padding: 8px 10px;
   cursor: pointer;
@@ -420,6 +434,8 @@ watch(
 }
 
 .demo-song-title {
+  flex: 1;
+  min-width: 0;
   font-size: 14px;
   overflow: hidden;
   text-overflow: ellipsis;

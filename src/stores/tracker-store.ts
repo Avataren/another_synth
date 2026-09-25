@@ -67,6 +67,7 @@ import {
   type AhxPositionMap,
 } from 'src/audio/tracker/ahx-doc';
 import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
+import { readModOrigin, type ModOrigin } from 'src/audio/tracker/mod-origin';
 import {
   SID_MAX_PATTERN_ROWS,
   blankSidFlatCell,
@@ -206,6 +207,7 @@ interface TrackerSnapshot {
   fastVolumeSlides: boolean;
   initialGlobalVolume: number;
   vblankTiming: boolean;
+  modOrigin: ModOrigin | null;
   defaultPatternRows: number;
   stepSize: number;
   baseOctave: number;
@@ -277,6 +279,8 @@ interface TrackerStoreState {
    * detected on import (`usesVBlankTiming`) and carried with the song.
    */
   vblankTiming: boolean;
+  /** MOD only: where the file came from (`ModOrigin`); null for every other song. */
+  modOrigin: ModOrigin | null;
   /**
    * Row count applied to newly created patterns. Existing patterns carry
    * their own `rows`; this is only a seed for new ones.
@@ -475,6 +479,12 @@ export interface TrackerSongFile {
     /** ProTracker only; absent means the usual CIA speed/tempo split. */
     vblankTiming?: boolean;
     /**
+     * MOD only: the tracker flavor and signature the import found, for the
+     * format badge's sub-label (`modVariantLabel`). Display only; absent in
+     * songs saved before it was kept, which show plain "MOD".
+     */
+    modOrigin?: ModOrigin;
+    /**
      * Pre-v3: the row count for every pattern in the song.
      * v3+: only the default applied to newly created patterns. Per-pattern
      * counts live on `patterns[].rows`.
@@ -579,6 +589,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       fastVolumeSlides: false,
       initialGlobalVolume: 1.0,
       vblankTiming: false,
+      modOrigin: null,
       baseOctave: 4,
       defaultPatternRows: DEFAULT_PATTERN_ROWS,
       stepSize: 1,
@@ -723,6 +734,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         fastVolumeSlides: this.fastVolumeSlides,
         initialGlobalVolume: this.initialGlobalVolume,
         vblankTiming: this.vblankTiming,
+        modOrigin: this.modOrigin,
         defaultPatternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         baseOctave: this.baseOctave,
@@ -757,6 +769,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.fastVolumeSlides = snapshot.fastVolumeSlides ?? false;
       this.initialGlobalVolume = snapshot.initialGlobalVolume ?? 1.0;
       this.vblankTiming = snapshot.vblankTiming ?? false;
+      this.modOrigin = snapshot.modOrigin ?? null;
       this.defaultPatternRows = clampPatternRows(snapshot.defaultPatternRows);
       this.stepSize = snapshot.stepSize;
       this.baseOctave = snapshot.baseOctave;
@@ -846,6 +859,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.fastVolumeSlides = false;
       this.initialGlobalVolume = 1.0;
       this.vblankTiming = false;
+      this.modOrigin = null;
       this.baseOctave = 4;
       this.defaultPatternRows = DEFAULT_PATTERN_ROWS;
       this.stepSize = 1;
@@ -1369,6 +1383,7 @@ export const useTrackerStore = defineStore('trackerStore', {
           ? { initialGlobalVolume: this.initialGlobalVolume }
           : {}),
         ...(this.vblankTiming ? { vblankTiming: true } : {}),
+        ...(this.moduleFormat === 'protracker' && this.modOrigin ? { modOrigin: { ...this.modOrigin } } : {}),
         patternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         patterns: JSON.parse(JSON.stringify(this.patterns)),
@@ -1458,6 +1473,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         ? Math.max(0, Math.min(1, data.initialGlobalVolume as number))
         : 1.0;
       this.vblankTiming = data.vblankTiming === true;
+      this.modOrigin = this.moduleFormat === 'protracker' ? readModOrigin(data.modOrigin) : null;
       const legacySongRows = clampPatternRows(data.patternRows);
       this.defaultPatternRows = legacySongRows;
       this.stepSize = Number.isFinite(data.stepSize) ? data.stepSize : 1;

@@ -16,12 +16,19 @@
         </button>
       </div>
 
-      <div class="now-playing" :class="{ idle: !current }">
+      <div
+        class="now-playing"
+        :class="{ idle: !current }"
+        :style="currentBrand ? formatBrandVars(currentBrand) : undefined"
+      >
         <div class="now-playing-label">
           {{ isPlaying ? 'Now playing' : 'Up next' }}
         </div>
-        <div class="now-playing-title" :title="current?.title ?? ''">
-          {{ current?.title ?? 'Nothing queued' }}
+        <div class="now-playing-song">
+          <FormatBadge v-if="currentBrand" data-testid="jukebox-panel-format" :brand="currentBrand" mark-only />
+          <div class="now-playing-title" :title="current?.title ?? ''">
+            {{ current?.title ?? 'Nothing queued' }}
+          </div>
         </div>
         <div v-if="current" class="now-playing-meta">
           {{ current.format }} · {{ current.channels }}ch ·
@@ -145,6 +152,7 @@
             />
             <span v-else>{{ row.index + 1 }}</span>
           </div>
+          <FormatBadge :brand="brandIdForDemoLabel(row.entry.format)" mark-only />
           <div class="playlist-body">
             <div class="playlist-title">{{ row.entry.title }}</div>
             <div class="playlist-meta">
@@ -205,8 +213,10 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, watch, type ComponentPublicInstance } from 'vue';
+import { computed, nextTick, ref, watch, type ComponentPublicInstance } from 'vue';
 import type { JukeboxEntry } from 'src/stores/jukebox-store';
+import FormatBadge from 'src/components/FormatBadge.vue';
+import { brandIdForDemoLabel, formatBrandVars } from 'src/branding/format-brands';
 
 /**
  * The visible playlist.
@@ -228,6 +238,9 @@ const props = defineProps<{
   /** A song is being fetched and its instruments rebuilt. */
   busy: boolean;
 }>();
+
+/** The shown entry's format, from its index label (it may not be loaded yet). */
+const currentBrand = computed(() => (props.current ? brandIdForDemoLabel(props.current.format) : null));
 
 defineEmits<{
   next: [];
@@ -336,7 +349,7 @@ watch(
 
 .now-playing {
   background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(77, 242, 197, 0.35);
+  border: 1px solid color-mix(in srgb, var(--format-accent, rgb(77, 242, 197)) 40%, transparent);
   border-radius: 8px;
   padding: 6px 10px;
   min-width: 0;
@@ -350,7 +363,18 @@ watch(
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: var(--format-accent, var(--text-secondary, rgba(255, 255, 255, 0.5)));
+}
+
+.now-playing.idle .now-playing-label {
   color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+}
+
+.now-playing-song {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .now-playing-title {

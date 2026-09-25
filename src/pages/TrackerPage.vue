@@ -339,7 +339,11 @@
           class="summary-card top-panel"
         >
           <div class="summary-header">
-            <div class="eyebrow">Tracker</div>
+            <div class="song-format" data-testid="song-format">
+              <FormatBadge :brand="activeBrand.id" :variant="activeBrand.variant" />
+              <span class="song-format__name">{{ activeBrand.brand.name }}</span>
+              <span v-if="activeBrand.variant" class="song-format__variant">{{ activeBrand.variant }}</span>
+            </div>
             <div class="engine-rate" :title="engineRateTitle">
               {{ engineRateLabel }}
             </div>
@@ -1012,6 +1016,8 @@ import { ahxTransposeLabel, ahxTransposeTitle } from 'src/audio/tracker/ahx-posi
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
+import FormatBadge from 'src/components/FormatBadge.vue';
+import { useActiveFormatBrand } from 'src/composables/useFormatBrand';
 import type { DemoSong } from 'src/composables/useDemoManifest';
 import {
   useDemoManifest,
@@ -1083,6 +1089,8 @@ const $q = useQuasar();
 const userSettingsStore = useUserSettingsStore();
 const { settings: userSettings } = storeToRefs(userSettingsStore);
 const trackerStore = useTrackerStore();
+// The song's format, for the song panel's header (plan-format-branding).
+const activeBrand = useActiveFormatBrand();
 trackerStore.initializeIfNeeded();
 const showSongExport = ref(false);
 const getExportSong = () => snapshotEditorSong(trackerStore);
