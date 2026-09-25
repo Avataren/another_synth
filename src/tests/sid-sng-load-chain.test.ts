@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { importGtSong, serializeSidFile } from 'src/audio/tracker/sid-doc';
 import type { SidCommand } from 'src/audio/worklets/sid-core';
 import { initSidWasm, peak, setupSidApp, sidWorkletNodes, teardownSidApp, until, type FakeSidWorkletNode } from './helpers/sid-worklet-harness';
+import { SID_CYCLES_PER_FRAME, SID_PAL_CLOCK_HZ } from 'src/audio/tracker/sid-instrument-visuals';
 
 /**
  * plan-sid-tracking.md S5: a GoatTracker `.sng` loads through the app's real
@@ -23,7 +24,8 @@ import { initSidWasm, peak, setupSidApp, sidWorkletNodes, teardownSidApp, until,
 
 const FIXTURES = resolve(__dirname, 'fixtures/gt-songs');
 const PROOF = 'mch/alien_funk.sng';
-const ROW = 6 * 882;
+/** One row, tempo 6 PAL frames (879.8 samples each at 44.1 kHz; GT-parity 0925b, was 6 x 882 at 50 Hz). */
+const ROW = Math.round((6 * 44_100 * SID_CYCLES_PER_FRAME) / SID_PAL_CLOCK_HZ);
 
 const fixture = (name: string): Uint8Array => new Uint8Array(readFileSync(resolve(FIXTURES, name)));
 /** A dropped file. jsdom's `File` has no `arrayBuffer()` (browsers do), so it gets the browser's. */

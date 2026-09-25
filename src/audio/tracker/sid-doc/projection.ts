@@ -52,9 +52,11 @@ export function projectSidPatterns(doc: SidDoc, subsong = 0): TrackerPattern[] {
 }
 
 /**
- * The song's tempo in the tracker's terms. A SID song ticks at 50 Hz times
- * its multispeed and plays `tempo` ticks per row; the engine ticks at
- * BPM * 2 / 5 Hz, so 50 Hz is 125 BPM and the tempo is the speed. The
+ * The song's tempo in the tracker's terms. A SID song ticks on the PAL frame
+ * (50.1245 Hz, `player.rs` `frame_cycles`) times its multispeed and plays
+ * `tempo` ticks per row; the engine ticks at BPM * 2 / 5 Hz, so 50 Hz is 125
+ * BPM (0.25 % slow of the player, which owns the transport and reports its
+ * own row) and the tempo is the speed. The
  * engine's BPM stops at 255, so a multispeed of 3 or more is carried at
  * 250 BPM with the speed scaled to keep the row rate (rounded: only the
  * TS engine's clock, never the player's, is approximated).

@@ -29,11 +29,15 @@ use audio_processor::sid::song::{
 use audio_processor::sid::{SidModel, SidSong, SidSongPlayer, DEFAULT_SAMPLE_RATE};
 
 const DRUMS: &[u8] = include_bytes!("fixtures/sid/s59-drum-example.asid");
-const SPF: usize = 882;
+/// One PAL frame at 44.1 kHz is 879.8 samples (`player::frame_cycles`, GT
+/// parity 0925b): a buffer that holds one; `samples_in_next_frame` says how
+/// much of it a frame is.
+const SPF: usize = 880;
 
 fn frame(p: &mut SidSongPlayer) {
     let mut out = vec![0.0f32; SPF];
-    p.render(&mut out);
+    let n = p.samples_in_next_frame();
+    p.render(&mut out[..n]);
 }
 
 /// Voice `v`'s (control, envelope stage, envelope level) after each of `n` frames.

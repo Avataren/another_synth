@@ -16,7 +16,10 @@ use super::player::SidSongPlayer;
 use super::song::*;
 use super::*;
 
-const SPF: usize = 882;
+/// One PAL frame at 44.1 kHz is 879.8 samples (`player::frame_cycles`, GT
+/// parity 0925b): a buffer that holds one; `samples_in_next_frame` says how
+/// much of it a frame is.
+const SPF: usize = 880;
 
 fn t(l: u8, r: u8) -> TableRow {
     TableRow { left: l, right: r }
@@ -70,7 +73,8 @@ fn widths(s: &SidSong, frames: usize) -> Vec<u16> {
     let mut out = vec![0.0f32; SPF];
     (0..frames)
         .map(|_| {
-            p.render(&mut out);
+            let n = p.samples_in_next_frame();
+            p.render(&mut out[..n]);
             p.chip().voice(0).pulse_width()
         })
         .collect()
@@ -133,7 +137,8 @@ fn filter_after(s: &SidSong, frames: usize) -> (u16, u8, u8) {
     let mut p = SidSongPlayer::new(s.clone(), DEFAULT_SAMPLE_RATE).expect("player builds");
     let mut out = vec![0.0f32; SPF];
     for _ in 0..frames {
-        p.render(&mut out);
+        let n = p.samples_in_next_frame();
+        p.render(&mut out[..n]);
     }
     let f = p.chip().filter();
     (f.cutoff_reg(), f.resonance(), f.mode())
@@ -318,7 +323,8 @@ fn hard_restart_note_levels() -> Vec<u8> {
     let mut out = vec![0.0f32; SPF];
     (0..9)
         .map(|_| {
-            p.render(&mut out);
+            let n = p.samples_in_next_frame();
+            p.render(&mut out[..n]);
             p.chip().voice(0).envelope_level()
         })
         .collect()
@@ -333,9 +339,12 @@ fn the_players_note_on_after_a_hard_restart_is_delayed_by_the_adsr_bug_as_in_gt(
     // floor the hard restart's release left it at (0 or 1: S5.17's AD 0x0F
     // keeps the note up ~33 ms, so the release ends on the way in), and by the
     // end of frame 7 it has run. Written all at once (the old behaviour) it
-    // was at the top already at the end of frame 6.
+    // was at the top already at the end of frame 6. GT-parity 0925b: at
+    // PAL frames (19 656 cycles, 49 fewer each) the release is ~100 cycles
+    // short of its last step at the bottom (one step per 30 x 313 cycles), so
+    // the floor is 2 (was 0 or 1): frames 5-7 read 2, 2, 255.
     let l = hard_restart_note_levels();
-    assert!(l[6] <= 1, "frame 6: still waiting on the rate counter, levels {l:?}");
+    assert!(l[6] <= 2 && l[6] <= l[5], "frame 6: still waiting on the rate counter, levels {l:?}");
     assert_eq!(l[7], 255, "frame 7: the attack has run, levels {l:?}");
 }
 
@@ -478,7 +487,8 @@ fn gate_bits_around(later: &[(usize, u8)], frames: usize) -> Vec<bool> {
     let mut out = vec![0.0f32; SPF];
     (0..frames)
         .map(|_| {
-            p.render(&mut out);
+            let n = p.samples_in_next_frame();
+            p.render(&mut out[..n]);
             p.chip().voice(0).control() & 1 != 0
         })
         .collect()

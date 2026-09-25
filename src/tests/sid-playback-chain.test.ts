@@ -11,6 +11,7 @@ import { resetPostFxRegistryForTests } from '@another-synth/tracker-playback';
 import { SidProcessorCore, type SidCommand, type SidEvent, type SidWasmPlayerCtor } from 'src/audio/worklets/sid-core';
 import { SID_RELOAD_IDLE_MS } from 'src/audio/tracker/sid-song-transport';
 import { buildSidChainSong } from './helpers/sid-chain-song';
+import { SID_CYCLES_PER_FRAME, SID_PAL_CLOCK_HZ } from 'src/audio/tracker/sid-instrument-visuals';
 
 /**
  * plan-sid-tracking.md S4: a SID song PLAYS. The whole app-side chain runs
@@ -34,7 +35,8 @@ import { buildSidChainSong } from './helpers/sid-chain-song';
 
 const ROOT = resolve(__dirname, '../..');
 const SAMPLE_RATE = 44100;
-const ROW = 6 * 882;
+/** One row, tempo 6 PAL frames (879.8 samples each at 44.1 kHz; GT-parity 0925b, was 6 x 882 at 50 Hz). */
+const ROW = Math.round((6 * 44_100 * SID_CYCLES_PER_FRAME) / SID_PAL_CLOCK_HZ);
 const A4 = (7494 * 985248) / 2 ** 24;
 
 beforeAll(() => {

@@ -11,7 +11,10 @@ use super::player::SidSongPlayer;
 use super::song::*;
 use super::*;
 
-const SPF: usize = 882;
+/// One PAL frame at 44.1 kHz is 879.8 samples (`player::frame_cycles`, GT
+/// parity 0925b): a buffer that holds one; `samples_in_next_frame` says how
+/// much of it a frame is.
+const SPF: usize = 880;
 
 fn t(l: u8, r: u8) -> TableRow {
     TableRow { left: l, right: r }
@@ -62,7 +65,8 @@ fn freqs(s: &SidSong, frames: usize) -> Vec<i32> {
     let mut out = vec![0.0f32; SPF];
     (0..frames)
         .map(|_| {
-            p.render(&mut out);
+            let n = p.samples_in_next_frame();
+            p.render(&mut out[..n]);
             p.chip().voice(0).frequency() as i32
         })
         .collect()
@@ -111,4 +115,18 @@ fn portamento_to_a_target_skips_tick_0_of_every_row() {
     assert_eq!(slide_deltas(&f), gt);
     assert_eq!(f[11] - f[5], 5 * S);
     assert_eq!(f[17] - f[5], 10 * S);
+}
+
+#[test]
+fn a_wave_table_slide_steps_on_tick_0_too() {
+    // The skip is the tick-N effects block's (gplay.c:728); a wave-table
+    // command runs in WAVEEXEC before it, on any tick (gplay.c:529-555,
+    // player.s:1520-1537). Wave table: the note, then `F1 01` every frame
+    // (`FF 02` jumps back). The rows' own frames 6 and 12 step like the rest.
+    let rows = vec![row(49, 1, 0, 0), row(0, 0, 0, 0), row(0, 0, 0, 0)];
+    let mut s = song(rows, TEMPO, t(0, 4));
+    s.tables.wave = vec![t(0x41, 0x00), t(0xF1, 0x01), t(0xFF, 0x02)];
+    let f = freqs(&s, 14);
+    let steps: Vec<i32> = f[2..14].windows(2).map(|w| w[1] - w[0]).collect();
+    assert_eq!(steps, vec![S; 11], "one step every frame, row starts included: {f:?}");
 }

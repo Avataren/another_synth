@@ -20,7 +20,10 @@ use super::player::SidSongPlayer;
 use super::song::*;
 use super::*;
 
-const SPF: usize = 882;
+/// One PAL frame at 44.1 kHz is 879.8 samples (`player::frame_cycles`, GT
+/// parity 0925b): a buffer that holds one; `samples_in_next_frame` says how
+/// much of it a frame is.
+const SPF: usize = 880;
 
 fn t(l: u8, r: u8) -> TableRow {
     TableRow { left: l, right: r }
@@ -58,7 +61,8 @@ fn levels(ins: Instrument, wave: Vec<TableRow>, rows: &[(usize, u8)], frames: us
     let mut out = vec![0.0f32; SPF];
     (0..frames)
         .map(|_| {
-            p.render(&mut out);
+            let n = p.samples_in_next_frame();
+            p.render(&mut out[..n]);
             p.chip().voice(0).envelope_level()
         })
         .collect()
@@ -139,7 +143,8 @@ fn a_wave_command_leaves_the_channels_note_alone() {
     let mut out = vec![0.0f32; SPF];
     let mut freqs = Vec::new();
     for _ in 0..5 {
-        p.render(&mut out);
+        let n = p.samples_in_next_frame();
+        p.render(&mut out[..n]);
         freqs.push(p.chip().voice(0).frequency());
     }
     assert_eq!(freqs[1], freqs[4], "the pitch does not move under $F6, freqs {freqs:?}");

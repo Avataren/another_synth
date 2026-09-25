@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { DemoCollection } from 'src/composables/useDemoManifest';
 import { demoSongUrl } from 'src/composables/useDemoManifest';
 import { initSidWasm, peak, setupSidApp, sidWorkletNodes, teardownSidApp, until, type FakeSidWorkletNode } from './helpers/sid-worklet-harness';
+import { SID_CYCLES_PER_FRAME, SID_PAL_CLOCK_HZ } from 'src/audio/tracker/sid-instrument-visuals';
 
 /**
  * The GoatTracker demo collection: a `.sng` picked in the demo browser takes
@@ -22,7 +23,8 @@ import { initSidWasm, peak, setupSidApp, sidWorkletNodes, teardownSidApp, until,
 
 const ROOT = resolve(__dirname, '../..');
 const PUBLIC = resolve(ROOT, 'public');
-const ROW = 6 * 882;
+/** One row, tempo 6 PAL frames (879.8 samples each at 44.1 kHz; GT-parity 0925b, was 6 x 882 at 50 Hz). */
+const ROW = Math.round((6 * 44_100 * SID_CYCLES_PER_FRAME) / SID_PAL_CLOCK_HZ);
 
 const manifest = JSON.parse(readFileSync(resolve(PUBLIC, 'demos/index.json'), 'utf8')) as {
   collections: DemoCollection[];

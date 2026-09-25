@@ -24,7 +24,10 @@ use super::player::{note_index, SidSongPlayer};
 use super::song::*;
 use super::*;
 
-const SPF: usize = 882;
+/// One PAL frame at 44.1 kHz is 879.8 samples (`player::frame_cycles`, GT
+/// parity 0925b): a buffer that holds one; `samples_in_next_frame` says how
+/// much of it a frame is.
+const SPF: usize = 880;
 
 fn t(l: u8, r: u8) -> TableRow {
     TableRow { left: l, right: r }
@@ -81,7 +84,8 @@ fn freqs(s: &SidSong, frames: usize) -> Vec<i32> {
     let mut out = vec![0.0f32; SPF];
     (0..frames)
         .map(|_| {
-            p.render(&mut out);
+            let n = p.samples_in_next_frame();
+            p.render(&mut out[..n]);
             p.chip().voice(0).frequency() as i32
         })
         .collect()

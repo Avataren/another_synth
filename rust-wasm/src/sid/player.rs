@@ -3,11 +3,17 @@
 //! the song's own model (the per-song tag S2 deferred), by writing the chip's
 //! registers once per frame, as a C64 playroutine does.
 //!
-//! Timing: one frame is 1/50 s times 1/`speed_multiplier` (PAL frames, the
-//! plan's "PList rows at 50 Hz", GoatTracker's multispeed). INFERRED: exactly
-//! 50 Hz, not the PAL raster's 50.125 Hz (985 248 / 19 656); a 0.25 % tempo
-//! difference, kept for round numbers and to match the TS engine's clock
-//! (`sidDocTiming`). A row lasts `tempo` frames, the doc's start tempo, until a
+//! Timing: one frame is `frame_cycles(speed_multiplier)` chip cycles, the
+//! real C64 rate a GoatTracker song is written for (GT-parity 0925b): at 1x
+//! the PAL vertical blank, 312 lines x 63 = 19 656 cycles, 985 248 / 19 656
+//! = 50.1245 Hz (GT exports a 1x tune on the VBI: greloc.c:1590-1596); at
+//! multispeed m GT's CIA timer, latch $4CC7 / m, a period of latch + 1
+//! (greloc.c:1551-1562), = 19 656 / m for m = 2, 3, 4, 6, 8. Until 0925b it
+//! was exactly 50 Hz x m, which is GT's EDITOR (gsound.h:24, its mixer calls
+//! the player every mixrate / 50 samples, bme_snd.c:386): 0.249 % slower than
+//! the exported tune. The TS engine's BPM (`sidDocTiming`, 125 per 1x) stays
+//! an approximation for the grid; this player owns the transport. A row
+//! lasts `tempo` frames, the doc's start tempo, until a
 //! tempo command: each channel has GT's own tick counter and tempo (S5.18,
 //! `tick_step`), so funktempo (E) alternates two row lengths and F with bit 7
 //! sets one channel's alone. Frames
@@ -73,9 +79,12 @@
 //!   it to 0 with the instrument's speed row and vibrato delay; commands 0-4
 //!   replace it; 5-F leave it, so a vibrato or a slide runs on under them.
 //!   Command 0 runs the instrument vibrato: a delay of 0 never, above 1
-//!   counting down, at 1 swinging (gplay.c:767-772). The vibrato skips tick
-//!   0 as GT's realtime optimisation does (gplay.c:728); commands 1-3 do
-//!   not yet (pre-existing, unchanged here).
+//!   counting down, at 1 swinging (gplay.c:767-772). Every tick effect (the
+//!   vibratos 0 and 4, the slides 1-2, the portamento 3 and `3 00`) skips
+//!   tick 0 of a row, as GT's realtime optimisation (on by default,
+//!   goattrk2.c:55; readme "-R") does (gplay.c:728; player.s:971-979): S5.10
+//!   for the vibratos, S5.12 for 1-3 (`tests_s512.rs`). Wave-table commands
+//!   $F1-$F4 are not tick effects and run on any tick (gplay.c:529-691).
 //!
 //! Tables (1-based rows; left 0xFF = jump to row `right`, 0 = stop; one
 //! jump per frame):
@@ -85,8 +94,11 @@
 //!     gate bit kept in both (gplay.c:525, 527; S5.9), 0x00 keeps it,
 //!     0xF0..=0xFE (GT's table commands, `wave_command`): the pattern
 //!     command of the low nibble with the right column as its parameter,
-//!     for that frame (S5.17: $F5/$F6; S5.19: the rest; $F0, $F8 and $FE,
-//!     which stop GT's song, only advance). right, GT's arithmetic
+//!     for that frame (S5.17: $F5/$F6; S5.19: the rest). $F0, $F8 and $FE
+//!     have no GT meaning: they are illegal (readme §3.4.1), GT's editor
+//!     stops the song on them (gplay.c:534-538) and its packer refuses to
+//!     export one (greloc.c:401-409); here the row only advances, as GT's
+//!     does on that frame, and the song plays on. right, GT's arithmetic
 //!     (S5.10, gplay.c:714-721): 0x00..=0x7F added to the channel's note,
 //!     0x80 no change, 0x81..=0xFF the absolute note, then `& 0x7F`, into the
 //!     128-entry table (96 notes, then zeros: `gt_note_freq_reg`). This right
@@ -138,10 +150,28 @@ use super::song::{
     SID_CHANNELS,
 };
 use super::waveform::GATE;
-use super::{gt_note_freq_reg, SidError, SidModel, GT_NOTE_COUNT};
+use super::{gt_note_freq_reg, SidError, SidModel, GT_NOTE_COUNT, PAL_CLOCK_HZ};
 
-/// PAL frames per second at multispeed 1.
-pub const FRAME_HZ: f64 = 50.0;
+/// Chip cycles in one PAL video frame: 312 raster lines of 63 cycles (the
+/// 6569 VIC-II). A 1x GoatTracker tune runs once per vertical blank.
+pub const PAL_FRAME_CYCLES: u32 = 312 * 63;
+/// The CIA timer latch GT's exported multispeed tune divides by its
+/// multiplier (greloc.c:1554, `0x4cc7/multiplier`); the timer underflows
+/// every latch + 1 cycles, so $4CC7 = 19 655 is one PAL frame.
+const GT_CIA_LATCH: u32 = 0x4CC7;
+/// PAL frames per second at multispeed 1: 985 248 / 19 656 = 50.1245 Hz
+/// (not GT's editor's 50: see the header).
+pub const FRAME_HZ: f64 = PAL_CLOCK_HZ / PAL_FRAME_CYCLES as f64;
+
+/// Chip cycles between two player frames at multispeed `mult` (1..=16):
+/// the vertical blank at 1x, GT's CIA period above.
+pub fn frame_cycles(mult: u8) -> u32 {
+    if mult <= 1 {
+        PAL_FRAME_CYCLES
+    } else {
+        GT_CIA_LATCH / mult as u32 + 1
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 struct Channel {
@@ -289,7 +319,7 @@ impl SidSongPlayer {
             let list = &song.subsongs[subsong].orderlists[c];
             Self::enter_order(ch, list, 0, &song);
         }
-        let samples_per_frame = sample_rate / (FRAME_HZ * song.speed_multiplier as f64);
+        let samples_per_frame = frame_cycles(song.speed_multiplier) as f64 * sample_rate / PAL_CLOCK_HZ;
         let mult = song.speed_multiplier.max(1);
         for ch in channels.iter_mut() {
             // GT starts every channel on instrument 1 (gplay.c:62), so its
@@ -460,6 +490,20 @@ impl SidSongPlayer {
     /// Output samples per frame (fractional).
     pub fn samples_per_frame(&self) -> f64 {
         self.samples_per_frame
+    }
+
+    /// The samples a `render` call from here must be given to play exactly
+    /// the next frame and stop where the one after it starts (at most
+    /// `samples_per_frame().ceil()`). A PAL frame is not a whole number of
+    /// samples (879.8 at 44.1 kHz), so a fixed length drifts a frame every
+    /// few calls; a caller stepping frame by frame (tests, dumps) uses this.
+    pub fn samples_in_next_frame(&self) -> usize {
+        let left = if self.samples_to_frame <= 0.0 {
+            self.samples_to_frame + self.samples_per_frame
+        } else {
+            self.samples_to_frame
+        };
+        (left.ceil() as usize).max(1)
     }
 
     /// Whether any channel's orderlist has wrapped to its restart.
@@ -1093,9 +1137,13 @@ impl SidSongPlayer {
 
     /// A wave-table command row ($F0 + `cmd`, parameter `param`), GT's
     /// (gplay.c:529-680): the pattern command of that number run for this
-    /// frame, the slides and the vibrato as tick effects. 0, 8 and E stop the
-    /// song in GT; here they do nothing. D takes its volume only while the
-    /// row's own command parameter is below $10 (GT tests `newcmddata`).
+    /// frame, the slides and the vibrato as tick effects. 0, 8 and E are
+    /// illegal in GT (its editor stops the song, gplay.c:534-538); here they
+    /// do nothing. D sets the volume when its own parameter is below $10,
+    /// as GT's C64 player does (player.s:291-305; $10 up is its "timing
+    /// mark", nothing audible). GT's editor tests the pattern row's
+    /// `newcmddata` instead and stores the parameter unmasked (gplay.c:
+    /// 686-689), so `$FD 1F` put $10 into $D418's filter-mode bits there.
     fn wave_command(&mut self, c: usize, cmd: u8, param: u8) {
         match cmd {
             0x1 => {
@@ -1130,7 +1178,7 @@ impl SidSongPlayer {
                 }
             }
             0xC => self.cutoff = (param as u16) << 3,
-            0xD if self.channels[c].param < 0x10 => self.volume = param,
+            0xD if param < 0x10 => self.volume = param,
             _ => {}
         }
     }

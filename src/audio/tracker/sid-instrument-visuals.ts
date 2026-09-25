@@ -129,8 +129,24 @@ export function sidStepPath(values: readonly number[], width: number, height: nu
 export const SID_RATE_PERIODS: readonly number[] = [9, 32, 63, 95, 149, 220, 267, 313, 392, 977, 1954, 3126, 3907, 11720, 19532, 31251];
 /** Datasheet attack times (ms) per nibble; decay and release are three times these. */
 export const SID_ATTACK_MS: readonly number[] = [2, 8, 16, 24, 38, 56, 68, 80, 100, 250, 500, 800, 1000, 3000, 5000, 8000];
-/** PAL chip cycles per 50 Hz frame, rounded (the parity fixture's step). */
-export const SID_CYCLES_PER_FRAME = 19_705;
+/** The PAL C64 clock (`PAL_CLOCK_HZ`), Hz. */
+export const SID_PAL_CLOCK_HZ = 985_248;
+/**
+ * Chip cycles per player frame at 1x: one PAL vertical blank, 312 lines of
+ * 63 (`PAL_FRAME_CYCLES`, GT-parity 0925b; was 50 Hz's 19 705). The parity
+ * fixture's step.
+ */
+export const SID_CYCLES_PER_FRAME = 19_656;
+
+/** Chip cycles per player frame at multispeed `mult`: `frame_cycles`, GT's CIA latch $4CC7 / m + 1 above 1x. */
+export function sidFrameCycles(mult: number): number {
+  return mult <= 1 ? SID_CYCLES_PER_FRAME : Math.floor(0x4cc7 / mult) + 1;
+}
+
+/** `frames` player frames at multispeed `mult`, in milliseconds (50.1245 frames a second at 1x). */
+export function sidFramesMs(frames: number, mult = 1): number {
+  return (frames * sidFrameCycles(mult) * 1000) / SID_PAL_CLOCK_HZ;
+}
 
 /** `exp_period`: the decay/release divider at a level. */
 function expPeriod(level: number): number {

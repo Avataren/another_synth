@@ -8,12 +8,14 @@
 //! store -> file -> chip chain) is `tests/sid_song_chain.rs`.
 
 use super::envelope::Stage;
-use super::player::{note_index, SidSongPlayer, FRAME_HZ};
+use super::player::{frame_cycles, note_index, SidSongPlayer, FRAME_HZ, PAL_FRAME_CYCLES};
 use super::song::*;
 use super::*;
 
-/// 44.1 kHz / 50 Hz: exactly 882 samples per frame.
-const SPF: usize = 882;
+/// One PAL frame at 44.1 kHz is 879.8 samples (`player::frame_cycles`, GT
+/// parity 0925b): a buffer that holds one; `samples_in_next_frame` says how
+/// much of it a frame is.
+const SPF: usize = 880;
 
 fn ins(waveform: u8) -> Instrument {
     Instrument {
@@ -77,7 +79,8 @@ fn player(s: &SidSong) -> SidSongPlayer {
 /// Renders one frame's samples; the frame's register writes happen first.
 fn frame(p: &mut SidSongPlayer) -> Vec<f32> {
     let mut out = vec![0.0f32; SPF];
-    p.render(&mut out);
+    let n = p.samples_in_next_frame();
+    p.render(&mut out[..n]);
     out
 }
 
@@ -231,7 +234,7 @@ fn a_note_plays_its_table_register_on_the_songs_chip() {
 }
 
 #[test]
-fn rows_advance_every_tempo_frames_at_50_hz() {
+fn rows_advance_every_tempo_frames_at_the_pal_frame_rate() {
     let mut s = solo_a4();
     s.tempo = 3;
     let mut p = player(&s);
@@ -250,15 +253,36 @@ fn rows_advance_every_tempo_frames_at_50_hz() {
 }
 
 #[test]
-fn multispeed_ticks_at_50_times_the_multiplier() {
+fn multispeed_ticks_on_gts_cia_period() {
     let mut s = solo_a4();
     s.speed_multiplier = 2;
     let mut p = player(&s);
-    // 100 Hz: 441 samples a frame, so one second is 100 frames.
-    assert_eq!(p.samples_per_frame(), 441.0);
+    // GT's exported 2x tune: CIA latch $4CC7 / 2 = 9827, a period of 9828
+    // cycles (half a PAL frame), 100.249 Hz: 439.9 samples a frame, so one
+    // second of output starts 101 frames (was 100 at a flat 100 Hz).
+    assert_eq!(p.samples_per_frame(), 9828.0 * DEFAULT_SAMPLE_RATE / PAL_CLOCK_HZ);
     let mut out = vec![0.0f32; 44_100];
     p.render(&mut out);
-    assert_eq!(p.frames(), 100);
+    assert_eq!(p.frames(), 101);
+}
+
+#[test]
+fn the_frame_is_the_pal_vertical_blank_and_gts_cia_period() {
+    // GT-parity 0925b: 1x runs on the PAL vertical blank, 312 lines x 63
+    // cycles (GT's PSID speed bit 0, greloc.c:1590-1596): 50.1245 Hz, not
+    // GT's editor's 50. Multispeed m: GT's CIA latch $4CC7 / m, period
+    // latch + 1 (greloc.c:1551-1562), a whole PAL frame split m ways where
+    // m divides 19 656.
+    assert_eq!(PAL_FRAME_CYCLES, 19_656);
+    assert!((FRAME_HZ - 50.124_54).abs() < 1e-4, "{FRAME_HZ}");
+    assert_eq!(frame_cycles(1), 19_656);
+    for m in [2u8, 3, 4, 6, 8] {
+        assert_eq!(frame_cycles(m), 19_656 / m as u32, "x{m}");
+    }
+    assert_eq!(frame_cycles(5), 3_932);
+    assert_eq!(frame_cycles(16), 1_229);
+    let p = player(&solo_a4());
+    assert!((p.samples_per_frame() - 879.809).abs() < 1e-3, "{}", p.samples_per_frame());
 }
 
 #[test]

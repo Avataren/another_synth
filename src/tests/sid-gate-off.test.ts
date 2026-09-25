@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 // mocked for every other test, and this one is about the real bytes.
 import { SidPlayer, initSync } from '../../public/wasm/audio_processor.js';
 import { importGtSong, serializeSidFile } from 'src/audio/tracker/sid-doc';
-import { simulateSidInstrument } from 'src/audio/tracker/sid-instrument-visuals';
+import { SID_CYCLES_PER_FRAME, SID_PAL_CLOCK_HZ, simulateSidInstrument } from 'src/audio/tracker/sid-instrument-visuals';
 import { SidProcessorCore, type SidWasmPlayerCtor } from 'src/audio/worklets/sid-core';
 
 /**
@@ -29,7 +29,8 @@ const SONG = resolve(__dirname, 'fixtures/gt-songs/cadaver/goattracker_drum_exam
 const FIXTURE = resolve(ROOT, 'rust-wasm/tests/fixtures/sid/s59-drum-example.asid');
 const SAMPLE_RATE = 44100;
 const QUANTUM = 128;
-const FRAME = 882;
+/** One PAL frame in samples, fractional (879.8; GT-parity 0925b, was 882 at 50 Hz). */
+const FRAME = (SAMPLE_RATE * SID_CYCLES_PER_FRAME) / SID_PAL_CLOCK_HZ;
 
 const importSong = (path: string) => {
   const imported = importGtSong(new Uint8Array(readFileSync(path)));
@@ -98,14 +99,14 @@ describe('S5.9 wave-table gate bit', () => {
     const core = new SidProcessorCore(SidPlayer as unknown as SidWasmPlayerCtor, SAMPLE_RATE, () => {});
     core.handle({ type: 'load-song', id: 1, bytes: serializeSidFile(doc) });
     core.handle({ type: 'play' });
-    render(core, 1054 * FRAME);
+    render(core, Math.round(1054 * FRAME));
     // The strike: noise on voice 2, loud.
-    const strike = render(core, 50 * FRAME)[1]!;
+    const strike = render(core, Math.round(50 * FRAME))[1]!;
     expect(peak(strike)).toBeGreaterThan(0.05);
     // 5.6 s later (frame 1336 on) the release has run out: voice 2 is
     // silent for the next two seconds, where it used to hiss at sustain.
-    render(core, (1336 - 1104) * FRAME);
-    const tail = render(core, 100 * FRAME)[1]!;
+    render(core, Math.round((1336 - 1104) * FRAME));
+    const tail = render(core, Math.round(100 * FRAME))[1]!;
     expect(peak(tail)).toBeLessThan(1e-3);
   }, 60000);
 });

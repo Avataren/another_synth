@@ -218,7 +218,7 @@ export interface SidDoc {
   readonly chipModel: SidChipModel;
   /** Voices: `SID_CHANNELS`. */
   readonly channels: number;
-  /** 1..16: the player ticks at 50 * speedMultiplier Hz (PAL frames, GT multispeed). */
+  /** 1..16: the player ticks speedMultiplier times per PAL frame (50.1245 Hz; GT multispeed, `frame_cycles`). */
   readonly speedMultiplier: number;
   /** 1..127: ticks per row at the start of every subsong. */
   readonly tempo: number;
