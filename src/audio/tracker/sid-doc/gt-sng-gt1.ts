@@ -382,9 +382,6 @@ export function readGt1Song(
       decay: h[0]! & 0x0f,
       sustain: h[1]! >> 4,
       release: h[1]! & 0x0f,
-      waveform: 0,
-      pulseWidth: 0,
-      filter: { enabled: false, cutoff: 0, resonance: 0, mode: 0 },
       // A GT1 instrument has no first-wave or gate-timer byte: GT2's
       // defaults for a new instrument (ginstr.c:210-221: $09, 2 at speed 1).
       firstWave: 0x09,

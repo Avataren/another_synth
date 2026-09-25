@@ -24,8 +24,7 @@ fn ins(waveform: u8) -> Instrument {
         decay: 0,
         sustain: 15,
         release: 0,
-        waveform,
-        pulse_width: 0x800,
+        first_wave: waveform | 0x01,
         ..Default::default()
     }
 }
@@ -131,7 +130,6 @@ fn note_table_pins_match_the_app() {
 
 fn full_song() -> SidSong {
     let mut i1 = ins(0x40);
-    i1.filter = InstrumentFilter { enabled: true, cutoff: 0x7FF, resonance: 15, mode: 7 };
     i1.first_wave = 0x09;
     i1.gate_timer = 63;
     i1.hard_restart = true;
@@ -186,16 +184,11 @@ fn file_refuses_what_the_model_refuses() {
     let mut b = good.clone();
     b[6] = 6;
     refuse(&b, "dual SID is S7");
-    // An instrument byte with a reserved bit: the waveform's gate bit.
-    let s = full_song();
-    let mut bytes = s.to_bytes();
-    let tables_len = 4 + 2 * (2 + 1 + 1 + 1);
-    // Instrument 2 (empty name) is the last 16 bytes before the tables; its
-    // waveform byte is 1 (length) + 2 in.
-    let at = bytes.len() - tables_len - 16 + 1 + 2;
-    assert_eq!(bytes[at], 0);
-    bytes[at] = 0x01;
-    refuse(&bytes, "a gate bit in the waveform");
+    // Version 1 (instruments with a waveform, pulse width and filter of
+    // their own) is not read (plan-sid-authoring.md D1).
+    let mut b = good.clone();
+    b[4] = 1;
+    refuse(&b, "version 1");
 }
 
 // ---------------------------------------------------------------------------
@@ -331,8 +324,10 @@ fn wave_table_is_waveform_and_arpeggio() {
         seen.push((v.frequency(), v.control()));
     }
     let (c, e, g) = (gt_note_freq_reg(48), gt_note_freq_reg(52), gt_note_freq_reg(55));
-    // One table row a frame; the jump row costs no frame.
-    assert_eq!(seen, vec![(c, 0x41), (e, 0x41), (g, 0x21), (c, 0x41), (e, 0x41), (g, 0x21), (c, 0x41)]);
+    // The note's frame plays the first-frame byte and leaves the pitch to the
+    // table (gplay.c:359-365, 509-512): no pitch yet on a fresh channel. Then
+    // one table row a frame; the jump row costs no frame.
+    assert_eq!(seen, vec![(0, 0x11), (c, 0x41), (e, 0x41), (g, 0x21), (c, 0x41), (e, 0x41), (g, 0x21)]);
 }
 
 #[test]
@@ -357,18 +352,18 @@ fn pulse_table_sets_then_sweeps_the_width() {
         })
         .collect();
     // The note's frame skips the pulse table as GT's does (gplay.c:509-512;
-    // S5.19): the instrument's own width, then the table from frame 1.
-    assert_eq!(widths, vec![0x800, 0x400, 0x410, 0x420, 0x430, 0x410, 0x3F0, 0x3F0]);
+    // S5.19): a fresh channel's width 0, then the table from frame 1.
+    assert_eq!(widths, vec![0, 0x400, 0x410, 0x420, 0x430, 0x410, 0x3F0, 0x3F0]);
 }
 
 #[test]
-fn filter_table_and_instrument_filter_drive_the_chip_filter() {
+fn each_instruments_filter_table_drives_the_chip_filter() {
     let t = |l: u8, r: u8| TableRow { left: l, right: r };
-    // Instrument 1: its own filter (BP, res 9, cutoff 0x123). Instrument 2: a
-    // table: LP with $17 = 0xA2 (res 10, voice 2 routed), cutoff 0x40<<3,
-    // then +1 (8 register steps) for 2 frames.
+    // Instrument 2 (row 1): LP with $17 = 0xA2 (res 10, voice 2 routed),
+    // cutoff 0x40<<3, then +1 (8 register steps) for 2 frames. Instrument 1
+    // (row 5): BP with $17 = 0x91 (res 9, voice 1 routed), cutoff 0x24<<3.
     let mut i1 = ins(0x20);
-    i1.filter = InstrumentFilter { enabled: true, cutoff: 0x123, resonance: 9, mode: 2 };
+    i1.filter_ptr = 5;
     let mut i2 = ins(0x20);
     i2.filter_ptr = 1;
     let mut p0 = blank(8);
@@ -378,7 +373,10 @@ fn filter_table_and_instrument_filter_drive_the_chip_filter() {
         vec![p0, blank(8)],
         [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]],
         vec![i1, i2],
-        Tables { filter: vec![t(0x90, 0xA2), t(0x00, 0x40), t(0x02, 0x01)], ..Default::default() },
+        Tables {
+            filter: vec![t(0x90, 0xA2), t(0x00, 0x40), t(0x02, 0x01), t(0xFF, 0x00), t(0xA0, 0x91), t(0x00, 0x24), t(0xFF, 0x00)],
+            ..Default::default()
+        },
     );
     let mut s = s;
     s.tempo = 1;
@@ -388,9 +386,9 @@ fn filter_table_and_instrument_filter_drive_the_chip_filter() {
     frame(&mut p);
     let f = p.chip().filter();
     assert_eq!((f.cutoff_reg(), f.resonance(), f.mode() & 0x70), (0, 0, 0));
-    frame(&mut p); // row 1: instrument 1's filter
+    frame(&mut p); // row 1: instrument 1's table
     let f = p.chip().filter();
-    assert_eq!((f.cutoff_reg(), f.resonance(), f.mode() & 0x70), (0x123, 9, 0x20));
+    assert_eq!((f.cutoff_reg(), f.resonance(), f.mode() & 0x70), (0x120, 9, 0x20));
     frame(&mut p); // row 2: instrument 2's table, heard from the next frame
     let mut cutoffs = Vec::new();
     for _ in 0..4 {
@@ -411,12 +409,15 @@ fn key_off_releases_and_hard_restart_gates_off_before_the_next_note() {
     i.gate_timer = 2;
     i.hard_restart = true;
     i.first_wave = 0x09;
+    i.wave_ptr = 1;
     let mut p0 = blank(4);
     p0.rows[0] = row(49, 1, 0, 0);
     p0.rows[1] = row(NOTE_KEY_OFF, 0, 0, 0);
     p0.rows[2] = row(NOTE_KEY_ON, 0, 0, 0);
     p0.rows[3] = row(49, 1, 0, 0);
-    let s = song(vec![p0, blank(4)], [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]], vec![i], Tables::default());
+    // Wave row 1: triangle and gate, then stop.
+    let wave = vec![TableRow { left: 0x11, right: 0x00 }, TableRow { left: 0xFF, right: 0x00 }];
+    let s = song(vec![p0, blank(4)], [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]], vec![i], Tables { wave, ..Default::default() });
     let mut p = player(&s);
     // Frame 0: the first-frame waveform 0x09 (test + gate), then triangle + gate.
     frame(&mut p);

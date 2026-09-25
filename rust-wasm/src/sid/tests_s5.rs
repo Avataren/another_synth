@@ -36,12 +36,17 @@ fn tie_song(param: u8) -> SidSong {
         instruments: vec![Instrument {
             name: b"t".to_vec(),
             sustain: 15,
-            waveform: 0x10,
             first_wave: 0x09,
+            wave_ptr: 1,
             ..Default::default()
         }],
-        // Speed row 1: 0x0010 a frame, for the gliding control.
-        tables: Tables { speed: vec![TableRow { left: 0x00, right: 0x10 }], ..Default::default() },
+        // Wave row 1: triangle and gate, then stop. Speed row 1: 0x0010 a
+        // frame, for the gliding control.
+        tables: Tables {
+            wave: vec![TableRow { left: 0x11, right: 0x00 }, TableRow { left: 0xFF, right: 0x00 }],
+            speed: vec![TableRow { left: 0x00, right: 0x10 }],
+            ..Default::default()
+        },
     };
     // Through the file bytes, as every app song arrives.
     SidSong::parse(&song.to_bytes()).expect("parses")

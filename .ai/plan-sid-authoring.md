@@ -1,0 +1,262 @@
+# Plan: SID authoring — edit, create, export `.sng`, `.sid`, `.prg`
+
+Status: **AGREED 2026-09-25 (D1-D3 decided by Morten, see §2). Nothing landed.** Follows `.ai/plan-sid-tracking.md`
+(S0–S5.19 landed: chip, GT-parity player, `.sng` import, grid editing, instrument page).
+
+Brief (Morten, 2026-09-25): make GoatTracker songs editable and exportable — edit the
+song, create new instruments, create a new GT song from scratch, export to GT format,
+and later export `.sid` and `.prg` (PSID, or ideally our own branded playback demo).
+
+---
+
+## 1. Where we are (measured 2026-09-25, `c2530916`)
+
+| Capability | State | Where |
+|---|---|---|
+| Doc model | **Done, GT-shaped** (orderlists per channel, shared pattern pool, 4 step tables, 63 instruments, subsongs) | `src/audio/tracker/sid-doc/types.ts` |
+| `.sng` import (GTS5 + GT1 `GTS!`) | Done, 83/83 corpus round-trip | `gt-sng-read.ts`, `gt-sng-gt1.ts` |
+| `.sng` writer | **Written, not reachable from the UI** | `gt-sng-write.ts` (`exportGtSong`) |
+| Pattern cell editing | Done: note / instrument / command cells, undo, shared-pattern write-back | `grid.ts`, `tracker-store.ts` `syncSidWriteBack` |
+| Instrument page | Done: ADSR, waveform bits, first-frame, gate timer, table rows, table templates, **add instrument** | `SidInstrumentPage.vue`, `sid-instrument-edit.ts`, `sid-table-rows.ts` |
+| Song structure (orderlists, pattern pool, lengths, subsongs) | **Ops only for `setSidOrderEntry`; no UI.** The grid refuses structure edits by design (`grid.ts` header) | `ops.ts` |
+| Song texts, tempo, multispeed | Ops exist (`setSidSongTexts`, `setSidTiming`), no UI | `ops.ts` |
+| New SID song | `createNewSidDoc` exists, **not wired** (New Song only resets to the native format) | `doc.ts`, `TrackerPage.vue:2350` |
+| Export dialog | Registry has AHX, HVL, placeholders; **no SID row** | `song-export/registry.ts` |
+| `.sid` / `.prg` | Nothing | — |
+| GT oracle | `gtref` (GT's `gplay.c`, headless) dumps all 25 registers per frame; 83/84 corpus songs exact vs our Rust player | `.ai/sid-oracle/` |
+
+### The blocker nobody would see until export
+
+There are **two instrument dialects** in the doc, and the exporter only accepts one:
+
+- **GT-style** (`waveform == 0`, what the importer writes): the wave/pulse/filter tables set
+  everything; follows GT's first-frame rules (`player.rs:1070`).
+- **App-style** (own `waveform` / `pulseWidth` / `filter`): what `DEFAULT_SID_INSTRUMENT`
+  is (`waveform 0x40, pulseWidth 0x800`), so **every instrument made by "add instrument",
+  and instrument 1 of every `createNewSidDoc` song**.
+
+`gtSongExportProblem` refuses the second kind (`gt-sng-write.ts`). So today a user who
+creates an instrument can never export the song to GoatTracker. The exporter also refuses
+any `doc.tempo != 6`, which `createNewSidDoc({ tempo })` allows.
+
+This is the first thing to fix, because every later phase (`.sng`, `.sid`, `.prg`) writes
+GT's data format and runs GT's rules.
+
+---
+
+## 2. Decisions
+
+**D1. One instrument dialect: GT-native. DECIDED (Morten, 2026-09-25): "make it all
+goattracker-style instruments".** No conversion path: the tracker has no users yet, so the
+app-style dialect is **removed**, not migrated.
+- `SidInstrument` loses `waveform`, `pulseWidth` and `filter`; the wave/pulse/filter
+  tables set them, as in GT. The SID file codec bumps its version; the old version is
+  refused on load (no files in the wild; demos are `.sng`).
+- `player.rs` loses its non-GT branch (`gt_style`, `player.rs:1070`): GT's first-frame and
+  filter-routing rules apply to every instrument. Settles `sid_decisions.md` §2.
+- The instrument page keeps its "simple" controls (waveform boxes, pulse width, filter)
+  but they edit the instrument's own table rows (the `SidWaveTarget` machinery already does
+  this for wave-table rows).
+- Tests that build own-waveform instruments get table-row instruments instead: Rust
+  `tests_s5.rs`, `tests_s510.rs`, `tests_s512.rs`, `tests/sid_gate_off.rs`, the `.asid`
+  fixtures; TS `sid-doc`, `sid-table-rows`, `sid-instrument-page`, `sid-sng-export` tests
+  and `helpers/sid-chain-song.ts`. The corpus register gates must not move (imports are
+  already GT-style).
+
+**D2. `.sid`/`.prg` player: GoatTracker's own playroutine first, our own later. DECIDED
+(Morten, 2026-09-25): GT's player as the first step; a custom player is the goal once
+everything works (Phase 7).**
+`/tmp/gt2-src/src/player.s` (1 808 lines) states: *"This playroutine source code does not
+fall under the GPL license! Use it, or song binaries created from it freely for any
+purpose, commercial or noncommercial."* That is the 6502 routine every exported GT tune
+runs, and the one our Rust player was already matched against (the "Ballad" note in
+`sid_decisions.md` §3 is about it). So:
+- we ship `player.s` (with its licence header) and assemble it at export time;
+- we write our **own** TS assembler for the subset of the Exomizer-assembler dialect it
+  uses (`.IF/.ELSE/.ENDIF`, `=` defines, labels, `<`/`>`, `.BYTE`), ~500 lines;
+- we write our **own** packer: doc → the data layout `player.s` reads (orderlists,
+  packed patterns, instrument columns, tables). `greloc.c` (GT's relocator) is GPL, so it
+  is a reference for facts only, like `gplay.c` has been — no code copied.
+
+This is a far smaller and safer job than a from-scratch 6502 player, and the result is
+bit-for-bit GT's behaviour on a real C64. It also builds everything the custom player
+needs later: the 6502 test emulator, the per-frame register gate, the PSID/PRG wrappers,
+and the assembler.
+*Rejected:* pre-rendered register dump per frame — huge (25 regs × 50 Hz), doesn't loop
+cleanly, not what "GoatTracker export" means. **Action before Phase 4:** confirm the
+licence line in the upstream GT 2.7x `player.s` (the local copy's header says 2.68).
+
+**D3. `.sid` wrapper: PSID v2. DECIDED (Morten took the recommendation, 2026-09-25).** This
+reverses the old plan's RSID pick. GT's routine is init/play shaped, which is exactly PSID; PSID is what HVSC,
+sidplayfp, DeepSID and every hardware SID player expect. Multispeed songs set a CIA timer
+in init with the speed bit set, as GT's own exports do. "Runs on a native C64" is covered
+by the `.prg` export (D4), which drives the player from its own IRQ. RSID stays optional.
+
+**D4. `.prg` in two steps.** First a plain `.prg` (BASIC `SYS` stub + IRQ shell + player +
+data, a text screen with title/author) — small and useful on its own. Then the **branded
+demo** as a separate phase once there is a brand to draw: logo (charset or bitmap),
+colours, maybe raster bars/scroller/VU. That needs design input from you, so it is not
+scheduled until assets exist.
+
+**D5. Scope limits for this plan.** Single SID only (dual SID stays S7 of the old plan).
+No `.sid` import. Chip model and multispeed are not in a `.sng` (reported as notes, as now);
+they ARE written into `.sid`/`.prg` (PSID flags, CIA timer).
+
+**D6. Tempo for new songs.** Keep `doc.tempo = 6` for everything we create; the song
+settings panel's "tempo" writes/updates an `F` command on row 0 of voice 1's first pattern
+(GT's own way). Fixes the exporter refusal without a format change. `sid_decisions.md` §4
+(tempo `6*mult-1` at multispeed) gets fixed in the same phase since it touches the same code.
+
+---
+
+## 3. Phases
+
+Each phase is independently landable and useful. Gates follow the existing discipline
+(red-first, true refusal texts, corpus counts unchanged, `npm run test:run`, cargo, lint,
+vue-tsc).
+
+### Phase 1 — `.sng` export in the dialog + GT-native instruments (S)
+
+**Progress (2026-09-25, branch `agent/sid-authoring-p1-0925a`): part 1a LANDED on the branch —
+the dialect removal (D1).** Done:
+- Rust `song.rs`: `Instrument` has no `waveform`/`pulse_width`/`filter`; `InstrumentFilter`
+  gone; ASID file version 2 (9-byte instrument), version 1 refused. `player.rs`: the non-GT
+  trigger branch and `gt_style` are gone; every instrument runs GT's first-frame rules.
+- TS mirror: `types.ts`, `doc.ts` (`SID_FILE_VERSION = 2`), `sid-file-codec.ts`, both `.sng`
+  readers, `gt-sng-write.ts` (own-field refusal gone), `ops.ts`, the simulator
+  (`sid-instrument-visuals.ts`, parity fixture regenerated from Rust and matching).
+- New instruments and new songs sound: `DEFAULT_SID_INSTRUMENT` = GT's new instrument
+  (first-frame $09, gate timer 2, hard restart); `newSidInstrument` and `createNewSidDoc`
+  append `NEW_SID_INSTRUMENT_WAVE_ROWS` (41 00, FF 00) / `_PULSE_ROWS` (88 00, FF 00) and
+  point at them; gate timer = `newSidGateTimer(multiplier)`.
+- Instrument page: waveform boxes edit the sounding byte (first-frame / wave row / wave
+  command; no "instrument's own" target); Pulse card's Start width edits the pulse table's
+  first width row or appends one (`setSidInstrumentStartWidth`); Filter card edits the
+  filter table's mode + cutoff rows or appends them (`setSidInstrumentFilterStart`), with
+  mode, resonance, cutoff (8-bit) and per-voice routing boxes. Templates seed from table
+  rows (`sidInstrumentWaveform` etc.).
+- Fixtures regenerated through the app chain: `s3-chain.asid`, `s59-drum-example.asid`,
+  `sid-visuals-parity.json`; wasm rebuilt. Test expectations moved only where GT's
+  rules say so (table starts the frame after the note; fresh channel width 0; the note
+  frame keeps the old pitch when a wave table sets it) — each commented in place.
+
+**Next (part 1b), a fresh session:** add the `.sng` row to the export dialog
+(`song-export/types.ts` `SongExportFormatId` += `'sng'`, a `sidExporter` over
+`exportGtSong` in `registry.ts`, `warnings` = the writer's `notes`), then the `gtref`
+gate: corpus import → export → `gtref` register stream equals the original's
+(`.ai/sid-oracle/`, `/tmp/gtref/gtref` — rebuild from `/tmp/gt2-src` if /tmp was cleared).
+Rust toolchain: `export PATH="$HOME/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin:$PATH"`
+(no rustup shims on this machine); full suite `cargo test --features native-host
+--no-fail-fast` (one known failure: `ahx_render_golden::manifest_covers_every_fixture`).
+The fastest visible win: edit an imported song, export it, open it in GoatTracker.
+- `SongExportFormatId` += `'sng'`; `sidExporter` in `song-export/` over `exportGtSong`;
+  `check` = `gtSongExportProblem`, `warnings` = the writer's `notes` (chip model, `-S`).
+- D1: remove the app-style dialect (model, codec, player, tests — see D1).
+  `DEFAULT_SID_INSTRUMENT` gets GT's new-instrument defaults (`ginstr.c:216-220`: first
+  wave `$09`, gate timer 2×multiplier); `newSidInstrument` appends its own wave rows
+  (`41 00`, `FF 00`) and pulse row and points at them.
+- The exporter's own-waveform refusal goes away with the fields.
+- **Gate:** every corpus song imports → exports → `gtref` register stream identical to the
+  original's; a new instrument added to a corpus song exports and plays in `gtref`;
+  round-trip doc-equal; corpus register gates (cargo + `gtref`) unchanged by the
+  dialect removal.
+
+### Phase 2 — song structure editing (M/L)
+GT's orderlist and pattern pool can't go through the tracker's one-sequence grid (that
+is why the grid refuses them), so this is a dedicated **Song panel** in GT's own shape.
+- Ops (pure, `ops.ts`, each one undo step via `editSidDoc`):
+  insert/delete/move order entry, set restart, set transpose/repeat;
+  new pattern / clone pattern / set pattern length (1..128) / delete unused pattern;
+  delete & clone instrument (renumbering every row that names it);
+  add/delete/select subsong; texts; tempo (D6); multispeed; chip model (exists).
+  Table insert/delete already remap every pointer, jump, wave command and pattern
+  command (`sid-table-rows.ts` `remapReferences`); instrument delete/clone and pattern
+  delete need the same treatment for rows and orderlists.
+- UI: per-voice orderlist columns (pattern number, transpose, repeat, restart marker),
+  pattern list with length and users, subsong selector; playhead follows the orderlist.
+  Grid shows the chosen subsong (`projectSidPatterns(doc, subsong)` already takes it).
+- Grid conveniences that map cleanly onto one pattern: insert/delete row inside a cell's
+  pattern (shifts that pattern only), "edit this pattern only" (clone-on-write when a
+  pattern is shared, opt-in).
+- Open question: per-channel cursors (`sid_decisions.md` §5) — defer unless the panel
+  makes the drift visible.
+- **Gate:** op-level round-trip tests; structure edits on corpus songs still export and
+  match `gtref`; undo restores byte-identical docs.
+
+### Phase 3 — new SID song from scratch (S)
+- New Song dialog gains a format choice (Native / SID-GoatTracker; AHX's `createNewAhxDoc`
+  is in the same unwired state and can join the same dialog).
+- `createNewSidDoc`: chip model, multispeed, pattern length; GT-native instrument 1;
+  tempo per D6. Store action `resetToNewSidSong(options)` wiring doc, slots, song bank
+  and the SID transport (same path a `.sng` load takes).
+- **Gate:** new song → type notes → export `.sng` → `gtref` plays it register-identical to
+  our player; load back → doc-equal.
+
+### Phase 4 — `.sid` export (PSID v2) (M/L)
+- `packages/…` or `src/audio/tracker/sid-export/`:
+  - `asm6502.ts` — our mini assembler (dialect of `player.s`), with its own unit tests
+    against hand-assembled opcodes.
+  - `gt-pack.ts` — doc → packed song data at an address; feature defines chosen from what
+    the song uses (start with everything on; strip later as a size optimisation).
+  - `psid.ts` — 124-byte v2 header: name/author/released, load/init/play, songs =
+    subsongs, speed bits, flags (PAL, 6581/8580 from `chipModel`).
+- Export dialog row "C64 SID (.sid)" with a load-address option ($1000 default).
+- **Test harness (the key gate):** a small 6502 CPU emulator (own code, test-only, Rust or
+  TS) that runs init + N play calls and captures $D400-$D418 per frame. Then, across the
+  corpus, `.sng` → doc → `.sid` → emulator register stream must equal `gtref` (and so our
+  Rust player) frame for frame, all subsongs, after the known start offset.
+- Local manual check in VICE `vsid` / sidplayfp; you on real hardware for the final word.
+- Size guard: refuse (true reason) when player + data would overflow the chosen memory map.
+
+### Phase 5 — `.prg` export, plain (S/M)
+- BASIC stub (`10 SYS 2061`), IRQ shell calling play once per frame (or CIA-timed at
+  multispeed), subsong keys 1-9, a text screen with title/author/"made with another_synth".
+- Also offer raw `.bin` at an address (GT's third format) for people linking the tune
+  into their own code.
+- **Gate:** same emulator harness, now booting the `.prg` from the stub; VICE `x64sc` smoke.
+
+### Phase 6 — branded playback demo (M, needs design input)
+Same player+data blob as Phase 5, with a demo shell: logo (charset/bitmap), colour
+scheme, raster effects, scroller with song text, per-voice VU from the ghost registers.
+Kept under a fixed raster budget so it never disturbs the player. **Needs from you:** logo
+art (or permission to draw a PETSCII/charset one), colours, what the scroller says.
+
+### Phase 7 — our own 6502 playroutine (L, later)
+Morten's goal once the GT-player path works (D2). Replaces `player.s` behind the same
+packer interface and wrappers. It must play the same doc to the same register stream,
+so the Phase 4 emulator gate carries over unchanged: GT's player becomes the oracle.
+Worth doing for what GT's routine can't give: our branding in the binary, a smaller or
+faster routine for demos, and room for features beyond GT (dual SID, our own commands).
+
+---
+
+## 4. Order and sizing
+
+1 → 3 → 2 → 4 → 5 → 6 is the order that gets a usable "make a song and take it to GT"
+loop soonest (Phase 3 is small and makes Phase 2 testable from a clean slate). Phase 4
+can start in parallel with Phase 2 (different files: `sid-export/` vs store/UI), after
+the D2 licence confirmation.
+
+| Phase | Size | Depends on |
+|---|---|---|
+| 1 `.sng` export + GT-native instruments | S | — |
+| 3 New SID song | S | 1 |
+| 2 Song structure editing | M/L | 1 |
+| 4 `.sid` (PSID) | M/L | 1, D2 check |
+| 5 `.prg` plain | S/M | 4 |
+| 6 Branded demo | M | 5, brand assets |
+| 7 Custom player | L | 4 harness |
+
+## 5. Risks
+
+- **Packer correctness** is the whole of Phase 4: the per-frame emulator comparison
+  against `gtref` over 83 songs is what makes it safe; without that harness, don't ship.
+- **Dialect removal** touches the Rust player, which is at 83/84 GT parity: only the
+  non-GT branch may go; the corpus register comparison is the gate.
+- **GT start-up offset** (our first note 5 frames before GT's, `sid_decisions.md`): the
+  `.sid` will match GT, so it will be 5 frames "late" vs the editor. Harmless, but
+  comparisons must align on it.
+- **Multispeed in PSID** relies on the CIA timer set in init; some players handle that
+  poorly. Test in sidplayfp and VICE.
+- **Licence:** `player.s` free (verify upstream); `greloc.c`, `gplay.c`, reSID are GPL —
+  facts only, as before.

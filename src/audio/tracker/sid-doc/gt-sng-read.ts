@@ -236,9 +236,6 @@ function readGts5(bytes: Uint8Array, notes: GtImportNote[], hints: GtSongHints):
       release: b[1]! & 0x0f,
       // A GT instrument has no waveform, pulse width or filter of its own: its
       // tables set them. The doc's neutral values say "none".
-      waveform: 0,
-      pulseWidth: 0,
-      filter: { enabled: false, cutoff: 0, resonance: 0, mode: 0 },
       firstWave: b[8]!,
       gateTimer: gate & 0x3f,
       hardRestart: (gate & GT_GATE_NO_HARD_RESTART) === 0,

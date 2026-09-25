@@ -29,12 +29,12 @@ import {
  *      1   pattern count 1..208; per pattern: 1 row count R 1..128,
  *          R x (note, instrument, command, param)
  *      1   instrument count 0..63; per instrument: a length byte 0..16 and
- *          the latin-1 name, then 15 bytes:
- *          attack<<4|decay, sustain<<4|release, waveform, pulse width low,
- *          pulse width high (0..15), cutoff low, cutoff high (0..7),
- *          resonance<<4|filter-enabled<<3|mode, first-frame waveform,
+ *          the latin-1 name, then 9 bytes:
+ *          attack<<4|decay, sustain<<4|release, first-frame waveform,
  *          hard-restart<<7|no-gate-off<<6|gate timer, vibrato delay,
- *          wave, pulse, filter and speed table pointers
+ *          wave, pulse, filter and speed table pointers (version 1 also
+ *          had the instrument's own waveform, pulse width and filter; it is
+ *          not read, plan-sid-authoring.md D1)
  *      4x  the wave, pulse, filter and speed tables: a row count N 0..255,
  *          N left bytes, then N right bytes (GoatTracker's column layout)
  *   and nothing after.
@@ -79,12 +79,6 @@ export function serializeSidFile(doc: SidDoc): Uint8Array {
     out.push(
       (ins.attack << 4) | ins.decay,
       (ins.sustain << 4) | ins.release,
-      ins.waveform,
-      ins.pulseWidth & 0xff,
-      ins.pulseWidth >> 8,
-      ins.filter.cutoff & 0xff,
-      ins.filter.cutoff >> 8,
-      (ins.filter.resonance << 4) | (ins.filter.enabled ? 0x08 : 0) | ins.filter.mode,
       ins.firstWave,
       (ins.hardRestart ? 0x80 : 0) | (ins.noGateOff ? 0x40 : 0) | ins.gateTimer,
       ins.vibratoDelay,
@@ -175,21 +169,16 @@ export function parseSidFile(bytes: Uint8Array): SidDoc {
   const instrumentCount = r.byte('the instrument count');
   for (let i = 0; i < instrumentCount; i++) {
     const name = r.text(16, 'an instrument name');
-    const b = Array.from({ length: 15 }, () => r.byte('an instrument'));
-    const [ad, sr, waveform, pwLo, pwHi, cutLo, cutHi, filt, firstWave, gate, vibratoDelay, wavePtr, pulsePtr, filterPtr, speedPtr] = b as [
-      number, number, number, number, number, number, number, number, number, number, number, number, number, number, number,
+    const b = Array.from({ length: 9 }, () => r.byte('an instrument'));
+    const [ad, sr, firstWave, gate, vibratoDelay, wavePtr, pulsePtr, filterPtr, speedPtr] = b as [
+      number, number, number, number, number, number, number, number, number,
     ];
-    if (pwHi > 0x0f) throw new Error(`instrument ${i + 1}: the pulse width's high byte is over 15`);
-    if (cutHi > 0x07) throw new Error(`instrument ${i + 1}: the cutoff's high byte is over 7`);
     instruments.push({
       name,
       attack: ad >> 4,
       decay: ad & 0x0f,
       sustain: sr >> 4,
       release: sr & 0x0f,
-      waveform,
-      pulseWidth: (pwHi << 8) | pwLo,
-      filter: { enabled: (filt & 0x08) !== 0, cutoff: (cutHi << 8) | cutLo, resonance: filt >> 4, mode: filt & 0x07 },
       firstWave,
       gateTimer: gate & 0x3f,
       hardRestart: (gate & 0x80) !== 0,

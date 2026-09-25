@@ -10,7 +10,13 @@ import {
   type SidTableName,
   type SidTableRow,
 } from 'src/audio/tracker/sid-doc';
-import { hexByte, sidTableRowsFrom } from 'src/audio/tracker/sid-instrument-edit';
+import {
+  hexByte,
+  sidInstrumentFilterStart,
+  sidInstrumentStartWidth,
+  sidInstrumentWaveform,
+  sidTableRowsFrom,
+} from 'src/audio/tracker/sid-instrument-edit';
 import { sidCutoffHz } from 'src/audio/tracker/sid-instrument-visuals';
 
 /**
@@ -283,19 +289,20 @@ export const SID_TABLE_TEMPLATES: Record<SidTableName, readonly SidTableTemplate
     { id: 'drum', label: 'Drum hit', title: 'A frame of noise at a high fixed note, then pulse falling in pitch, then released.' },
   ],
   pulse: [
-    { id: 'set', label: 'Fixed width', title: 'Set the width to the instrument\'s pulse width, then stop.' },
+    { id: 'set', label: 'Fixed width', title: 'Set the width the instrument starts at (50 % if it sets none), then stop.' },
     { id: 'sweep', label: 'Up/down sweep', title: 'Start at 25 %, sweep up and down for ever (the classic PWM).' },
   ],
   filter: [
     { id: 'sweep', label: 'Low-pass sweep', title: 'Low-pass, resonance 8, voice 1 filtered (the preview voice; set the routing bits for the voice the song plays it on): the cutoff opens, then stops.' },
-    { id: 'set', label: 'Fixed low-pass', title: 'Low-pass at the instrument\'s cutoff and resonance, then stop.' },
+    { id: 'set', label: 'Fixed low-pass', title: 'Low-pass at the instrument\'s cutoff and resonance (cutoff 40, resonance 0 if it sets none), every voice filtered, then stop.' },
   ],
   speed: [{ id: 'vibrato', label: 'Vibrato', title: 'A row of vibrato: speed 4, depth 20. Tune both on the Vibrato card.' }],
 };
 
-/** The rows of a starter sequence appended at 1-based row `start`, for instrument `ins`. */
-function templateRows(table: SidTableName, id: string, start: number, ins: SidInstrument): SidTableRow[] | null {
-  const wave = ((ins.waveform & 0xf0) || 0x40) | (ins.waveform & 0x0e) | 0x01;
+/** The rows of a starter sequence appended at 1-based row `start`, for instrument `n` of `doc`. */
+function templateRows(doc: SidDoc, table: SidTableName, id: string, start: number, n: number): SidTableRow[] | null {
+  const own = sidInstrumentWaveform(doc, n);
+  const wave = ((own & 0xf0) || 0x40) | (own & 0x0e) | 0x01;
   const loop = (to: number): SidTableRow => ({ left: 0xff, right: to });
   const stop: SidTableRow = { left: 0xff, right: 0 };
   switch (`${table}:${id}`) {
@@ -316,19 +323,21 @@ function templateRows(table: SidTableName, id: string, start: number, ins: SidIn
         stop,
       ];
     case 'pulse:set': {
-      const width = ins.pulseWidth || 0x800;
+      const width = sidInstrumentStartWidth(doc, n)?.width ?? 0x800;
       return [{ left: 0x80 | (width >> 8), right: width & 0xff }, stop];
     }
     case 'pulse:sweep':
       return [{ left: 0x84, right: 0x00 }, { left: 0x40, right: 0x20 }, { left: 0x40, right: 0xe0 }, loop(start + 1)];
     case 'filter:sweep':
       return [{ left: 0x90, right: 0x81 }, { left: 0x00, right: 0x10 }, { left: 0x60, right: 0x02 }, stop];
-    case 'filter:set':
+    case 'filter:set': {
+      const now = sidInstrumentFilterStart(doc, n);
       return [
-        { left: 0x80 | ((ins.filter.mode || 1) << 4), right: (ins.filter.resonance << 4) | 0x01 },
-        { left: 0x00, right: ins.filter.cutoff >> 3 },
+        { left: 0x80 | ((now?.mode || 1) << 4), right: ((now?.resonance ?? 0) << 4) | 0x07 },
+        { left: 0x00, right: now?.cutoff ?? 0x40 },
         stop,
       ];
+    }
     case 'speed:vibrato':
       return [{ left: 0x04, right: 0x20 }];
     default:
@@ -345,7 +354,7 @@ export function appendSidTableTemplate(doc: SidDoc, table: SidTableName, id: str
   const ins = doc.instruments[n - 1];
   if (!ins) return { ok: false, reason: `There is no instrument ${n}.` };
   const start = doc.tables[table].length + 1;
-  const rows = templateRows(table, id, start, ins);
+  const rows = templateRows(doc, table, id, start, n);
   if (!rows) return { ok: false, reason: `There is no ${table} sequence "${id}".` };
   if (start - 1 + rows.length > SID_MAX_TABLE_ROWS) return { ok: false, reason: `The ${table} table has no room for ${rows.length} more rows.` };
   const instruments = doc.instruments.slice();

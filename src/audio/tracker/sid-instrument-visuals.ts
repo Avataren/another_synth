@@ -278,9 +278,8 @@ export type SidInstrumentFrame = readonly [number, number, number, number, numbe
 
 const i8 = (v: number): number => (v << 24) >> 24;
 
-/** What set the waveform byte a frame plays: the instrument, its first-frame byte, a wave-table row, or a `$F7` wave-table command. */
+/** What set the waveform byte a frame plays: the instrument's first-frame byte, a wave-table row, or a `$F7` wave-table command. */
 export type SidWaveSource =
-  | { readonly kind: 'instrument' }
   | { readonly kind: 'first-frame' }
   | { readonly kind: 'wave-row'; readonly row: number }
   | { readonly kind: 'wave-command'; readonly row: number }
@@ -322,18 +321,13 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
   let gate = true;
   let firstFrame = true;
   const firstWave = ins.firstWave;
-  // A GT-style instrument (no waveform of its own) runs GT's first-frame byte:
-  // $00 keeps waveform and gate, $FE/$FF set the gate only, else it is the
-  // channel's waveform until the table sets one.
-  const gtStyle = ins.waveform === 0;
-  // The player's control byte (S5.9): the instrument's gate-clear waveform
-  // with the gate bit set, then the table's bytes whole; written `& gate mask`.
+  // GT's first-frame byte: $00 keeps waveform and gate (a fresh channel's
+  // gate is shut), $FE/$FF set the gate only, else it is the channel's
+  // waveform until the table sets one. The player's control byte (S5.9) is
+  // then the table's bytes whole, written `& gate mask`.
   let waveform = 0;
   let waveSource: SidWaveSource = { kind: 'none' };
-  if (!gtStyle) {
-    waveform = ins.waveform | 0x01;
-    waveSource = { kind: 'instrument' };
-  } else if (firstWave === 0) gate = false;
+  if (firstWave === 0) gate = false;
   else if (firstWave >= 0xfe) gate = firstWave === 0xff;
   else {
     waveform = firstWave;
@@ -343,7 +337,8 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
   let waveRow = 0;
   let pulseRow = 0;
   let filterRow = 0;
-  let pw = ins.pulseWidth;
+  // A fresh channel's width: GT sets it only from the pulse table.
+  let pw = 0;
   let wavePtr = ins.wavePtr;
   let waveWait = 0;
   let pulsePtr = ins.pulsePtr;
@@ -351,19 +346,12 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
   let pulseSpeed = 0;
   let vibDelay = ins.vibratoDelay;
   let vibTime = 0;
-  let resFilt = ins.filter.enabled ? 0x01 : 0;
+  let resFilt = 0;
   let cutoff = 0;
   let mode = 0;
-  let filterPtr = 0;
+  let filterPtr = ins.filterPtr;
   let filterTime = 0;
   let filterSpeed = 0;
-  if (ins.filterPtr > 0) {
-    filterPtr = ins.filterPtr;
-  } else if (ins.filter.enabled) {
-    cutoff = ins.filter.cutoff;
-    resFilt = (ins.filter.resonance << 4) | (resFilt & 0x0f);
-    mode = ins.filter.mode;
-  }
 
   // vibrato(): GoatTracker's u8 vibtime (gplay.c:615-640); a left of $80 up
   // is the fine mode, the step the gap to the next note shifted by `right`.
@@ -444,7 +432,7 @@ export function simulateSidInstrument(doc: SidDoc, instrument: number, note: num
 
   /** wave_step(): `true` when a step set a note (or ran a table command), ending the frame before the tick effects. */
   const waveStep = (): boolean => {
-    if (firstFrame && (firstWave !== 0 || gtStyle)) return false;
+    if (firstFrame) return false;
     let jumped = false;
     let noted = false;
     let command: [number, number] | null = null;

@@ -6,7 +6,7 @@
 //!
 //! Layout (little-endian, no padding; the TS codec's header has the same
 //! table):
-//!   'ASID', version (1), chip model (0 = 8580, 1 = 6581), channels (3),
+//!   'ASID', version (2), chip model (0 = 8580, 1 = 6581), channels (3),
 //!   speed multiplier (1..16), tempo (1..127), then three texts (length byte
 //!   0..32 + latin-1): name, author, copyright.
 //!   subsong count 1..32; per subsong, per channel: entry count E 1..254,
@@ -14,10 +14,11 @@
 //!   pattern count 1..208; per pattern: row count 1..128, rows x (note,
 //!   instrument, command, param).
 //!   instrument count 0..63; per instrument: name (length byte 0..16 +
-//!   latin-1), AD, SR, waveform (gate bit clear), pulse width lo, hi (0..15),
-//!   cutoff lo, hi (0..7), resonance<<4 | enabled<<3 | mode, first-frame
-//!   waveform, hard-restart<<7 | no-gate-off<<6 | gate timer, vibrato delay,
-//!   wave, pulse, filter, speed table pointers.
+//!   latin-1), AD, SR, first-frame waveform, hard-restart<<7 |
+//!   no-gate-off<<6 | gate timer, vibrato delay, wave, pulse, filter, speed
+//!   table pointers. An instrument is GoatTracker's: it has no waveform,
+//!   pulse width or filter of its own, its tables set them (version 1, which
+//!   had those fields, is not read: plan-sid-authoring.md D1).
 //!   four tables (wave, pulse, filter, speed): count 0..255, the left
 //!   column, then the right.
 //!   Nothing after.
@@ -30,7 +31,7 @@ use super::SidModel;
 use std::fmt;
 
 pub const MAGIC: [u8; 4] = *b"ASID";
-pub const SONG_FILE_VERSION: u8 = 1;
+pub const SONG_FILE_VERSION: u8 = 2;
 pub const SID_CHANNELS: usize = 3;
 pub const MAX_PATTERN_ROWS: usize = 128;
 pub const MAX_PATTERNS: usize = 208;
@@ -97,16 +98,6 @@ pub struct Tables {
     pub speed: Vec<TableRow>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InstrumentFilter {
-    pub enabled: bool,
-    /// 11-bit cutoff register.
-    pub cutoff: u16,
-    pub resonance: u8,
-    /// LP 1 | BP 2 | HP 4 (the chip's $18 bits 4..6, shifted down).
-    pub mode: u8,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Instrument {
     pub name: Vec<u8>,
@@ -114,9 +105,6 @@ pub struct Instrument {
     pub decay: u8,
     pub sustain: u8,
     pub release: u8,
-    pub waveform: u8,
-    pub pulse_width: u16,
-    pub filter: InstrumentFilter,
     pub first_wave: u8,
     pub gate_timer: u8,
     pub hard_restart: bool,
@@ -295,12 +283,9 @@ impl SidSong {
         let mut instruments = Vec::with_capacity(instrument_count);
         for _ in 0..instrument_count {
             let name = r.text(MAX_INSTRUMENT_NAME, "an instrument name")?;
-            let mut b = [0u8; 15];
+            let mut b = [0u8; 9];
             for v in b.iter_mut() {
                 *v = r.byte("an instrument")?;
-            }
-            if b[2] & 0x01 != 0 || b[4] > 0x0F || b[6] > 0x07 {
-                return err("an instrument has a reserved bit set");
             }
             instruments.push(Instrument {
                 name,
@@ -308,23 +293,15 @@ impl SidSong {
                 decay: b[0] & 0x0F,
                 sustain: b[1] >> 4,
                 release: b[1] & 0x0F,
-                waveform: b[2],
-                pulse_width: (b[4] as u16) << 8 | b[3] as u16,
-                filter: InstrumentFilter {
-                    enabled: b[7] & 0x08 != 0,
-                    cutoff: (b[6] as u16) << 8 | b[5] as u16,
-                    resonance: b[7] >> 4,
-                    mode: b[7] & 0x07,
-                },
-                first_wave: b[8],
-                gate_timer: b[9] & 0x3F,
-                hard_restart: b[9] & 0x80 != 0,
-                no_gate_off: b[9] & 0x40 != 0,
-                vibrato_delay: b[10],
-                wave_ptr: b[11],
-                pulse_ptr: b[12],
-                filter_ptr: b[13],
-                speed_ptr: b[14],
+                first_wave: b[2],
+                gate_timer: b[3] & 0x3F,
+                hard_restart: b[3] & 0x80 != 0,
+                no_gate_off: b[3] & 0x40 != 0,
+                vibrato_delay: b[4],
+                wave_ptr: b[5],
+                pulse_ptr: b[6],
+                filter_ptr: b[7],
+                speed_ptr: b[8],
             });
         }
 
@@ -433,16 +410,9 @@ impl SidSong {
         for ins in &self.instruments {
             out.push(ins.name.len() as u8);
             out.extend_from_slice(&ins.name);
-            let f = &ins.filter;
             out.extend_from_slice(&[
                 ins.ad(),
                 ins.sr(),
-                ins.waveform,
-                (ins.pulse_width & 0xFF) as u8,
-                (ins.pulse_width >> 8) as u8,
-                (f.cutoff & 0xFF) as u8,
-                (f.cutoff >> 8) as u8,
-                (f.resonance << 4) | if f.enabled { 0x08 } else { 0 } | f.mode,
                 ins.first_wave,
                 if ins.hard_restart { 0x80 } else { 0 } | if ins.no_gate_off { 0x40 } else { 0 } | ins.gate_timer,
                 ins.vibrato_delay,

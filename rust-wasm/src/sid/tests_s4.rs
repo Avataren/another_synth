@@ -18,7 +18,7 @@ use super::*;
 const SPF: usize = 880;
 
 fn ins(waveform: u8) -> Instrument {
-    Instrument { name: b"t".to_vec(), attack: 0, decay: 0, sustain: 15, release: 0, waveform, pulse_width: 0x800, ..Default::default() }
+    Instrument { name: b"t".to_vec(), attack: 0, decay: 0, sustain: 15, release: 0, first_wave: waveform | GATE, ..Default::default() }
 }
 
 fn row(note: u8, instrument: u8) -> Row {
@@ -52,8 +52,12 @@ fn chord() -> SidSong {
         copyright: Vec::new(),
         subsongs: vec![Subsong { orderlists: vec![list(0, 2), list(1, 1), list(2, 1)] }],
         patterns: vec![p0, p1, p2],
-        instruments: vec![ins(0x10), ins(0x20), ins(0x40)],
-        tables: Tables::default(),
+        instruments: vec![ins(0x10), ins(0x20), Instrument { pulse_ptr: 1, ..ins(0x40) }],
+        // The pulse voice's width, 0x800, from its pulse table.
+        tables: Tables {
+            pulse: vec![TableRow { left: 0x88, right: 0x00 }, TableRow { left: 0xFF, right: 0x00 }],
+            ..Default::default()
+        },
     }
 }
 
@@ -100,7 +104,13 @@ fn render_taps(p: &mut SidSongPlayer, frames: usize) -> (Vec<f32>, [Vec<f32>; 3]
 fn taps_leave_the_mix_bit_identical_to_render() {
     // A filtered voice too: the filter must see exactly the same input.
     let mut s = chord();
-    s.instruments[1].filter = InstrumentFilter { enabled: true, cutoff: 0x300, resonance: 8, mode: 1 };
+    // Instrument 2's filter table: LP, res 8, every voice routed, cutoff 0x60<<3.
+    s.instruments[1].filter_ptr = 1;
+    s.tables.filter = vec![
+        TableRow { left: 0x90, right: 0x87 },
+        TableRow { left: 0x00, right: 0x60 },
+        TableRow { left: 0xFF, right: 0x00 },
+    ];
     s.model = SidModel::Sid6581;
     let mut plain = player(&s);
     let mut tapped = player(&s);
