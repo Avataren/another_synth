@@ -73,8 +73,64 @@
       </div>
 
       <div class="sid-body">
+        <!-- What the note plays, frame by frame: the ground truth every card below reads from. -->
+        <fieldset class="sid-card sid-timeline" data-testid="sid-timeline">
+          <legend>What a note plays</legend>
+          <div class="sid-timeline__cursor">
+            <label for="sid-frame-cursor">Frame</label>
+            <input
+              id="sid-frame-cursor"
+              type="range"
+              min="0"
+              :max="LANE_FRAMES - 1"
+              step="1"
+              :value="cursor"
+              data-testid="sid-frame-cursor"
+              title="Pick a frame of the note: the waveform, the drawings and the table rows below show that frame"
+              @input="cursor = Number(($event.target as HTMLInputElement).value)"
+            />
+            <span class="sid-mono" data-testid="sid-frame-readout">{{ cursor }} · {{ frameMs(cursor) }} ms</span>
+          </div>
+          <svg
+            class="sid-wave-lane"
+            :viewBox="`0 0 ${LANE_FRAMES} 20`"
+            preserveAspectRatio="none"
+            data-testid="sid-wave-lane"
+            @click="pickFrame"
+          >
+            <rect
+              v-for="(t, f) in trace"
+              :key="f"
+              :x="f"
+              :y="t.gate ? 0 : 10"
+              width="1"
+              :height="t.gate ? 20 : 10"
+              :class="`sid-wave--${sidWaveClass(t.waveform)}`"
+            >
+              <title>Frame {{ f }}: {{ sidControlName(t.waveform, false) }}, gate {{ t.gate ? 'on' : 'off' }}</title>
+            </rect>
+            <rect class="sid-cursor" :x="cursor" y="0" width="1" height="20" />
+          </svg>
+          <div class="sid-legend sid-dim">
+            <span v-for="k in WAVE_LEGEND" :key="k.cls"><i :class="`sid-wave--${k.cls}`" />{{ k.label }}</span>
+            <span><i class="sid-legend__half" />gate off (releasing)</span>
+          </div>
+          <p class="sid-now" data-testid="sid-now">
+            <b>Frame {{ cursor }}:</b>
+            <span data-testid="sid-now-wave"><b>{{ sidWaveformName(now.waveform) }}</b>, gate {{ now.gate ? 'on' : 'off' }} ({{ sourceText(now.waveSource) }})</span>
+            · <span data-testid="sid-now-pitch">{{ pitchText }}</span>
+            · <span>width {{ hex3(nowFrame[1]) }} ({{ ((nowFrame[1] / 4096) * 100).toFixed(0) }} %){{ now.pulseRow ? `, pulse row ${hexByte(now.pulseRow)}` : '' }}</span>
+            <template v-if="usesFilter">
+              · <span>cutoff {{ hex3(nowFrame[3]) }} ({{ Math.round(sidCutoffHz(doc.chipModel, nowFrame[3])) }} Hz){{ now.filterRow ? `, filter row ${hexByte(now.filterRow)}` : '' }}</span>
+            </template>
+          </p>
+          <p class="sid-dim sid-note">
+            A C-4 played on the preview voice, 50 frames a second ({{ LANE_FRAMES }} frames). Drag the frame, or click the strip.
+          </p>
+        </fieldset>
+
         <div class="sid-col">
-          <fieldset class="sid-card">
+          <fieldset class="sid-card" data-testid="sid-card-wave">
             <legend>Name &amp; waveform</legend>
             <label class="sid-field">
               <span>Name</span>
@@ -86,16 +142,46 @@
                 @change="edit({ name: ($event.target as HTMLInputElement).value })"
               />
             </label>
+            <SidRowPointer
+              label="Wave table"
+              :model-value="instrument.wavePtr"
+              :table-length="doc.tables.wave.length"
+              none-text="none: the waveform below plays all through the note"
+              testid="sid-field-wavePtr"
+              title="The wave table row the note starts on: it sets the waveform and the arpeggio frame by frame."
+              @update:model-value="edit({ wavePtr: $event })"
+              @reveal="reveal('wave', $event)"
+            />
+            <AhxSegmented
+              v-if="soundingTarget.kind !== 'instrument'"
+              label="Boxes edit"
+              :model-value="targetMode"
+              :options="targetOptions"
+              testid="sid-seg-wave-target"
+              title="What the waveform boxes change: the byte that sets the waveform at the frame cursor (what you hear there), or the instrument's own waveform."
+              @update:model-value="targetMode = $event"
+            />
+            <p class="sid-wave-status" :class="{ 'sid-warn': ownUnheard }" data-testid="sid-wave-status">{{ waveStatus }}</p>
             <div class="sid-toggles" data-testid="sid-waveform-bits">
-              <label v-for="bit in CONTROL_BITS" :key="bit.bit" :title="bit.title">
+              <label v-for="bit in CONTROL_BITS" :key="bit.bit" :title="bit.title" :class="`sid-bit sid-bit--${bit.name}`">
                 <input
                   type="checkbox"
-                  :checked="(instrument.waveform & bit.bit) !== 0"
+                  :checked="(targetByte & bit.bit) !== 0"
                   :data-testid="`sid-bit-${bit.name}`"
-                  @change="commit(toggleSidControlBit(doc, instrumentNumber, bit.bit))"
+                  @change="commit(toggleSidWaveTargetBit(doc, instrumentNumber, waveTarget, bit.bit))"
                 />
                 {{ bit.label }}
               </label>
+              <label v-if="waveTarget.kind !== 'instrument'" title="The gate bit: set, the note sounds; clear, it releases (41 is pulse with the gate on, 40 pulse released)">
+                <input
+                  type="checkbox"
+                  :checked="(targetByte & 0x01) !== 0"
+                  data-testid="sid-bit-gate"
+                  @change="commit(toggleSidWaveTargetBit(doc, instrumentNumber, waveTarget, 0x01))"
+                />
+                Gate
+              </label>
+              <span class="sid-mono sid-dim" data-testid="sid-wave-byte">${{ hexByte(targetByte) }}</span>
             </div>
             <svg class="sid-lane" viewBox="0 0 256 64" preserveAspectRatio="none" data-testid="sid-wave-shape">
               <path v-if="waveCycle" :d="sidStepPath(waveCycle, 256, 64)" />
@@ -103,7 +189,99 @@
             <p class="sid-dim sid-note">{{ waveCaption }}</p>
           </fieldset>
 
-          <fieldset class="sid-card">
+          <fieldset class="sid-card" data-testid="sid-card-pulse">
+            <legend>Pulse</legend>
+            <AhxSliderField
+              label="Start width"
+              :model-value="instrument.pulseWidth"
+              :max="0xfff"
+              :suffix="instrument.pulseWidth === 0 ? '(0 = keep the channel\'s)' : `(${((instrument.pulseWidth / 4096) * 100).toFixed(1)} %)`"
+              :hint="pulseHint"
+              testid="sid-field-pulseWidth"
+              title="The width set on every note (0 keeps what the channel had). 50 % is a square wave; near 0 or 100 % it gets thin and nasal."
+              @update:model-value="edit({ pulseWidth: $event })"
+            />
+            <SidRowPointer
+              label="Pulse table"
+              :model-value="instrument.pulsePtr"
+              :table-length="doc.tables.pulse.length"
+              none-text="none: the width stays where it starts"
+              testid="sid-field-pulsePtr"
+              title="The pulse table row the note starts on: it sets and sweeps the width frame by frame."
+              @update:model-value="edit({ pulsePtr: $event })"
+              @reveal="reveal('pulse', $event)"
+            />
+            <svg class="sid-lane" viewBox="0 0 256 48" preserveAspectRatio="none" data-testid="sid-pulse-lane">
+              <path :d="sidStepPath(frames.map((f) => f[1]), 256, 48)" />
+              <line class="sid-cursor-line" :x1="cursorX" :x2="cursorX" y1="0" y2="48" />
+            </svg>
+            <p class="sid-dim sid-note">Pulse width over the first {{ LANE_FRAMES }} frames (only heard with the pulse waveform on).</p>
+          </fieldset>
+
+          <fieldset class="sid-card" data-testid="sid-card-filter">
+            <legend>Filter</legend>
+            <label class="sid-check">
+              <input
+                type="checkbox"
+                :checked="instrument.filter.enabled"
+                data-testid="sid-filter-enabled"
+                @change="edit({ filter: { enabled: !instrument.filter.enabled } })"
+              />
+              Route this voice through the filter on each note
+            </label>
+            <SidRowPointer
+              label="Filter table"
+              :model-value="instrument.filterPtr"
+              :table-length="doc.tables.filter.length"
+              none-text="none: the settings below"
+              testid="sid-field-filterPtr"
+              title="The filter table row the note starts on. The filter is the chip's one: a table row changes it for every voice."
+              @update:model-value="edit({ filterPtr: $event })"
+              @reveal="reveal('filter', $event)"
+            />
+            <AhxSliderField
+              label="Cutoff"
+              :model-value="instrument.filter.cutoff"
+              :max="0x7ff"
+              :suffix="`(${Math.round(sidCutoffHz(doc.chipModel, instrument.filter.cutoff))} Hz on the ${doc.chipModel})`"
+              :hint="filterOverridden"
+              testid="sid-field-cutoff"
+              @update:model-value="edit({ filter: { cutoff: $event } })"
+            />
+            <AhxSliderField
+              label="Resonance"
+              :model-value="instrument.filter.resonance"
+              :max="15"
+              :suffix="`(Q ${sidResonanceQ(doc.chipModel, instrument.filter.resonance).toFixed(2)})`"
+              testid="sid-field-resonance"
+              @update:model-value="edit({ filter: { resonance: $event } })"
+            />
+            <div class="sid-toggles">
+              <span class="sid-dim">Mode</span>
+              <label v-for="mode in FILTER_MODES" :key="mode.bit" :title="mode.title">
+                <input
+                  type="checkbox"
+                  :checked="(instrument.filter.mode & mode.bit) !== 0"
+                  :data-testid="`sid-filter-${mode.label}`"
+                  @change="commit(toggleSidFilterMode(doc, instrumentNumber, mode.bit))"
+                />
+                {{ mode.label }}
+              </label>
+            </div>
+            <svg class="sid-lane" viewBox="0 0 256 48" preserveAspectRatio="none" data-testid="sid-filter-response">
+              <path :d="filterPath" />
+            </svg>
+            <p class="sid-dim sid-note">{{ filterCaption }}</p>
+            <svg class="sid-lane" viewBox="0 0 256 48" preserveAspectRatio="none" data-testid="sid-cutoff-lane">
+              <path :d="sidStepPath(frames.map((f) => f[3]), 256, 48, 0x7ff)" />
+              <line class="sid-cursor-line" :x1="cursorX" :x2="cursorX" y1="0" y2="48" />
+            </svg>
+            <p class="sid-dim sid-note">Cutoff over the first {{ LANE_FRAMES }} frames of a note.</p>
+          </fieldset>
+        </div>
+
+        <div class="sid-col">
+          <fieldset class="sid-card" data-testid="sid-card-envelope">
             <legend>Envelope</legend>
             <AhxSliderField
               v-for="key in ADSR"
@@ -121,172 +299,143 @@
             <p class="sid-dim sid-note">Level over 2 s at 50 Hz, the gate released after 1 s (the chip's own rates).</p>
           </fieldset>
 
-          <fieldset class="sid-card">
-            <legend>Pulse</legend>
-            <AhxSliderField
-              label="Pulse width"
-              :model-value="instrument.pulseWidth"
-              :max="0xfff"
-              :suffix="`(${((instrument.pulseWidth / 4096) * 100).toFixed(1)} %)`"
-              testid="sid-field-pulseWidth"
-              @update:model-value="edit({ pulseWidth: $event })"
-            />
-            <AhxNumberField
-              label="Pulse table row"
-              :model-value="instrument.pulsePtr"
-              :max="doc.tables.pulse.length"
-              suffix="(0 = none)"
-              testid="sid-field-pulsePtr"
-              @update:model-value="edit({ pulsePtr: $event })"
-            />
-            <svg class="sid-lane" viewBox="0 0 256 48" preserveAspectRatio="none" data-testid="sid-pulse-lane">
-              <path :d="sidStepPath(frames.map((f) => f[1]), 256, 48)" />
-            </svg>
-            <p class="sid-dim sid-note">Pulse width over the first {{ LANE_FRAMES }} frames of a note.</p>
-          </fieldset>
-        </div>
-
-        <div class="sid-col">
-          <fieldset class="sid-card">
-            <legend>Filter</legend>
-            <label class="sid-toggles">
+          <fieldset class="sid-card" data-testid="sid-card-gate">
+            <legend>Note start &amp; gate</legend>
+            <div class="sid-field">
+              <span class="sid-field__label">First frame</span>
               <input
-                type="checkbox"
-                :checked="instrument.filter.enabled"
-                data-testid="sid-filter-enabled"
-                @change="edit({ filter: { enabled: !instrument.filter.enabled } })"
+                class="sid-hex"
+                maxlength="2"
+                spellcheck="false"
+                :value="hexByte(instrument.firstWave)"
+                data-testid="sid-field-firstWave"
+                title="The control byte written on a note's first frame, in hex"
+                @change="setFirstWave"
               />
-              Route this voice through the filter
-            </label>
-            <AhxSliderField
-              label="Cutoff"
-              :model-value="instrument.filter.cutoff"
-              :max="0x7ff"
-              :suffix="`(${Math.round(sidCutoffHz(doc.chipModel, instrument.filter.cutoff))} Hz on the ${doc.chipModel})`"
-              testid="sid-field-cutoff"
-              @update:model-value="edit({ filter: { cutoff: $event } })"
-            />
-            <AhxSliderField
-              label="Resonance"
-              :model-value="instrument.filter.resonance"
-              :max="15"
-              testid="sid-field-resonance"
-              @update:model-value="edit({ filter: { resonance: $event } })"
-            />
-            <div class="sid-toggles">
-              <label v-for="mode in FILTER_MODES" :key="mode.bit">
-                <input
-                  type="checkbox"
-                  :checked="(instrument.filter.mode & mode.bit) !== 0"
-                  :data-testid="`sid-filter-${mode.label}`"
-                  @change="commit(toggleSidFilterMode(doc, instrumentNumber, mode.bit))"
-                />
-                {{ mode.label }}
-              </label>
+              <button
+                v-for="p in FIRST_WAVE_PRESETS"
+                :key="p.value"
+                type="button"
+                class="sid-preset"
+                :class="{ 'sid-preset--on': instrument.firstWave === p.value }"
+                :title="p.title"
+                :data-testid="`sid-first-wave-${hexByte(p.value)}`"
+                @click="edit({ firstWave: p.value })"
+              >
+                {{ p.label }}
+              </button>
             </div>
-            <AhxNumberField
-              label="Filter table row"
-              :model-value="instrument.filterPtr"
-              :max="doc.tables.filter.length"
-              suffix="(0 = the settings above)"
-              testid="sid-field-filterPtr"
-              @update:model-value="edit({ filterPtr: $event })"
-            />
-            <svg class="sid-lane" viewBox="0 0 256 48" preserveAspectRatio="none" data-testid="sid-filter-response">
-              <path :d="filterPath" />
-            </svg>
-            <p class="sid-dim sid-note">The filter's ideal response, 30 Hz to 18 kHz (the 6581's saturation is not drawn).</p>
-            <svg class="sid-lane" viewBox="0 0 256 48" preserveAspectRatio="none" data-testid="sid-cutoff-lane">
-              <path :d="sidStepPath(frames.map((f) => f[3]), 256, 48, 0x7ff)" />
-            </svg>
-            <p class="sid-dim sid-note">Cutoff over the first {{ LANE_FRAMES }} frames of a note.</p>
-          </fieldset>
-
-          <fieldset class="sid-card">
-            <legend>Tables &amp; timing</legend>
-            <AhxNumberField
-              label="Wave table row"
-              :model-value="instrument.wavePtr"
-              :max="doc.tables.wave.length"
-              suffix="(0 = the waveform above)"
-              testid="sid-field-wavePtr"
-              @update:model-value="edit({ wavePtr: $event })"
-            />
-            <AhxNumberField
-              label="Vibrato (speed table row)"
-              :model-value="instrument.speedPtr"
-              :max="doc.tables.speed.length"
-              suffix="(0 = none)"
-              testid="sid-field-speedPtr"
-              @update:model-value="edit({ speedPtr: $event })"
-            />
-            <AhxNumberField
-              v-for="key in TIMING_FIELDS"
-              :key="key"
-              :label="TIMING_LABELS[key]"
-              :model-value="instrument[key]"
-              :max="SID_INSTRUMENT_NUMBER_FIELDS[key]"
-              :testid="`sid-field-${key}`"
-              @update:model-value="edit({ [key]: $event })"
+            <p class="sid-dim sid-note" data-testid="sid-first-wave-meaning">{{ firstWaveMeaning }}</p>
+            <AhxSliderField
+              label="Gate timer"
+              :model-value="instrument.gateTimer"
+              :max="SID_INSTRUMENT_NUMBER_FIELDS.gateTimer"
+              :suffix="instrument.gateTimer === 0 ? '(off)' : `(frames: ${frameMs(instrument.gateTimer)} ms)`"
+              testid="sid-field-gateTimer"
+              title="How many frames before the next note of the channel the gate is cleared, so the envelope has time to release (GoatTracker's default is 2). 0: never early."
+              @update:model-value="edit({ gateTimer: $event })"
             />
             <label class="sid-check">
               <input type="checkbox" :checked="instrument.hardRestart" data-testid="sid-hard-restart" @change="edit({ hardRestart: !instrument.hardRestart })" />
-              Hard restart (the early gate-off also zeroes the envelope)
+              Hard restart: the early gate-off also zeroes the envelope (AD 0F, SR 00), so every note starts its attack cleanly
             </label>
             <label class="sid-check">
               <input type="checkbox" :checked="instrument.noGateOff" data-testid="sid-no-gate-off" @change="edit({ noGateOff: !instrument.noGateOff })" />
-              No gate-off (a note of this instrument skips the early gate-off and hard restart)
+              No gate-off: a note of this instrument is not preceded by the early gate-off or hard restart (legato)
             </label>
+          </fieldset>
+
+          <fieldset class="sid-card" data-testid="sid-card-vibrato">
+            <legend>Vibrato</legend>
+            <SidRowPointer
+              label="Speed table"
+              :model-value="instrument.speedPtr"
+              :table-length="doc.tables.speed.length"
+              none-text="none: no vibrato"
+              testid="sid-field-speedPtr"
+              title="The speed table row holding this instrument's vibrato (speed, depth). One row: the speed table is not walked."
+              @update:model-value="edit({ speedPtr: $event })"
+              @reveal="reveal('speed', $event)"
+            />
+            <AhxSliderField
+              label="Delay"
+              :model-value="instrument.vibratoDelay"
+              :max="SID_INSTRUMENT_NUMBER_FIELDS.vibratoDelay"
+              :suffix="instrument.vibratoDelay === 0 ? '(off)' : `(frames: ${frameMs(instrument.vibratoDelay - 1)} ms)`"
+              :hint="vibratoHint"
+              testid="sid-field-vibratoDelay"
+              title="Frames before the vibrato starts. 0 turns the instrument's vibrato off; 1 starts it at once."
+              @update:model-value="edit({ vibratoDelay: $event })"
+            />
+            <template v-if="speedRow">
+              <AhxSliderField
+                label="Speed"
+                :model-value="speedRow.left & 0x7f"
+                :max="0x7f"
+                suffix="(higher is slower)"
+                testid="sid-vib-speed"
+                title="The turn value: how far the vibrato runs before it turns back. Higher is a slower, wider swing."
+                @update:model-value="setSpeedRow('left', (speedRow.left & 0x80) | $event)"
+              />
+              <AhxSliderField
+                label="Depth"
+                :model-value="speedRow.right"
+                :max="speedRow.left & 0x80 ? 31 : 0xff"
+                :suffix="speedRow.left & 0x80 ? '(note gap >> this)' : '(register step a frame)'"
+                testid="sid-vib-depth"
+                @update:model-value="setSpeedRow('right', $event)"
+              />
+              <label class="sid-check">
+                <input
+                  type="checkbox"
+                  :checked="(speedRow.left & 0x80) !== 0"
+                  data-testid="sid-vib-fine"
+                  @change="setSpeedRow('left', speedRow.left ^ 0x80)"
+                />
+                Note-relative depth (the same width in semitones on every note)
+              </label>
+              <p v-if="speedShared" class="sid-warn sid-note" data-testid="sid-vib-shared">{{ speedShared }}</p>
+            </template>
             <svg class="sid-lane" viewBox="0 0 256 48" preserveAspectRatio="none" data-testid="sid-pitch-lane">
               <path :d="pitchPath" />
+              <line class="sid-cursor-line" :x1="cursorX" :x2="cursorX" y1="0" y2="48" />
             </svg>
             <p class="sid-dim sid-note">Pitch over the first {{ LANE_FRAMES }} frames (arpeggio from the wave table, vibrato).</p>
           </fieldset>
         </div>
 
         <div class="sid-col sid-col--tables">
-          <div class="sid-tables">
-          <fieldset v-for="table in SID_TABLE_NAMES" :key="table" class="sid-card" :data-testid="`sid-table-${table}`">
-            <legend>{{ TABLE_LABELS[table] }} table</legend>
-            <div class="sid-table-scroll">
-            <table class="sid-table">
-              <tbody>
-                <tr
-                  v-for="(row, index) in doc.tables[table]"
-                  :key="index"
-                  :class="{ 'sid-table__mine': reached[table].includes(index + 1) }"
-                >
-                  <td class="sid-dim">{{ hexByte(index + 1) }}</td>
-                  <td v-for="side in SIDES" :key="side">
-                    <input
-                      class="sid-hex"
-                      maxlength="2"
-                      :value="hexByte(row[side])"
-                      :data-testid="`sid-${table}-${index + 1}-${side}`"
-                      @change="setTableByte(table, index, side, $event)"
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            </div>
-            <q-btn
-              flat
-              dense
-              size="sm"
-              icon="add"
-              label="Row"
-              :disable="doc.tables[table].length >= SID_MAX_TABLE_ROWS"
-              :data-testid="`sid-${table}-add`"
-              @click="commit(editSidTableByte(doc, table, doc.tables[table].length, 'left', 0))"
-            />
-          </fieldset>
-          </div>
-          <p class="sid-dim sid-note">
-            The tables are the song's, shared by every instrument: a row edited here changes every instrument that
-            reaches it. Rows this instrument reaches are marked. Left <code>FF</code> jumps to the row on the right
-            (<code>00</code> stops).
+          <p class="sid-dim sid-note sid-tables-intro">
+            The four tables belong to the song and are shared by every instrument. An instrument only names the row it
+            <b>starts</b> at (▶, from its pointer; <code>00</code> = none); from there a table plays row after row until a
+            <code>FF</code> row: <code>FF 00</code> stops, <code>FF nn</code> jumps to row nn (a loop). So a table's length is
+            simply how many rows it has; each instrument's part of it is marked in green, the row the frame cursor is on is
+            lit, and <span class="sid-warn">shared</span> rows are reached by other instruments too. Row numbers are hex.
           </p>
+          <div class="sid-tables">
+            <SidTableCard
+              v-for="table in SID_TABLE_NAMES"
+              :key="table"
+              :ref="(el) => setTableCard(table, el)"
+              :table="table"
+              :label="TABLE_LABELS[table]"
+              :rows="doc.tables[table]"
+              :chip="doc.chipModel"
+              :pointer="instrument[SID_TABLE_POINTER[table]]"
+              :reached="reached[table]"
+              :current="currentRow[table]"
+              :used-by="users[table]"
+              :instrument="instrumentNumber"
+              @set-byte="(index, side, event) => setTableByte(table, index, side, event)"
+              @insert="(at) => commit(insertSidTableRow(doc!, table, at))"
+              @delete="(at) => commit(deleteSidTableRow(doc!, table, at))"
+              @clear="(at) => commit(clearSidTableRow(doc!, table, at))"
+              @set-pointer="(row) => edit({ [SID_TABLE_POINTER[table]]: row })"
+              @template="(id) => addTemplate(table, id)"
+            >
+              <template #hint>{{ TABLE_HINTS[table] }}</template>
+            </SidTableCard>
+          </div>
         </div>
       </div>
     </template>
@@ -300,25 +449,32 @@
  * spectrum), cards per part of the sound with a drawing each, and the tables.
  *
  * It edits the song's doc, never a slot's copy: every change is a doc op
- * (`sid-instrument-edit.ts`) committed with an undo step (`editSidDoc`), and
- * the slots (names), the grid, the save and both SID worklets follow the doc.
- * The drawings are the Rust's own behaviour (`sid-instrument-visuals.ts`, held
- * to a fixture dumped from the Rust).
+ * (`sid-instrument-edit.ts`, `sid-table-rows.ts`) committed with an undo step
+ * (`editSidDoc`), and the slots (names), the grid, the save and both SID
+ * worklets follow the doc. The drawings are the Rust's own behaviour
+ * (`sid-instrument-visuals.ts`, held to a fixture dumped from the Rust).
+ *
+ * What plays is shown before what is stored: a frame cursor over the note's
+ * simulated frames (`simulateSidInstrument` and its trace) names the waveform
+ * sounding at that frame and the byte that set it, and the waveform boxes
+ * edit THAT byte (the instrument's own, its first-frame byte, or a wave-table
+ * row), so a box ticked is a change heard. A GoatTracker instrument has no
+ * waveform of its own at all: its wave table sets it.
  *
  * The AHX PList canvas does not carry over: a PList is one instrument's own
  * rows of note/waveform/two effects, while a SID instrument points into four
- * shared two-byte tables, so the tables are edited as byte rows here.
+ * shared two-byte tables, so the tables are edited as byte rows here, each
+ * with what it does in words.
  */
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch, type ComponentPublicInstance } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { formatInstrumentId } from '@another-synth/tracker-playback';
+import { formatInstrumentId, sidFreqRegToHz, sidTableFreqReg } from '@another-synth/tracker-playback';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { AHX_DEFAULT_OCTAVE, useAhxPlayInput } from 'src/composables/useAhxPlayInput';
 import {
   SID_MAX_INSTRUMENTS,
-  SID_MAX_TABLE_ROWS,
   SID_TABLE_NAMES,
   setSidChipModel,
   type SidChipModel,
@@ -332,25 +488,44 @@ import {
   hexByte,
   newSidInstrument,
   sidTableRowsFrom,
-  toggleSidControlBit,
+  sidWaveTargetByte,
   toggleSidFilterMode,
+  toggleSidWaveTargetBit,
   type SidInstrumentPatch,
+  type SidWaveTarget,
 } from 'src/audio/tracker/sid-instrument-edit';
+import {
+  SID_TABLE_POINTER,
+  appendSidTableTemplate,
+  clearSidTableRow,
+  deleteSidTableRow,
+  insertSidTableRow,
+  sidControlName,
+  sidNoteName,
+  sidTableUsers,
+  sidWaveClass,
+  sidWaveformName,
+} from 'src/audio/tracker/sid-table-rows';
 import {
   SID_ATTACK_MS,
   sidCutoffHz,
   sidEnvelopeLevels,
   sidFilterResponseDb,
+  sidResonanceQ,
   sidStepPath,
   sidWaveCycle,
   simulateSidInstrument,
+  type SidFrameTrace,
+  type SidInstrumentFrame,
+  type SidWaveSource,
 } from 'src/audio/tracker/sid-instrument-visuals';
 import { ahxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import AhxSliderField from 'src/components/ahx/AhxSliderField.vue';
-import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
 import AhxSegmented from 'src/components/ahx/AhxSegmented.vue';
 import AhxAuditionBar from 'src/components/ahx/AhxAuditionBar.vue';
 import PreviewScopeBand from 'src/components/tracker/PreviewScopeBand.vue';
+import SidRowPointer from 'src/components/sid/SidRowPointer.vue';
+import SidTableCard from 'src/components/sid/SidTableCard.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -365,24 +540,44 @@ const CHIP_OPTIONS = [
 const CONTROL_BITS = [
   { bit: 0x10, name: 'triangle', label: 'Triangle', title: 'Triangle waveform' },
   { bit: 0x20, name: 'saw', label: 'Saw', title: 'Sawtooth waveform' },
-  { bit: 0x40, name: 'pulse', label: 'Pulse', title: 'Pulse waveform (its width below)' },
+  { bit: 0x40, name: 'pulse', label: 'Pulse', title: 'Pulse waveform (its width on the Pulse card)' },
   { bit: 0x80, name: 'noise', label: 'Noise', title: 'Noise' },
-  { bit: 0x04, name: 'ring', label: 'Ring', title: 'Ring modulation by the previous voice (triangle)' },
+  { bit: 0x04, name: 'ring', label: 'Ring', title: 'Ring modulation by the previous voice (with triangle)' },
   { bit: 0x02, name: 'sync', label: 'Sync', title: 'Hard sync to the previous voice' },
   { bit: 0x08, name: 'test', label: 'Test', title: 'Test bit: holds the oscillator at zero' },
 ] as const;
+const WAVE_LEGEND = [
+  { cls: 'tri', label: 'triangle' },
+  { cls: 'saw', label: 'saw' },
+  { cls: 'pulse', label: 'pulse' },
+  { cls: 'noise', label: 'noise' },
+  { cls: 'mixed', label: 'combined' },
+  { cls: 'none', label: 'no waveform' },
+] as const;
 const FILTER_MODES = [
-  { bit: 1, label: 'LP' },
-  { bit: 2, label: 'BP' },
-  { bit: 4, label: 'HP' },
+  { bit: 1, label: 'LP', title: 'Low-pass: keeps what is below the cutoff' },
+  { bit: 2, label: 'BP', title: 'Band-pass: keeps what is around the cutoff' },
+  { bit: 4, label: 'HP', title: 'High-pass: keeps what is above the cutoff' },
+] as const;
+const FIRST_WAVE_PRESETS = [
+  { value: 0x00, label: 'None', title: '00: no first-frame byte' },
+  { value: 0x09, label: 'Test+gate', title: '09: test bit and gate, which resets the oscillator for a hard, consistent attack (GoatTracker\'s usual)' },
+  { value: 0xff, label: 'Gate on', title: 'FF: only sets the gate' },
+  { value: 0xfe, label: 'Gate off', title: 'FE: only clears the gate' },
 ] as const;
 const ADSR = ['attack', 'decay', 'sustain', 'release'] as const;
 const ADSR_LABELS = { attack: 'Attack', decay: 'Decay', sustain: 'Sustain', release: 'Release' } as const;
-const TIMING_FIELDS = ['vibratoDelay', 'firstWave', 'gateTimer'] as const;
-const TIMING_LABELS = { vibratoDelay: 'Vibrato delay (frames)', firstWave: 'First-frame control byte', gateTimer: 'Gate timer (frames)' } as const;
-const TABLE_LABELS: Record<SidTableName, string> = { wave: 'Wave / arpeggio', pulse: 'Pulse', filter: 'Filter', speed: 'Speed (vibrato, portamento)' };
-const SIDES = ['left', 'right'] as const;
+const TABLE_LABELS: Record<SidTableName, string> = { wave: 'Wave / arpeggio', pulse: 'Pulse', filter: 'Filter', speed: 'Speed' };
+const TABLE_HINTS: Record<SidTableName, string> = {
+  wave:
+    'Wave column: 10-DF sets the waveform (bit 0 is the gate: 41 pulse sounding, 40 pulse released), 01-0F waits that many frames, 00 keeps the waveform, E0-EF a waveform-less control byte, F0-FE runs a pattern command. Note column: 00-7F semitones up from the played note, 80 the same note, 81-DF a fixed note.',
+  pulse: 'Left 80-FF sets the width to its low digit and the right byte (88 00 is 50 %); 01-7F sweeps by the signed right byte for that many frames (F0 is -16).',
+  filter: 'Left 80-F0 sets the mode (90 LP, A0 BP, C0 HP) with the right byte as resonance (high digit) and filtered voices (bits 0-2); 00 sets the cutoff; 01-7F sweeps it for that many frames.',
+  speed: 'Data rows, not played in order: a vibrato reads one row as speed and depth, a slide (commands 1-3) as a 16-bit speed.',
+};
 const LANE_FRAMES = 96;
+/** The preview's note on the drawings: C-4. */
+const PREVIEW_NOTE = 48;
 
 const slotNumber = computed<number | null>(() => {
   const raw = Array.isArray(route.params.slot) ? route.params.slot[0] : route.params.slot;
@@ -411,14 +606,30 @@ function addInstrument(): void {
     void router.push({ name: 'sid-instrument-editor', params: { slot: String(trackerStore.sidDoc?.instruments.length ?? 1) } });
   }
 }
+const parseHexByte = (text: string): number => (/^[0-9a-fA-F]{1,2}$/.test(text.trim()) ? parseInt(text.trim(), 16) : NaN);
 function setTableByte(table: SidTableName, index: number, side: 'left' | 'right', event: Event): void {
   const input = event.target as HTMLInputElement;
-  const value = /^[0-9a-fA-F]{1,2}$/.test(input.value.trim()) ? parseInt(input.value.trim(), 16) : NaN;
-  if (doc.value) commit(editSidTableByte(doc.value, table, index, side, value));
+  if (doc.value) commit(editSidTableByte(doc.value, table, index, side, parseHexByte(input.value)));
   // A refused edit leaves the doc as it was: show its byte again.
   const row = doc.value?.tables[table][index];
   if (row) input.value = hexByte(row[side]);
 }
+function setFirstWave(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const value = parseHexByte(input.value);
+  if (Number.isInteger(value)) edit({ firstWave: value });
+  input.value = hexByte(instrument.value?.firstWave ?? 0);
+}
+function addTemplate(table: SidTableName, id: string): void {
+  const d = doc.value;
+  if (!d) return;
+  const start = d.tables[table].length + 1;
+  if (trackerStore.editSidDoc(appendSidTableTemplate(d, table, id, instrumentNumber.value))) reveal(table, start);
+}
+
+/** Frames as milliseconds at the song's frame rate. */
+const frameMs = (frames: number): number => Math.round((frames * 1000) / (50 * (doc.value?.speedMultiplier ?? 1)));
+const hex3 = (v: number): string => v.toString(16).toUpperCase().padStart(3, '0');
 
 const adsrSuffix = (key: (typeof ADSR)[number]): string => {
   if (key === 'sustain') return `(${Math.round(((instrument.value?.sustain ?? 0) / 15) * 100)} %)`;
@@ -426,20 +637,153 @@ const adsrSuffix = (key: (typeof ADSR)[number]): string => {
   return `(${key === 'attack' ? ms : ms * 3} ms)`;
 };
 
-// Drawings: the Rust's behaviour, ported (`sid-instrument-visuals.ts`).
-const waveCycle = computed(() => (instrument.value && doc.value ? sidWaveCycle(doc.value.chipModel, instrument.value.waveform, instrument.value.pulseWidth, 256) : null));
+// ---------------------------------------------------------------------------
+// What plays: the preview voice's frames, and why each sounds as it does
+// ---------------------------------------------------------------------------
+
+const sim = computed(() => {
+  const trace: SidFrameTrace[] = [];
+  const frames = doc.value && instrument.value ? simulateSidInstrument(doc.value, instrumentNumber.value, PREVIEW_NOTE, LANE_FRAMES, trace) : [];
+  return { frames, trace };
+});
+const frames = computed(() => sim.value.frames);
+const trace = computed(() => sim.value.trace);
+/**
+ * The frame cursor. Frame 1 by default: frame 0 is often the first-frame
+ * byte (test + gate), and a GoatTracker wave table takes over on frame 1.
+ */
+const cursor = ref(1);
+const EMPTY_TRACE: SidFrameTrace = { waveform: 0, gate: false, waveSource: { kind: 'none' }, waveRow: 0, pulseRow: 0, filterRow: 0 };
+const EMPTY_FRAME: SidInstrumentFrame = [0, 0, 0, 0, 0, 0];
+const now = computed(() => trace.value[cursor.value] ?? EMPTY_TRACE);
+const nowFrame = computed(() => frames.value[cursor.value] ?? EMPTY_FRAME);
+const cursorX = computed(() => (((cursor.value + 0.5) * 256) / LANE_FRAMES).toFixed(2));
+function pickFrame(event: MouseEvent): void {
+  const svg = event.currentTarget as SVGElement;
+  const width = svg.getBoundingClientRect().width;
+  if (width > 0) cursor.value = Math.max(0, Math.min(LANE_FRAMES - 1, Math.floor((event.offsetX / width) * LANE_FRAMES)));
+}
+
+function sourceText(source: SidWaveSource): string {
+  switch (source.kind) {
+    case 'instrument':
+      return "the instrument's own waveform";
+    case 'first-frame':
+      return 'the first-frame byte';
+    case 'wave-row':
+      return `set by wave table row ${hexByte(source.row)}`;
+    case 'wave-command':
+      return `set by the command 7 in wave table row ${hexByte(source.row)}`;
+    case 'none':
+      return 'nothing has set a waveform yet';
+  }
+}
+
+const pitchText = computed(() => {
+  const reg = nowFrame.value[0];
+  if (reg === 0) return 'no pitch yet';
+  const hz = sidFreqRegToHz(reg);
+  let best = 0;
+  let bestCents = Infinity;
+  for (let i = 0; i < 96; i++) {
+    const cents = 1200 * Math.log2(reg / sidTableFreqReg(i));
+    if (Math.abs(cents) < Math.abs(bestCents)) {
+      best = i;
+      bestCents = cents;
+    }
+  }
+  const off = Math.round(bestCents);
+  return `${sidNoteName(best)}${off ? ` ${off > 0 ? '+' : ''}${off} ct` : ''} (${hz.toFixed(1)} Hz)`;
+});
+
+// ---------------------------------------------------------------------------
+// The waveform: the boxes edit the byte that sets what is heard
+// ---------------------------------------------------------------------------
+
+/** The byte that set the waveform at the cursor's frame. */
+const soundingTarget = computed<SidWaveTarget>(() => {
+  const source = now.value.waveSource;
+  return source.kind === 'none' ? { kind: 'instrument' } : source;
+});
+/** 0: the boxes follow the cursor's frame; 1: they edit the instrument's own waveform. */
+const targetMode = ref(0);
+const waveTarget = computed<SidWaveTarget>(() => (targetMode.value === 1 ? { kind: 'instrument' } : soundingTarget.value));
+const targetOptions = computed(() => [
+  { value: 0, label: `Sounding at frame ${cursor.value}`, title: sourceText(now.value.waveSource) },
+  { value: 1, label: "Instrument's own", title: 'The waveform the instrument sets on a note, before its wave table' },
+]);
+const targetByte = computed(() => (doc.value ? sidWaveTargetByte(doc.value, instrumentNumber.value, waveTarget.value) : 0));
+/** The instrument has a waveform of its own that no frame plays (its wave table sets one at once). */
+const ownUnheard = computed(() => {
+  const ins = instrument.value;
+  return !!ins && ins.waveform !== 0 && trace.value.length > 0 && !trace.value.some((t) => t.waveSource.kind === 'instrument');
+});
+const waveStatus = computed(() => {
+  const ins = instrument.value;
+  if (!ins) return '';
+  const target = waveTarget.value;
+  if (target.kind === 'instrument') {
+    if (ins.waveform === 0 && ins.wavePtr !== 0) {
+      return 'No waveform of its own (GoatTracker style): the first-frame byte and the wave table set it. Tick a box to give it one, played until a table row sets another.';
+    }
+    if (ownUnheard.value) return `Not heard: the wave table sets the waveform from the note's first frame, so this ${sidWaveformName(ins.waveform)} never plays. Edit the sounding row instead.`;
+    if (ins.wavePtr !== 0) return 'The instrument\'s own waveform, until a wave table row sets another.';
+    return 'The instrument\'s waveform, all through the note.';
+  }
+  const shared = target.kind === 'wave-row' || target.kind === 'wave-command' ? sharedText('wave', target.row) : '';
+  if (target.kind === 'first-frame') return `Editing the first-frame byte ${hexByte(ins.firstWave)}: it plays until a wave table row sets a waveform.`;
+  return `Editing wave table row ${hexByte(target.row)}, what sounds at frame ${cursor.value}.${shared}`;
+});
+function sharedText(table: SidTableName, row: number): string {
+  const others = (users.value[table].get(row) ?? []).filter((n) => n !== instrumentNumber.value);
+  return others.length ? ` Shared with instrument ${others.map(hexByte).join(', ')}: they change too.` : '';
+}
+
+const waveCycle = computed(() => (doc.value ? sidWaveCycle(doc.value.chipModel, now.value.waveform, nowFrame.value[1], 256) : null));
 const waveCaption = computed(() => {
-  const w = instrument.value?.waveform ?? 0;
-  if ((w & 0xf0) === 0) return 'No waveform: the voice holds its last level (silent).';
-  if (w & 0x80) return 'Noise has no cycle to draw.';
-  return `One cycle of the ${doc.value?.chipModel ?? ''} waveform, before the filter.`;
+  const w = now.value.waveform;
+  if (w & 0x08 && (w & 0xf0) === 0) return `Frame ${cursor.value}: the test bit holds the oscillator at zero (silent), resetting it for the next frame.`;
+  if ((w & 0xf0) === 0) return `Frame ${cursor.value}: no waveform, the voice holds its last level (silent).`;
+  if (w & 0x80) return `Frame ${cursor.value}: noise, which has no cycle to draw.`;
+  return `One cycle of the waveform at frame ${cursor.value} on the ${doc.value?.chipModel ?? ''}, before the filter${now.value.gate ? '' : ' (gate off: releasing)'}.`;
+});
+
+// ---------------------------------------------------------------------------
+// Pulse, filter, envelope, vibrato
+// ---------------------------------------------------------------------------
+
+const pulseHint = computed(() => {
+  const ins = instrument.value;
+  const first = ins && ins.pulsePtr ? doc.value?.tables.pulse[ins.pulsePtr - 1] : undefined;
+  if (first && first.left >= 0x80 && first.left !== 0xff) return `Heard for one frame only: pulse table row ${hexByte(ins!.pulsePtr)} sets its own width from the note's second frame.`;
+  return '';
+});
+const usesFilter = computed(() => !!instrument.value && (instrument.value.filter.enabled || instrument.value.filterPtr !== 0));
+const filterOverridden = computed(() =>
+  instrument.value?.filterPtr ? `The filter table (row ${hexByte(instrument.value.filterPtr)}) sets the cutoff, resonance and mode: these three are not used.` : '',
+);
+const filterCaption = computed(() =>
+  instrument.value?.filterPtr
+    ? `The response at frame ${cursor.value}, from the filter table, 30 Hz to 18 kHz (the ideal curve; the 6581's saturation is not drawn).`
+    : "The filter's ideal response, 30 Hz to 18 kHz (the 6581's saturation is not drawn).",
+);
+const filterPath = computed(() => {
+  const ins = instrument.value;
+  const d = doc.value;
+  if (!ins || !d) return '';
+  const [, , , cutoff, res, mode] = ins.filterPtr ? nowFrame.value : [0, 0, 0, ins.filter.cutoff, ins.filter.resonance, ins.filter.mode];
+  const points = Array.from({ length: 128 }, (_, i) => {
+    const hz = 30 * (18_000 / 30) ** (i / 127);
+    const db = sidFilterResponseDb(d.chipModel, cutoff, res, mode, hz);
+    return Math.max(0, Math.min(0xfff, ((db + 48) / 72) * 0xfff));
+  });
+  return sidStepPath(points, 256, 48);
 });
 const envelope = computed(() => {
   const ins = instrument.value;
   if (!ins) return [];
   return sidEnvelopeLevels((ins.attack << 4) | ins.decay, (ins.sustain << 4) | ins.release, 50, 100);
 });
-const frames = computed(() => (doc.value && instrument.value ? simulateSidInstrument(doc.value, instrumentNumber.value, 48, LANE_FRAMES) : []));
 const pitchPath = computed(() => {
   const regs = frames.value.map((f) => f[0]);
   if (regs.length === 0) return '';
@@ -448,27 +792,66 @@ const pitchPath = computed(() => {
   const span = Math.max(1, hi - lo);
   return sidStepPath(regs.map((r) => ((r - lo) / span) * 0xfff * (hi === lo ? 0.5 : 1) + (hi === lo ? 0x800 : 0)), 256, 48);
 });
-const filterPath = computed(() => {
+const speedRow = computed(() => {
   const ins = instrument.value;
-  if (!ins || !doc.value) return '';
-  const points = Array.from({ length: 128 }, (_, i) => {
-    const hz = 30 * (18_000 / 30) ** (i / 127);
-    const db = sidFilterResponseDb(doc.value!.chipModel, ins.filter.cutoff, ins.filter.resonance, ins.filter.mode, hz);
-    return Math.max(0, Math.min(0xfff, ((db + 48) / 72) * 0xfff));
-  });
-  return sidStepPath(points, 256, 48);
+  return ins && ins.speedPtr ? (doc.value?.tables.speed[ins.speedPtr - 1] ?? null) : null;
 });
+const vibratoHint = computed(() =>
+  instrument.value?.speedPtr && instrument.value.vibratoDelay === 0 ? 'The delay is 0, which turns the vibrato off: set 1 to start it at once.' : '',
+);
+const speedShared = computed(() => {
+  const ptr = instrument.value?.speedPtr ?? 0;
+  const text = ptr ? sharedText('speed', ptr) : '';
+  return text ? `Speed row ${hexByte(ptr)} is the song's.${text}` : '';
+});
+function setSpeedRow(side: 'left' | 'right', value: number): void {
+  const ptr = instrument.value?.speedPtr ?? 0;
+  if (doc.value && ptr) commit(editSidTableByte(doc.value, 'speed', ptr - 1, side, value));
+}
+
+const firstWaveMeaning = computed(() => {
+  const ins = instrument.value;
+  if (!ins) return '';
+  const fw = ins.firstWave;
+  const gt = ins.waveform === 0;
+  if (fw === 0) return gt ? '00: the note keeps the channel\'s waveform and gate until the wave table sets them.' : '00: the first frame already plays the waveform.';
+  if (fw === 0xff) return 'FF: the first frame only sets the gate.';
+  if (fw === 0xfe) return 'FE: the first frame only clears the gate.';
+  return `${hexByte(fw)} (${sidControlName(fw)}) is written on the note's first frame${gt ? ', and plays on until the wave table sets a waveform' : ', then the waveform takes over'}.`;
+});
+
+// ---------------------------------------------------------------------------
+// The tables
+// ---------------------------------------------------------------------------
+
 const reached = computed(() => {
   const ins = instrument.value;
   const d = doc.value;
-  const from = (table: SidTableName, ptr: number) => (d && ptr ? sidTableRowsFrom(d, table, ptr) : []);
-  return {
-    wave: from('wave', ins?.wavePtr ?? 0),
-    pulse: from('pulse', ins?.pulsePtr ?? 0),
-    filter: from('filter', ins?.filterPtr ?? 0),
-    speed: from('speed', ins?.speedPtr ?? 0),
-  };
+  const from = (table: SidTableName) => (d && ins && ins[SID_TABLE_POINTER[table]] ? sidTableRowsFrom(d, table, ins[SID_TABLE_POINTER[table]]) : []);
+  return { wave: from('wave'), pulse: from('pulse'), filter: from('filter'), speed: from('speed') };
 });
+const users = computed(() => {
+  const d = doc.value;
+  const of = (table: SidTableName) => (d ? sidTableUsers(d, table) : new Map<number, number[]>());
+  return { wave: of('wave'), pulse: of('pulse'), filter: of('filter'), speed: of('speed') };
+});
+/** The row each table's step read at the cursor's frame (the speed table: the vibrato's row while it swings). */
+const currentRow = computed(() => ({
+  wave: now.value.waveRow,
+  pulse: now.value.pulseRow,
+  filter: now.value.filterRow,
+  speed: instrument.value?.speedPtr ?? 0,
+}));
+
+const tableCards: Partial<Record<SidTableName, InstanceType<typeof SidTableCard>>> = {};
+function setTableCard(table: SidTableName, el: Element | ComponentPublicInstance | null): void {
+  if (el) tableCards[table] = el as InstanceType<typeof SidTableCard>;
+  else delete tableCards[table];
+}
+function reveal(table: SidTableName, row: number): void {
+  // After a template the new rows render on the next tick.
+  setTimeout(() => tableCards[table]?.reveal(row), 0);
+}
 
 // Audition: the preview voice (its own SID worklet), and its output for the analyzer.
 const previewNode = shallowRef<AudioNode | null>(playbackStore.sidPreviewOutput());
@@ -496,18 +879,23 @@ const stripStart = computed(() => 48 + (octave.value - AHX_DEFAULT_OCTAVE) * 12)
 /**
  * Re-strike on edit, as the AHX page: the preview voice takes the edited doc
  * when a note is struck, so striking the held note again after a short pause
- * is what makes an edit heard while it is being made.
+ * is what makes an edit heard while it is being made. The tables are the
+ * song's, so a table edit re-strikes too.
  */
 const restrike = ref(false);
 const RESTRIKE_DELAY_MS = 150;
 let restrikeTimer: ReturnType<typeof setTimeout> | null = null;
-watch(instrument, () => {
+watch([instrument, () => doc.value?.tables], () => {
   if (!restrike.value || heldKeys.size === 0) return;
   if (restrikeTimer !== null) clearTimeout(restrikeTimer);
   restrikeTimer = setTimeout(() => {
     restrikeTimer = null;
     play.restrikeHeld();
   }, RESTRIKE_DELAY_MS);
+});
+// Another instrument: the boxes follow its sounding frame again.
+watch(instrumentNumber, () => {
+  targetMode.value = 0;
 });
 // Ready the preview voice, so the first key sounds at once.
 onMounted(() => {
@@ -572,6 +960,12 @@ onUnmounted(() => {
 .sid-dim {
   opacity: 0.65;
 }
+.sid-mono {
+  font-family: monospace;
+}
+.sid-warn {
+  color: #f0b25e;
+}
 .sid-empty,
 .sid-notice {
   padding: 16px 24px;
@@ -609,25 +1003,24 @@ onUnmounted(() => {
   gap: 12px;
   padding: 12px;
 }
+.sid-timeline {
+  grid-column: 1 / -1;
+}
 /*
  * Wide screens: the sound's two columns, then the tables taking what is left.
- * The four tables sit side by side there (each scrolls on its own), rather
+ * The four tables sit two by two there (each scrolls on its own), rather
  * than stacked into one column several screens tall.
  */
 @media (min-width: 1400px) {
   .sid-body {
-    grid-template-columns: minmax(340px, 1fr) minmax(340px, 1fr) minmax(360px, 1.3fr);
+    grid-template-columns: minmax(340px, 1fr) minmax(340px, 1fr) minmax(460px, 1.5fr);
   }
 }
 .sid-tables {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
   align-items: start;
-}
-.sid-table-scroll {
-  max-height: 420px;
-  overflow-y: auto;
 }
 .sid-col {
   display: grid;
@@ -643,8 +1036,13 @@ onUnmounted(() => {
 }
 .sid-field {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+.sid-field__label {
+  min-width: 100px;
+  opacity: 0.65;
 }
 .sid-text,
 .sid-hex {
@@ -659,6 +1057,18 @@ onUnmounted(() => {
   width: 3em;
   text-align: center;
 }
+.sid-preset {
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+.sid-preset--on {
+  border-color: var(--tracker-accent-primary, #4df2c5);
+  color: var(--tracker-accent-primary, #4df2c5);
+}
 .sid-lane {
   width: 100%;
   height: 56px;
@@ -671,18 +1081,85 @@ onUnmounted(() => {
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
 }
+.sid-cursor-line {
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+}
 .sid-note {
   margin: 0;
   font-size: 0.85em;
 }
-.sid-table {
-  border-collapse: collapse;
-  font-family: monospace;
+.sid-timeline__cursor {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
-.sid-table td {
-  padding: 1px 4px;
+.sid-timeline__cursor input {
+  flex: 1;
+  accent-color: var(--tracker-accent-secondary, #5ec2e8);
 }
-.sid-table__mine {
-  background: rgba(77, 242, 197, 0.12);
+.sid-wave-lane {
+  width: 100%;
+  height: 28px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  cursor: crosshair;
+}
+.sid-cursor {
+  fill: rgba(255, 255, 255, 0.35);
+  stroke: #fff;
+  stroke-width: 0.15;
+}
+.sid-wave--tri {
+  fill: #5ec2e8;
+  background: #5ec2e8;
+}
+.sid-wave--saw {
+  fill: #f0b25e;
+  background: #f0b25e;
+}
+.sid-wave--pulse {
+  fill: #4df2c5;
+  background: #4df2c5;
+}
+.sid-wave--noise {
+  fill: #c9a0ff;
+  background: #c9a0ff;
+}
+.sid-wave--mixed {
+  fill: #ff7a8a;
+  background: #ff7a8a;
+}
+.sid-wave--none {
+  fill: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.12);
+}
+.sid-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 0.8em;
+}
+.sid-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+.sid-legend__half {
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.5) 50%, transparent 50%);
+}
+.sid-now {
+  margin: 0;
+}
+.sid-wave-status {
+  margin: 0;
+  font-size: 0.9em;
+}
+.sid-tables-intro {
+  line-height: 1.45;
 }
 </style>
