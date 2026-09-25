@@ -1,6 +1,7 @@
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { ahxExporter } from './ahx-exporter';
 import { hvlExporter } from './hvl-exporter';
+import { sngExporter } from './sng-exporter';
 import { SongExportError, type SongExportFormatId, type SongExporter } from './types';
 
 export const NOT_IMPLEMENTED_REASON = 'Not available yet.';
@@ -29,6 +30,7 @@ function createPlaceholderExporter(
 export const SONG_EXPORTERS: readonly SongExporter[] = [
   ahxExporter,
   hvlExporter,
+  sngExporter,
   createPlaceholderExporter('mod', 'ProTracker MOD', '.mod'),
   createPlaceholderExporter('xm', 'FastTracker 2 XM', '.xm'),
   createPlaceholderExporter('s3m', 'Scream Tracker 3 S3M', '.s3m'),

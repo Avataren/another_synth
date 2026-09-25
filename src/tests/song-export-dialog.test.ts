@@ -13,6 +13,8 @@ import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { parseAhx } from '@another-synth/tracker-playback';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import { fittingHvlModel, hvlBytesOf } from './helpers/fitting-hvl';
+import { importGtSong } from 'src/audio/tracker/sid-doc';
+import { importGtSongToTrackerSong } from 'src/audio/tracker/sid-import';
 import {
   ahxExporter,
   exportFileName,
@@ -67,11 +69,12 @@ afterEach(() => {
 });
 
 describe('SongExportDialog: what each row says', () => {
-  it('lists the registry in order; for an AHX song AHX is enabled, HVL, mod, xm, s3m are disabled with a visible reason', () => {
+  it('lists the registry in order; for an AHX song AHX is enabled, HVL, sng, mod, xm, s3m are disabled with a visible reason', () => {
     const w = mountDialog(ahxSong);
     expect(w.findAll('[data-testid^="song-export-row-"]').map((row) => row.attributes('data-testid'))).toEqual([
       'song-export-row-ahx',
       'song-export-row-hvl',
+      'song-export-row-sng',
       'song-export-row-mod',
       'song-export-row-xm',
       'song-export-row-s3m',
@@ -79,7 +82,8 @@ describe('SongExportDialog: what each row says', () => {
     expect(button(w, 'song-export-download-ahx').disabled).toBe(false);
     expect(w.find('[data-testid="song-export-reason-ahx"]').exists()).toBe(false);
     expect(byId(w, 'song-export-reason-hvl').text()).toBe("AHX songs can't be saved as HVL.");
-    for (const id of ['hvl', 'mod', 'xm', 's3m']) {
+    expect(byId(w, 'song-export-reason-sng').text()).toBe("AHX and HVL songs can't be saved as GoatTracker .sng.");
+    for (const id of ['hvl', 'sng', 'mod', 'xm', 's3m']) {
       const btn = button(w, `song-export-download-${id}`);
       expect(btn.disabled, id).toBe(true);
       expect(btn.getAttribute('aria-disabled'), id).toBe('true');
@@ -293,10 +297,32 @@ describe('SongExportDialog: downloading', () => {
   });
 });
 
+describe('SongExportDialog: a SID song', () => {
+  it('enables only the .sng row, shows the chip-model note, and downloads a .sng that imports as the song', async () => {
+    const bytes = new Uint8Array(readFileSync(resolve(__dirname, 'fixtures/gt-songs/mch/alien_funk.sng')));
+    const w = mountDialog(() => importGtSongToTrackerSong(bytes.slice().buffer, 'alien_funk.sng'));
+    expect(button(w, 'song-export-download-sng').disabled).toBe(false);
+    expect(button(w, 'song-export-download-ahx').disabled).toBe(true);
+    expect(byId(w, 'song-export-reason-ahx').text()).toBe("SID songs can't be saved as AHX.");
+    expect(byId(w, 'song-export-filename-sng').text()).toBe('Saves as: Alien_Funk.sng');
+    expect(byId(w, 'song-export-warning-sng').text()).toBe(
+      'The chip model (6581) is not stored in a .sng: GoatTracker takes it from its -E option.',
+    );
+
+    await byId(w, 'song-export-download-sng').trigger('click');
+    expect(download.calls).toHaveLength(1);
+    const [out, name] = download.calls[0]!;
+    expect(name).toBe('Alien_Funk.sng');
+    const back = importGtSong(out);
+    const original = importGtSong(bytes);
+    expect(back.ok && original.ok && back.doc).toEqual(original.ok && original.doc);
+  });
+});
+
 describe('SongExportDialog: the registry is the only thing it knows', () => {
   it('renders and downloads an extra exporter with no component change', async () => {
     const w = mountDialog(ahxSong, { exporters: [...SONG_EXPORTERS, fakeExporter()] });
-    expect(w.findAll('[data-testid^="song-export-row-"]')).toHaveLength(6);
+    expect(w.findAll('[data-testid^="song-export-row-"]')).toHaveLength(7);
     expect(byId(w, 'song-export-row-flac').text()).toContain('Fake Format');
     expect(byId(w, 'song-export-row-flac').text()).toContain('A format made up for this test.');
     await byId(w, 'song-export-download-flac').trigger('click');
@@ -306,9 +332,9 @@ describe('SongExportDialog: the registry is the only thing it knows', () => {
   });
 
   it('turns a placeholder into an enabled row the moment its writer is available', async () => {
-    const [ahx, hvl, mod, ...rest] = SONG_EXPORTERS;
+    const [ahx, hvl, sng, mod, ...rest] = SONG_EXPORTERS;
     const written: SongExporter = { ...mod!, available: true, check: () => ({ ok: true }), serialize: () => new Uint8Array([1]) };
-    const w = mountDialog(ahxSong, { exporters: [ahx!, hvl!, written, ...rest] });
+    const w = mountDialog(ahxSong, { exporters: [ahx!, hvl!, sng!, written, ...rest] });
     expect(button(w, 'song-export-download-mod').disabled).toBe(false);
     expect(w.find('[data-testid="song-export-reason-mod"]').exists()).toBe(false);
     expect(button(w, 'song-export-download-xm').disabled).toBe(true);

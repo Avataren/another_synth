@@ -140,15 +140,32 @@ the dialect removal (D1).** Done:
   rules say so (table starts the frame after the note; fresh channel width 0; the note
   frame keeps the old pitch when a wave table sets it) — each commented in place.
 
-**Next (part 1b), a fresh session:** add the `.sng` row to the export dialog
-(`song-export/types.ts` `SongExportFormatId` += `'sng'`, a `sidExporter` over
-`exportGtSong` in `registry.ts`, `warnings` = the writer's `notes`), then the `gtref`
-gate: corpus import → export → `gtref` register stream equals the original's
-(`.ai/sid-oracle/`, `/tmp/gtref/gtref` — rebuild from `/tmp/gt2-src` if /tmp was cleared).
-Rust toolchain: `export PATH="$HOME/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin:$PATH"`
-(no rustup shims on this machine); full suite `cargo test --features native-host
---no-fail-fast` (one known failure: `ahx_render_golden::manifest_covers_every_fixture`).
-The fastest visible win: edit an imported song, export it, open it in GoatTracker.
+**Part 1b (2026-09-25, uncommitted on `main`) — the `.sng` row and the `gtref` gate. Phase 1 DONE.**
+- `song-export/sng-exporter.ts` (`sngExporter`, id `sng`, "GoatTracker 2 song"), in the registry
+  after HVL. It writes the song's doc (`data.sidFile`) with `exportGtSong`; the writer's refusal
+  is the row's reason, its notes (chip model, `-S`) the row's warnings. A title/author edited
+  in the store (no longer the import's derivation of the doc text) is written into the doc
+  text (latin-1, 32 chars, `SNG_TEXT_NOTE` when altered). A GT1 song with an empty name gets
+  the title it showed (its file name) as its name. AHX/HVL rows now say "SID songs can't be
+  saved as …". Tests: `song-export-sng.test.ts`, registry and dialog tests (a SID song
+  downloads a `.sng` that imports as the song).
+- **Gate, measured:** `.ai/sid-oracle/export_roundtrip.ts` (`SP=<dir> npx vite-node --config
+  vitest.config.ts …`, needs `<dir>/rt/`) imports all 84 corpus songs, exports them (and each
+  with one added instrument), checks each export imports back doc-equal; then
+  `run_export_roundtrip.sh` runs `gtref` on every subsong (102), 4000 frames, all 25 registers:
+  - original vs export: **62/62 GTS5 subsongs byte-identical** register streams (GT1 originals
+    can't go through `gtref`; they are covered by doc-equality and the existing Rust gate);
+  - export vs export + new instrument: **99/100 identical**; 2 songs skipped (wave table full,
+    the app refuses the add). The one difference is GT's behaviour: `cadaver/maximum_rastertime_test`
+    (GT1) ends its pulse table with `FF 02`, a jump to itself, as GT's own GT1 converter writes it
+    (`gsong.c` "Pulse jump back to beginning"); GT runs that row as a pulse set and walks off the
+    table's end into the appended rows. Adding rows in GoatTracker does the same.
+  - Note: the writer's orderlist encoding is not byte-identical to GT's (Alien Funk 24 bytes
+    shorter) but plays identically.
+
+**Next:** Phase 2 (song structure editing) or Phase 3 (new SID song) — Morten's pick.
+
+Original part-1b brief, for reference:
 - `SongExportFormatId` += `'sng'`; `sidExporter` in `song-export/` over `exportGtSong`;
   `check` = `gtSongExportProblem`, `warnings` = the writer's `notes` (chip model, `-S`).
 - D1: remove the app-style dialect (model, codec, player, tests — see D1).

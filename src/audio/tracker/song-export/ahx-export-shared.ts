@@ -21,6 +21,7 @@ const FORMAT_NAMES: Partial<Record<ModuleFormat, string>> = {
   protracker: 'MOD',
   xm: 'XM',
   s3m: 'S3M',
+  sid: 'SID',
 };
 
 export type SourceLookup = { ok: true; record: AhxSource } | { ok: false; reason: string };
