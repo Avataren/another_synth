@@ -64,6 +64,8 @@ mod tests_s517;
 mod tests_s518;
 #[cfg(test)]
 mod tests_s519;
+#[cfg(test)]
+mod tests_start_tempo;
 
 pub use chip::Chip;
 pub use player::SidSongPlayer;

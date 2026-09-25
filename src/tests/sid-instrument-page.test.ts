@@ -211,6 +211,41 @@ describe('SidInstrumentPage', () => {
     await vi.waitFor(() => expect(router.currentRoute.value.params.slot).toBe('5'));
   });
 
+  it('Copy adds a copy with its own table rows and opens it', async () => {
+    const { w, router } = await mountEditor(2);
+    const before = sid();
+    await w.get('[data-testid="sid-clone-instrument"]').trigger('click');
+    await nextTick();
+    const after = sid();
+    expect(after.instruments).toHaveLength(5);
+    const copy = after.instruments[4]!;
+    expect(copy.name).toBe(before.instruments[1]!.name);
+    // Its wave table starts on rows of its own, appended.
+    expect(copy.wavePtr).toBeGreaterThan(before.tables.wave.length);
+    await vi.waitFor(() => expect(router.currentRoute.value.params.slot).toBe('5'));
+  });
+
+  it('Delete asks first when rows name the instrument, then clears them and renumbers the rest', async () => {
+    const { w } = await mountEditor(2);
+    const before = sid();
+    const named = (doc: typeof before, n: number) => doc.patterns.flatMap((p) => p.rows).filter((r) => r.instrument === n).length;
+    expect(named(before, 2)).toBeGreaterThan(0);
+    await w.get('[data-testid="sid-delete-instrument"]').trigger('click');
+    await nextTick();
+    // Nothing changed yet: the page asks.
+    expect(sid()).toBe(before);
+    expect(w.get('[data-testid="sid-delete-confirm"]').text()).toMatch(new RegExp(`Instrument 02 is named on ${named(before, 2)} row`));
+    await w.get('[data-testid="sid-delete-confirm-yes"]').trigger('click');
+    await nextTick();
+    const after = sid();
+    expect(after.instruments).toHaveLength(3);
+    expect(after.instruments[1]).toEqual(before.instruments[2]);
+    // The rows that named 3 name 2 now; none names 4.
+    expect(named(after, 2)).toBe(named(before, 3));
+    expect(named(after, 4)).toBe(0);
+    expect(w.find('[data-testid="sid-delete-confirm"]').exists()).toBe(false);
+  });
+
   it('the keys sound this instrument on the preview voice', async () => {
     const { w } = await mountEditor(4);
     const piano = w.findComponent(AhxPianoStrip);
@@ -452,10 +487,14 @@ describe('SidInstrumentPage', () => {
   it('the first-frame byte is hex, with presets and what it means', async () => {
     const { w } = await mountEditor(4);
     expect(w.get('[data-testid="sid-first-wave-meaning"]').text()).toContain('09 (no waveform, test, gate on)');
+    expect(w.find('[data-testid="sid-first-wave-warning"]').exists()).toBe(false);
     await w.get('[data-testid="sid-first-wave-00"]').trigger('click');
     expect(sid().instruments[3]!.firstWave).toBe(0);
+    // sid_decisions.md §2: 00 leaves a fresh voice's gate shut, as GoatTracker's initchannels does.
+    expect(w.get('[data-testid="sid-first-wave-warning"]').text()).toMatch(/gate starts shut/);
     await typeInto(w, 'sid-field-firstWave', '41');
     expect(sid().instruments[3]!.firstWave).toBe(0x41);
+    expect(w.find('[data-testid="sid-first-wave-warning"]').exists()).toBe(false);
   });
 
   it('with no SID song it says so', async () => {

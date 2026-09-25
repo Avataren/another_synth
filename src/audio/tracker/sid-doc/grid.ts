@@ -36,9 +36,14 @@ import {
  * orderlist entry, a looped pass) is re-projected. This is GoatTracker's own
  * model (a pattern is edited once and plays wherever an orderlist names it),
  * and the same "a shared track changes for every cell using it" rule the AHX
- * write-back follows. What the grid cannot do is change the orderlists: add or
- * remove positions, lengthen a pattern, reorder. Those stay refused in the
- * grid (the song's structure is its doc's).
+ * write-back follows.
+ *
+ * Since plan-sid-authoring.md phase 2 the editor edits a SID song as a flat
+ * song instead (`flat.ts`: song-wide patterns and a sequence, compiled to the
+ * orderlists), and the store writes grid edits into that (`syncSidWriteBack`,
+ * `sidCellRowsFromEntries`). The layout and the doc-slice mapping here remain
+ * for reading a doc as positions (`projectSidPatterns`, the `.sng` import's
+ * display grid) and for the tests that pin them.
  *
  * The projection is `projectSidPatterns` (projection.ts), built on the same
  * layout, so the two cannot disagree about which slice a cell is.
@@ -268,20 +273,35 @@ export function sidEntriesToRows(
   doc: SidDoc,
   cell: SidGridCell,
 ): SidDocRow[] | { error: string } {
-  const source = doc.patterns[cell.pattern]?.rows ?? [];
+  const source = (doc.patterns[cell.pattern]?.rows ?? []).slice(cell.offset, cell.offset + cell.rows);
+  return sidCellRowsFromEntries(entries, source, cell.transpose, cell.rows, doc.instruments.length);
+}
+
+/**
+ * `sidEntriesToRows` over any `rows` rows shown under `transpose` (a flat
+ * cell's, `flat.ts`): `source` is what they hold now (missing rows are
+ * blank), `instruments` the song's instrument count.
+ */
+export function sidCellRowsFromEntries(
+  entries: readonly TrackerEntryData[],
+  source: readonly SidDocRow[],
+  transpose: number,
+  rowCount: number,
+  instruments: number,
+): SidDocRow[] | { error: string } {
   const byRow = new Map<number, TrackerEntryData>();
   for (const entry of entries) {
-    if (!Number.isInteger(entry.row) || entry.row < 0 || entry.row >= cell.rows) {
-      return { error: `Row ${entry.row} is outside this position (${cell.rows} rows).` };
+    if (!Number.isInteger(entry.row) || entry.row < 0 || entry.row >= rowCount) {
+      return { error: `Row ${entry.row} is outside this position (${rowCount} rows).` };
     }
     if (byRow.has(entry.row)) return { error: `Row ${entry.row} appears twice.` };
     byRow.set(entry.row, entry);
   }
   const rows: SidDocRow[] = [];
-  for (let r = 0; r < cell.rows; r++) {
-    const original = source[cell.offset + r] ?? BLANK_SID_ROW;
+  for (let r = 0; r < rowCount; r++) {
+    const original = source[r] ?? BLANK_SID_ROW;
     const entry = byRow.get(r);
-    if (sidEntriesEqual(sidRowToEntry(original, r, cell.transpose), entry)) {
+    if (sidEntriesEqual(sidRowToEntry(original, r, transpose), entry)) {
       rows.push(original);
       continue;
     }
@@ -289,7 +309,7 @@ export function sidEntriesToRows(
       rows.push(BLANK_SID_ROW);
       continue;
     }
-    const encoded = entryToSidRow(entry, cell.transpose, doc.instruments.length);
+    const encoded = entryToSidRow(entry, transpose, instruments);
     if ('error' in encoded) return encoded;
     rows.push(encoded);
   }

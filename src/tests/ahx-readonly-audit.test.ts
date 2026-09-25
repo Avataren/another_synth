@@ -28,6 +28,9 @@ import { describe, expect, it } from 'vitest';
  *    (as an addition to `isReadOnly`, until B4's position UI) add/remove track, the
  *    sequence list, BPM, pattern length, New patch / Clear, and the pattern-list
  *    handlers.
+ *  - TrackerPage.vue, 25 -> 30 (plan-sid-authoring.md phase 2): a SID song's Tempo and
+ *    Speed fields and its three subsong buttons are "may I write" (a SID song saved
+ *    without its doc is a display).
  */
 const src = (file: string): string => fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');
 /** Lines that mention it (the way the audit counted: by `grep -n`). */
@@ -38,7 +41,7 @@ describe('isReadOnly audit (B2a)', () => {
     expect(count(src('stores/tracker-store.ts'), /isReadOnly/)).toBe(4);
     expect(count(src('composables/useTrackerSelection.ts'), /isReadOnly/)).toBe(7);
     expect(count(src('pages/JukeboxPage.vue'), /isReadOnly/)).toBe(0);
-    expect(count(src('pages/TrackerPage.vue'), /isReadOnly/)).toBe(25);
+    expect(count(src('pages/TrackerPage.vue'), /isReadOnly/)).toBe(30);
   });
 
   it('the "is AHX" questions ask isAhxSong', () => {

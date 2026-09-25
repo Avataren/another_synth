@@ -13,8 +13,9 @@
 //! the player every mixrate / 50 samples, bme_snd.c:386): 0.249 % slower than
 //! the exported tune. The TS engine's BPM (`sidDocTiming`, 125 per 1x) stays
 //! an approximation for the grid; this player owns the transport. A row
-//! lasts `tempo` frames, the doc's start tempo, until a
-//! tempo command: each channel has GT's own tick counter and tempo (S5.18,
+//! lasts the start tempo's frames (`start_tempo`: the doc's tempo times the
+//! multiplier, as GT counts player calls; or GT's hidden tempo from
+//! instrument 63) until a tempo command: each channel has GT's own tick counter and tempo (S5.18,
 //! `tick_step`), so funktempo (E) alternates two row lengths and F with bit 7
 //! sets one channel's alone. Frames
 //! land on output-sample boundaries (the chip's own write granularity,
@@ -320,14 +321,15 @@ impl SidSongPlayer {
         }
         let samples_per_frame = frame_cycles(song.speed_multiplier) as f64 * sample_rate / PAL_CLOCK_HZ;
         let mult = song.speed_multiplier.max(1);
+        let start = Self::start_tempo(&song);
         for ch in channels.iter_mut() {
             // GT starts every channel on instrument 1 (gplay.c:62), so its
             // gate timer brings the hard restart before a channel's first note.
             ch.instrument = if song.instruments.is_empty() { 0 } else { 1 };
             // The first frame decrements to 0 and starts the first row.
             ch.tick = 1;
-            ch.fixed = song.tempo.max(1);
-            ch.period = song.tempo;
+            ch.fixed = start;
+            ch.period = start;
         }
         let (song_rows, ref_channel) = Self::first_pass_rows(&song, subsong);
         Ok(SidSongPlayer {
@@ -355,6 +357,24 @@ impl SidSongPlayer {
             loop_rows: None,
             preview: false,
         })
+    }
+
+    /// The frames per row every channel starts at, until a tempo command
+    /// (sid_decisions.md §4): the doc's tempo is the start tempo at 1x, and
+    /// GoatTracker counts rows in player calls, so at multispeed it is
+    /// `tempo * multiplier` (GT's `6 * multiplier - 1` stored, gplay.c:207-218).
+    /// Except GT's hidden song tempo: instrument 63 with no wave table and an
+    /// AD byte of 2 or more starts the song at that many frames, unscaled
+    /// (gplay.c:220-221, stored `ad - 1`).
+    fn start_tempo(song: &SidSong) -> u8 {
+        if let Some(last) = song.instruments.get(62) {
+            let ad = (last.attack << 4) | (last.decay & 0x0F);
+            if last.wave_ptr == 0 && ad >= 2 {
+                return ad;
+            }
+        }
+        let scaled = song.tempo.max(1) as u32 * song.speed_multiplier.max(1) as u32;
+        scaled.min(u8::MAX as u32) as u8
     }
 
     /// Rows of the longest channel's first pass through `subsong`'s orderlist,

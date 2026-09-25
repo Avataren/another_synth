@@ -291,8 +291,10 @@ describe('the grid projection', () => {
   it('the tempo reaches the tracker as 125 BPM per 50 Hz and ticks per row', () => {
     const doc = buildSidChainSong();
     expect(sidDocTiming(doc)).toEqual({ bpm: 125, initialSpeed: 6 });
-    expect(sidDocTiming(must(setSidTiming(doc, 6, 2)))).toEqual({ bpm: 250, initialSpeed: 6 });
-    // Past the engine's 255 BPM: 250 BPM and the speed scaled to keep 200 frames/s / 8 = 25 rows/s.
-    expect(sidDocTiming(must(setSidTiming(doc, 8, 4)))).toEqual({ bpm: 250, initialSpeed: 4 });
+    // The doc's tempo is per 1x, as GoatTracker and the Rust player start (sid_decisions.md §4):
+    // at 2x, 12 ticks per row at 100 ticks/s.
+    expect(sidDocTiming(must(setSidTiming(doc, 6, 2)))).toEqual({ bpm: 250, initialSpeed: 12 });
+    // Past the engine's 255 BPM: 250 BPM and the speed scaled to keep 200 ticks/s / 32 = 6.25 rows/s.
+    expect(sidDocTiming(must(setSidTiming(doc, 8, 4)))).toEqual({ bpm: 250, initialSpeed: 16 });
   });
 });

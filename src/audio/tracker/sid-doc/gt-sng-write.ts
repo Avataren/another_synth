@@ -67,7 +67,7 @@ export function gtSongExportProblem(doc: SidDoc): string | null {
       if (bad >= 0) {
         return `subsong ${s} channel ${c + 1} entry ${bad} transposes by ${list.entries[bad]!.transpose}; a GoatTracker orderlist transposes ${GT_MIN_TRANSPOSE}..+${GT_MAX_TRANSPOSE}`;
       }
-      const n = orderlistBytes(list).length - 2;
+      const n = gtOrderlistByteLength(list);
       if (n > GT_MAX_ORDERLIST_BYTES) {
         return `subsong ${s} channel ${c + 1}'s orderlist needs ${n} bytes with its repeats and transposes; GoatTracker's holds ${GT_MAX_ORDERLIST_BYTES}`;
       }
@@ -83,6 +83,9 @@ export function gtSongExportProblem(doc: SidDoc): string | null {
  * its repeat when above 1 (`gtRepeatByte`; TRANSPOSE before REPEAT, readme
  * §3.1), its pattern.
  */
+/** The bytes `list` takes in a `.sng` (endmark and restart not counted): at most `GT_MAX_ORDERLIST_BYTES`. */
+export const gtOrderlistByteLength = (list: SidOrderlist): number => orderlistBytes(list).length - 2;
+
 function orderlistBytes(list: SidOrderlist): number[] {
   const out: number[] = [];
   const last = list.entries[list.entries.length - 1]!.transpose;

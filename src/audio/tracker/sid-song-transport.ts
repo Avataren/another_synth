@@ -1,6 +1,6 @@
 import type { Ref } from 'vue';
 import type { Song as PlaybackSong } from '@another-synth/tracker-playback';
-import { SID_INDEX_TO_MIDI, serializeSidFile, type SidDoc } from 'src/audio/tracker/sid-doc';
+import { SID_INDEX_TO_MIDI, serializeSidFile, sidDocForSubsong, type SidDoc } from 'src/audio/tracker/sid-doc';
 import { createSidPlayer, type SidPlayerClient, type SidPosition } from 'src/audio/tracker/sid-player';
 import { reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
@@ -10,6 +10,8 @@ export type PlaybackMode = 'pattern' | 'song';
 /** The part of the tracker store the SID transport reads. */
 export interface SidSongTransportTracker {
   readonly sidDoc: SidDoc | null;
+  /** The subsong the grid shows: the one that plays. */
+  readonly sidSubsong: number;
   readonly sequence: string[];
   readonly patterns: ReadonlyArray<{ id: string; rows: number }>;
   syncSidWriteBack(): boolean;
@@ -53,9 +55,10 @@ const SID_VOICES = 3;
  * doc. The row model in the tracker store is what the grid shows; the doc is
  * what plays (`serializeSidFile(trackerStore.sidDoc)`).
  *
- * Places: the player counts song rows from the top; the grid's positions are
- * consecutive row ranges of that count (`sidGridLayout`), so row `r` of
- * position `p` is song row `start(p) + r`. Past the song's end the player
+ * Places: the player counts song rows from the top; the grid's sequence
+ * positions are consecutive row ranges of that count (the flat song,
+ * `sid-doc/flat.ts`), so row `r` of sequence position `p` is song row
+ * `start(p) + r`. Past the song's end the player
  * plays on (each voice loops its orderlist); the playhead then shows the row
  * modulo the song's length, which is exact when every voice restarts at its
  * top and a display approximation otherwise.
@@ -99,28 +102,43 @@ export class SidSongTransport {
     return this.client;
   }
 
+  /** What the worklet plays: the store's doc, reduced to the subsong the grid shows (`sidDocForSubsong`). */
+  private playDoc(): SidDoc | null {
+    const { sidDoc, sidSubsong } = this.deps.trackerStore;
+    return sidDoc === null ? null : sidDocForSubsong(sidDoc, sidSubsong);
+  }
+
   // ------------------------------------------------------------------
   // Places: song rows <-> grid positions
   // ------------------------------------------------------------------
 
+  /** Rows of sequence position `index` (the pattern it names; a pattern may be named twice). */
+  private positionRows(index: number): number {
+    const { patterns, sequence } = this.deps.trackerStore;
+    const id = sequence[index];
+    return patterns.find((p) => p.id === id)?.rows ?? 0;
+  }
+
+  private positionCount(): number {
+    return this.deps.trackerStore.sequence.length;
+  }
+
   private positionStart(index: number): number {
-    const { patterns } = this.deps.trackerStore;
     let at = 0;
-    for (let i = 0; i < index && i < patterns.length; i++) at += patterns[i]?.rows ?? 0;
+    for (let i = 0; i < index && i < this.positionCount(); i++) at += this.positionRows(i);
     return at;
   }
 
   private songLength(): number {
-    return this.deps.trackerStore.patterns.reduce((n, p) => n + p.rows, 0);
+    return this.positionStart(this.positionCount());
   }
 
-  /** The grid place of song row `row` (modulo the song's length). */
+  /** The grid place (sequence position, row) of song row `row` (modulo the song's length). */
   placeOf(row: number): { position: number; row: number } {
     const total = this.songLength();
-    const { patterns } = this.deps.trackerStore;
     let r = total > 0 ? row % total : 0;
-    for (let p = 0; p < patterns.length; p++) {
-      const rows = patterns[p]?.rows ?? 0;
+    for (let p = 0; p < this.positionCount(); p++) {
+      const rows = this.positionRows(p);
       if (r < rows) return { position: p, row: r };
       r -= rows;
     }
@@ -201,7 +219,7 @@ export class SidSongTransport {
   async load(song: PlaybackSong, mode: PlaybackMode): Promise<boolean> {
     const { trackerStore } = this.deps;
     trackerStore.syncSidWriteBack();
-    const doc = trackerStore.sidDoc;
+    const doc = this.playDoc();
     if (!doc) {
       console.warn('[PlaybackStore] SID song has no doc (a .cmod saved without its SID file): cannot play');
       return false;
@@ -248,14 +266,14 @@ export class SidSongTransport {
   async play(song: PlaybackSong, mode: PlaybackMode, startRow: number, startSequenceIndex: number | null): Promise<void> {
     const { trackerStore, isPaused, currentSequenceIndex, selectedSequenceIndex, playbackRow } = this.deps;
     const bank = this.deps.getSongBank();
-    const count = Math.max(1, trackerStore.patterns.length);
+    const count = Math.max(1, this.positionCount());
     const position = Math.max(0, Math.min(startSequenceIndex ?? this.deps.resolveStartSequenceIndex(song), count - 1));
-    const rows = trackerStore.patterns[position]?.rows ?? 1;
+    const rows = this.positionRows(position) || 1;
     const row = Math.max(0, Math.min(Math.round(startRow), rows - 1));
     const target = this.positionStart(position) + row;
     trackerStore.syncSidWriteBack();
     const resuming =
-      this.active && isPaused.value && this.client !== null && this.loadedDoc === trackerStore.sidDoc && this.placeOf(this.place).position === position && this.placeOf(this.place).row === row;
+      this.active && isPaused.value && this.client !== null && this.loadedDoc === this.playDoc() && this.placeOf(this.place).position === position && this.placeOf(this.place).row === row;
     const epoch = this.epoch;
 
     this.deps.stopSampleEngine();
@@ -291,7 +309,7 @@ export class SidSongTransport {
 
   /** Continue a paused song; edits made while paused are loaded first, at the paused row. */
   resume(): void {
-    if (this.loadedDoc !== this.deps.trackerStore.sidDoc) this.reloadInPlace(true);
+    if (this.loadedDoc !== this.playDoc()) this.reloadInPlace(true);
     else this.client?.play();
     this.setState('playing');
   }
@@ -308,8 +326,8 @@ export class SidSongTransport {
 
   /** Seek to a row of the current position; play/pause is kept. */
   seek(row: number): void {
-    const { currentSequenceIndex, trackerStore, playbackRow } = this.deps;
-    const rows = trackerStore.patterns[currentSequenceIndex.value]?.rows ?? 1;
+    const { currentSequenceIndex, playbackRow } = this.deps;
+    const rows = this.positionRows(currentSequenceIndex.value) || 1;
     const target = Math.max(0, Math.min(Math.round(row), rows - 1));
     this.place = this.positionStart(currentSequenceIndex.value) + target;
     this.client?.seek(this.place);
@@ -356,7 +374,7 @@ export class SidSongTransport {
     const client = this.client;
     const { trackerStore } = this.deps;
     trackerStore.syncSidWriteBack();
-    const doc = trackerStore.sidDoc;
+    const doc = this.playDoc();
     if (!client || !doc) return;
     this.loadedDoc = null;
     const loading = client.loadSong(serializeSidFile(doc));

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { effectScope, toRaw, watch } from 'vue';
+import { effectScope, markRaw, toRaw, watch } from 'vue';
 import { uid } from 'quasar';
 import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/tracker-types';
 import type { Patch } from 'src/audio/types/preset-types';
@@ -68,21 +68,31 @@ import {
 } from 'src/audio/tracker/ahx-doc';
 import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
+  SID_MAX_PATTERN_ROWS,
+  blankSidFlatCell,
+  compileSidFlatSong,
   createNewSidDoc,
   decodeSidFile,
   encodeSidFile,
-  projectSidPatterns,
+  flattenSidDoc,
+  projectSidFlatPattern,
+  projectSidFlatSubsong,
+  resizeSidFlatCell,
+  addSidFlatSubsong,
+  setSidFlatSpeed,
+  setSidFlatTempo,
+  sidFlatTempo,
+  sidCellRowsFromEntries,
   sidDocTiming,
   sidEditRefusal,
   sidEntriesEqual,
-  sidEntriesToRows,
-  sidGridLayout,
-  sidPositionPatternId,
   setSidChipModel,
-  setSidPatternSlice,
   type SidChipModel,
   type SidDoc,
-  type SidDocRow,
+  type SidFlatCell,
+  type SidFlatEdit,
+  type SidFlatPattern,
+  type SidFlatSubsong,
   type NewSidDocOptions,
   type SidOpResult,
 } from 'src/audio/tracker/sid-doc';
@@ -209,8 +219,14 @@ interface TrackerSnapshot {
   songPatches: Record<string, Patch>;
   /** The doc of an editable AHX or HVL song (a reference: docs are immutable). */
   ahxDoc?: AhxDoc | null;
-  /** The doc of a SID song (a reference, like `ahxDoc`); the grid is rebuilt from it on apply. */
+  /** The doc of a SID song (a reference, like `ahxDoc`). */
   sidDoc?: SidDoc | null;
+  /** A SID song's flat subsongs (references: never mutated); the grid is rebuilt from them on apply. */
+  sidFlat?: readonly SidFlatSubsong[];
+  /** The subsong the grid shows. */
+  sidSubsong?: number;
+  /** The grid's pattern names (a flat pattern has none of its own). */
+  sidPatternNames?: Record<string, string>;
 }
 
 interface TrackerStoreState {
@@ -295,17 +311,28 @@ interface TrackerStoreState {
   ahxRevision: number;
   /**
    * The model of a SID song (`sid-doc`, plan-sid-tracking.md S3); `null` for
-   * every other song, and for a SID song saved without a readable doc. The doc
-   * is the song: the grid is its projection (`projectSidPatterns`), a save
-   * embeds it (`data.sidFile`) and the Rust player plays it. Always a
-   * `markRaw` object, replaced (never mutated) by an edit (`commitSidDoc`).
-   * The grid writes back to it (`syncSidWriteBack`, S4: a cell is a slice of
-   * one shared pattern, see `sid-doc/grid.ts`); a SID song without a doc is a
-   * display only.
+   * every other song, and for a SID song saved without a readable doc. It is
+   * what plays and what is saved: a save embeds it (`data.sidFile`), every
+   * export writes it, the Rust player plays it (the shown subsong of it). The
+   * editor edits the flat song (`sidFlat`); each edit of it compiles a new doc
+   * (`syncSidWriteBack`). A loaded or new doc stays as it came until the first
+   * such edit. Always a `markRaw` object, replaced (never mutated). A SID song
+   * without a doc is a display only.
    */
   sidDoc: SidDoc | null;
   /** Counts every change of `sidDoc`, including the one that clears it. */
   sidRevision: number;
+  /**
+   * A SID song's structure as the editor edits it (plan-sid-authoring.md
+   * phase 2, `sid-doc/flat.ts`): per subsong, song-wide patterns and a
+   * sequence, like every other song. The grid and sequence show subsong
+   * `sidSubsong` of it; `syncSidWriteBack` writes grid and sequence edits
+   * into it and compiles `sidDoc` from it (`compileSidFlatSong`). Empty for
+   * every other song. `markRaw`, replaced (never mutated) by an edit.
+   */
+  sidFlat: readonly SidFlatSubsong[];
+  /** The subsong the grid shows and the player plays. */
+  sidSubsong: number;
 }
 
 const DEFAULT_TRACK_COLORS = [
@@ -504,9 +531,9 @@ interface AhxSyncCache {
 }
 const ahxSyncCaches = new WeakMap<object, AhxSyncCache>();
 
-/** What the SID write-back has reconciled (the AHX cache's `cells`, for `sidDoc`). */
+/** What the SID write-back has reconciled: per grid pattern id, its tracks' `entries` arrays. */
 interface SidSyncCache {
-  cells: unknown[][];
+  cells: Map<string, unknown[]>;
   watching: boolean;
 }
 const sidSyncCaches = new WeakMap<object, SidSyncCache>();
@@ -515,7 +542,7 @@ function sidSyncCacheOf(store: { $state: object }): SidSyncCache {
   const key = toRaw(store.$state);
   let cache = sidSyncCaches.get(key);
   if (!cache) {
-    cache = { cells: [], watching: false };
+    cache = { cells: new Map(), watching: false };
     sidSyncCaches.set(key, cache);
   }
   return cache;
@@ -568,7 +595,9 @@ export const useTrackerStore = defineStore('trackerStore', {
       ahxDoc: null,
       ahxRevision: 0,
       sidDoc: null,
-      sidRevision: 0
+      sidRevision: 0,
+      sidFlat: markRaw([]),
+      sidSubsong: 0
     };
   },
   getters: {
@@ -581,14 +610,24 @@ export const useTrackerStore = defineStore('trackerStore', {
       return this.moduleFormat === 'sid' && this.sidDoc !== null;
     },
     /**
-     * The song's structure is its doc's, not a pattern list's: an AHX/HVL
-     * song (positions, one track length, numbered instruments) or a SID song
-     * (per-voice orderlists, the doc's instruments). Channels, patterns, the
-     * sequence, pattern lengths and patch slots are not the tracker's to
-     * change; cells may still be edited when the song is editable.
+     * The song's voices and instruments are its doc's, not the tracker's: an
+     * AHX/HVL song (positions, one track length, numbered instruments) or a
+     * SID song (three voices, the doc's instruments). Channels and patch
+     * slots are not the tracker's to change. An AHX song's patterns and
+     * sequence are fixed too (`hasFixedSequence`); a SID song's are edited
+     * like any song's (plan-sid-authoring.md phase 2, `sid-doc/flat.ts`).
      */
     hasDocStructure(): boolean {
       return this.moduleFormat === 'ahx' || this.moduleFormat === 'sid';
+    },
+    /**
+     * The song's patterns and sequence are its doc's positions and cannot be
+     * edited as a pattern list: an AHX/HVL song. A SID song's can
+     * (plan-sid-authoring.md phase 2: its flat song compiles to GoatTracker's
+     * orderlists), though its voices and slots stay the doc's (`hasDocStructure`).
+     */
+    hasFixedSequence(): boolean {
+      return this.moduleFormat === 'ahx';
     },
     /** The song is an AHX song (editable or not): what the scope and waveform code means. */
     isAhxSong(): boolean {
@@ -698,7 +737,14 @@ export const useTrackerStore = defineStore('trackerStore', {
         currentInstrumentPage: this.currentInstrumentPage,
         songPatches: JSON.parse(JSON.stringify(this.songPatches)),
         ahxDoc,
-        sidDoc
+        sidDoc,
+        ...(sidDoc
+          ? {
+              sidFlat: this.sidFlat,
+              sidSubsong: this.sidSubsong,
+              sidPatternNames: Object.fromEntries(this.patterns.map((p) => [p.id, p.name])),
+            }
+          : {})
       };
     },
     /** Apply a snapshot back into the store state. */
@@ -726,10 +772,12 @@ export const useTrackerStore = defineStore('trackerStore', {
       const sidDoc = snapshot.moduleFormat === 'sid' ? snapshot.sidDoc ?? null : null;
       if (sidDoc !== this.sidDoc) this.sidRevision += 1;
       this.sidDoc = sidDoc;
+      this.sidFlat = markRaw(sidDoc ? (snapshot.sidFlat ?? flattenSidDoc(sidDoc)) : []);
+      this.sidSubsong = sidDoc ? Math.max(0, Math.min(this.sidFlat.length - 1, snapshot.sidSubsong ?? 0)) : 0;
       this.patterns = ahxDoc
         ? projectAhxPatterns(ahxDoc)
         : sidDoc
-          ? projectSidPatterns(sidDoc)
+          ? projectSidFlatSubsong(this.sidFlat[this.sidSubsong] as SidFlatSubsong, snapshot.sidPatternNames)
           : JSON.parse(JSON.stringify(snapshot.patterns));
 
       const patternIds = new Set(this.patterns.map((p) => p.id));
@@ -813,9 +861,11 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.redoStack = [];
       this.ahxDoc = null;
       this.sidDoc = null;
+      this.sidFlat = markRaw([]);
+      this.sidSubsong = 0;
       this.ahxRevision += 1;
       this.sidRevision += 1;
-      sidSyncCacheOf(this).cells = [];
+      sidSyncCacheOf(this).cells = new Map();
       ahxSyncCacheOf(this).cells = [];
       ahxSyncCacheOf(this).published = null;
       ahxSyncCacheOf(this).loaded = null;
@@ -896,7 +946,18 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     createPattern() {
       // An AHX song's patterns are its positions: the position ops make them.
-      if (this.hasDocStructure) return '';
+      if (this.hasFixedSequence) return '';
+      if (this.moduleFormat === 'sid') {
+        if (this.sidDoc === null) return '';
+        // A SID pattern: the doc's voices, blank, at most GoatTracker's 128 rows.
+        this.syncSidWriteBack();
+        const rows = Math.min(SID_MAX_PATTERN_ROWS, clampPatternRows(this.defaultPatternRows));
+        const id = uid();
+        const cells = Array.from({ length: this.sidDoc.channels }, () => blankSidFlatCell(rows));
+        this.patterns.push(projectSidFlatPattern(id, { rows, cells }, `Pattern ${this.patterns.length}`));
+        this.syncSidWriteBack();
+        return id;
+      }
       const newPattern: TrackerPattern = {
         id: uid(),
         name: `Pattern ${this.patterns.length + 1}`,
@@ -914,19 +975,34 @@ export const useTrackerStore = defineStore('trackerStore', {
      * song-level control behaved before per-pattern lengths existed.
      */
     setPatternRows(rows: number, patternId?: string) {
-      if (this.hasDocStructure) return;
+      if (this.hasFixedSequence) return;
+      const sid = this.moduleFormat === 'sid';
+      if (sid && this.sidDoc === null) return;
+      if (sid) this.syncSidWriteBack();
       const targetId = patternId ?? this.currentPatternId;
       const pattern = this.patterns.find(p => p.id === targetId);
       if (!pattern) return;
-      const clamped = clampPatternRows(rows);
+      const clamped = sid ? Math.min(SID_MAX_PATTERN_ROWS, clampPatternRows(rows)) : clampPatternRows(rows);
       pattern.rows = clamped;
       this.defaultPatternRows = clamped;
+      if (sid) this.syncSidWriteBack();
     },
     deletePattern(patternId: string) {
-      if (this.hasDocStructure) return;
+      if (this.hasFixedSequence) return;
       if (this.patterns.length <= 1) {
         // eslint-disable-next-line no-console
         console.warn('Cannot delete the last pattern');
+        return;
+      }
+      if (this.moduleFormat === 'sid') {
+        if (this.sidDoc === null) return;
+        this.syncSidWriteBack();
+        const removed = this.sequence.flatMap((id, i) => (id === patternId ? [i] : []));
+        const restarts = this.sidRestartsAfter((r) => r - removed.filter((i) => i < r).length);
+        this.patterns = this.patterns.filter(p => p.id !== patternId);
+        this.sequence = this.sequence.filter(id => id !== patternId);
+        if (this.currentPatternId === patternId) this.currentPatternId = this.sequence[0] ?? this.patterns[0]?.id ?? null;
+        this.syncSidWriteBack({ restarts });
         return;
       }
       this.patterns = this.patterns.filter(p => p.id !== patternId);
@@ -941,24 +1017,39 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
     },
     addPatternToSequence(patternId: string) {
-      if (this.hasDocStructure) return;
+      if (this.hasFixedSequence) return;
+      if (this.moduleFormat === 'sid') {
+        if (this.sidDoc === null) return;
+        this.syncSidWriteBack();
+        this.sequence.push(patternId);
+        this.syncSidWriteBack();
+        return;
+      }
       this.sequence.push(patternId);
     },
     removePatternFromSequence(index: number) {
-      if (this.hasDocStructure) return;
-      if (index >= 0 && index < this.sequence.length) {
+      if (this.hasFixedSequence) return;
+      if (index < 0 || index >= this.sequence.length) return;
+      if (this.moduleFormat === 'sid') {
+        if (this.sidDoc === null) return;
+        this.syncSidWriteBack();
+        const restarts = this.sidRestartsAfter((r) => (r > index ? r - 1 : r));
         this.sequence.splice(index, 1);
+        this.syncSidWriteBack({ restarts });
+        return;
       }
+      this.sequence.splice(index, 1);
     },
     setPatternName(patternId: string, name: string) {
-      if (this.hasDocStructure) return;
+      // A name is the editor's own, for a SID pattern too (the doc has none).
+      if (this.hasFixedSequence) return;
       const pattern = this.patterns.find(p => p.id === patternId);
       if (pattern) {
         pattern.name = name;
       }
     },
     moveSequenceItem(fromIndex: number, toIndex: number) {
-      if (this.hasDocStructure) return;
+      if (this.hasFixedSequence) return;
       if (
         fromIndex < 0 ||
         fromIndex >= this.sequence.length ||
@@ -967,10 +1058,18 @@ export const useTrackerStore = defineStore('trackerStore', {
       ) {
         return;
       }
+      const sid = this.moduleFormat === 'sid';
+      if (sid && this.sidDoc === null) return;
+      if (sid) this.syncSidWriteBack();
+      // Where each old index ends up: a voice's loop point stays on its position.
+      const order = this.sequence.map((_, i) => i);
+      order.splice(toIndex, 0, ...order.splice(fromIndex, 1));
+      const restarts = sid ? this.sidRestartsAfter((r) => order.indexOf(r)) : undefined;
       const [item] = this.sequence.splice(fromIndex, 1);
       if (item !== undefined) {
         this.sequence.splice(toIndex, 0, item);
       }
+      if (sid && restarts !== undefined) this.syncSidWriteBack({ restarts });
     },
     setActiveInstrument(id: string | null) {
       this.activeInstrumentId = id;
@@ -1327,9 +1426,11 @@ export const useTrackerStore = defineStore('trackerStore', {
       // is, it starts without one (an editable AHX or HVL song's is set below).
       this.ahxDoc = null;
       this.sidDoc = null;
+      this.sidFlat = markRaw([]);
+      this.sidSubsong = 0;
       this.ahxRevision += 1;
       this.sidRevision += 1;
-      sidSyncCacheOf(this).cells = [];
+      sidSyncCacheOf(this).cells = new Map();
       clearAhxEditNotice();
 
       this.currentSong = {
@@ -1493,15 +1594,22 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.adoptSidDoc(createNewSidDoc(options));
     },
     /**
-     * Replaces the song's doc with an edited one (an op's result): the grid,
-     * slot names and tempo follow it, and the position shown stays where it
-     * was. No undo step: `editSidDoc` is the edit with one.
+     * Replaces the song's doc with an edited one (an op's result). An edit of
+     * everything but the patterns and orderlists (instruments, tables, texts,
+     * chip, speed) keeps the grid as it is; one that changed them (an op that
+     * renumbers rows) makes the grid again from the doc. The position shown
+     * stays where it was. No undo step: `editSidDoc` is the edit with one.
      */
     commitSidDoc(doc: SidDoc) {
       if (this.moduleFormat !== 'sid') return;
       // A grid edit not yet written back belongs to the doc being replaced.
       this.syncSidWriteBack();
-      const index = this.patterns.findIndex((pattern) => pattern.id === this.currentPatternId);
+      const current = this.sidDoc;
+      if (current !== null && doc.patterns === current.patterns && doc.subsongs === current.subsongs) {
+        this.setSidDocMeta(doc);
+        return;
+      }
+      const index = this.sequence.indexOf(this.currentPatternId ?? '');
       this.showSidDoc(doc, index);
     },
     /**
@@ -1533,36 +1641,146 @@ export const useTrackerStore = defineStore('trackerStore', {
       if (doc === null) return false;
       return this.editSidDoc(setSidChipModel(doc, chipModel));
     },
-    /** Sets the doc and everything projected from it; `index` is the grid position to show. */
+    /**
+     * Makes `doc` the song, with its flat form (`flattenSidDoc`) as the grid
+     * and sequence. The doc itself stays until the first edit of the grid or
+     * sequence compiles a new one: the compiled doc plays as `doc` does, frame
+     * for frame (the phase 2 gate), so nothing is gained by replacing it, and
+     * an unedited song saves and exports byte for byte as it came.
+     * `index` is the sequence position to show.
+     */
     showSidDoc(doc: SidDoc, index: number) {
+      const flat = flattenSidDoc(doc);
+      this.sidFlat = markRaw(flat);
+      this.sidSubsong = Math.max(0, Math.min(flat.length - 1, this.sidSubsong));
+      this.setSidDocMeta(doc);
+      this.showSidSubsong(index);
+    },
+    /** Sets the doc and what follows it outside the grid: tempo, slot names. */
+    setSidDocMeta(doc: SidDoc) {
       if (doc !== this.sidDoc) this.sidRevision += 1;
       this.sidDoc = doc;
-      this.patterns = projectSidPatterns(doc);
-      this.primeSidWriteBack();
-      this.sequence = this.patterns.map((pattern) => pattern.id);
-      this.currentPatternId = sidPositionPatternId(Math.max(0, Math.min(this.patterns.length - 1, index)));
       const timing = sidDocTiming(doc);
       this.currentSong = { ...this.currentSong, bpm: timing.bpm };
       this.initialSpeed = timing.initialSpeed;
-      this.defaultPatternRows = clampPatternRows(doc.patterns[0]?.rows.length ?? DEFAULT_PATTERN_ROWS);
       // The slots list the doc's instruments by name. They hold no patch: a SID
-      // instrument is the doc's, and its page is S4.
+      // instrument is the doc's, edited on its own page.
       this.instrumentSlots = createDefaultInstrumentSlots().map((slot, i) => {
         const ins = doc.instruments[i];
         return ins === undefined ? slot : { ...slot, instrumentName: ins.name, instrumentFormat: 'sid' as const };
       });
     },
+    /** The grid and sequence of subsong `sidSubsong`, showing sequence position `index`. */
+    showSidSubsong(index: number) {
+      const flat = this.sidFlat[this.sidSubsong];
+      if (flat === undefined) return;
+      this.patterns = projectSidFlatSubsong(flat);
+      this.primeSidWriteBack();
+      this.sequence = [...flat.sequence];
+      this.currentPatternId = this.sequence[Math.max(0, Math.min(this.sequence.length - 1, index))] ?? null;
+      this.defaultPatternRows = clampPatternRows(this.patterns[0]?.rows ?? DEFAULT_PATTERN_ROWS);
+    },
+    /**
+     * Shows (and plays) subsong `subsong`: the edits made so far are written
+     * back first. Not an edit: no undo step, the doc stays.
+     */
+    selectSidSubsong(subsong: number) {
+      if (!this.isSidEditable || !Number.isInteger(subsong) || subsong < 0 || subsong >= this.sidFlat.length) return;
+      if (subsong === this.sidSubsong) return;
+      this.syncSidWriteBack();
+      this.sidSubsong = subsong;
+      // What plays changes (the transport plays the shown subsong), though the doc does not.
+      this.sidRevision += 1;
+      this.showSidSubsong(0);
+    },
+    /**
+     * A song-settings edit on the flat song (tempo, speed, subsongs): `edit`
+     * gets the doc and the flat subsongs as they are (grid edits written back
+     * first) and returns them changed, or why not. It is compiled before
+     * anything changes; a refusal (the edit's, or GoatTracker's limits) is
+     * reported and changes nothing. One undo step. `subsong` is the subsong
+     * to show afterwards (default: the one shown). Returns whether the song changed.
+     */
+    editSidFlat(edit: (doc: SidDoc, subsongs: readonly SidFlatSubsong[]) => SidFlatEdit, subsong?: number): boolean {
+      if (!this.isSidEditable) return false;
+      this.syncSidWriteBack();
+      const doc = this.sidDoc as SidDoc;
+      const result = edit(doc, this.sidFlat);
+      if (!result.ok) {
+        reportAhxEditNotice(result.reason);
+        return false;
+      }
+      if (result.doc === doc && result.subsongs === this.sidFlat && (subsong ?? this.sidSubsong) === this.sidSubsong) return false;
+      const compiled = compileSidFlatSong(result.doc, result.subsongs);
+      if (!compiled.ok) {
+        reportAhxEditNotice(compiled.reason);
+        return false;
+      }
+      this.pushHistory();
+      const shown = Math.max(0, Math.min(result.subsongs.length - 1, subsong ?? this.sidSubsong));
+      const index = shown === this.sidSubsong ? Math.max(0, this.sequence.indexOf(this.currentPatternId ?? '')) : 0;
+      if (shown !== this.sidSubsong) this.sidRevision += 1;
+      this.sidFlat = markRaw(result.subsongs.slice());
+      this.sidSubsong = shown;
+      this.setSidDocMeta(compiled.doc);
+      const names = Object.fromEntries(this.patterns.map((p) => [p.id, p.name]));
+      this.showSidSubsong(index);
+      for (const p of this.patterns) if (names[p.id] !== undefined) p.name = names[p.id] as string;
+      clearAhxEditNotice();
+      return true;
+    },
+    /** The shown subsong's start tempo (D6, `sidFlatTempo`), or null when its first row sets one the setting cannot show. */
+    sidTempo(): number | null {
+      const doc = this.sidDoc;
+      const flat = this.sidFlat[this.sidSubsong];
+      return doc === null || flat === undefined ? null : sidFlatTempo(doc, flat);
+    },
+    /** Sets the shown subsong's start tempo (`setSidFlatTempo`). */
+    setSidTempo(tempo: number): boolean {
+      return this.editSidFlat((doc, subsongs) => setSidFlatTempo(doc, subsongs, this.sidSubsong, tempo));
+    },
+    /** Sets the song's multispeed (`setSidFlatSpeed`). */
+    setSidSpeed(speedMultiplier: number): boolean {
+      return this.editSidFlat((doc, subsongs) => setSidFlatSpeed(doc, subsongs, speedMultiplier));
+    },
+    /** A new, blank subsong (`addSidFlatSubsong`), shown. */
+    addSidSubsong(): boolean {
+      return this.editSidFlat((doc, subsongs) => addSidFlatSubsong(doc, subsongs, uid()), this.sidFlat.length);
+    },
+    /** A copy of the shown subsong, appended and shown (its patterns are its own copies from here on). */
+    cloneSidSubsong(): boolean {
+      return this.editSidFlat((doc, subsongs) => {
+        if (subsongs.length >= 32) return { ok: false, reason: 'The song has 32 subsongs, GoatTracker\'s most.' };
+        return { ok: true, doc, subsongs: [...subsongs, subsongs[this.sidSubsong] as SidFlatSubsong] };
+      }, this.sidFlat.length);
+    },
+    /** Deletes the shown subsong (never the last one); the one before it is shown. */
+    deleteSidSubsong(): boolean {
+      const at = this.sidSubsong;
+      return this.editSidFlat((doc, subsongs) => {
+        if (subsongs.length <= 1) return { ok: false, reason: 'A song needs at least one subsong.' };
+        return { ok: true, doc, subsongs: subsongs.filter((_, s) => s !== at) };
+      }, Math.max(0, at - 1));
+    },
+    /** The current subsong's loop points after a sequence edit that moves old index `r` to `move(r)`. */
+    sidRestartsAfter(move: (r: number) => number): number[] {
+      const flat = this.sidFlat[this.sidSubsong];
+      return (flat?.restarts ?? []).map((r) => Math.max(0, move(r)));
+    },
 
-    /** Marks the grid as reconciled with the SID doc (it was just built from it) and makes sure the watcher runs. */
+    /** Marks the grid as reconciled with the flat song (it was just built from it) and makes sure the watcher runs. */
     primeSidWriteBack() {
       const cache = sidSyncCacheOf(this);
-      cache.cells = this.patterns.map((pattern) => pattern.tracks.map((track) => toRaw(track.entries)));
+      cache.cells = new Map(this.patterns.map((pattern) => [pattern.id, pattern.tracks.map((track) => toRaw(track.entries))]));
       if (cache.watching) return;
       cache.watching = true;
       // Detached, as the AHX watcher: it lives as long as the store.
       effectScope(true).run(() => {
         watch(
-          () => (this.sidDoc === null ? null : this.patterns.map((pattern) => pattern.tracks.map((track) => track.entries))),
+          () =>
+            this.sidDoc === null
+              ? null
+              : [this.patterns.map((pattern) => [pattern.id, pattern.rows, pattern.tracks.map((track) => track.entries)]), [...this.sequence]],
           () => {
             this.syncSidWriteBack();
           }
@@ -1570,114 +1788,138 @@ export const useTrackerStore = defineStore('trackerStore', {
       });
     },
     /**
-     * Writes every edited grid cell of a SID song back into its doc (the
-     * edit mapping: `sid-doc/grid.ts`). Idempotent and safe at any moment, like
-     * `syncAhxWriteBack`: the watcher calls it, and so does every point that
-     * reads the doc (a snapshot, a save, a commit, a play).
+     * Writes the grid and sequence of a SID song into its flat song and
+     * compiles the doc from it (plan-sid-authoring.md phase 2). Idempotent and
+     * safe at any moment, like `syncAhxWriteBack`: the watcher calls it, and so
+     * does every point that reads the doc (a snapshot, a save, a commit, a
+     * play) and every pattern or sequence action.
      *
      * A cell is edited when its `entries` array is another one than at the last
-     * reconciliation. Its rows are encoded against the doc (`sidEntriesToRows`:
-     * a row that still shows what the doc holds keeps the doc's row), and only
-     * the rows that changed are written into the cell's pattern, so two edited
-     * cells over the same pattern both land. Every cell showing a pattern that
-     * changed is re-projected (the pattern is shared: the edit shows wherever
-     * it plays), except an edited cell that already shows exactly the
-     * projection. A cell that cannot be encoded is reverted from the doc, with
-     * a notice. Returns whether the doc changed.
+     * reconciliation, or its pattern's length changed. Its rows are encoded
+     * against the flat cell (`sidCellRowsFromEntries`: a row that still shows
+     * what the cell holds keeps it, so a key-on or a clamped note survives),
+     * under the cell's transpose. A new grid pattern gets blank cells. Each
+     * position is its own copy: an edit changes that pattern only (identical
+     * cells still compile to one GoatTracker pattern). `restarts` gives the
+     * voices' loop points after a sequence action moved them.
+     *
+     * A cell that cannot be encoded is reverted, with a notice. A song that no
+     * longer compiles (GoatTracker's limits, an empty sequence) is put back as
+     * it was, grid and sequence, with the reason. Returns whether the doc changed.
      */
-    syncSidWriteBack(): boolean {
+    syncSidWriteBack(options: { restarts?: readonly number[] } = {}): boolean {
       const doc = this.sidDoc;
       if (doc === null || this.moduleFormat !== 'sid') return false;
+      const flat = this.sidFlat[this.sidSubsong];
+      if (flat === undefined) return false;
       const cache = sidSyncCacheOf(this);
-      const patterns = this.patterns;
-      const layout = sidGridLayout(doc);
-      const count = Math.min(patterns.length, layout.cells.length);
-      const channels = doc.channels;
-
-      const edited: { p: number; c: number; entries: TrackerEntryData[] }[] = [];
-      for (let p = 0; p < count; p++) {
-        const cells = patterns[p]?.tracks;
-        if (!cells) continue;
-        for (let c = 0; c < channels; c++) {
-          const cell = cells[c];
-          if (!cell) continue;
-          const raw = toRaw(cell.entries);
-          if (cache.cells[p]?.[c] !== raw) edited.push({ p, c, entries: raw });
-        }
-      }
-      if (edited.length === 0) return false;
-
-      // Pattern -> row -> the row to write, in cell order (a later cell wins a row both wrote).
-      const writes = new Map<number, Map<number, SidDocRow>>();
-      const reverted = new Set<number>();
+      const instruments = doc.instruments.length;
+      const patterns: Record<string, SidFlatPattern> = {};
+      const reproject = new Set<string>();
+      // Cells encoded from the grid: shown again as they project, when they differ (a typed command gets its fields).
+      const encodedCells: { id: string; c: number }[] = [];
       let problem: string | null = null;
-      for (const cell of edited) {
-        const at = layout.cells[cell.p]?.[cell.c];
-        if (!at) continue;
-        const rows = sidEntriesToRows(cell.entries, doc, at);
-        if ('error' in rows) {
-          reverted.add(cell.p * channels + cell.c);
-          problem ??= rows.error;
-          continue;
-        }
-        const source = doc.patterns[at.pattern]?.rows ?? [];
-        rows.forEach((row, r) => {
-          if (row === source[at.offset + r]) return;
-          let pattern = writes.get(at.pattern);
-          if (!pattern) writes.set(at.pattern, (pattern = new Map()));
-          pattern.set(at.offset + r, row);
-        });
-      }
-
-      let next = doc;
-      for (const [pattern, rows] of writes) {
-        const current = (next.patterns[pattern]?.rows ?? []).slice();
-        for (const [r, row] of rows) current[r] = row;
-        const written = setSidPatternSlice(next, pattern, 0, current);
-        if (!written.ok) {
-          // The encoder only makes rows the model accepts; this is the belt.
-          problem ??= written.reason;
-          for (const cell of edited) {
-            if (layout.cells[cell.p]?.[cell.c]?.pattern === pattern) reverted.add(cell.p * channels + cell.c);
+      for (const grid of this.patterns) {
+        const old = flat.patterns[grid.id];
+        const rows = Math.max(1, Math.min(SID_MAX_PATTERN_ROWS, grid.rows));
+        const seen = cache.cells.get(grid.id);
+        const resized = old !== undefined && old.rows !== rows;
+        if (resized || rows !== grid.rows) reproject.add(grid.id);
+        const cells: SidFlatCell[] = [];
+        for (let c = 0; c < doc.channels; c++) {
+          const raw = toRaw(grid.tracks[c]?.entries ?? []);
+          const base = resizeSidFlatCell(old?.cells[c] ?? blankSidFlatCell(rows), rows);
+          if (old !== undefined && !resized && seen?.[c] === raw) {
+            cells.push(base);
+            continue;
           }
-          continue;
-        }
-        next = written.doc;
-      }
-
-      if (next !== doc || reverted.size > 0) {
-        const own = new Map(edited.map((cell) => [cell.p * channels + cell.c, cell]));
-        const projected = projectSidPatterns(next);
-        for (let p = 0; p < count; p++) {
-          for (let c = 0; c < channels; c++) {
-            const at = layout.cells[p]?.[c];
-            const target = patterns[p]?.tracks[c];
-            if (!at || !target) continue;
-            const key = p * channels + c;
-            const changed = next.patterns[at.pattern] !== doc.patterns[at.pattern];
-            if (!changed && !reverted.has(key)) continue;
-            const fresh = projected[p]?.tracks[c]?.entries ?? [];
-            const mine = own.get(key);
-            const agrees =
-              mine !== undefined &&
-              !reverted.has(key) &&
-              mine.entries.length === fresh.length &&
-              mine.entries.every((entry, i) => sidEntriesEqual(entry, fresh[i]));
-            if (agrees) continue;
-            target.entries = fresh.map((entry) => ({ ...entry }));
+          // A shortened pattern drops the rows past its end, as its cells do.
+          const entries = resized ? raw.filter((entry) => entry.row < rows) : raw;
+          const encoded = sidCellRowsFromEntries(entries, base.rows, base.transpose, rows, instruments);
+          if ('error' in encoded) {
+            problem ??= encoded.error;
+            reproject.add(grid.id);
+            cells.push(base);
+            continue;
           }
+          encodedCells.push({ id: grid.id, c });
+          cells.push(encoded.every((row, i) => row === base.rows[i]) ? base : { ...base, rows: encoded });
         }
+        const same = old !== undefined && old.rows === rows && cells.every((cell, c) => cell === old.cells[c]);
+        patterns[grid.id] = same ? old : { rows, cells };
       }
-      cache.cells = patterns.map((pattern) => pattern.tracks.map((track) => toRaw(track.entries)));
+      const sequence = this.sequence.filter((id) => patterns[id] !== undefined);
+      const restarts = (options.restarts ?? flat.restarts).map((r) => Math.max(0, Math.min(sequence.length - 1, r)));
+      const ids = Object.keys(patterns);
+      const unchanged =
+        ids.length === Object.keys(flat.patterns).length &&
+        ids.every((id) => patterns[id] === flat.patterns[id]) &&
+        sequence.length === flat.sequence.length &&
+        sequence.every((id, i) => id === flat.sequence[i]) &&
+        restarts.every((r, i) => r === flat.restarts[i]);
 
-      const changed = next !== doc;
+      const reprojectCells = (source: SidFlatSubsong) => {
+        for (const grid of this.patterns) {
+          const pattern = source.patterns[grid.id];
+          if (pattern === undefined || !reproject.has(grid.id)) continue;
+          const fresh = projectSidFlatPattern(grid.id, pattern, grid.name);
+          grid.rows = fresh.rows;
+          grid.tracks.forEach((track, c) => {
+            track.entries = fresh.tracks[c]?.entries ?? [];
+          });
+        }
+        for (const { id, c } of encodedCells) {
+          const grid = this.patterns.find((p) => p.id === id);
+          const pattern = source.patterns[id];
+          const track = grid?.tracks[c];
+          if (grid === undefined || pattern === undefined || track === undefined || reproject.has(id)) continue;
+          const fresh = projectSidFlatPattern(id, pattern, grid.name).tracks[c]?.entries ?? [];
+          const mine = toRaw(track.entries);
+          const agrees = mine.length === fresh.length && mine.every((entry, i) => sidEntriesEqual(entry, fresh[i]));
+          if (!agrees) track.entries = fresh;
+        }
+      };
+
+      if (unchanged) {
+        reprojectCells(flat);
+        this.primeSidCache();
+        if (problem !== null) reportAhxEditNotice(problem);
+        return false;
+      }
+      const next: SidFlatSubsong = markRaw({ patterns, sequence, restarts });
+      const flats = this.sidFlat.slice();
+      flats[this.sidSubsong] = next;
+      const compiled = compileSidFlatSong(doc, flats);
+      if (!compiled.ok) {
+        // The song as it was: grid, sequence and flat.
+        const names = Object.fromEntries(this.patterns.map((p) => [p.id, p.name]));
+        this.patterns = projectSidFlatSubsong(flat, names);
+        this.sequence = [...flat.sequence];
+        if (!this.patterns.some((p) => p.id === this.currentPatternId)) this.currentPatternId = this.sequence[0] ?? null;
+        this.primeSidCache();
+        reportAhxEditNotice(compiled.reason);
+        return false;
+      }
+      const before = this.sidFlat;
+      this.sidFlat = markRaw(flats);
+      if (sequence.length !== this.sequence.length) this.sequence = sequence;
+      reprojectCells(next);
+      this.primeSidCache();
+      // The doc changes when what compiles does: a pattern outside the sequence,
+      // a name, or a doc not yet compiled (as adopted) that the edit left alone keeps it.
+      const previous = compileSidFlatSong(doc, before);
+      const changed = !previous.ok || encodeSidFile(compiled.doc) !== encodeSidFile(previous.doc);
       if (changed) {
-        this.sidDoc = next;
+        this.sidDoc = compiled.doc;
         this.sidRevision += 1;
-        clearAhxEditNotice();
+        if (problem === null) clearAhxEditNotice();
       }
       if (problem !== null) reportAhxEditNotice(problem);
       return changed;
+    },
+    /** Records the grid's cells as reconciled. */
+    primeSidCache() {
+      sidSyncCacheOf(this).cells = new Map(this.patterns.map((pattern) => [pattern.id, pattern.tracks.map((track) => toRaw(track.entries))]));
     },
 
     // ------------------------------------------------------------------

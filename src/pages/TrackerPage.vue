@@ -324,7 +324,7 @@
             :current-pattern-id="currentPatternId"
             :current-sequence-index="currentSequenceIndex"
             :is-playing="isPlaying"
-            :readonly="isReadOnly || hasDocStructure"
+            :readonly="isReadOnly || hasFixedSequence"
             @select-pattern="handleSelectPattern"
             @add-pattern-to-sequence="handleAddPatternToSequence"
             @remove-pattern-from-sequence="handleRemovePatternFromSequence"
@@ -367,7 +367,65 @@
                 @keydown.enter="($event.target as HTMLInputElement).blur()"
               />
             </div>
-            <div class="field">
+            <template v-if="isSidSong">
+              <div class="field sid-setting-field">
+                <label for="sid-tempo">Tempo</label>
+                <input
+                  id="sid-tempo"
+                  class="bpm-input"
+                  type="number"
+                  min="3"
+                  max="127"
+                  :value="sidTempo ?? ''"
+                  :disabled="isReadOnly || isLoadingSong"
+                  :placeholder="sidTempo === null ? 'F' : ''"
+                  :title="sidTempoTitle"
+                  @change="onSidTempoInput($event)"
+                  @blur="refocusTracker"
+                  @keydown.enter="($event.target as HTMLInputElement).blur()"
+                />
+              </div>
+              <div class="field sid-setting-field">
+                <label for="sid-speed">Speed</label>
+                <select
+                  id="sid-speed"
+                  class="sid-select"
+                  :value="sidSpeed"
+                  :disabled="isReadOnly || isLoadingSong"
+                  title="Player calls per frame (GoatTracker's multispeed, -S). Rows keep their tempo in frames."
+                  @change="onSidSpeedInput($event)"
+                >
+                  <option v-for="m in 16" :key="m" :value="m">{{ m }}x</option>
+                </select>
+              </div>
+              <div class="field sid-subsong-field">
+                <label for="sid-subsong">Subsong</label>
+                <div class="sid-subsong-controls">
+                  <select
+                    id="sid-subsong"
+                    class="sid-select"
+                    :value="sidSubsong"
+                    :disabled="isLoadingSong"
+                    title="The subsong the sequence and grid show, and Play plays"
+                    @change="onSidSubsongInput($event)"
+                  >
+                    <option v-for="(_, s) in sidSubsongCount" :key="s" :value="s">{{ s }}</option>
+                  </select>
+                  <button type="button" class="sid-subsong-btn" title="New subsong" :disabled="isReadOnly || isLoadingSong" @click="onSidSubsongAction('add')">+</button>
+                  <button type="button" class="sid-subsong-btn" title="Copy this subsong" :disabled="isReadOnly || isLoadingSong" @click="onSidSubsongAction('clone')">
+                    <q-icon name="content_copy" size="12px" />
+                  </button>
+                  <button
+                    type="button"
+                    class="sid-subsong-btn"
+                    title="Delete this subsong"
+                    :disabled="isReadOnly || isLoadingSong || sidSubsongCount <= 1"
+                    @click="onSidSubsongAction('delete')"
+                  >&times;</button>
+                </div>
+              </div>
+            </template>
+            <div v-else class="field">
               <label for="song-bpm">BPM</label>
               <input
                 id="song-bpm"
@@ -383,6 +441,9 @@
                 @keydown.enter="($event.target as HTMLInputElement).blur()"
               />
             </div>
+          </div>
+          <div v-if="editNotice" class="tracker-edit-notice" role="alert" data-testid="tracker-edit-notice">
+            {{ editNotice.message }}
           </div>
           <div class="stats-inline">
             <span class="stat-inline"
@@ -401,10 +462,10 @@
                   class="length-input"
                   type="number"
                   :min="1"
-                  :max="256"
+                  :max="isSidSong ? 128 : 256"
                   :value="rowsCount"
-                  :disabled="isReadOnly || hasDocStructure"
-                  :title="isReadOnly ? readOnlyHint : hasDocStructure ? ahxLengthHint : ''"
+                  :disabled="isReadOnly || hasFixedSequence"
+                  :title="isReadOnly ? readOnlyHint : hasFixedSequence ? ahxLengthHint : ''"
                   @change="onPatternLengthInput($event)"
                   @blur="refocusTracker"
                   @keydown.enter="($event.target as HTMLInputElement).blur()"
@@ -994,8 +1055,8 @@ import SongExportDialog from 'src/components/tracker/SongExportDialog.vue';
 import NewSongDialog, { type NewSongChoice } from 'src/components/tracker/NewSongDialog.vue';
 import { snapshotEditorSong } from 'src/audio/tracker/ahx-source';
 import type { AhxEditGate } from 'src/audio/tracker/ahx-doc/edit-guard';
-import type { SidChipModel } from 'src/audio/tracker/sid-doc';
-import { reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
+import { sidMinTempo, type SidChipModel } from 'src/audio/tracker/sid-doc';
+import { ahxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
   channelsFromSelection,
   selectionToReportRange,
@@ -1157,11 +1218,60 @@ function onSidChipSelect(model: SidChipModel): void {
   refocusTracker();
 }
 /**
+ * A SID song's start tempo (plan-sid-authoring.md D6): frames per row, an F
+ * command on the first row of voice 1 of the subsong's first pattern. `null`
+ * when that row holds an F the field cannot show (funktempo, one voice's).
+ */
+const sidTempo = computed(() => {
+  void trackerStore.sidRevision;
+  void trackerStore.sidFlat;
+  return isSidSong.value ? trackerStore.sidTempo() : null;
+});
+const sidTempoTitle = computed(() =>
+  sidTempo.value === null
+    ? 'The first row of voice 1 sets a funk or one-voice tempo: edit it there'
+    : `Frames per row (GoatTracker's F command on the first row of voice 1). At least ${trackerStore.sidDoc ? sidMinTempo(trackerStore.sidDoc) : 3}: above every instrument's gate timer.`,
+);
+/** Why the last edit was refused (a grid, sequence or song-setting edit of an AHX or SID song); clears itself. */
+const editNotice = computed(() => ahxEditNotice.value);
+const sidSpeed = computed(() => trackerStore.sidDoc?.speedMultiplier ?? 1);
+const sidSubsong = computed(() => trackerStore.sidSubsong);
+const sidSubsongCount = computed(() => trackerStore.sidFlat.length);
+
+function onSidTempoInput(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const value = Number(input.value);
+  // A refusal says why (the edit notice) and the field shows the tempo as it is.
+  if (!Number.isFinite(value) || !trackerStore.setSidTempo(Math.round(value))) input.value = String(sidTempo.value ?? '');
+}
+function onSidSpeedInput(event: Event): void {
+  const select = event.target as HTMLSelectElement;
+  if (!trackerStore.setSidSpeed(Number(select.value))) select.value = String(sidSpeed.value);
+  refocusTracker();
+}
+/** Another subsong: the song stops (the player plays the one shown), and the sequence starts at its top. */
+function onSidSubsongInput(event: Event): void {
+  handleStop();
+  trackerStore.selectSidSubsong(Number((event.target as HTMLSelectElement).value));
+  playbackStore.setSequenceIndex(0);
+  refocusTracker();
+}
+function onSidSubsongAction(action: 'add' | 'clone' | 'delete'): void {
+  handleStop();
+  if (action === 'add') trackerStore.addSidSubsong();
+  else if (action === 'clone') trackerStore.cloneSidSubsong();
+  else trackerStore.deleteSidSubsong();
+  playbackStore.setSequenceIndex(0);
+  refocusTracker();
+}
+/**
  * The song's structure is its doc's (AHX/HVL or SID): channels, positions,
  * lengths, tempo and slots are not the pattern list's to change. The cells of
  * an editable one still are.
  */
 const hasDocStructure = computed(() => trackerStore.hasDocStructure);
+/** The pattern list and sequence are the doc's positions (AHX/HVL); a SID song's are edited like any song's. */
+const hasFixedSequence = computed(() => trackerStore.hasFixedSequence);
 const readOnlyHint = 'This song is read-only: it plays from its file';
 
 /*
@@ -2009,8 +2119,8 @@ function setBaseOctaveInput(value: number) {
 
 function setPatternRows(count: number) {
   // An AHX song's tracks share one length for the whole song, not per pattern.
-  if (hasDocStructure.value) return;
-  const clamped = clampPatternRows(count);
+  if (hasFixedSequence.value) return;
+  const clamped = isSidSong.value ? Math.min(128, clampPatternRows(count)) : clampPatternRows(count);
   trackerStore.pushHistory();
   // Applies to the pattern being edited; patterns may differ in length.
   trackerStore.setPatternRows(clamped);
@@ -2504,7 +2614,7 @@ const {
 } = useTrackerExport(exportContext);
 
 function handleCreatePattern() {
-  if (hasDocStructure.value) return;
+  if (hasFixedSequence.value) return;
   trackerStore.pushHistory();
   const newPatternId = trackerStore.createPattern();
   trackerStore.addPatternToSequence(newPatternId);
@@ -2518,25 +2628,25 @@ function handleSelectPattern(payload: { patternId: string; index: number }) {
 }
 
 function handleAddPatternToSequence(patternId: string) {
-  if (hasDocStructure.value) return;
+  if (hasFixedSequence.value) return;
   trackerStore.pushHistory();
   trackerStore.addPatternToSequence(patternId);
 }
 
 function handleRemovePatternFromSequence(index: number) {
-  if (hasDocStructure.value) return;
+  if (hasFixedSequence.value) return;
   trackerStore.pushHistory();
   trackerStore.removePatternFromSequence(index);
 }
 
 function handleMoveSequenceItem(fromIndex: number, toIndex: number) {
-  if (hasDocStructure.value) return;
+  if (hasFixedSequence.value) return;
   trackerStore.pushHistory();
   trackerStore.moveSequenceItem(fromIndex, toIndex);
 }
 
 function handleRenamePattern(patternId: string, name: string) {
-  if (hasDocStructure.value) return;
+  if (hasFixedSequence.value) return;
   trackerStore.pushHistory();
   trackerStore.setPatternName(patternId, name);
 }

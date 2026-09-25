@@ -179,6 +179,92 @@ Original part-1b brief, for reference:
   dialect removal.
 
 ### Phase 2 — song structure editing (M/L)
+
+**Progress (2026-09-25, branch `agent/sid-authoring-p2-0925`, uncommitted): DONE as the FLAT MODEL.**
+
+**Decision (Morten, 2026-09-25): no separate Song panel. "The ui [should] be the same for all
+songs": a SID song is edited as song-wide patterns + a sequence, like a native song, and
+GoatTracker's per-voice structure is built from that ("destructure and optimize when saving").
+Per-voice restarts are kept as metadata. Each position is its own copy (an edit no longer shows in
+every place a GT pattern played; identical cells still compile to one GT pattern).** The first
+pass built doc-level orderlist/pattern/subsong ops for a GT-shaped panel; they were dropped when
+the flat model replaced the panel (only instrument delete/clone survive, `instrument-ops.ts`).
+
+- `sid-doc/flat.ts`:
+  - `SidFlatSubsong` = patterns by id (per voice a `SidFlatCell`: raw rows, transpose, and
+    `start`, "this voice starts a GT pattern here"), a sequence of ids, per-voice `restarts`
+    (sequence indexes). Raw rows, not grid entries: key-ons and clamped notes survive.
+  - `flattenSidDoc` / `flattenSidSubsong`: a position wherever any voice starts a pattern and where
+    a voice must loop back to. **Exact loops**: the flat song is made long enough (up to 64× the
+    first pass) that every voice is at one of its own pattern starts at the end, so looping from
+    there plays on as GT does for ever; if that doesn't fit GT (compile fails) every subsong falls
+    back to its first pass, and a voice that loops into the middle of a pattern gets a cut there.
+  - `compileSidFlatSong`: each voice cut exactly at its `start`s (+ position 0, its restart, a
+    transpose change, 128 rows); identical patterns shared across voices and subsongs; consecutive
+    identical entries → repeat (never across the restart). Refusals, true: >208 voice patterns,
+    orderlist >254 bytes, empty sequence, wrong sizes, transpose outside −16..+14.
+  - **Found and why `start` exists:** GT's playroutine skips a voice's pulse-table step on the
+    frame it starts a pattern (gplay.c:853, `optimizepulse`, on by default; `player.rs` copies
+    it), so WHERE a voice's patterns start is audible. Recutting freely made 81/102 subsongs
+    differ; keeping the starts made them identical.
+  - Song settings on the flat song: `sidFlatTempo`/`setSidFlatTempo` (D6: F on row 0 of voice 1 of
+    the first position; removed for 6 at 1x; refused ≤ any gate timer — GT checks voice 1's,
+    gplay.c:333 — and when that row has another command), `setSidFlatSpeed` (a subsong without F
+    gets GT's implied 6×m as F; an F stays), `addSidFlatSubsong`, `sidImpliedTempo` (incl. GT's
+    hidden tempo from instrument 63's AD), `sidMinTempo`, `sidDocForSubsong` (the doc with one
+    subsong: what the transport hands the worklet — no Rust change for subsong playback).
+- Store (`tracker-store.ts`): `sidFlat` + `sidSubsong` state. The grid/sequence are the projection
+  of `sidFlat[sidSubsong]` (`projectSidFlatSubsong`); `syncSidWriteBack` now encodes edited cells
+  into the flat song (`sidCellRowsFromEntries`), takes the sequence, compiles; a compile refusal
+  puts grid + sequence back with the reason. The native pattern/sequence actions work for SID
+  (`hasFixedSequence` = AHX only; `hasDocStructure` still locks voices and slots); restarts follow
+  their positions through move/remove/delete. `createPattern` makes 3 blank voices; lengths ≤128.
+  A loaded/new doc is kept as is until the first edit (unedited songs save/export byte-exact).
+  Snapshots carry `sidFlat`, `sidSubsong`, pattern names. `editSidFlat` (one undo step) backs
+  `setSidTempo`, `setSidSpeed`, `add/clone/deleteSidSubsong`; `selectSidSubsong` (not an edit).
+  Doc-level edits (instrument page) keep the grid when patterns/orderlists are untouched, else
+  re-flatten.
+- Transport: places via the SEQUENCE (a pattern may be named twice), plays `sidDocForSubsong`.
+- UI: TrackerPage song header for SID songs: Tempo (frames/row), Speed (1-16x), Subsong select +
+  new/copy/delete; sequence editor and pattern length unlocked for SID (≤128). The tracker page
+  now SHOWS the edit notice (it never did: grid refusals were silent there). SidInstrumentPage:
+  Copy (with copies of its table rows) and Delete (asks in the page when rows use it, then clears
+  them and renumbers).
+- Tests: `sid-flat-song.test.ts` (flatten/compile, drift, exact loops, refusals, all 84 corpus songs:
+  same rows, same pattern starts except 3 documented voices, compile∘flatten identity),
+  `sid-song-structure.test.ts` (store: shared ids, restarts through moves/removes, 128 clamp,
+  254-byte refusal put back, undo byte-exact, save/load, subsongs), `sid-song-settings.test.ts`
+  (instrument ops, tempo/speed/subsong ops and store actions + undo), page tests for Copy/Delete,
+  playback test for subsong 1. `sid-grid-writeback.test.ts` rewritten where it pinned the old
+  shared-pattern semantics. vitest 4306 passing, vue-tsc, eslint clean. No Rust change.
+- **Gates, measured** (relinked gtref2 with MULT):
+  - `flat_gate.ts` + `run_flat_gate.sh`: every corpus subsong, import → flatten → compile vs the
+    import, **30 000 frames (past every loop), all 25 registers: 102/102 identical in gtref AND
+    102/102 in our Rust player**. GT patterns 5303 → 3618 (sharing).
+  - `structure_gate.ts` + `run_structure_gate.sh`, driving the REAL store actions: A, music-neutral
+    edits (move there and back, append+remove, unsequenced new pattern, tempo to itself, new
+    subsong) → **102/102 original subsongs identical in gtref**; B, 11 GTS5 songs with
+    music-changing edits (new pattern with notes, moves, removes, length, tempo, 2×, new subsong
+    with notes) → **33/33 subsongs gtref vs our player exact**, all 11 differ from the originals.
+  - Browser (quasar dev, Chrome): New Song → SID, New Pattern (sequence grows), Tempo 8 (F08 in the
+    grid; playback measured 6.25 rows/s = 50/8), Play through both positions, + subsong (stops,
+    shows subsong 1 with F08), switch back, 2x (F kept), tempo 2 refused with the reason shown.
+- Known approximations: (1) a voice that must loop into the middle of its pattern and whose exact
+  loop doesn't fit GT gets a pattern cut at its loop row — one skipped pulse step there per loop
+  (corpus: forest_encounter sub 1 v1+v2, investigations v2; inaudible there, gtref identical).
+  (2) ~~`sid_decisions.md` §4~~ FIXED 2026-09-25 (after the phase 2 commit): the player starts a
+  subsong at `doc.tempo * multiplier` (GT's 6 per 1x) or GT's hidden instrument-63 tempo
+  (`SidSongPlayer::start_tempo`; TS `sidImpliedTempo`/`sidDocTiming` agree). `start_tempo_gate.ts`
+  + `run_start_tempo_gate.sh`: songs with no starting F at 1x/2x/4x and the hidden tempo 8/8
+  identical to gtref (2/8 before); the corpus plays byte-identical to before; phase 2/3 gates green.
+  (3) An imported song whose exact loop is long shows a longer grid (e.g. nintendometal
+  1144 → 6376 rows): that is the song until its voices line up again.
+  (4) Pattern names and unsequenced patterns are the editor's only; a save keeps the compiled doc.
+
+**Next:** Morten's review/merge; then maybe: a per-voice transpose control
+in the grid header (cells keep transposes but only import sets them); grid conveniences
+(insert/delete row per pattern already work — they are native now); Phase 4 (.sid).
+
 GT's orderlist and pattern pool can't go through the tracker's one-sequence grid (that
 is why the grid refuses them), so this is a dedicated **Song panel** in GT's own shape.
 - Ops (pure, `ops.ts`, each one undo step via `editSidDoc`):
@@ -253,6 +339,10 @@ imported multispeed songs without an F) is still open. New songs avoid it by wri
   our player; load back → doc-equal.
 
 ### Phase 4 — `.sid` export (PSID v2) (M/L)
+- Before it ships (sid_decisions.md "Deliberate differences"): our player stops past a filter
+  table's stored rows and moves on over wave-table `$F0`/`$F8`/`$FE`, where GT's `player.s` reads
+  zeros / stops the song. In an exported file those become app-vs-file differences: match GT, or
+  have the exporter warn.
 - `packages/…` or `src/audio/tracker/sid-export/`:
   - `asm6502.ts` — our mini assembler (dialect of `player.s`), with its own unit tests
     against hand-assembled opcodes.
