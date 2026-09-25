@@ -962,9 +962,9 @@ export const AHX_PROFILE: FormatProfile = {
  * `createSidPitchModel`) and the decode of the four commands with a
  * format-neutral equivalent, for the row model and the editor.
  *
- * Timing: a SID song ticks on the PAL frame, 50 Hz times the song's
+ * Timing: a SID song ticks on the PAL frame, 50.1245 Hz times the song's
  * multispeed (`SidDoc.speedMultiplier`), and its tempo is ticks per row,
- * so a song reaches the engine at 125 BPM per 50 Hz (ProTracker's
+ * so a song reaches the engine at 125 BPM per ~50 Hz (ProTracker's
  * BPM * 2 / 5 tick rate) with `initialSpeed` = the tempo
  * (`sid-doc/projection.ts`, `sidDocTiming`).
  *

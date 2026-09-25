@@ -125,7 +125,7 @@
             </template>
           </p>
           <p class="sid-dim sid-note">
-            A C-4 played on the preview voice, 50 frames a second ({{ LANE_FRAMES }} frames). Drag the frame, or click the strip.
+            A C-4 played on the preview voice, 50.12 frames a second, the C64's PAL rate ({{ LANE_FRAMES }} frames). Drag the frame, or click the strip.
           </p>
         </fieldset>
 
@@ -296,7 +296,7 @@
             <svg class="sid-lane" viewBox="0 0 256 64" preserveAspectRatio="none" data-testid="sid-envelope-curve">
               <path :d="sidStepPath(envelope, 256, 64, 255)" />
             </svg>
-            <p class="sid-dim sid-note">Level over 2 s at 50 Hz, the gate released after 1 s (the chip's own rates).</p>
+            <p class="sid-dim sid-note">Level over 100 PAL frames (2 s), the gate released after 50 (the chip's own rates).</p>
           </fieldset>
 
           <fieldset class="sid-card" data-testid="sid-card-gate">
@@ -511,6 +511,7 @@ import {
   sidCutoffHz,
   sidEnvelopeLevels,
   sidFilterResponseDb,
+  sidFramesMs,
   sidResonanceQ,
   sidStepPath,
   sidWaveCycle,
@@ -627,8 +628,8 @@ function addTemplate(table: SidTableName, id: string): void {
   if (trackerStore.editSidDoc(appendSidTableTemplate(d, table, id, instrumentNumber.value))) reveal(table, start);
 }
 
-/** Frames as milliseconds at the song's frame rate. */
-const frameMs = (frames: number): number => Math.round((frames * 1000) / (50 * (doc.value?.speedMultiplier ?? 1)));
+/** Frames as milliseconds at the song's frame rate (PAL frames, the player's). */
+const frameMs = (frames: number): number => Math.round(sidFramesMs(frames, doc.value?.speedMultiplier ?? 1));
 const hex3 = (v: number): string => v.toString(16).toUpperCase().padStart(3, '0');
 
 const adsrSuffix = (key: (typeof ADSR)[number]): string => {

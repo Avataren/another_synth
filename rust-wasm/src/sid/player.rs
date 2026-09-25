@@ -3,11 +3,17 @@
 //! the song's own model (the per-song tag S2 deferred), by writing the chip's
 //! registers once per frame, as a C64 playroutine does.
 //!
-//! Timing: one frame is 1/50 s times 1/`speed_multiplier` (PAL frames, the
-//! plan's "PList rows at 50 Hz", GoatTracker's multispeed). INFERRED: exactly
-//! 50 Hz, not the PAL raster's 50.125 Hz (985 248 / 19 656); a 0.25 % tempo
-//! difference, kept for round numbers and to match the TS engine's clock
-//! (`sidDocTiming`). A row lasts `tempo` frames, the doc's start tempo, until a
+//! Timing: one frame is `frame_cycles(speed_multiplier)` chip cycles, the
+//! real C64 rate a GoatTracker song is written for (GT-parity 0925b): at 1x
+//! the PAL vertical blank, 312 lines x 63 = 19 656 cycles, 985 248 / 19 656
+//! = 50.1245 Hz (GT exports a 1x tune on the VBI: greloc.c:1590-1596); at
+//! multispeed m GT's CIA timer, latch $4CC7 / m, a period of latch + 1
+//! (greloc.c:1551-1562), = 19 656 / m for m = 2, 3, 4, 6, 8. Until 0925b it
+//! was exactly 50 Hz x m, which is GT's EDITOR (gsound.h:24, its mixer calls
+//! the player every mixrate / 50 samples, bme_snd.c:386): 0.249 % slower than
+//! the exported tune. The TS engine's BPM (`sidDocTiming`, 125 per 1x) stays
+//! an approximation for the grid; this player owns the transport. A row
+//! lasts `tempo` frames, the doc's start tempo, until a
 //! tempo command: each channel has GT's own tick counter and tempo (S5.18,
 //! `tick_step`), so funktempo (E) alternates two row lengths and F with bit 7
 //! sets one channel's alone. Frames
@@ -144,10 +150,28 @@ use super::song::{
     SID_CHANNELS,
 };
 use super::waveform::GATE;
-use super::{gt_note_freq_reg, SidError, SidModel, GT_NOTE_COUNT};
+use super::{gt_note_freq_reg, SidError, SidModel, GT_NOTE_COUNT, PAL_CLOCK_HZ};
 
-/// PAL frames per second at multispeed 1.
-pub const FRAME_HZ: f64 = 50.0;
+/// Chip cycles in one PAL video frame: 312 raster lines of 63 cycles (the
+/// 6569 VIC-II). A 1x GoatTracker tune runs once per vertical blank.
+pub const PAL_FRAME_CYCLES: u32 = 312 * 63;
+/// The CIA timer latch GT's exported multispeed tune divides by its
+/// multiplier (greloc.c:1554, `0x4cc7/multiplier`); the timer underflows
+/// every latch + 1 cycles, so $4CC7 = 19 655 is one PAL frame.
+const GT_CIA_LATCH: u32 = 0x4CC7;
+/// PAL frames per second at multispeed 1: 985 248 / 19 656 = 50.1245 Hz
+/// (not GT's editor's 50: see the header).
+pub const FRAME_HZ: f64 = PAL_CLOCK_HZ / PAL_FRAME_CYCLES as f64;
+
+/// Chip cycles between two player frames at multispeed `mult` (1..=16):
+/// the vertical blank at 1x, GT's CIA period above.
+pub fn frame_cycles(mult: u8) -> u32 {
+    if mult <= 1 {
+        PAL_FRAME_CYCLES
+    } else {
+        GT_CIA_LATCH / mult as u32 + 1
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 struct Channel {
@@ -295,7 +319,7 @@ impl SidSongPlayer {
             let list = &song.subsongs[subsong].orderlists[c];
             Self::enter_order(ch, list, 0, &song);
         }
-        let samples_per_frame = sample_rate / (FRAME_HZ * song.speed_multiplier as f64);
+        let samples_per_frame = frame_cycles(song.speed_multiplier) as f64 * sample_rate / PAL_CLOCK_HZ;
         let mult = song.speed_multiplier.max(1);
         for ch in channels.iter_mut() {
             // GT starts every channel on instrument 1 (gplay.c:62), so its
@@ -466,6 +490,20 @@ impl SidSongPlayer {
     /// Output samples per frame (fractional).
     pub fn samples_per_frame(&self) -> f64 {
         self.samples_per_frame
+    }
+
+    /// The samples a `render` call from here must be given to play exactly
+    /// the next frame and stop where the one after it starts (at most
+    /// `samples_per_frame().ceil()`). A PAL frame is not a whole number of
+    /// samples (879.8 at 44.1 kHz), so a fixed length drifts a frame every
+    /// few calls; a caller stepping frame by frame (tests, dumps) uses this.
+    pub fn samples_in_next_frame(&self) -> usize {
+        let left = if self.samples_to_frame <= 0.0 {
+            self.samples_to_frame + self.samples_per_frame
+        } else {
+            self.samples_to_frame
+        };
+        (left.ceil() as usize).max(1)
     }
 
     /// Whether any channel's orderlist has wrapped to its restart.

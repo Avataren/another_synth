@@ -17,7 +17,10 @@ use super::player::SidSongPlayer;
 use super::song::*;
 use super::*;
 
-const SPF: usize = 882;
+/// One PAL frame at 44.1 kHz is 879.8 samples (`player::frame_cycles`, GT
+/// parity 0925b): a buffer that holds one; `samples_in_next_frame` says how
+/// much of it a frame is.
+const SPF: usize = 880;
 
 fn t(l: u8, r: u8) -> TableRow {
     TableRow { left: l, right: r }
@@ -54,7 +57,8 @@ fn row_ends(p: &mut SidSongPlayer, c: usize, frames: usize) -> Vec<usize> {
     let mut ends = Vec::new();
     let mut row = p.position(c).1;
     for f in 0..frames {
-        p.render(&mut out);
+        let n = p.samples_in_next_frame();
+        p.render(&mut out[..n]);
         let now = p.position(c).1;
         if now != row {
             ends.push(f);
@@ -133,7 +137,8 @@ fn the_song_row_counts_the_longest_channel_at_its_own_tempo() {
     assert_eq!(p.song_rows(), 8);
     let mut out = vec![0.0f32; SPF];
     for _ in 0..12 {
-        p.render(&mut out);
+        let n = p.samples_in_next_frame();
+        p.render(&mut out[..n]);
     }
     assert_eq!(p.song_row(), 2);
     assert_eq!(p.position(0).1, 3, "channel 1 is three rows in");

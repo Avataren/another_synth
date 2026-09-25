@@ -7,6 +7,8 @@ import {
   sidCutoffHz,
   sidEnvelopeLevels,
   sidFilterResponseDb,
+  sidFrameCycles,
+  sidFramesMs,
   sidResonanceQ,
   sidStepPath,
   sidWaveCycle,
@@ -37,6 +39,17 @@ const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/sid-visuals
 const chain = () => parseSidFile(new Uint8Array(readFileSync(resolve(ROOT, 'rust-wasm/tests/fixtures/sid/s3-chain.asid'))));
 
 describe('SID visuals parity with the Rust', () => {
+  it('a frame is the PAL vertical blank, and GT\'s CIA period at multispeed (player::frame_cycles)', () => {
+    // GT-parity 0925b: 312 x 63 cycles, 50.1245 Hz (was 50 Hz's 19 705).
+    expect(SID_CYCLES_PER_FRAME).toBe(19_656);
+    expect(sidFrameCycles(1)).toBe(19_656);
+    for (const m of [2, 3, 4, 6, 8]) expect(sidFrameCycles(m)).toBe(19_656 / m);
+    expect(sidFrameCycles(5)).toBe(3_932);
+    expect(sidFrameCycles(16)).toBe(1_229);
+    expect(1000 / sidFramesMs(1)).toBeCloseTo(50.1245, 4);
+    expect(Math.round(sidFramesMs(6))).toBe(120);
+  });
+
   it('the envelope port reproduces Envelope::clock frame by frame', () => {
     expect(SID_CYCLES_PER_FRAME).toBe(fixture.cyclesPerFrame);
     expect(fixture.envelopes.length).toBeGreaterThanOrEqual(6);

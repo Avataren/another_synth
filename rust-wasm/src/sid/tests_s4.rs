@@ -12,8 +12,10 @@ use super::song::*;
 use super::waveform::GATE;
 use super::*;
 
-/// 44.1 kHz / 50 Hz: 882 samples per frame.
-const SPF: usize = 882;
+/// One PAL frame at 44.1 kHz is 879.8 samples (`player::frame_cycles`, GT
+/// parity 0925b): a buffer that holds one; `samples_in_next_frame` says how
+/// much of it a frame is.
+const SPF: usize = 880;
 
 fn ins(waveform: u8) -> Instrument {
     Instrument { name: b"t".to_vec(), attack: 0, decay: 0, sustain: 15, release: 0, waveform, pulse_width: 0x800, ..Default::default() }
@@ -223,7 +225,8 @@ fn seek_keeps_the_running_chip() {
     let mut p = player(&chord());
     for _ in 0..30 {
         let mut out = vec![0.0f32; SPF];
-        p.render(&mut out);
+        let n = p.samples_in_next_frame();
+        p.render(&mut out[..n]);
     }
     let cycles = p.chip().cycles();
     let mask = 0b011;
@@ -241,7 +244,8 @@ fn a_row_loop_plays_its_range_over_and_over() {
     let mut seen = Vec::new();
     for _ in 0..(20 * 6) {
         let mut out = vec![0.0f32; SPF];
-        p.render(&mut out);
+        let n = p.samples_in_next_frame();
+        p.render(&mut out[..n]);
         seen.push(p.song_row());
     }
     // Rows 4..8 only, once the player is past the start: it runs rows 0..8

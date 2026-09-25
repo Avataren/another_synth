@@ -6,8 +6,10 @@ use super::player::SidSongPlayer;
 use super::song::*;
 use super::*;
 
-/// 44.1 kHz / 50 Hz: exactly 882 samples per frame.
-const SPF: usize = 882;
+/// One PAL frame at 44.1 kHz is 879.8 samples (`player::frame_cycles`, GT
+/// parity 0925b): a buffer that holds one; `samples_in_next_frame` says how
+/// much of it a frame is.
+const SPF: usize = 880;
 
 fn row(note: u8, instrument: u8, command: u8, param: u8) -> Row {
     Row { note, instrument, command, param }
@@ -47,7 +49,8 @@ fn tie_song(param: u8) -> SidSong {
 
 fn frame(p: &mut SidSongPlayer) {
     let mut out = vec![0.0f32; SPF];
-    p.render(&mut out);
+    let n = p.samples_in_next_frame();
+    p.render(&mut out[..n]);
 }
 
 #[test]

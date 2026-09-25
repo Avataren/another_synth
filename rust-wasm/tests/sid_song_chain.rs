@@ -10,15 +10,19 @@
 //! expected value below is derived from it and the player's documented
 //! semantics (`src/sid/player.rs` header), in the comment above each check.
 //!
-//! Timing: tempo 6 at 50 Hz, so row r starts at frame 6r, and a frame is 882
-//! samples at 44.1 kHz. `frame()` renders exactly one frame, whose register
-//! writes land before its samples.
+//! Timing: tempo 6 at the PAL frame rate (50.1245 Hz), so row r starts at
+//! frame 6r, and a frame is 879.8 samples at 44.1 kHz (879 or 880).
+//! `frame()` renders exactly one frame, whose register writes land before
+//! its samples.
 
 use audio_processor::sid::envelope::Stage;
 use audio_processor::sid::{gt_note_freq_reg, SidModel, SidSong, SidSongPlayer, DEFAULT_SAMPLE_RATE};
 
 const FIXTURE: &[u8] = include_bytes!("fixtures/sid/s3-chain.asid");
-const SPF: usize = 882;
+/// One PAL frame at 44.1 kHz is 879.8 samples (`player::frame_cycles`, GT
+/// parity 0925b): a buffer that holds one; `samples_in_next_frame` says how
+/// much of it a frame is.
+const SPF: usize = 880;
 
 fn song() -> SidSong {
     SidSong::parse(FIXTURE).expect("the app's file parses")
@@ -26,7 +30,9 @@ fn song() -> SidSong {
 
 fn frame(p: &mut SidSongPlayer) -> Vec<f32> {
     let mut out = vec![0.0f32; SPF];
-    p.render(&mut out);
+    let n = p.samples_in_next_frame();
+    p.render(&mut out[..n]);
+    out.truncate(n);
     out
 }
 
@@ -81,7 +87,8 @@ fn the_apps_file_round_trips_byte_exact_in_rust() {
 fn the_song_plays_on_a_chip_of_its_own_model_frame_by_frame() {
     let mut p = SidSongPlayer::new(song(), DEFAULT_SAMPLE_RATE).unwrap();
     assert_eq!(p.chip().model(), SidModel::Sid6581);
-    assert_eq!(p.samples_per_frame(), 882.0);
+    // A PAL frame, 19 656 cycles (was a flat 882 at 50 Hz).
+    assert!((p.samples_per_frame() - 879.809).abs() < 1e-3);
 
     let (c4, e4, g4) = (gt_note_freq_reg(48), gt_note_freq_reg(52), gt_note_freq_reg(55));
     let a3 = gt_note_freq_reg(45);

@@ -5,7 +5,7 @@
 //! The TS helpers are ports of the code below them; this test is where the
 //! numbers they must reproduce come from:
 //!   - `envelopes`: `Envelope` clocked cycle by cycle (gate on, then off),
-//!     its level sampled every frame (19 705 cycles, 50 Hz at the PAL clock);
+//!     its level sampled every frame (19 656 cycles, one PAL frame);
 //!   - `cutoff` / `q`: the per-model maps `cutoff_hz_for` / `resonance_q_for`;
 //!   - `waves`: one cycle of `waveform_output` (the combined-waveform models
 //!     included) at 64 accumulator points;
@@ -28,8 +28,9 @@ use serde_json::{json, Value};
 
 const CHAIN: &[u8] = include_bytes!("fixtures/sid/s3-chain.asid");
 const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/tests/fixtures/sid-visuals-parity.json");
-/// Chip cycles per 50 Hz frame, rounded (985 248 / 50 = 19 704.96).
-const CYCLES_PER_FRAME: u32 = 19_705;
+/// Chip cycles per player frame: one PAL vertical blank (GT-parity 0925b;
+/// was 50 Hz's 19 705).
+const CYCLES_PER_FRAME: u32 = audio_processor::sid::player::PAL_FRAME_CYCLES;
 
 fn model_name(model: SidModel) -> &'static str {
     match model {
