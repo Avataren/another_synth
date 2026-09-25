@@ -356,6 +356,11 @@
               </button>
             </div>
             <p class="sid-dim sid-note" data-testid="sid-first-wave-meaning">{{ firstWaveMeaning }}</p>
+            <p v-if="instrument.firstWave === 0" class="sid-note sid-warn" data-testid="sid-first-wave-warning">
+              On a voice that has not played yet the gate starts shut, as in GoatTracker, so this note is
+              silent until its wave table sets a waveform with the gate on, and all through if it never does.
+              09 (test and gate) is GoatTracker's usual start.
+            </p>
             <AhxSliderField
               label="Gate timer"
               :model-value="instrument.gateTimer"

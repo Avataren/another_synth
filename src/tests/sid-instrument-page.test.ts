@@ -487,10 +487,14 @@ describe('SidInstrumentPage', () => {
   it('the first-frame byte is hex, with presets and what it means', async () => {
     const { w } = await mountEditor(4);
     expect(w.get('[data-testid="sid-first-wave-meaning"]').text()).toContain('09 (no waveform, test, gate on)');
+    expect(w.find('[data-testid="sid-first-wave-warning"]').exists()).toBe(false);
     await w.get('[data-testid="sid-first-wave-00"]').trigger('click');
     expect(sid().instruments[3]!.firstWave).toBe(0);
+    // sid_decisions.md §2: 00 leaves a fresh voice's gate shut, as GoatTracker's initchannels does.
+    expect(w.get('[data-testid="sid-first-wave-warning"]').text()).toMatch(/gate starts shut/);
     await typeInto(w, 'sid-field-firstWave', '41');
     expect(sid().instruments[3]!.firstWave).toBe(0x41);
+    expect(w.find('[data-testid="sid-first-wave-warning"]').exists()).toBe(false);
   });
 
   it('with no SID song it says so', async () => {

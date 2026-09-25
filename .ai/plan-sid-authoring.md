@@ -252,14 +252,16 @@ the flat model replaced the panel (only instrument delete/clone survive, `instru
 - Known approximations: (1) a voice that must loop into the middle of its pattern and whose exact
   loop doesn't fit GT gets a pattern cut at its loop row — one skipped pulse step there per loop
   (corpus: forest_encounter sub 1 v1+v2, investigations v2; inaudible there, gtref identical).
-  (2) `sid_decisions.md` §4 still open: a multispeed subsong WITHOUT an F on its first row starts
-  at GT's 6×mult but at our player's 6. Everything the app writes has the F, but a user can delete
-  it (found by the gate when a helper wiped it). Cheapest fix: the player starts at 6×mult.
+  (2) ~~`sid_decisions.md` §4~~ FIXED 2026-09-25 (after the phase 2 commit): the player starts a
+  subsong at `doc.tempo * multiplier` (GT's 6 per 1x) or GT's hidden instrument-63 tempo
+  (`SidSongPlayer::start_tempo`; TS `sidImpliedTempo`/`sidDocTiming` agree). `start_tempo_gate.ts`
+  + `run_start_tempo_gate.sh`: songs with no starting F at 1x/2x/4x and the hidden tempo 8/8
+  identical to gtref (2/8 before); the corpus plays byte-identical to before; phase 2/3 gates green.
   (3) An imported song whose exact loop is long shows a longer grid (e.g. nintendometal
   1144 → 6376 rows): that is the song until its voices line up again.
   (4) Pattern names and unsequenced patterns are the editor's only; a save keeps the compiled doc.
 
-**Next:** Morten's review/merge; then maybe: §4 fix in `player.rs`; a per-voice transpose control
+**Next:** Morten's review/merge; then maybe: a per-voice transpose control
 in the grid header (cells keep transposes but only import sets them); grid conveniences
 (insert/delete row per pattern already work — they are native now); Phase 4 (.sid).
 
@@ -337,6 +339,10 @@ imported multispeed songs without an F) is still open. New songs avoid it by wri
   our player; load back → doc-equal.
 
 ### Phase 4 — `.sid` export (PSID v2) (M/L)
+- Before it ships (sid_decisions.md "Deliberate differences"): our player stops past a filter
+  table's stored rows and moves on over wave-table `$F0`/`$F8`/`$FE`, where GT's `player.s` reads
+  zeros / stops the song. In an exported file those become app-vs-file differences: match GT, or
+  have the exporter warn.
 - `packages/…` or `src/audio/tracker/sid-export/`:
   - `asm6502.ts` — our mini assembler (dialect of `player.s`), with its own unit tests
     against hand-assembled opcodes.

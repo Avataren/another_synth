@@ -358,9 +358,12 @@ export type SidFlatEdit =
 const hexDigits = (v: number, digits: number): string => v.toString(16).toUpperCase().padStart(digits, '0');
 
 /**
- * The tempo GoatTracker starts every subsong at, with no F command: 6 frames
- * per row per 1x, or instrument 63's AD byte when instrument 63 has no wave
- * table and an AD of 2 or more (gplay.c:207-221, GT's hidden song tempo).
+ * The frames per row every subsong starts at, with no F command: the doc's
+ * tempo (always 6 in a doc the app writes, D6) per 1x, which is GoatTracker's
+ * 6 frames per row per 1x; or instrument 63's AD byte when instrument 63 has
+ * no wave table and an AD of 2 or more (gplay.c:207-221, GT's hidden song
+ * tempo). The Rust player starts at the same (`SidSongPlayer::start_tempo`,
+ * sid_decisions.md §4).
  */
 export function sidImpliedTempo(doc: SidDoc): number {
   const last = doc.instruments[62];
@@ -368,7 +371,7 @@ export function sidImpliedTempo(doc: SidDoc): number {
     const ad = (last.attack << 4) | last.decay;
     if (ad >= 2) return ad;
   }
-  return 6 * doc.speedMultiplier;
+  return Math.min(255, doc.tempo * doc.speedMultiplier);
 }
 
 /** The lowest start tempo GoatTracker plays the song at: above every instrument's gate timer, and 3 at least. */

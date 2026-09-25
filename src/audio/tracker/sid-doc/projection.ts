@@ -1,5 +1,5 @@
 import type { TrackerPattern, TrackerTrackData } from '@another-synth/tracker-playback';
-import type { SidFlatPattern, SidFlatSubsong } from './flat';
+import { sidImpliedTempo, type SidFlatPattern, type SidFlatSubsong } from './flat';
 import { sidCellEntries, sidGridLayout, sidRowToEntry } from './grid';
 import type { SidDoc } from './types';
 
@@ -54,18 +54,21 @@ export function projectSidPatterns(doc: SidDoc, subsong = 0): TrackerPattern[] {
 
 /**
  * The song's tempo in the tracker's terms. A SID song ticks on the PAL frame
- * (50.1245 Hz, `player.rs` `frame_cycles`) times its multispeed and plays
- * `tempo` ticks per row; the engine ticks at BPM * 2 / 5 Hz, so 50 Hz is 125
- * BPM (0.25 % slow of the player, which owns the transport and reports its
- * own row) and the tempo is the speed. The
- * engine's BPM stops at 255, so a multispeed of 3 or more is carried at
- * 250 BPM with the speed scaled to keep the row rate (rounded: only the
- * TS engine's clock, never the player's, is approximated).
+ * (50.1245 Hz, `player.rs` `frame_cycles`) times its multispeed and starts at
+ * `sidImpliedTempo` ticks per row (the doc's tempo per 1x, as GoatTracker and
+ * the Rust player start; an F command on the first row then sets its own);
+ * the engine ticks at BPM * 2 / 5 Hz, so 50 Hz is 125 BPM (0.25 % slow of the
+ * player, which owns the transport and reports its own row) and the ticks per
+ * row are the speed. The engine's BPM stops at 255 and its speed at 31, so a
+ * multispeed of 3 or more is carried at 250 BPM with the speed scaled to keep
+ * the row rate (rounded: only the TS engine's clock, never the player's, is
+ * approximated).
  */
 export function sidDocTiming(doc: SidDoc): { bpm: number; initialSpeed: number } {
+  const ticks = sidImpliedTempo(doc);
   const bpm = 125 * doc.speedMultiplier;
-  if (bpm <= 255) return { bpm, initialSpeed: Math.min(31, doc.tempo) };
-  return { bpm: 250, initialSpeed: Math.max(1, Math.min(31, Math.round((doc.tempo * 2) / doc.speedMultiplier))) };
+  if (bpm <= 255) return { bpm, initialSpeed: Math.max(1, Math.min(31, ticks)) };
+  return { bpm: 250, initialSpeed: Math.max(1, Math.min(31, Math.round((ticks * 2) / doc.speedMultiplier))) };
 }
 
 /** The grid pattern of flat pattern `id` (`flat.ts`): its voices' rows as they sound, named `name`. */
