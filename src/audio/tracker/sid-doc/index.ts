@@ -7,6 +7,7 @@ export {
   SID_FILE_VERSION,
   blankSidPattern,
   createNewSidDoc,
+  SID_MIN_NEW_TEMPO,
   isBlankSidRow,
   makeSidDoc,
   newSidGateTimer,

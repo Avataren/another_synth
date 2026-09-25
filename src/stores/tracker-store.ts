@@ -68,6 +68,7 @@ import {
 } from 'src/audio/tracker/ahx-doc';
 import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
+  createNewSidDoc,
   decodeSidFile,
   encodeSidFile,
   projectSidPatterns,
@@ -82,6 +83,7 @@ import {
   type SidChipModel,
   type SidDoc,
   type SidDocRow,
+  type NewSidDocOptions,
   type SidOpResult,
 } from 'src/audio/tracker/sid-doc';
 
@@ -1479,6 +1481,16 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.moduleFormat = 'sid';
       this.currentSong = { title: doc.songName.trim() || 'Untitled SID song', author: doc.author.trim() || 'Unknown', bpm: 125 };
       this.showSidDoc(doc, 0);
+    },
+    /**
+     * A new SID song from scratch (plan-sid-authoring.md phase 3):
+     * GoatTracker's new song with `options` (`createNewSidDoc`, which throws
+     * for options GoatTracker cannot hold), made current as a `.sng` load
+     * makes its doc. The caller rewires the song bank and playback, as it does
+     * after any load.
+     */
+    resetToNewSidSong(options: NewSidDocOptions = {}) {
+      this.adoptSidDoc(createNewSidDoc(options));
     },
     /**
      * Replaces the song's doc with an edited one (an op's result): the grid,
