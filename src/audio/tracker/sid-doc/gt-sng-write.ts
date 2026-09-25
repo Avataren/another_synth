@@ -84,9 +84,10 @@ export function gtSongExportProblem(doc: SidDoc): string | null {
  * §3.1), its pattern.
  */
 /** The bytes `list` takes in a `.sng` (endmark and restart not counted): at most `GT_MAX_ORDERLIST_BYTES`. */
-export const gtOrderlistByteLength = (list: SidOrderlist): number => orderlistBytes(list).length - 2;
+export const gtOrderlistByteLength = (list: SidOrderlist): number => gtOrderlistBytes(list).length - 2;
 
-function orderlistBytes(list: SidOrderlist): number[] {
+/** `list` as GT's orderlist bytes, the endmark and the restart byte last (what the `.sng` and GT's packer read). */
+export function gtOrderlistBytes(list: SidOrderlist): number[] {
   const out: number[] = [];
   const last = list.entries[list.entries.length - 1]!.transpose;
   let transpose = 0;
@@ -104,7 +105,8 @@ function orderlistBytes(list: SidOrderlist): number[] {
   return out;
 }
 
-function gtNoteByte(note: number): number {
+/** A doc row's note as GT's pattern byte (`REST`, `KEYOFF`, `KEYON` or `FIRSTNOTE + index`). */
+export function gtNoteByte(note: number): number {
   if (note === SID_NOTE_NONE) return GT_NOTE_REST;
   if (note === SID_NOTE_KEY_OFF) return GT_NOTE_KEY_OFF;
   if (note === SID_NOTE_KEY_ON) return GT_NOTE_KEY_ON;
@@ -128,7 +130,7 @@ export function exportGtSong(doc: SidDoc): GtSongExport {
   // §6.1.2 orderlists: length (endmark counted, restart not), data, restart.
   for (const subsong of doc.subsongs) {
     for (const list of subsong.orderlists) {
-      const bytes = orderlistBytes(list);
+      const bytes = gtOrderlistBytes(list);
       out.push(bytes.length - 1, ...bytes);
     }
   }

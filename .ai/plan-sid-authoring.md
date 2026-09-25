@@ -339,6 +339,43 @@ imported multispeed songs without an F) is still open. New songs avoid it by wri
   our player; load back → doc-equal.
 
 ### Phase 4 — `.sid` export (PSID v2) (M/L)
+
+**Progress (2026-09-25, branch `agent/sid-authoring-p4-0925`, uncommitted): DONE.**
+- **Licence (D2 check):** upstream `player.s` (SourceForge trunk and the GoatTracker 2.77 release) is
+  headed "GoatTracker V2.73 playroutine" with the same line: "does not fall under the GPL license! Use
+  it, or song binaries created from it freely for any purpose". Shipped as
+  `src/audio/tracker/sid-export/gt2/player.s` (trunk copy; the 2.77 zip differs in one comment typo).
+- `sid-export/asm6502.ts`: our assembler for the dialect. Addressing by syntax (`<expr` zero page, a bare
+  expr always absolute), so two passes. `.IF/.ELSE/.ENDIF` (one-line too), `.DEFINED()`, `.BYTE`,
+  `.ORG`, `=`. **Quirk kept:** the dialect's grammar assembles `ldy expr,y` as $BC (LDY abs,X), and
+  player.s relies on it (`ldy mt_chnnote,y` indexes by channel).
+- `sid-export/gt-pack.ts`: doc -> defines + player.s + data, following greloc.c's steps (facts only):
+  normal/no-HR/legato instrument groups (+1 each at multispeed), reached table rows only and renumbered,
+  GT's duplicate-part sharing, wave/pulse/filter conversions, pattern packing, orderlist repeat swap, and
+  GT's refusals (illegal wave command, pointer onto a jump, table past 255, pattern > 256 bytes). Also
+  warnings: where GT's C64 player and its editor part (`sid_decisions.md`).
+- `sid-export/gt-psid.ts`: PSID v2 as GT writes it (CIA stub `$4CC7/mult` 10 bytes before the player at
+  multispeed). `sid-export/index.ts` `exportSid(doc)`: the "disable optimization" build by default
+  (Morten: sounds like the app; +330 bytes median), size guard below $D000.
+- Export dialog row "Commodore 64 SID (.sid)" (`song-export/sid-exporter.ts`; `planSidExport` shared with
+  `.sng`). No load-address option yet ($1000, zero page $FC, GT's defaults).
+- Tests: `sid-asm6502` (hand-assembled opcodes, all 151, expressions, errors), `sid-cpu6502` (the test
+  6502, `tests/helpers/cpu6502.ts`), `sid-psid-export` (byte-equal to 4 gt2reloc fixtures in
+  `tests/fixtures/gt-sids`, header, 6502 plays a new song, refusals, warnings), `song-export-sid`.
+  vitest 4358, vue-tsc, eslint clean. No Rust change.
+- **Gates, measured:**
+  - `psid_gate.ts` + `run_psid_gate.sh`: GoatTracker 2.77's own `gt2reloc` (built locally from the source
+    zip; oracle patch: `-I` break, `-M` model option) packs the `.sng` of each doc: every corpus song, its
+    flat compile, 16 new songs as 8580. **400/400 files byte-identical**, optimized and not.
+  - `psid_play_gate.ts` + `run_psid_play_gate.sh`: each exported `.sid` on the 6502, 30 000 frames, vs our
+    Rust player: **107/118 subsongs identical**. vs gtref: 105 (+Ballad, +b_o_f_h s3's known frame 0).
+    Every other subsong is one the exporter warns about. Not compared: first 30 frames, pulse bit 0,
+    frequency/pulse at waveform 0 (all inaudible; see sid_decisions.md).
+  - VICE `vsid` renders a 1x and a 2x export (audible, 8 s each). Real hardware: Morten.
+
+**Next:** Morten's review/merge; a load-address option in the dialog if wanted; Phase 5 (.prg) reuses the
+6502, assembler and packer. Open: tribal_tribunal's one-frame frequency difference.
+
 - Before it ships (sid_decisions.md "Deliberate differences"): our player stops past a filter
   table's stored rows and moves on over wave-table `$F0`/`$F8`/`$FE`, where GT's `player.s` reads
   zeros / stops the song. In an exported file those become app-vs-file differences: match GT, or

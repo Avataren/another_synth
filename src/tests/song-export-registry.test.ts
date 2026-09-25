@@ -10,6 +10,7 @@ import {
   exportFileName,
   getSongExporter,
   hvlExporter,
+  sidExporter,
   sngExporter,
   SONG_EXPORTERS,
   SongExportError,
@@ -26,16 +27,17 @@ const ahxSong = (): TrackerSongFile => importAhxToTrackerSong(demo('karma.ahx'))
 const withoutSource = (song: TrackerSongFile): TrackerSongFile => ({ ...song, data: { ...song.data } });
 
 describe('the exporter registry', () => {
-  it('lists ahx, hvl, sng, mod, xm, s3m in that order with unique ids', () => {
-    expect(SONG_EXPORTERS.map((e) => e.id)).toEqual(['ahx', 'hvl', 'sng', 'mod', 'xm', 's3m']);
+  it('lists ahx, hvl, sng, sid, mod, xm, s3m in that order with unique ids', () => {
+    expect(SONG_EXPORTERS.map((e) => e.id)).toEqual(['ahx', 'hvl', 'sng', 'sid', 'mod', 'xm', 's3m']);
     expect(new Set(SONG_EXPORTERS.map((e) => e.id)).size).toBe(SONG_EXPORTERS.length);
   });
 
-  it('has a writer for ahx, hvl and sng only', () => {
+  it('has a writer for ahx, hvl, sng and sid only', () => {
     expect(SONG_EXPORTERS.map((e) => [e.id, e.available])).toEqual([
       ['ahx', true],
       ['hvl', true],
       ['sng', true],
+      ['sid', true],
       ['mod', false],
       ['xm', false],
       ['s3m', false],
@@ -43,6 +45,7 @@ describe('the exporter registry', () => {
     expect(getSongExporter('ahx')).toBe(ahxExporter);
     expect(getSongExporter('hvl')).toBe(hvlExporter);
     expect(getSongExporter('sng')).toBe(sngExporter);
+    expect(getSongExporter('sid')).toBe(sidExporter);
     expect(getSongExporter('xm')?.extension).toBe('.xm');
   });
 
@@ -73,6 +76,7 @@ describe('the exporter registry', () => {
       ahx: { state: 'enabled' },
       hvl: { state: 'unavailable', reason: "AHX songs can't be saved as HVL." },
       sng: { state: 'unavailable', reason: "AHX and HVL songs can't be saved as GoatTracker .sng." },
+      sid: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .sid." },
       mod: notYet,
       xm: notYet,
       s3m: notYet,
@@ -83,6 +87,7 @@ describe('the exporter registry', () => {
       ahx: { state: 'unavailable', reason: 'AHX files have 4 tracks; this song reaches track 6. Export it as HVL instead.' },
       hvl: { state: 'enabled' },
       sng: { state: 'unavailable', reason: "AHX and HVL songs can't be saved as GoatTracker .sng." },
+      sid: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .sid." },
       mod: notYet,
       xm: notYet,
       s3m: notYet,
@@ -91,11 +96,13 @@ describe('the exporter registry', () => {
       ahx: { state: 'unavailable', reason: "XM songs can't be saved as AHX." },
       hvl: { state: 'unavailable', reason: "XM songs can't be saved as HVL." },
       sng: { state: 'unavailable', reason: "XM songs can't be saved as GoatTracker .sng." },
+      sid: { state: 'unavailable', reason: "XM songs can't be exported as a C64 .sid." },
     });
     expect(rows(native)).toMatchObject({
       ahx: { state: 'unavailable', reason: "Songs made from scratch can't be exported yet." },
       hvl: { state: 'unavailable', reason: "Songs made from scratch can't be exported yet." },
       sng: { state: 'unavailable', reason: "Songs made from scratch can't be exported yet." },
+      sid: { state: 'unavailable', reason: "Songs made from scratch can't be exported yet." },
     });
     expect(rows(withoutSource(ahxSong()))).toMatchObject({
       ahx: { state: 'unavailable', reason: 'This song has no original file to export from.' },

@@ -3,6 +3,7 @@ export * from './ahx-exporter';
 export * from './hvl-exporter';
 export * from './hvl-to-ahx';
 export * from './sng-exporter';
+export * from './sid-exporter';
 export * from './download';
 export * from './file-name';
 export * from './registry';

@@ -92,8 +92,49 @@ meets it.
   frames after ours (5 at 1x). The gates allow for it; everything after is
   frame-locked.
 
-Before `.sid`/`.prg` export (plan phase 4), the first two become "the app vs
-the exported file" differences: either match GT, or have the exporter warn.
+The first two never reach an exported file. GoatTracker's own packer refuses
+both songs ("TABLE EXECUTION OVERFLOWS", "ILLEGAL WAVETABLE COMMAND"), and
+so does ours, with the reason (plan phase 4, decided 2026-09-25).
+
+## GoatTracker's editor vs its C64 player (found by the `.sid` gate, 2026-09-25)
+
+The app plays like GoatTracker's editor (`gplay.c`, gtref). An exported
+`.sid` runs GoatTracker's C64 player (`player.s`), and the file is
+byte-identical to GoatTracker 2.77's own export (`psid_gate.ts`, 400/400). A
+6502 playing it against our Rust player, 30 000 frames, all 118 subsongs of
+the corpus and new songs: 107 identical. Leaving out the first 30 frames,
+pulse bit 0, and frequency/pulse while the waveform bits are 0 (all
+inaudible). Where the two GoatTracker players part:
+
+- **Pulse bit 0:** the editor writes `pulse & $FE`, the C64 player all 8
+  bits. Inaudible (1/4096). Not compared.
+- **Before a voice's first note** the C64 player runs effects (instrument 1's
+  vibrato) on voices with waveform 0. Inaudible. Not compared.
+- **A pulse row with modulation time 0** (`00 xx`): the editor stays on it and
+  changes nothing; the C64 player counts down from 256 and sweeps. Audible.
+  3 corpus songs (sniff, flumbos_keps, forced_entry).
+- **A note past the note table** (index 96-127, after a transpose or a
+  wave-table step): the editor plays frequency 0; the C64 player's table ends
+  at the last note the song needs, so it reads the file's next bytes. Audible
+  (noise drums), and depends on the file's layout. 7 subsongs.
+- **A pulse or filter jump onto another jump row:** both treat that row as a
+  "set" row, but the C64 player's table is renumbered and has only the rows a
+  pointer or jump reaches, so the value and the row after it can differ.
+  maximum_rastertime_test, kalachnikov/sid_warrior.
+- **GT's optimized build (`SIMPLEPULSE`)** keeps a pulse in one nybble-swapped
+  byte, so sweeps wrap and carry differently (7 subsongs), and writes the high
+  nybble into the pulse low byte. The export dialog writes GT's "disable
+  optimization" build (Morten, 2026-09-25), which has neither.
+- **"Ballad"** (§3): the one of these where our player already follows the
+  C64 player.
+- **One frame of stinsen/tribal_tribunal voice 3** (frequency $2715 vs $2714
+  at frame 3869, 7 frames in 30 000): not explained yet.
+
+**Decision (Morten, 2026-09-25): the exporter warns** (pulse time 0, notes
+past the table, jumps onto jumps: `gt-pack.ts` `tableDifferences` /
+`noteRangeDifferences`). The file is still written, since it is GoatTracker's
+own. `player.rs` is unchanged. Every non-identical subsong in the gate is one
+the exporter warns about.
 
 ## The flat song model (plan-sid-authoring phase 2)
 
