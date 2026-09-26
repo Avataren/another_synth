@@ -1,5 +1,5 @@
 import type { SidInstrument, SidTableRow } from 'src/audio/tracker/sid-doc';
-import { MAX_HARD_RESTART_GAP, type NoteProgram, type ProgramFrame, type PulseFrame } from './notes';
+import { MAX_HARD_RESTART_GAP, MAX_PULSE_FRAMES, type NoteProgram, type ProgramFrame, type PulseFrame } from './notes';
 
 /**
  * Instruments of a transcription (plan-psid-import.md §3). Notes are grouped
@@ -89,7 +89,8 @@ export function timbreOf(p: NoteProgram): Timbre {
     ad: p.ad,
     sr: p.sr,
     pulse: p.frames.some((f) => f.ctrl & 0x40),
-    pulseShape: pulseShape(p),
+    // A legato note's instrument leaves the pulse table running: its width is the line's first note's.
+    pulseShape: p.note.legato ? '' : pulseShape(p),
     legato: p.note.legato,
     filter: p.filter && p.frames.length > 0 ? `${p.frames[0]!.mode},${p.frames[0]!.resonance}` : '',
     ctrl: p.frames.map((f) => f.ctrl),
@@ -132,7 +133,8 @@ function distance(a: Timbre, b: Timbre): number {
   if (a.sr !== b.sr) d += 6;
   if (a.pulse !== b.pulse) d += 2;
   if (a.pulseShape !== b.pulseShape) d += 2;
-  if (a.legato !== b.legato) d += 20;
+  // A legato note on a gated instrument retriggers; a gated note on a legato one never sounds.
+  if (a.legato !== b.legato) d += 1000;
   if (a.filter !== b.filter) d += 4;
   // Over the first 12 frames either plays; a frame only one plays differs.
   const n = Math.min(12, Math.max(a.ctrl.length, b.ctrl.length));
@@ -202,10 +204,24 @@ function plansOf(programs: readonly NoteProgram[], pulse: boolean): InstrumentPl
   return plans;
 }
 
-/** `plans` down to `max`: the least used merge into their nearest. */
+/** A note counts at least this many frames when merging: a drum's one-frame program sounds on in its envelope. */
+const MIN_USED_FRAMES = 12;
+
+/**
+ * Frames a merge would give another instrument's sound: the frames its notes'
+ * programs describe, at least `MIN_USED_FRAMES` a note (a long sweep counts for
+ * more than a held line's one row, a drum hit on every bar for more than
+ * either), and a held line's first note the line's too (its envelope and
+ * pulse table play all of it).
+ */
+const usedFrames = (plan: InstrumentPlan): number =>
+  plan.members.reduce((n, m) => n + Math.max(MIN_USED_FRAMES, m.frames.length) + Math.min(MAX_PULSE_FRAMES, m.lineFrames), 0);
+
+/** `plans` down to `max`: the least used (by the frames their notes sound) merge into their nearest. */
 function mergedTo(plans: InstrumentPlan[], max: number): InstrumentPlan[] {
+  const used = new Map(plans.map((p) => [p, usedFrames(p)]));
   while (plans.length > max) {
-    plans.sort((a, b) => b.members.length - a.members.length);
+    plans.sort((a, b) => used.get(b)! - used.get(a)!);
     const victim = plans.pop()!;
     let best = plans[0]!;
     let bestD = Infinity;
@@ -214,6 +230,7 @@ function mergedTo(plans: InstrumentPlan[], max: number): InstrumentPlan[] {
       if (d < bestD) [best, bestD] = [p, d];
     }
     best.members.push(...victim.members);
+    used.set(best, used.get(best)! + used.get(victim)!);
   }
   return plans;
 }
@@ -495,15 +512,17 @@ function pulseLoop(pw: readonly number[]): { start: number; period: number } | n
  * a set row for the first frame, then each run of equal steps as a row that
  * adds that step for the run (the change the run makes, over the frames
  * GoatTracker steps: it skips the table on the row's frame `rowLength -
- * gateTimer`), a step past a signed byte as set rows, frame by frame; the
- * cycle the width repeats as a loop, else a stop after the last change.
+ * gateTimer`, and on a held line's legato note's first frame), a step past a
+ * signed byte as set rows, frame by frame; the cycle the width repeats as a
+ * loop, else a stop after the last change.
  * Null: the note sounds no pulse.
  */
 export function pulseProgram(frames: readonly ProgramFrame[], pulse: readonly PulseFrame[], gateTimer: number): TableProgram | null {
   if (!frames.some((f) => f.ctrl & 0x40) || pulse.length === 0) return null;
   const set = (w: number): SidTableRow => ({ left: 0x80 | ((w >> 8) & 0x0f), right: w & 0xff });
   const pw = pulse.map((p) => p.pw);
-  const skipped = (i: number): boolean => i > 0 && pulse[i]!.k >= 1 && pulse[i]!.k === pulse[i]!.rowLength - gateTimer;
+  const skipped = (i: number): boolean =>
+    i > 0 && ((pulse[i]!.k >= 1 && pulse[i]!.k === pulse[i]!.rowLength - gateTimer) || pulse[i]!.noteStart === true);
   const loop = pulseLoop(pw);
   let end = pw.length;
   if (loop !== null) end = loop.start + loop.period;
@@ -524,12 +543,20 @@ export function pulseProgram(frames: readonly ProgramFrame[], pulse: readonly Pu
       for (let k = i; k <= Math.min(j, i + MAX_SET_RUN - 1); k++) rows.push(set(pw[k]!));
       if (j > i + MAX_SET_RUN - 1) rows.push(set(pw[j]!));
     } else {
+      // A steady sweep (a loop that is this one run, a frame or two long): the step over every
+      // time round, as the frames GoatTracker skips fall on other places of it each time.
+      const steady = loop !== null && i === loop.start && j + 1 === loop.start + loop.period;
+      const reps = steady ? Math.max(1, Math.floor((pw.length - j - 1) / loop.period) + 1) : 1;
       let steps = 0;
-      for (let k = i; k <= j; k++) if (!skipped(k)) steps++;
+      let total = 0;
+      for (let m = 0; m < reps; m++) {
+        const o = m * (loop?.period ?? 0);
+        for (let k = i + o; k <= j + o; k++) if (!skipped(k)) steps++;
+        total += pulseDelta(pw[i - 1 + o]!, pw[j + o]!);
+      }
       if (steps > 0) {
-        const total = pulseDelta(pw[i - 1]!, pw[j]!);
         const speed = Math.max(-127, Math.min(127, Math.round(total / steps)));
-        rows.push({ left: steps, right: speed & 0xff });
+        rows.push({ left: Math.max(1, Math.round(steps / reps)), right: speed & 0xff });
       }
     }
     i = j + 1;
@@ -837,7 +864,7 @@ export function buildInstruments(
   const waveBudget = 255 - tables.wave.length;
   const wave = fitWavePrograms(plans, waveBudget);
   const timings = plans.map((p) => noteTiming(p, rowFrames));
-  const pulse = plans.map((p, i) => pulseProgram(p.group.rep.frames, p.group.rep.pulse, timings[i]!.gateTimer));
+  const pulse = plans.map((p, i) => (p.group.timbre.legato ? null : pulseProgram(p.group.rep.frames, p.group.rep.pulse, timings[i]!.gateTimer)));
   fitPulsePrograms(pulse, plans, 255 - tables.pulse.length);
   return plans.map((plan, i) => {
     const rep = plan.group.rep;

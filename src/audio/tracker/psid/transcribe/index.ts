@@ -16,7 +16,7 @@ import type { PsidFile } from '../psid-file';
 import { estimateTuning, traceFrames, type TraceFrames } from './frames';
 import { detectGrid, rowLength, rowOfFrame, tempoChanges, type RowGrid } from './grid';
 import { buildInstruments, groupNotes, TableBuilder, type InstrumentPlan } from './instruments';
-import { filterDriver, noteBase, notePrograms, onsetsOf, placeNotes, type NoteProgram } from './notes';
+import { filterDriver, noteBase, notePrograms, onsetsOf, placeNotes, splitLines, type NoteProgram } from './notes';
 import { planPitch, type PitchRow } from './pitch';
 import { findLoop, flatSubsong, subsongRows, type PatternPitch, type SongLoop, type SubsongRows } from './song';
 
@@ -116,7 +116,7 @@ function transcribed(subsong: number, trace: SidTrace, effects: boolean): Prepar
   if (onsets.every((l) => l.length === 0)) return 'plays no notes';
   const grid = detectGrid(onsets, frames.frames);
   const tuning = estimateTuning(frames);
-  const notes = placeNotes(frames, grid, onsets);
+  const notes = splitLines(frames, grid, placeNotes(frames, grid, onsets), tuning);
   const plans = effects ? notes.map((list) => planPitch(frames, grid, list, (n) => noteBase(frames, grid, n, tuning), tuning)) : [];
   const all = notes.flatMap((list, v) => notePrograms(frames, list, tuning, grid, plans[v]));
   const driver = filterDriver(frames, onsets);

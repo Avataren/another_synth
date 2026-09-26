@@ -57,7 +57,7 @@ describe('a C64 .sid through the real load path', () => {
     });
     const notice = told.mock.calls.map((c) => String(c[0])).find((m) => m.startsWith('Commando by Rob Hubbard'));
     expect(notice).toMatch(
-      /^Commando by Rob Hubbard: transcribed from its own C64 player into a GoatTracker song \(19 of 19 subsongs\)\. Its first subsong plays \d+% like the original, frame by frame\.$/,
+      /^Commando by Rob Hubbard: transcribed from its own C64 player into a GoatTracker song \(19 of 19 subsongs\)\. It approximates the original and can sound noticeably different\.$/,
     );
   }, 60000);
 

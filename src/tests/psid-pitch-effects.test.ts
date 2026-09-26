@@ -158,6 +158,33 @@ describe('pitch effects', () => {
     }
   });
 
+  it('a held line whose rows play several notes (a Hubbard bass) keeps following the original past the first note\'s frames', () => {
+    // 144 frames under one gate (released for the last 12): 3-frame notes, each an octave
+    // down on its first frame, two to a 6-frame row, a line that does not repeat; the width
+    // climbs all the way.
+    const line = [48, 52, 55, 50, 53, 57, 47, 50, 55, 45, 48, 52, 53, 57, 60, 43, 47, 50, 52, 55, 59, 48];
+    const bass: VoiceFrame[] = Array.from({ length: 144 }, (_, i) => {
+      const n = line[Math.floor(i / 3) % line.length]!;
+      return { freq: GT_NOTE_REGS[i % 3 === 0 ? n - 12 : n]!, ctrl: i < 132 ? 0x41 : 0x40, pw: 0x200 + 8 * i };
+    });
+    const r = imported(tableTune('Bass line', bass));
+    const p = played(r);
+    let near = 0;
+    let pulseNear = 0;
+    let n = 0;
+    for (let cycle = 1; cycle < 4; cycle++) {
+      for (let i = 2; i < 130; i++) {
+        const k = cycle * 144 + i;
+        n++;
+        if (centsAt(p, k) < 5) near++;
+        if (Math.abs((p.a.voices[0]!.pw[k]! & 0xfff) - (p.b.voices[0]!.pw[k + p.offset]! & 0xfff)) <= 0x60) pulseNear++;
+      }
+    }
+    expect(near / n).toBeGreaterThan(0.9);
+    // The width runs on under the line's later notes rather than starting over on each.
+    expect(pulseNear / n).toBeGreaterThan(0.85);
+  });
+
   it('a note let go after the frames an instrument describes still gets its key-off', () => {
     // 120 frames: C-4 held 80 frames (past the 48 the instrument's tables play), then released.
     const long: VoiceFrame[] = Array.from({ length: 120 }, (_, i) => ({ freq: C4, ctrl: i < 80 ? 0x21 : 0x20 }));

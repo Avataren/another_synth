@@ -43,10 +43,11 @@ export function psidImportSummary(r: PsidImport): string {
   const parts =
     r.method === 'unpacked'
       ? [`${who}: a GoatTracker song, unpacked from the file${r.exact ? ' exactly' : ''} (${count}).`]
-      : [`${who}: transcribed from its own C64 player into a GoatTracker song (${count}).`];
-  if (r.fidelity !== null) {
-    parts.push(`Its first subsong plays ${Math.round(r.fidelity.score * 100)}% like the original, frame by frame.`);
-  }
+      : [
+          `${who}: transcribed from its own C64 player into a GoatTracker song (${count}).`,
+          // Not the fidelity score: it matches registers frame by frame, not what the ear hears.
+          'It approximates the original and can sound noticeably different.',
+        ];
   parts.push(...r.notes);
   return parts.join(' ');
 }

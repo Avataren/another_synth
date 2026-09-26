@@ -79,6 +79,8 @@ export interface NoteProgram {
    * part of the instrument (its frames are kept gated from there).
    */
   readonly keyOff: number | null;
+  /** Frames of the held line this note starts (the legato notes after it, `splitLines`); 0 for none. */
+  readonly lineFrames: number;
   /**
    * The pulse width from frame 1 on, up to the next note (at most
    * `MAX_PULSE_FRAMES`), with each frame's place in its row: `k` frames after
@@ -92,6 +94,8 @@ export interface PulseFrame {
   readonly pw: number;
   readonly k: number;
   readonly rowLength: number;
+  /** A legato note of the line starts on this frame (its tick 0): GoatTracker skips the pulse table's step there. */
+  readonly noteStart?: boolean;
 }
 
 /** Longest stretch of a note's pulse width the pulse table follows (a slow sweep's whole cycle). */
@@ -168,6 +172,65 @@ export function placeNotes(f: TraceFrames, g: RowGrid, onsets: readonly (readonl
     }
     for (let i = 0; i + 1 < notes.length; i++) notes[i]!.end = notes[i + 1]!.tick0;
     return notes;
+  });
+}
+
+/** A held row plays notes further apart than this: no tie (one note a row) can play it. */
+const LINE_SPREAD = 2;
+/** A frame this close to a whole semitone plays that note. */
+const ON_NOTE = 0.15;
+
+/**
+ * Per voice, the notes with every held line split where a tie cannot play it:
+ * a row, under a gate that stays on, that plays several notes further apart
+ * than `LINE_SPREAD`, moving at least twice (Hubbard's bass: three notes to a row, each an octave
+ * down on its first frame) and not the ones the row before played (a chord's
+ * arpeggio goes on as it is) starts a legato note, which plays its row from
+ * its own wave table. Without it the line stops where the first note's
+ * program does (`MAX_PROGRAM_FRAMES`).
+ */
+export function splitLines(f: TraceFrames, g: RowGrid, voices: readonly RowNote[][], tuning: number): RowNote[][] {
+  return voices.map((notes, voice) => {
+    const vf = f.voices[voice]!;
+    const delay = g.delays[voice] ?? 0;
+    // A row's notes (sorted, distinct) and whether it is a held line's: every frame gated and on a note.
+    const rowNotes = (s: number, e: number): { set: string; line: boolean } => {
+      const ns: number[] = [];
+      let line = e - s >= 3;
+      let moves = 0;
+      for (let i = s; i < e; i++) {
+        const c = vf.ctrl[i]!;
+        const p = pitchOf(vf.freq[i]!, f.clockHz) - tuning;
+        const on = (c & 1) !== 0 && (c & 0xf0) !== 0 && !(c & 0x88) && Number.isFinite(p) && Math.abs(p - Math.round(p)) <= ON_NOTE;
+        if (on) {
+          if (ns.length > 0 && ns[ns.length - 1] !== Math.round(p)) moves++;
+          ns.push(Math.round(p));
+        } else line = false;
+      }
+      const set = [...new Set(ns)].sort((a, b) => a - b);
+      // One move inside the row is a tie off the row's start; a line moves on within it.
+      return { set: set.join(','), line: line && moves >= 2 && set[set.length - 1]! - set[0]! > LINE_SPREAD };
+    };
+    const out: RowNote[] = [];
+    for (const note of notes) {
+      out.push(note);
+      const end = note.end;
+      let prev: string | null = null;
+      const lastRow = rowOfFrame(g, end - 1 - delay);
+      for (let r = note.row; r <= lastRow; r++) {
+        const tick0 = rowStart(g, r);
+        const s = Math.max(note.onset, tick0 + 1 + delay);
+        const e = Math.min(end, rowStart(g, r + 1) + 1 + delay);
+        if (e <= s) continue;
+        const row = rowNotes(s, e);
+        if (r > note.row && row.line && row.set !== prev) {
+          out[out.length - 1]!.end = tick0;
+          out.push({ voice, row: r, tick0, onset: tick0 + 1 + delay, end, folded: 0, legato: true });
+        }
+        prev = row.set;
+      }
+    }
+    return out;
   });
 }
 
@@ -346,11 +409,20 @@ export function notePrograms(f: TraceFrames, notes: readonly RowNote[], tuning =
     }
     // The width as the note goes on, each frame's place in its row.
     const pulse: PulseFrame[] = [];
-    const pulseEnd = Math.min(f.frames, next === undefined ? f.frames : next.onset, note.tick0 + 1 - shift + MAX_PULSE_FRAMES);
+    // Through a held line's legato notes: their instruments leave the pulse table running.
+    const cut = notes.slice(n + 1).find((x) => !x.legato);
+    const line = notes.slice(n + 1, cut === undefined ? undefined : notes.indexOf(cut));
+    const lineStarts = new Set(line.map((x) => x.tick0));
+    const pulseEnd = Math.min(f.frames, cut === undefined ? f.frames : cut.onset, note.tick0 + 1 - shift + MAX_PULSE_FRAMES);
     for (let src = Math.max(0, note.tick0 + 1 - shift); src < pulseEnd; src++) {
       const t = src + shift;
       const r = g === undefined ? note.row : rowOfFrame(g, t);
-      pulse.push({ pw: vf.pw[src]! & 0xfff, k: g === undefined ? -1 : t - rowStart(g, r), rowLength: g === undefined ? 0 : rowLength(g, r) });
+      pulse.push({
+        pw: vf.pw[src]! & 0xfff,
+        k: g === undefined ? -1 : t - rowStart(g, r),
+        rowLength: g === undefined ? 0 : rowLength(g, r),
+        ...(lineStarts.has(t) ? { noteStart: true } : {}),
+      });
     }
     const program = {
       note,
@@ -364,6 +436,7 @@ export function notePrograms(f: TraceFrames, notes: readonly RowNote[], tuning =
       hardRestartBefore,
       gapBefore,
       keyOff,
+      lineFrames: note.legato || line.length === 0 ? 0 : line[line.length - 1]!.end - line[0]!.tick0,
       filter: false,
     };
     let testStartGain = 0;
