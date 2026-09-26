@@ -242,3 +242,69 @@ Not unpacked (transcribed instead): players of other GoatTracker versions
 SID, so they are not distributed as `.sid`). Lost, as the packer drops them: instrument names,
 instruments and table rows nothing used, an instrument written again on a note that already
 had it.
+
+## 8. Phase 5: measured against VICE; pitch effects, key-offs, pulse (2026-09-26)
+
+Morten, after listening: most transcriptions sound nothing like the originals, and glides come out
+as runs of wrong notes instead of pitch effects.
+
+**Method.** Ground truth is VICE 3.10 on the HVSC tree (`~/Downloads/c64/C64Music`): `vsid
+-sounddev dump` (every SID write, cycle-timed; at warp speed) and `-sounddev wav` (real time).
+The sample is the 17 fixtures plus 80 random HVSC tunes (91 importable). Four stages, measured
+apart:
+
+1. our emulator against VICE's write stream (write for write, grouped per play call): 85 of 93
+   identical over 20 s; the rest are VIC badline timing inside multispeed calls and one odd NTSC
+   tune. The emulator is not what sounds wrong.
+2. the chip: VICE's own writes through our `Chip` against VICE's audio: spectral match 0.95
+   median. Not it either.
+3. the transcription: the app's playback of the imported doc (the Rust `SidSongPlayer`, exactly
+   what the user hears) against the original, per voice per frame (strict: pitch within 10/50
+   cents, gate, pulse width within $40) and as audio (1/6-octave log spectra, semitone chroma,
+   loudness envelope, aligned on onsets) against VICE.
+4. D6's fidelity score was blind to much of it: it compares on our emulator only, gives full
+   pitch credit within 50 cents, weighs pulse at 0.05 and its alignment search is narrow.
+
+**What the transcription got wrong, by size** (share of all voice-frames, 91 tunes):
+held notes the original had let go 3.65%, arpeggio frames 1.62%, notes cut short 1.54%, note
+starts 1.42%, steady wrong pitch 1.22%, glides 1.17%; pulse width within $40 on only 57% of
+pulse frames.
+
+**Changes.**
+- `transcribe/pitch.ts` (new): pitch after a note starts is the pattern's. A glide landing on a
+  note is that note with `3xx` on the row it starts (speed fitted over the frames GoatTracker's
+  tick effects move, tick 0 skipped), held on the rows it spans; a bend that lands on no note is
+  `1xx`/`2xx`; a pitch that moves to another note with no glide and no gate is a tie, `note + 3
+  00` (no instrument: the sounding note goes on, no retrigger, no legato instrument). Runs are
+  glides only when several frames move and no one step makes most of the move; a run with a
+  swing the other way of like width beside it is a vibrato (however wide). Ties only while the
+  gate is on (a pitch that changes as the note is let go leaves the row to its key-off). Speeds
+  sit on a 4% grid (the speed table's 255 rows). The frames an effect moves are `owned`: the
+  wave table leaves them, they match any timbre, they are no vibrato's. Replaces `splitLegato`.
+- Key-offs: found over the whole note, not its first 48 frames (a long note, a legato line of
+  ties), and placed past tie rows.
+- The gate timer: `noteTiming` took a rest's capped gap (9) as a hard restart's, so every note
+  before a rest got gate timer 8 (clamped to the row): GoatTracker let go of notes that many
+  frames early. Now only gaps up to `MAX_HARD_RESTART_GAP`.
+- Pulse: a note's width over up to 256 frames (`NoteProgram.pulse`, each frame's place in its
+  row); `pulseProgram` loops the cycle the width repeats, fits each run of equal steps over the
+  frames GoatTracker steps (it skips the table on the row frame `rowLength - gateTimer`), and sets
+  a step past a signed byte frame by frame. Over the 255-row budget the longest program is cut
+  first; donating another instrument's program is the last resort (R-Type had 43 of 63
+  instruments on one program). Notes are grouped by a coarse pulse shape too (start nibble,
+  first sweep's direction and pace); past 63 instruments the pulse-only splits merge first.
+- A silent frame's pitch (test bit, no waveform) matches any: instruments needed, median 27 ->
+  21, tunes over 63 17 -> 7.
+- A subsong that no longer fits with its effects is transcribed without them before it is cut.
+
+**Result** (91 tunes; before -> after): voice-frames of held notes the original let go 3.65% ->
+2.41%; gate agreement 0.935 -> 0.951; pulse within $40 57% -> 75%; D6 fidelity 0.864 -> 0.913;
+audio against VICE, spectral match mean 0.750 -> 0.762, worst quarter 0.682 -> 0.742. Fixture
+start songs: 15 of 17 up or level (vibratotest 0.79 -> 0.94), Arkanoid -0.016, Comic Bakery
+-0.012. Tests: `src/tests/psid-pitch-effects.test.ts`.
+
+**Open, by size:** arpeggio and note-start frames (1.9% + 1.5%); instruments past 63 (7 tunes;
+a per-note `8xx` wave pointer would share one instrument between chord shapes); tuning: a tune
+whose note table sits off GoatTracker's plays up to 50 cents off (a quarter of the sample, under
+2% of frames within 10 cents), which GoatTracker's fixed table cannot hold; the filter (not yet
+measured); multispeed tunes.

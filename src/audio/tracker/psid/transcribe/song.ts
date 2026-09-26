@@ -32,6 +32,16 @@ export interface SubsongRows {
   readonly loop: 'exact' | 'found' | 'none';
 }
 
+/** A pitch cell of a voice's pattern (`PitchRow`, its speed placed in the speed table). */
+export interface PatternPitch {
+  readonly voice: number;
+  readonly row: number;
+  readonly note: number | null;
+  readonly command: number;
+  readonly param: number;
+  readonly continued: boolean;
+}
+
 /** A row's note for GoatTracker note index `index` (clamped to the rows' range C-0..G#7). */
 const rowNote = (index: number): number => Math.max(SID_NOTE_FIRST, Math.min(SID_NOTE_LAST, index + 1));
 
@@ -76,6 +86,7 @@ export function subsongRows(
   gateTimerOf: (instrument: number) => number,
   tempo: readonly { readonly row: number; readonly length: number }[],
   commands: readonly { readonly row: number; readonly command: number; readonly param: number }[] = [],
+  pitch: readonly PatternPitch[] = [],
 ): SubsongRows {
   const length = loop.length;
   const voices: SidDocRow[][] = [0, 1, 2].map(() => Array.from({ length }, () => BLANK_SID_ROW));
@@ -84,6 +95,17 @@ export function subsongRows(
   for (const p of programs) {
     if (p.note.row >= length) continue;
     voices[p.note.voice]![p.note.row] = { note: rowNote(p.base), instrument: instrumentOf.get(p) ?? 0, command: 0, param: 0 };
+  }
+  // The pitch effects (`pitch.ts`): a tie or glide's note (no instrument: the sounding one goes on),
+  // and its command; never over a note of the voice's own.
+  const yielding = new Set<string>();
+  for (const x of pitch) {
+    if (x.row >= length) continue;
+    const v = voices[x.voice]!;
+    const cell = v[x.row]!;
+    if (x.note !== null && cell.note !== 0) continue;
+    v[x.row] = { ...cell, ...(x.note !== null ? { note: rowNote(x.note) } : {}), command: x.command, param: x.param };
+    if (x.continued) yielding.add(`${x.voice}:${x.row}`);
   }
   // Key-offs: GoatTracker clears the gate when it reads the row, the gate timer's
   // frames before the row starts; the row whose reading lands nearest the original's.
@@ -95,9 +117,9 @@ export function subsongRows(
     const row = at - rowStart(grid, k) <= rowStart(grid, k + 1) - at ? k : k + 1;
     const v = voices[p.note.voice]!;
     if (row <= p.note.row || row >= length) continue;
-    // Only into empty rows before the voice's next note.
-    let clear = true;
-    for (let r = p.note.row + 1; r <= row; r++) if (v[r]!.note !== 0) clear = false;
+    // Only into an empty row, and before the voice's next note (a tie's is the same note going on).
+    let clear = v[row]!.note === 0;
+    for (let r = p.note.row + 1; r < row; r++) if (v[r]!.note !== 0 && v[r]!.command !== 3) clear = false;
     if (clear) v[row] = { ...v[row]!, note: SID_NOTE_KEY_OFF };
   }
   // Tempo commands (F sets every voice's) and the song's other commands, on the
@@ -105,7 +127,8 @@ export function subsongRows(
   const all = [...tempo.map((t) => ({ row: t.row, command: 0xf, param: t.length })), ...commands];
   for (const { row, command, param } of all) {
     if (row >= length) continue;
-    const v = voices.find((x) => x[row]!.command === 0);
+    // A free command column, else one that only keeps a running effect going.
+    const v = voices.find((x) => x[row]!.command === 0) ?? voices.find((_, i) => yielding.has(`${i}:${row}`));
     if (v !== undefined) v[row] = { ...v[row]!, command, param };
   }
   return { voices, length, loopRow: loop.loopRow, loop: loop.kind };

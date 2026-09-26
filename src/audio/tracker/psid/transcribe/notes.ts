@@ -1,7 +1,8 @@
 import { applyEnvelopeFrame, SidEnvelope, type EnvelopeFrame } from '../envelope';
 import { SID_EVENT_GATE_LOW, SID_EVENT_GATE_ON } from '../sid-capture';
 import { nearestNote, pitchOf, type TraceFrames, type VoiceFrames } from './frames';
-import { rowOfFrame, rowStart, type RowGrid } from './grid';
+import { rowLength, rowOfFrame, rowStart, type RowGrid } from './grid';
+import type { PitchPlan } from './pitch';
 
 /**
  * The notes of a transcription (plan-psid-import.md §3): every gate-on of the
@@ -14,7 +15,7 @@ import { rowOfFrame, rowStart, type RowGrid } from './grid';
 /** Longest stretch of a note the instrument tables describe; the rest holds. */
 export const MAX_PROGRAM_FRAMES = 48;
 /** A gate-off this close before the next note is the hard restart's, not the instrument's. */
-const MAX_HARD_RESTART_GAP = 8;
+export const MAX_HARD_RESTART_GAP = 8;
 
 export interface RowNote {
   readonly voice: number;
@@ -37,6 +38,8 @@ export interface ProgramFrame {
   readonly ctrl: number;
   /** Pitch relative to the note's base, in semitones (fractional); null: no frequency (0). */
   readonly pitch: number | null;
+  /** The pattern sets this frame's pitch (a glide, a bend: `pitch.ts`); the instrument leaves it. */
+  readonly owned?: boolean;
   readonly pw: number;
   /** The (global) filter in that frame: cutoff high byte, $D417 (resonance, routing), mode bits (LP 1, BP 2, HP 4). */
   readonly cutoff: number;
@@ -76,7 +79,23 @@ export interface NoteProgram {
    * part of the instrument (its frames are kept gated from there).
    */
   readonly keyOff: number | null;
+  /**
+   * The pulse width from frame 1 on, up to the next note (at most
+   * `MAX_PULSE_FRAMES`), with each frame's place in its row: `k` frames after
+   * the row's first, of a row `rowLength` long (GoatTracker skips the pulse
+   * table's step on one frame of every row, `pulseProgram`).
+   */
+  readonly pulse: readonly PulseFrame[];
 }
+
+export interface PulseFrame {
+  readonly pw: number;
+  readonly k: number;
+  readonly rowLength: number;
+}
+
+/** Longest stretch of a note's pulse width the pulse table follows (a slow sweep's whole cycle). */
+export const MAX_PULSE_FRAMES = 256;
 
 /** A gate-off within this many frames of the gate going on is the instrument's (a pluck), not a key-off. */
 const EARLY_GATE_OFF = 4;
@@ -152,53 +171,6 @@ export function placeNotes(f: TraceFrames, g: RowGrid, onsets: readonly (readonl
   });
 }
 
-/** A row's steady pitch (the median of its frames' nearest notes), or null when it moves more than two semitones (an arpeggio) or is silent. */
-function rowPitch(f: TraceFrames, voice: number, from: number, to: number, tuning: number): number | null {
-  const vf = f.voices[voice]!;
-  const notes: number[] = [];
-  for (let i = Math.max(0, from); i < Math.min(f.frames, to); i++) {
-    const p = pitchOf(vf.freq[i]!, f.clockHz) - tuning;
-    if (Number.isFinite(p)) notes.push(nearestNote(p));
-  }
-  if (notes.length === 0) return null;
-  notes.sort((a, b) => a - b);
-  if (notes[notes.length - 1]! - notes[0]! > 2) return null;
-  return notes[notes.length >> 1]!;
-}
-
-/**
- * Legato notes: within a note, a row whose steady pitch differs from the row
- * before's starts a note of its own, with no gate-on (a tie, a legato
- * line: Hubbard's long notes change pitch this way). Each voice's notes, with
- * the legato ones added.
- */
-export function splitLegato(f: TraceFrames, g: RowGrid, voices: readonly RowNote[][], tuning: number): RowNote[][] {
-  return voices.map((notes, voice) => {
-    const out: RowNote[] = [];
-    const delay = g.delays[voice] ?? 0;
-    for (const note of notes) {
-      out.push(note);
-      const end = note.end;
-      let prev: number | null = null;
-      const lastRow = rowOfFrame(g, end - 1);
-      for (let r = note.row; r <= lastRow; r++) {
-        const from = rowStart(g, r) + 1 + delay;
-        const to = Math.min(end, rowStart(g, r + 1) + 1 + delay);
-        if (to - from < 2) continue;
-        const pitch = rowPitch(f, voice, from, to, tuning);
-        if (r > note.row && pitch !== null && prev !== null && pitch !== prev) {
-          const last = out[out.length - 1]!;
-          const tick0 = rowStart(g, r);
-          last.end = tick0;
-          out.push({ voice, row: r, tick0, onset: tick0 + 1 + delay, end, folded: 0, legato: true });
-        }
-        if (pitch !== null) prev = pitch;
-      }
-    }
-    return out;
-  });
-}
-
 /** Frames of gate-off right before `frame` on voice `v` (up to `max`). */
 function gateOffRun(f: TraceFrames, v: number, frame: number, max: number): number {
   const ctrl = f.voices[v]!.ctrl;
@@ -228,6 +200,18 @@ function baseNote(f: TraceFrames, voice: number, from: number, to: number, tunin
   let bestCount = counts.get(first) ?? 0;
   for (const [n, c] of counts) if (c > bestCount) [best, bestCount] = [n, c];
   return (counts.get(first) ?? 0) >= 0.6 * bestCount ? first : best;
+}
+
+/**
+ * The note a note's row plays (`baseNote` over its first row, at least 4
+ * frames, at most 24): what its first row holds, not where a later tie or
+ * glide takes it.
+ */
+export function noteBase(f: TraceFrames, g: RowGrid, note: RowNote, tuning: number): number {
+  const onset = Math.max(0, Math.min(f.frames - 1, note.onset));
+  const firstRowEnd = rowStart(g, note.row + 1) + 1 + (g.delays[note.voice] ?? 0);
+  const to = Math.min(note.end, onset + 24, Math.max(firstRowEnd, onset + 4));
+  return baseNote(f, note.voice, onset, to, tuning);
 }
 
 /** Frames after a note's gate-on over which its two possible starts are weighed. */
@@ -281,7 +265,7 @@ function startError(ctx: StartContext, state: SidEnvelope, p: Omit<NoteProgram, 
  * offset from GoatTracker's note table (`estimateTuning`), taken off every
  * pitch before it is snapped to a note.
  */
-export function notePrograms(f: TraceFrames, notes: readonly RowNote[], tuning = 0): NoteProgram[] {
+export function notePrograms(f: TraceFrames, notes: readonly RowNote[], tuning = 0, g?: RowGrid, plan?: PitchPlan): NoteProgram[] {
   const out: NoteProgram[] = [];
   if (notes.length === 0) return out;
   // The original's envelope, and its state where each note's start is weighed from: where
@@ -307,7 +291,7 @@ export function notePrograms(f: TraceFrames, notes: readonly RowNote[], tuning =
     const vf = f.voices[note.voice]!;
     const at = (i: number): number => Math.max(0, Math.min(f.frames - 1, i));
     const onset = at(note.onset);
-    const base = baseNote(f, note.voice, onset, Math.min(note.end, onset + 24), tuning);
+    const base = g === undefined ? baseNote(f, note.voice, onset, Math.min(note.end, onset + 24), tuning) : noteBase(f, g, note, tuning);
     const next = notes[n + 1];
     // The hard-restart tail: gate off in the frames before the next note's gate-on.
     const gapAfter = next === undefined ? null : gateOffRun(f, note.voice, next.onset, MAX_HARD_RESTART_GAP + 1);
@@ -319,9 +303,13 @@ export function notePrograms(f: TraceFrames, notes: readonly RowNote[], tuning =
     for (let i = 1; i <= count; i++) {
       const src = at(note.tick0 + i - shift);
       const p = pitchOf(vf.freq[src]!, f.clockHz) - tuning;
+      // After a tie or a glide the wave table counts from the note the pattern set.
+      const rel = plan !== undefined && plan.base[src]! >= 0 ? plan.base[src]! : base;
       frames.push({
         ctrl: vf.ctrl[src]!,
-        pitch: Number.isFinite(p) ? p - base : null,
+        pitch: Number.isFinite(p) ? p - rel : null,
+        // The first frame sets the note (the wave table's first row), whatever moves it after.
+        ...(plan !== undefined && plan.owned[src] && i > 1 ? { owned: true } : {}),
         pw: vf.pw[src]!,
         cutoff: f.cutoff[src]! >> 3,
         resonance: f.resonance[src]!,
@@ -338,6 +326,16 @@ export function notePrograms(f: TraceFrames, notes: readonly RowNote[], tuning =
       if (heldOn && j < frames.length && j - on > EARLY_GATE_OFF) {
         keyOff = j + 1;
         for (let k = j; k < frames.length; k++) frames[k] = { ...frames[k]!, ctrl: frames[k]!.ctrl | 1 };
+      } else if (heldOn && j === frames.length && count === MAX_PROGRAM_FRAMES) {
+        // Held past the frames the instrument describes: the gate-off, if any, is further on
+        // (a long note, or a legato line of ties); a key-off where it holds to the note's end.
+        let off = -1;
+        for (let src = note.tick0 + count + 1 - shift; src < tailStart; src++) {
+          if (!(vf.ctrl[at(src)]! & 1)) {
+            if (off < 0) off = src;
+          } else off = -1;
+        }
+        if (off >= 0) keyOff = off - note.tick0 + shift;
       }
     }
     const gapBefore = gateOffRun(f, note.voice, onset, 40);
@@ -346,9 +344,18 @@ export function notePrograms(f: TraceFrames, notes: readonly RowNote[], tuning =
       const i = onset - k;
       if (i >= 0 && vf.ad[i] === 0 && (vf.sr[i]! & 0x0f) === 0) hardRestartBefore = true;
     }
+    // The width as the note goes on, each frame's place in its row.
+    const pulse: PulseFrame[] = [];
+    const pulseEnd = Math.min(f.frames, next === undefined ? f.frames : next.onset, note.tick0 + 1 - shift + MAX_PULSE_FRAMES);
+    for (let src = Math.max(0, note.tick0 + 1 - shift); src < pulseEnd; src++) {
+      const t = src + shift;
+      const r = g === undefined ? note.row : rowOfFrame(g, t);
+      pulse.push({ pw: vf.pw[src]! & 0xfff, k: g === undefined ? -1 : t - rowStart(g, r), rowLength: g === undefined ? 0 : rowLength(g, r) });
+    }
     const program = {
       note,
       base,
+      pulse,
       ad: vf.ad[onset]!,
       sr: vf.sr[onset]!,
       tick0Ctrl: vf.ctrl[at(note.tick0)]!,

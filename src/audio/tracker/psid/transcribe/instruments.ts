@@ -1,5 +1,5 @@
 import type { SidInstrument, SidTableRow } from 'src/audio/tracker/sid-doc';
-import type { NoteProgram, ProgramFrame } from './notes';
+import { MAX_HARD_RESTART_GAP, type NoteProgram, type ProgramFrame, type PulseFrame } from './notes';
 
 /**
  * Instruments of a transcription (plan-psid-import.md §3). Notes are grouped
@@ -41,10 +41,12 @@ export const MAX_TRANSCRIBED_INSTRUMENTS = 63;
 /** Semitones from the row's note; `a<n>`: absolute note n (noise, whose pitch does not follow the melody); between semitones; no frequency. */
 type PitchClass = number | `a${number}` | 'free' | 'none';
 
-interface Timbre {
+export interface Timbre {
   readonly ad: number;
   readonly sr: number;
   readonly pulse: boolean;
+  /** How the note's pulse width starts ('' without pulse): the width's top nibble, and its first sweep's direction and pace. */
+  readonly pulseShape: string;
   /** Notes that start without a gate-on (`RowNote.legato`). */
   readonly legato: boolean;
   /** For a note that drives the filter: its mode and $D417 as it starts; '' otherwise. */
@@ -71,6 +73,9 @@ export interface InstrumentPlan {
 
 /** The pitch class of frame `f` of a note on `base`. */
 const pitchClass = (f: ProgramFrame, base: number): PitchClass => {
+  if (f.owned) return 'free';
+  // A silent frame (the test bit holds the oscillator, or no waveform): its pitch is not heard.
+  if (f.ctrl & 0x08 || !(f.ctrl & 0xf0)) return 'free';
   if (f.pitch === null) return 'none';
   const k = Math.round(f.pitch);
   if (Math.abs(f.pitch - k) > PITCH_SNAP) return 'free';
@@ -79,11 +84,12 @@ const pitchClass = (f: ProgramFrame, base: number): PitchClass => {
   return k;
 };
 
-function timbreOf(p: NoteProgram): Timbre {
+export function timbreOf(p: NoteProgram): Timbre {
   return {
     ad: p.ad,
     sr: p.sr,
     pulse: p.frames.some((f) => f.ctrl & 0x40),
+    pulseShape: pulseShape(p),
     legato: p.note.legato,
     filter: p.filter && p.frames.length > 0 ? `${p.frames[0]!.mode},${p.frames[0]!.resonance}` : '',
     ctrl: p.frames.map((f) => f.ctrl),
@@ -91,8 +97,23 @@ function timbreOf(p: NoteProgram): Timbre {
   };
 }
 
-/** `short` plays the start of what `long` plays (a between-semitones pitch matches any). */
-function isPrefix(short: Timbre, long: Timbre): boolean {
+/**
+ * A note's pulse width, coarsely: the top nibble it starts on and, over its
+ * first 16 frames, the direction and pace (log2 of the step) of its first
+ * move; notes alike in it share an instrument's pulse program.
+ */
+function pulseShape(p: NoteProgram): string {
+  if (!p.frames.some((f) => f.ctrl & 0x40) || p.pulse.length === 0) return '';
+  const pw = p.pulse.map((x) => x.pw);
+  const first = pw.findIndex((w, i) => i > 0 && i < 16 && w !== pw[i - 1]);
+  if (first < 0) return `${pw[0]! >> 8}`;
+  const d = pulseDelta(pw[first - 1]!, pw[first]!);
+  return `${pw[0]! >> 8},${Math.sign(d)}${Math.round(Math.log2(Math.abs(d)))}`;
+}
+
+/** `short` plays the start of what `long` plays (a between-semitones pitch matches any); `pulse`: the pulse shapes must agree. */
+function isPrefix(short: Timbre, long: Timbre, pulse = true): boolean {
+  if (pulse && short.pulseShape !== long.pulseShape) return false;
   if (short.ad !== long.ad || short.sr !== long.sr || short.pulse !== long.pulse || short.legato !== long.legato || short.filter !== long.filter) return false;
   if (short.ctrl.length > long.ctrl.length) return false;
   for (let i = 0; i < short.ctrl.length; i++) {
@@ -110,6 +131,7 @@ function distance(a: Timbre, b: Timbre): number {
   if (a.ad !== b.ad) d += 6;
   if (a.sr !== b.sr) d += 6;
   if (a.pulse !== b.pulse) d += 2;
+  if (a.pulseShape !== b.pulseShape) d += 2;
   if (a.legato !== b.legato) d += 20;
   if (a.filter !== b.filter) d += 4;
   // Over the first 12 frames either plays; a frame only one plays differs.
@@ -125,11 +147,31 @@ const vibratoKey = (v: VibratoFit): string => `${v.left},${v.right}`;
 
 /** The instrument plans of `programs`: timbres, split by vibrato; never more than `max` (the least used merge into their nearest). */
 export function groupNotes(programs: readonly NoteProgram[], max = MAX_TRANSCRIBED_INSTRUMENTS): InstrumentPlan[] {
+  // Notes that differ only in how their pulse width starts share an instrument (and its pulse)
+  // rather than going past the limit, where unlike notes would be merged.
+  const strict = plansOf(programs, true);
+  if (strict.length <= max) return strict;
+  // First the least used give up their own pulse only: into a plan they differ from in nothing else.
+  const plans = strict.slice().sort((a, b) => b.members.length - a.members.length);
+  for (let i = plans.length - 1; i >= 0 && plans.length > max; i--) {
+    const victim = plans[i]!;
+    const host = plans.find(
+      (p, k) => k !== i && (p.vibrato === null) === (victim.vibrato === null) && isPrefix(victim.group.timbre, p.group.timbre, false),
+    );
+    if (host === undefined) continue;
+    host.members.push(...victim.members);
+    plans.splice(i, 1);
+  }
+  if (plans.length <= max) return plans;
+  return mergedTo(plansOf(programs, false), max);
+}
+
+function plansOf(programs: readonly NoteProgram[], pulse: boolean): InstrumentPlan[] {
   const sorted = [...programs].sort((a, b) => b.frames.length - a.frames.length);
   const groups: NoteGroup[] = [];
   for (const p of sorted) {
     const timbre = timbreOf(p);
-    const home = groups.find((g) => isPrefix(timbre, g.timbre));
+    const home = groups.find((g) => isPrefix(timbre, g.timbre, pulse));
     if (home !== undefined) home.members.push(p);
     else groups.push({ timbre, rep: p, members: [p] });
   }
@@ -157,6 +199,11 @@ export function groupNotes(programs: readonly NoteProgram[], max = MAX_TRANSCRIB
     }
     if (still.length > 0) plans.push({ group: g, vibrato: null, members: still });
   }
+  return plans;
+}
+
+/** `plans` down to `max`: the least used merge into their nearest. */
+function mergedTo(plans: InstrumentPlan[], max: number): InstrumentPlan[] {
   while (plans.length > max) {
     plans.sort((a, b) => b.members.length - a.members.length);
     const victim = plans.pop()!;
@@ -296,18 +343,15 @@ export function waveSteps(rep: NoteProgram, vibratoFrom: number | null): WaveSte
   const steps: WaveStep[] = [];
   let lastNote: number | null = null;
   // Where the vibrato takes over, the note it swings around (the mean of its swing).
-  const centre =
-    vibratoFrom === null
-      ? null
-      : Math.round(
-          rep.frames.slice(vibratoFrom - 1).reduce((a, f) => a + (f.pitch ?? 0), 0) / Math.max(1, rep.frames.length - vibratoFrom + 1),
-        );
+  // (The frames a pattern effect moves are not the vibrato's.)
+  const swing = vibratoFrom === null ? [] : rep.frames.slice(vibratoFrom - 1).filter((f) => !f.owned && f.pitch !== null);
+  const centre = vibratoFrom === null ? null : Math.round(swing.reduce((a, f) => a + f.pitch!, 0) / Math.max(1, swing.length));
   rep.frames.forEach((f, i) => {
     const frame = i + 1;
     const pc = pitchClass(f, rep.base);
     let right = NO_CHANGE;
-    const free = vibratoFrom !== null && frame >= vibratoFrom;
-    if (free && frame === vibratoFrom && centre !== null && rep.base + centre !== lastNote) {
+    const free = (vibratoFrom !== null && frame >= vibratoFrom) || !!f.owned;
+    if (free && !f.owned && frame === vibratoFrom && centre !== null && rep.base + centre !== lastNote) {
       // GoatTracker's vibrato swings around the last note set: set the centre as it starts.
       right = noteRight(rep.base, centre);
       lastNote = rep.base + centre;
@@ -418,51 +462,81 @@ const median = (values: readonly number[]): number => {
   return s[s.length >> 1]!;
 };
 
+/** A pulse program never takes more rows than this (GoatTracker's table holds 255 for the whole song). */
+const MAX_PULSE_ROWS = 40;
+/** Frames of a fast sweep (a step past a signed byte) set one by one before the rest holds. */
+const MAX_SET_RUN = 8;
+
+/** The width change from `a` to `b` on GoatTracker's 12-bit register (it wraps). */
+const pulseDelta = (a: number, b: number): number => ((((b - a + 2048) % 4096) + 4096) % 4096) - 2048;
+
 /**
- * The pulse program of a note's frames, by the shape of the width's movement:
- * steady (one set row), one sweep, a triangle between two widths (the
- * direction turns), or a sawtooth (the width jumps back). A step is at most
- * 127 a frame (GoatTracker's speed byte); a faster sweep keeps its timing
- * and covers a smaller range. Null: no pulse waveform.
+ * The start and period (frames) from which the width's frame-to-frame steps
+ * repeat to the end, seen at least twice; or null. A pulse sweep's cycle
+ * (a triangle, a sawtooth that jumps back) loops in the table.
  */
-export function pulseProgram(frames: readonly ProgramFrame[]): TableProgram | null {
-  if (!frames.some((f) => f.ctrl & 0x40)) return null;
-  const pw = frames.map((f) => f.pw & 0xfff);
+function pulseLoop(pw: readonly number[]): { start: number; period: number } | null {
+  const n = pw.length;
+  const d = pw.map((w, i) => (i === 0 ? 0 : pulseDelta(pw[i - 1]!, w)));
+  let best: { start: number; period: number } | null = null;
+  for (let period = 2; period <= Math.min(128, Math.floor((n - 1) / 2)); period++) {
+    let s = n - period;
+    while (s - 1 >= 1 && d[s - 1] === d[s - 1 + period]) s--;
+    if (n - s < 2 * period) continue;
+    // A still width is no loop.
+    if (d.slice(s, s + period).every((x) => x === 0)) continue;
+    if (best === null || s + period < best.start + best.period) best = { start: s, period };
+  }
+  return best;
+}
+
+/**
+ * The pulse program that plays the width `pulse` (frame 1 on, `NoteProgram.pulse`):
+ * a set row for the first frame, then each run of equal steps as a row that
+ * adds that step for the run (the change the run makes, over the frames
+ * GoatTracker steps: it skips the table on the row's frame `rowLength -
+ * gateTimer`), a step past a signed byte as set rows, frame by frame; the
+ * cycle the width repeats as a loop, else a stop after the last change.
+ * Null: the note sounds no pulse.
+ */
+export function pulseProgram(frames: readonly ProgramFrame[], pulse: readonly PulseFrame[], gateTimer: number): TableProgram | null {
+  if (!frames.some((f) => f.ctrl & 0x40) || pulse.length === 0) return null;
   const set = (w: number): SidTableRow => ({ left: 0x80 | ((w >> 8) & 0x0f), right: w & 0xff });
-  const deltas = pw.slice(1).map((w, i) => w - pw[i]!);
-  const moving = deltas.filter((d) => d !== 0);
-  if (moving.length === 0) return { rows: [set(pw[0]!), { left: 0xff, right: 0 }] };
-  const counts = new Map<number, number>();
-  for (const d of moving) counts.set(Math.abs(d), (counts.get(Math.abs(d)) ?? 0) + 1);
-  const size = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]![0];
-  const step = Math.min(127, size);
-  const firstDir = Math.sign(moving[0]!);
-  const speed = (dir: number): number => (dir * step) & 0xff;
-  const jumps: number[] = [];
-  const turns: number[] = [];
-  let dir = firstDir;
-  deltas.forEach((d, i) => {
-    if (d === 0) return;
-    if (Math.abs(d) > size * 2.5) jumps.push(i + 1);
-    else if (Math.sign(d) !== dir) {
-      turns.push(i + 1);
-      dir = Math.sign(d);
+  const pw = pulse.map((p) => p.pw);
+  const skipped = (i: number): boolean => i > 0 && pulse[i]!.k >= 1 && pulse[i]!.k === pulse[i]!.rowLength - gateTimer;
+  const loop = pulseLoop(pw);
+  let end = pw.length;
+  if (loop !== null) end = loop.start + loop.period;
+  else {
+    while (end > 1 && pw[end - 1] === pw[end - 2]) end--;
+  }
+  const rows: SidTableRow[] = [set(pw[0]!)];
+  // The row each frame's run starts on (for the loop's jump).
+  const rowAt = new Map<number, number>();
+  let i = 1;
+  while (i < end && rows.length < MAX_PULSE_ROWS - 1) {
+    rowAt.set(i, rows.length);
+    const step = pulseDelta(pw[i - 1]!, pw[i]!);
+    let j = i;
+    // A run stops where the step changes, and at the loop's start (the jump lands on a row).
+    while (j + 1 < end && pulseDelta(pw[j]!, pw[j + 1]!) === step && j + 1 !== loop?.start && j + 1 - i < 126) j++;
+    if (Math.abs(step) > 127) {
+      for (let k = i; k <= Math.min(j, i + MAX_SET_RUN - 1); k++) rows.push(set(pw[k]!));
+      if (j > i + MAX_SET_RUN - 1) rows.push(set(pw[j]!));
+    } else {
+      let steps = 0;
+      for (let k = i; k <= j; k++) if (!skipped(k)) steps++;
+      if (steps > 0) {
+        const total = pulseDelta(pw[i - 1]!, pw[j]!);
+        const speed = Math.max(-127, Math.min(127, Math.round(total / steps)));
+        rows.push({ left: steps, right: speed & 0xff });
+      }
     }
-  });
-  const time = (n: number): number => Math.max(1, Math.min(127, Math.round(n)));
-  if (jumps.length > 0) {
-    const run = jumps.length > 1 ? median(jumps.slice(1).map((j, k) => j - jumps[k]!)) : pw.length - jumps[0]!;
-    return {
-      rows: [set(pw[0]!), { left: time(jumps[0]! - 1), right: speed(firstDir) }, set(pw[jumps[0]!]!), { left: time(run - 1), right: speed(firstDir) }, { left: 0xff, right: 3 }],
-    };
+    i = j + 1;
   }
-  if (turns.length > 0) {
-    const half = turns.length > 1 ? median(turns.slice(1).map((t, k) => t - turns[k]!)) : pw.length - turns[0]!;
-    return {
-      rows: [set(pw[0]!), { left: time(turns[0]!), right: speed(firstDir) }, { left: time(half), right: speed(-firstDir) }, { left: time(half), right: speed(firstDir) }, { left: 0xff, right: 3 }],
-    };
-  }
-  return { rows: [set(pw[0]!), { left: time(pw.length), right: speed(firstDir) }, { left: 0xff, right: 0 }] };
+  const target = loop === null ? undefined : rowAt.get(loop.start);
+  rows.push({ left: 0xff, right: target === undefined ? 0 : target + 1 });
+  return { rows };
 }
 
 // ---------------------------------------------------------------------------
@@ -564,9 +638,11 @@ export function fitVibrato(rep: NoteProgram): VibratoFit | null {
   const frames = rep.frames;
   const gateOn = Math.max(0, frames.findIndex((f) => f.ctrl & 1));
   const slides = slideFrames(frames);
-  const start = frames.findIndex((f, i) => i > gateOn && pitchClass(f, rep.base) === 'free' && !slides.has(i));
+  const start = frames.findIndex((f, i) => i > gateOn && !f.owned && pitchClass(f, rep.base) === 'free' && !slides.has(i));
   if (start < 0) return null;
-  const pitches = frames.slice(start).map((f) => f.pitch ?? 0);
+  let stop = frames.findIndex((f, i) => i > start && f.owned);
+  if (stop < 0) stop = frames.length;
+  const pitches = frames.slice(start, stop).map((f) => f.pitch ?? 0);
   if (pitches.length < 6) return null;
   const turns: number[] = [];
   for (let i = 1; i + 1 < pitches.length; i++) {
@@ -647,7 +723,8 @@ function noteTiming(plan: InstrumentPlan, rowFrames: number): Pick<SidInstrument
   // gate goes off `gapAfter` frames before the next gate-on, GoatTracker's `gateTimer` frames
   // before the next row's first frame, which is 1 + the voice's delay before it.
   const delay = Math.max(0, (mode(members.map((m) => m.note.onset - m.note.tick0)) ?? 1) - 1);
-  const gapAfter = mode(members.flatMap((m) => (m.gapAfter !== null && m.gapAfter <= 9 ? [m.gapAfter] : [])));
+  // (A gap past MAX_HARD_RESTART_GAP is a rest, the note's own release: a key-off, not the gate timer's.)
+  const gapAfter = mode(members.flatMap((m) => (m.gapAfter !== null && m.gapAfter <= MAX_HARD_RESTART_GAP ? [m.gapAfter] : [])));
   const gateTimer = Math.max(1, Math.min(Math.max(1, rowFrames - 1), (gapAfter ?? 2) - 1 - delay));
   // A legato note: no gate-off before it (GoatTracker's $40 gate-timer bit).
   return { gateTimer, hardRestart: hardRestart && !legato, noGateOff: legato || gapBefore <= 1 };
@@ -708,6 +785,42 @@ function fitWavePrograms(plans: readonly InstrumentPlan[], budget: number): Tabl
   return programs;
 }
 
+/** `p` cut to `max` rows (its first `max - 1`, then a stop; a loop's jump past the cut stops too). */
+function cutPulse(p: TableProgram, max: number): TableProgram {
+  if (p.rows.length <= max) return p;
+  const rows = p.rows.slice(0, max - 1).map((r) => (r.left === 0xff && r.right >= max ? { left: 0xff, right: 0 } : r));
+  return { rows: [...rows, { left: 0xff, right: 0 }] };
+}
+
+/**
+ * The pulse programs, in place, within `budget` rows: while they do not fit,
+ * the longest is cut by a quarter (each note keeps its own start and first
+ * sweep); only when every one is down to two rows do the least-used take the
+ * most-used one's.
+ */
+function fitPulsePrograms(pulse: (TableProgram | null)[], plans: readonly InstrumentPlan[], budget: number): void {
+  const rowsOf = (): number => sharedRows(pulse.filter((x): x is TableProgram => x !== null));
+  while (rowsOf() > budget) {
+    let longest = -1;
+    for (let i = 0; i < pulse.length; i++) {
+      const p = pulse[i];
+      if (p && p.rows.length > 2 && (longest < 0 || p.rows.length > pulse[longest]!.rows.length)) longest = i;
+    }
+    if (longest < 0) break;
+    const was = pulse[longest]!;
+    const cut = cutPulse(was, Math.max(2, Math.floor(was.rows.length * 0.75)));
+    // Every plan with that same program is cut alike (they share its rows).
+    for (let i = 0; i < pulse.length; i++) if (pulse[i] === was) pulse[i] = cut;
+  }
+  const byUse = plans.map((p, i) => [p.members.length, i] as const).sort((a, b) => b[0] - a[0]);
+  while (rowsOf() > budget) {
+    const donor = byUse.map(([, i]) => pulse[i]).find((x) => x !== null && x !== undefined) ?? null;
+    const victim = [...byUse].reverse().find(([, i]) => pulse[i] !== null && pulse[i] !== donor);
+    if (victim === undefined || donor === null) break;
+    pulse[victim[1]] = donor;
+  }
+}
+
 /**
  * The GoatTracker instruments of `plans`, their programs placed in `tables`
  * within GoatTracker's 255 rows a table: wave programs cut where they cost
@@ -723,16 +836,9 @@ export function buildInstruments(
 ): SidInstrument[] {
   const waveBudget = 255 - tables.wave.length;
   const wave = fitWavePrograms(plans, waveBudget);
-  const pulse = plans.map((p) => pulseProgram(p.group.rep.frames));
-  const pulseBudget = 255 - tables.pulse.length;
-  const byUse = plans.map((p, i) => [p.members.length, i] as const).sort((a, b) => b[0] - a[0]);
-  while (sharedRows(pulse.filter((x): x is TableProgram => x !== null)) > pulseBudget) {
-    // The least-used plan with a program of its own takes the most-used one's.
-    const donor = byUse.map(([, i]) => pulse[i]).find((x) => x !== null && x !== undefined) ?? null;
-    const victim = [...byUse].reverse().find(([, i]) => pulse[i] !== null && pulse[i] !== donor);
-    if (victim === undefined || donor === null) break;
-    pulse[victim[1]] = donor;
-  }
+  const timings = plans.map((p) => noteTiming(p, rowFrames));
+  const pulse = plans.map((p, i) => pulseProgram(p.group.rep.frames, p.group.rep.pulse, timings[i]!.gateTimer));
+  fitPulsePrograms(pulse, plans, 255 - tables.pulse.length);
   return plans.map((plan, i) => {
     const rep = plan.group.rep;
     const members = plan.members;
@@ -740,7 +846,7 @@ export function buildInstruments(
     const ad = mode(members.map((m) => m.ad)) ?? rep.ad;
     const sr = mode(members.map((m) => m.sr)) ?? rep.sr;
     const p = pulse[i];
-    const timing = noteTiming(plan, rowFrames);
+    const timing = timings[i]!;
     return {
       name: name(plan, i + 1).slice(0, 16),
       attack: ad >> 4,

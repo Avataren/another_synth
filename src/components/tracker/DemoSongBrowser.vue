@@ -28,8 +28,17 @@
               mark-only
             />
             {{ collection.name }}
+            <span
+              v-if="EXPERIMENTAL_COLLECTIONS[collection.id]"
+              class="demo-tab-experimental"
+              >Experimental</span
+            >
             <span class="demo-tab-count">{{ collection.songs.length }}</span>
           </button>
+        </div>
+
+        <div v-if="activeNotice" class="demo-experimental-notice">
+          {{ activeNotice }}
         </div>
 
         <div class="demo-filter">
@@ -166,6 +175,19 @@ const activeSongs = computed(() => {
   );
   return collection?.songs ?? [];
 });
+
+/**
+ * Collections whose import is still experimental, with what the user should
+ * expect: a C64 .sid holds a player's code, not a song, so it is transcribed
+ * from what the player plays, and the result only approximates the original.
+ */
+const EXPERIMENTAL_COLLECTIONS: Readonly<Record<string, string>> = {
+  sid: 'Experimental: C64 .sid files are transcribed into editable GoatTracker songs from what their player plays. The result approximates the original and can sound noticeably different.',
+};
+
+const activeNotice = computed(() =>
+  activeCollectionId.value === null ? null : (EXPERIMENTAL_COLLECTIONS[activeCollectionId.value] ?? null),
+);
 
 /** Session-scoped search text; narrows the active collection, view-only. */
 const filterText = ref('');
@@ -323,6 +345,29 @@ watch(
   background: rgba(77, 242, 197, 0.16);
   border-color: rgba(77, 242, 197, 0.5);
   color: var(--text-primary, #fff);
+}
+
+.demo-tab-experimental {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--warning, #ffcf6b);
+  border: 1px solid currentColor;
+}
+
+.demo-experimental-notice {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--warning, #ffcf6b);
+  background: rgba(255, 207, 107, 0.08);
+  border: 1px solid rgba(255, 207, 107, 0.35);
 }
 
 .demo-tab-count {

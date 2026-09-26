@@ -16,8 +16,9 @@ import type { PsidFile } from '../psid-file';
 import { estimateTuning, traceFrames, type TraceFrames } from './frames';
 import { detectGrid, rowLength, rowOfFrame, tempoChanges, type RowGrid } from './grid';
 import { buildInstruments, groupNotes, TableBuilder, type InstrumentPlan } from './instruments';
-import { filterDriver, notePrograms, onsetsOf, placeNotes, splitLegato, type NoteProgram } from './notes';
-import { findLoop, flatSubsong, subsongRows, type SongLoop, type SubsongRows } from './song';
+import { filterDriver, noteBase, notePrograms, onsetsOf, placeNotes, type NoteProgram } from './notes';
+import { planPitch, type PitchRow } from './pitch';
+import { findLoop, flatSubsong, subsongRows, type PatternPitch, type SongLoop, type SubsongRows } from './song';
 
 /**
  * A `.sid` of any player, transcribed into a GoatTracker song
@@ -80,6 +81,10 @@ interface Prepared {
   readonly loop: SongLoop;
   /** The notes of one pass of the song (up to its loop's end). */
   readonly programs: NoteProgram[];
+  /** Per voice, the pitch effects' pattern cells (`pitch.ts`). */
+  readonly pitch: readonly (readonly PitchRow[])[];
+  /** Pitch is played by pattern effects (else by the instruments alone, to take less room). */
+  readonly effects: boolean;
   readonly folded: number;
 }
 
@@ -97,20 +102,31 @@ function noteKeys(rows: number, programs: readonly NoteProgram[]): string[] {
 function prepare(file: PsidFile, subsong: number, maxSeconds: number | undefined): Prepared | string {
   const capture = captureSid(file, maxSeconds === undefined ? { subsong } : { subsong, maxSeconds });
   if (!capture.ok) return capture.reason;
-  const frames = traceFrames(capture.trace);
+  return transcribed(subsong, capture.trace, true);
+}
+
+/**
+ * The rows and notes of a captured subsong; `effects`: its pitch as pattern
+ * effects (`pitch.ts`), or, when the song must be smaller to fit
+ * GoatTracker, as the instruments' wave tables alone.
+ */
+function transcribed(subsong: number, trace: SidTrace, effects: boolean): Prepared | string {
+  const frames = traceFrames(trace);
   const onsets = onsetsOf(frames);
   if (onsets.every((l) => l.length === 0)) return 'plays no notes';
   const grid = detectGrid(onsets, frames.frames);
   const tuning = estimateTuning(frames);
-  const notes = splitLegato(frames, grid, placeNotes(frames, grid, onsets), tuning);
-  const all = notes.flatMap((list) => notePrograms(frames, list, tuning));
+  const notes = placeNotes(frames, grid, onsets);
+  const plans = effects ? notes.map((list) => planPitch(frames, grid, list, (n) => noteBase(frames, grid, n, tuning), tuning)) : [];
+  const all = notes.flatMap((list, v) => notePrograms(frames, list, tuning, grid, plans[v]));
   const driver = filterDriver(frames, onsets);
   for (const p of all) if (p.note.voice === driver) p.filter = true;
   const rows = rowOfFrame(grid, frames.frames - 1) + 1;
   const loop = findLoop(frames, grid, noteKeys(rows, all));
   const programs = all.filter((p) => p.note.row < loop.length);
   const folded = notes.flat().reduce((n, x) => n + (x.row < loop.length ? x.folded : 0), 0);
-  return { subsong, driver, trace: capture.trace, frames, grid, loop, programs, folded };
+  const pitch = plans.map((p) => p.rows.filter((x) => x.row < loop.length));
+  return { subsong, driver, trace, frames, grid, loop, programs, pitch, effects, folded };
 }
 
 /** Transcribe `file` into a GoatTracker song. Never throws for a tune's behaviour. */
@@ -193,6 +209,13 @@ export function transcribePsid(file: PsidFile, options: TranscribeOptions = {}):
       .sort((a, b) => b[0].loop.length - a[0].loop.length)[0];
     if (longest !== undefined) {
       const [p, i] = longest;
+      // First the same rows with its pitch in the instruments alone: fewer distinct patterns.
+      const plain = p.effects ? transcribed(p.subsong, p.trace, false) : null;
+      if (plain !== null && typeof plain !== 'string' && plain.loop.kind === 'none') {
+        current = current.slice();
+        current[i] = plain;
+        continue;
+      }
       const length = Math.floor(p.loop.length / 2);
       current = current.slice();
       current[i] = { ...p, loop: { loopRow: 0, length, kind: 'none' }, programs: p.programs.filter((x) => x.note.row < length) };
@@ -278,7 +301,18 @@ function build(file: PsidFile, preps: readonly Prepared[], speedMultiplier: numb
     );
     const loopRow = prep.loop.loopRow;
     if (loopRow > 0 && !tempo.some((t) => t.row === loopRow)) tempo.push({ row: loopRow, length: rowLength(prep.grid, loopRow) });
-    return subsongRows(prep.loop, prep.grid, prep.programs, instrumentOf, (n) => instruments[n - 1]?.gateTimer ?? 2, tempo, staticFilter(prep, tables));
+    const pitch: PatternPitch[] = prep.pitch.flatMap((list, voice) =>
+      list.map((x) => ({
+        voice,
+        row: x.row,
+        note: x.note,
+        command: x.command,
+        // A speed-table row holds the 16-bit speed (below $8000: the register step itself).
+        param: x.speed === 0 ? 0 : tables.speedRow(Math.min(0x7f, x.speed >> 8), x.speed >= 0x8000 ? 0xff : x.speed & 0xff),
+        continued: x.continued,
+      })),
+    );
+    return subsongRows(prep.loop, prep.grid, prep.programs, instrumentOf, (n) => instruments[n - 1]?.gateTimer ?? 2, tempo, staticFilter(prep, tables), pitch);
   });
 
   const base = makeSidDoc({
@@ -320,6 +354,7 @@ function build(file: PsidFile, preps: readonly Prepared[], speedMultiplier: numb
     if (chosen === null) return { ok: false, reason: `subsong ${preps[i]!.subsong + 1}: ${why}` };
     flats.push(chosen);
   }
+  if (!tables.fits) return { ok: false, reason: "GoatTracker's tables are full" };
   const compiled = compileSidFlatSong(base, flats);
   if (!compiled.ok) return { ok: false, reason: compiled.reason };
   return { ok: true, doc: compiled.doc, rows: rowsList };

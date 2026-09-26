@@ -108,23 +108,23 @@ describe('the row grid', () => {
 
 /** Each fixture's start song, alone, and the score it must keep (today's, less two points). */
 const FLOORS: readonly (readonly [string, number])[] = [
-  ['hubbard_rob/commando.sid', 0.93],
-  ['hubbard_rob/crazy_comets.sid', 0.88],
+  ['hubbard_rob/commando.sid', 0.94],
+  ['hubbard_rob/crazy_comets.sid', 0.90],
   ['hubbard_rob/knucklebusters.sid', 0.94],
-  ['hubbard_rob/chimera.sid', 0.85],
+  ['hubbard_rob/chimera.sid', 0.86],
   ['galway_martin/arkanoid.sid', 0.83],
   ['galway_martin/comic_bakery.sid', 0.92],
-  ['galway_martin/commando_high_score.sid', 0.91],
-  ['galway_martin/ocean_loader_1.sid', 0.94],
-  ['galway_martin/ocean_loader_2.sid', 0.94],
+  ['galway_martin/commando_high_score.sid', 0.94],
+  ['galway_martin/ocean_loader_1.sid', 0.96],
+  ['galway_martin/ocean_loader_2.sid', 0.96],
   ['daglish_ben/krakout.sid', 0.95],
   ['daglish_ben/last_ninja.sid', 0.84],
   ['huelsbeck_chris/great_giana_sisters.sid', 0.97],
-  ['huelsbeck_chris/r_type.sid', 0.93],
+  ['huelsbeck_chris/r_type.sid', 0.94],
   ['joseph_richard/defender_of_the_crown.sid', 0.97],
-  ['tel_jeroen/golden_axe.sid', 0.86],
+  ['tel_jeroen/golden_axe.sid', 0.87],
   ['tel_jeroen/robocop_3.sid', 0.88],
-  ['chiptunesak/vibratotest.sid', 0.77],
+  ['chiptunesak/vibratotest.sid', 0.92],
 ];
 
 /** The formats the app exports a SID song to, each of which must take the transcription. */
