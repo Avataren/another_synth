@@ -22,9 +22,11 @@
 //!   is documented as near-linear over the datasheet range, so
 //!   fc = 30 + reg * (12000 - 30) / 2047 Hz (5.85 Hz per step).
 //! - Resonance: Q = 0.707 * 2^(res / 8). Butterworth at 0, +8.3 dB peak at 15.
-//! - Ceiling (S5.12, both models): `Filter::set` clamps the mapped cutoff to
-//!   4 kHz, the limit GoatTracker 2's reSID playback applies
-//!   (`CUTOFF_CEILING_DELTA_HZ`). The maps themselves stay unclamped.
+//! - Ceiling (S5.12): `Filter::set` clamps the mapped cutoff to 4 kHz, the
+//!   limit GoatTracker 2's reSID playback applies (`CUTOFF_CEILING_DELTA_HZ`),
+//!   on the 8580 and on the 6581 profiles that follow GT (`GT_REF`, `R4AR`).
+//!   The measured chip profiles (`R3`, `R4`) have none: the 6581 ceiling is
+//!   the profile's `cutoff_ceiling_hz`. The maps themselves stay unclamped.
 //! Linear: no saturation. The 8580 is "clean", not perfectly so.
 //!
 //! 6581 (S2, plan §1.2 "static nonlinear remap of the cutoff register +
@@ -239,8 +241,8 @@ impl Filter {
         self.model
     }
 
-    /// The current cutoff in Hz from this model's map (before the 4 kHz
-    /// ceiling and the 0.49 * sample-rate clamp).
+    /// The current cutoff in Hz from this model's map (before the ceiling
+    /// and the 0.49 * sample-rate clamp).
     pub fn cutoff(&self) -> f64 {
         match self.model {
             SidModel::Sid8580 => cutoff_hz(self.cutoff_reg),
@@ -249,9 +251,18 @@ impl Filter {
     }
 
     /// The cutoff in Hz the coefficients were computed for: the map, then
-    /// `CUTOFF_CEILING_DELTA_HZ`, then 0.49 * sample rate.
+    /// the ceiling (`ceiling`), then 0.49 * sample rate.
     pub fn effective_cutoff(&self) -> f64 {
         self.fc
+    }
+
+    /// The highest cutoff this filter plays before the sample-rate clamp:
+    /// `CUTOFF_CEILING_DELTA_HZ` on the 8580, the profile's on the 6581.
+    pub fn ceiling(&self) -> f64 {
+        match self.model {
+            SidModel::Sid8580 => CUTOFF_CEILING_DELTA_HZ,
+            SidModel::Sid6581 => self.profile.cutoff_ceiling_hz,
+        }
     }
 
     /// The current Q from this model's resonance map.
@@ -283,7 +294,7 @@ impl Filter {
     pub fn set(&mut self, cutoff_reg: u16, res: u8) {
         self.cutoff_reg = cutoff_reg & 0x7FF;
         self.res = res & 0xF;
-        let fc = self.cutoff().min(CUTOFF_CEILING_DELTA_HZ).min(self.sample_rate * 0.49);
+        let fc = self.cutoff().min(self.ceiling()).min(self.sample_rate * 0.49);
         self.fc = fc;
         self.g = (PI * fc / self.sample_rate).tan();
         self.k = 1.0 / self.q();

@@ -29,6 +29,15 @@
 //!   GENERIC-6581. They keep S2's INFERRED values (`voice.rs`, `chip.rs`).
 //! - Volume DAC: GENERIC-6581 vs 8580. The 8580 stays linear, VOL / 15. See
 //!   `R4AR` for the INFERRED 6581 table.
+//!
+//! `R3` and `R4` are MEASURED on real chips, cutoff only: filter sweeps and
+//! music recorded from Stone Oakvalley's Authentic SID Collection (SOASC),
+//! one physical chip each (method and data: `.ai/sid-soasc/NOTES.md`). Chips
+//! of one revision vary about as much as the revisions do, so each profile
+//! is "that chip", not the revision as a whole. Neither has the 4 kHz
+//! ceiling GoatTracker's playback has (`cutoff_ceiling_hz`).
+
+use super::filter::CUTOFF_CEILING_DELTA_HZ;
 
 /// A 6581 die revision the engine can play.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +50,12 @@ pub enum DieRevision {
     /// only (cutoff curve, resonance map, soft limit); every other trait is
     /// R4AR's. Named here because a GT song is mixed against that filter.
     GtRef,
+    /// A 6581R3: SOASC's MOS6581 2383 (1983). Brightest of the measured
+    /// chips; cutoff fitted from music recordings (`R3`).
+    R3,
+    /// A 6581R4: SOASC's MOS6581R4 3387 (1987). Dark; cutoff measured from
+    /// filter sweeps (`R4`).
+    R4,
 }
 
 impl DieRevision {
@@ -48,6 +63,8 @@ impl DieRevision {
         match self {
             DieRevision::R4AR => &R4AR,
             DieRevision::GtRef => &GT_REF,
+            DieRevision::R3 => &R3,
+            DieRevision::R4 => &R4,
         }
     }
 }
@@ -88,6 +105,10 @@ pub struct RevisionProfile {
     pub cutoff_anchors_lo: &'static [(u16, f64)],
     /// Cutoff anchors, high piece: 0x400..=0x7FF (FC_HI bit 7 set).
     pub cutoff_anchors_hi: &'static [(u16, f64)],
+    /// Highest cutoff `Filter::set` plays, Hz, before the 0.49 * sample-rate
+    /// clamp. GoatTracker's reSID playback has 4 kHz
+    /// (`filter::CUTOFF_CEILING_DELTA_HZ`); real chips have none (infinity).
+    pub cutoff_ceiling_hz: f64,
     /// Resonance nibble -> Q.
     pub resonance: ResonanceMap,
     /// Soft limit of the band-pass state, in voice units (`filter.rs`):
@@ -132,6 +153,7 @@ pub const R4AR: RevisionProfile = RevisionProfile {
         (0x3FF, 6_000.0),
     ],
     cutoff_anchors_hi: &R4AR_ANCHORS_HI,
+    cutoff_ceiling_hz: CUTOFF_CEILING_DELTA_HZ,
     resonance: ResonanceMap::Exponential { divisor: 12.0 },
     sat: 1.0,
     gain_trim: 1.0,
@@ -179,6 +201,7 @@ pub const GT_REF: RevisionProfile = RevisionProfile {
         (0x3FF, 6_000.0),
     ],
     cutoff_anchors_hi: &R4AR_ANCHORS_HI,
+    cutoff_ceiling_hz: CUTOFF_CEILING_DELTA_HZ,
     resonance: ResonanceMap::Linear { slope: 0.0698 },
     // reSID's filter core is linear, so effectively no soft limit: 1000 leaves
     // the tanh in place but a million times off. MEASURED on the bass channel
@@ -202,6 +225,100 @@ pub const GT_REF: RevisionProfile = RevisionProfile {
     // 0.37 ...; at 0.25 ours ran 0.30 0.41 0.31 0.24 ...).
     voice_dc: 0.5625,
     mix_dc: R4AR.mix_dc,
+};
+
+/// SOASC's 6581R4 chip (MOS6581R4 3387). MEASURED cutoff: Plogue's
+/// SIDBENCH noise sweeps (res 0, FC_HI 0..255, LP/BP/HP) recorded on the
+/// chip; cutoff is where the LP and HP spectra cross, median of three voices,
+/// smoothed and made monotonic. Flat near 295 Hz up to FC_HI ~$50, then
+/// climbing; no step at 0x400. The top anchors are where the measurement
+/// ends (~19.7 kHz), not a known limit. Anchors every 0x40, within 7.5% of
+/// the measured curve. No ceiling.
+///
+/// Everything but the cutoff is GT_REF's (resonance, soft limit, DC, gain,
+/// volume DAC): the recordings do not measure those.
+pub const R4: RevisionProfile = RevisionProfile {
+    revision: DieRevision::R4,
+    cutoff_anchors_lo: &[
+        (0x000, 293.0),
+        (0x080, 293.0),
+        (0x0C0, 296.0),
+        (0x100, 298.0),
+        (0x180, 300.0),
+        (0x200, 302.0),
+        (0x240, 306.0),
+        (0x280, 322.0),
+        (0x2C0, 342.0),
+        (0x300, 374.0),
+        (0x340, 408.0),
+        (0x380, 500.0),
+        (0x3C0, 619.0),
+        (0x3FF, 695.0),
+    ],
+    cutoff_anchors_hi: &[
+        (0x400, 698.0),
+        (0x440, 846.0),
+        (0x480, 1_147.0),
+        (0x4C0, 1_663.0),
+        (0x500, 2_471.0),
+        (0x540, 3_458.0),
+        (0x580, 4_713.0),
+        (0x5C0, 6_398.0),
+        (0x600, 8_257.0),
+        (0x640, 9_462.0),
+        (0x680, 11_220.0),
+        (0x6C0, 12_878.0),
+        (0x700, 14_640.0),
+        (0x740, 16_161.0),
+        (0x780, 17_881.0),
+        (0x7C0, 19_508.0),
+        (0x7FF, 19_688.0),
+    ],
+    cutoff_ceiling_hz: f64::INFINITY,
+    ..GT_REF
+};
+
+/// SOASC's 6581R3 chip (MOS6581 2383). MEASURED, less directly than `R4`:
+/// no sweep recording of this chip exists, so its cutoff is `R4`'s curve
+/// shifted along the register, fc(reg) = R4(reg + 880), with the shift
+/// fitted from SOASC's recordings of three filter-heavy HVSC tunes against
+/// renders of their register streams. The same fit put SOASC's R2 at +680,
+/// which its own SIDBENCH sweeps confirm to within 6.5%, and ran that chip
+/// about 17% short, corrected for here. Shift uncertainty +-80 (roughly
+/// +-25% in Hz on the slope). The floor below ~500 Hz is extrapolated: the
+/// music cannot show whether this chip flattens there like R4. The curve
+/// reaches the end of the measured range (~19.7 kHz) near 0x480. No ceiling.
+///
+/// Everything but the cutoff is GT_REF's, as for `R4`.
+pub const R3: RevisionProfile = RevisionProfile {
+    revision: DieRevision::R3,
+    cutoff_anchors_lo: &[
+        (0x000, 466.0),
+        (0x040, 586.0),
+        (0x080, 675.0),
+        (0x0C0, 821.0),
+        (0x100, 1_074.0),
+        (0x140, 1_498.0),
+        (0x180, 2_302.0),
+        (0x1C0, 3_158.0),
+        (0x200, 4_419.0),
+        (0x240, 5_876.0),
+        (0x280, 8_072.0),
+        (0x2C0, 8_989.0),
+        (0x300, 10_675.0),
+        (0x340, 12_456.0),
+        (0x380, 14_182.0),
+        (0x3C0, 15_879.0),
+        (0x3FF, 17_561.0),
+    ],
+    cutoff_anchors_hi: &[
+        (0x400, 17_604.0),
+        (0x440, 19_137.0),
+        (0x480, 19_688.0),
+        (0x7FF, 19_688.0),
+    ],
+    cutoff_ceiling_hz: f64::INFINITY,
+    ..GT_REF
 };
 
 impl RevisionProfile {
