@@ -28,6 +28,7 @@ function mountPanel(current: JukeboxEntry | null, entries: JukeboxEntry[]) {
       isPlaying: true,
       repeat: false,
       busy: false,
+      playlistSources: [],
     },
     global: { stubs },
   });

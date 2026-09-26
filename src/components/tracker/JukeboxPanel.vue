@@ -194,10 +194,47 @@
         <button
           type="button"
           class="jukebox-text-btn ghost"
-          :disabled="!hasEntries"
-          @click="$emit('refill')"
+          data-testid="jukebox-new-playlist"
+          title="Replace the playlist with all songs, or with one format's"
         >
-          Refill all
+          New playlist ▾
+          <q-menu auto-close anchor="top left" self="bottom left">
+            <q-list dense style="min-width: 220px">
+              <q-item
+                clickable
+                data-testid="jukebox-playlist-standard"
+                title="Every demo song except the experimental collections"
+                @click="$emit('refill', null)"
+              >
+                <q-item-section>All songs</q-item-section>
+              </q-item>
+              <q-separator v-if="playlistSources.length > 0" />
+              <q-item
+                v-for="source in playlistSources"
+                :key="source.id"
+                clickable
+                :data-testid="`jukebox-playlist-${source.id}`"
+                @click="$emit('refill', source.id)"
+              >
+                <q-item-section avatar class="playlist-source-badge">
+                  <FormatBadge
+                    v-if="source.format"
+                    :brand="brandIdForDemoLabel(source.format)"
+                    mark-only
+                  />
+                </q-item-section>
+                <q-item-section>
+                  {{ source.name }}
+                </q-item-section>
+                <q-item-section side class="playlist-source-meta">
+                  <span v-if="source.experimental" class="playlist-source-experimental"
+                    >Experimental</span
+                  >
+                  {{ source.count }}
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
         </button>
         <button
           type="button"
@@ -214,7 +251,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, type ComponentPublicInstance } from 'vue';
-import type { JukeboxEntry } from 'src/stores/jukebox-store';
+import type { JukeboxEntry, JukeboxPlaylistSource } from 'src/stores/jukebox-store';
 import FormatBadge from 'src/components/FormatBadge.vue';
 import { brandIdForDemoLabel, formatBrandVars } from 'src/branding/format-brands';
 
@@ -237,6 +274,8 @@ const props = defineProps<{
   repeat: boolean;
   /** A song is being fetched and its instruments rebuilt. */
   busy: boolean;
+  /** The collections a single-format playlist can be built from. */
+  playlistSources: JukeboxPlaylistSource[];
 }>();
 
 /** The shown entry's format, from its index label (it may not be loaded yet). */
@@ -252,7 +291,8 @@ defineEmits<{
   /** The user asked for a bug report of the entry at this index. */
   'bug-report-entry': [index: number];
   add: [];
-  refill: [];
+  /** Replace the playlist: one collection's songs, or the standard set on null. */
+  refill: [collectionId: string | null];
   clear: [];
   close: [];
   'update:repeat': [value: boolean];
@@ -621,6 +661,29 @@ watch(
 .jukebox-text-btn:hover:not(:disabled) {
   background: var(--button-background-hover, rgba(255, 255, 255, 0.16));
   color: var(--text-primary, #fff);
+}
+
+.playlist-source-badge {
+  min-width: 0;
+  padding-right: 8px;
+}
+
+.playlist-source-meta {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.playlist-source-experimental {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--warning, #ffcf6b);
+  border: 1px solid currentColor;
 }
 
 .jukebox-text-btn:disabled {

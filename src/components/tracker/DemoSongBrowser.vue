@@ -125,6 +125,7 @@ import { brandIdForDemoLabel, formatBrandVars } from 'src/branding/format-brands
 import {
   useDemoManifest,
   DEMO_BASE_URL,
+  EXPERIMENTAL_COLLECTIONS,
   type DemoSong,
 } from 'src/composables/useDemoManifest';
 import { filterSongsIndexed } from 'src/composables/song-filter';
@@ -175,15 +176,6 @@ const activeSongs = computed(() => {
   );
   return collection?.songs ?? [];
 });
-
-/**
- * Collections whose import is still experimental, with what the user should
- * expect: a C64 .sid holds a player's code, not a song, so it is transcribed
- * from what the player plays, and the result only approximates the original.
- */
-const EXPERIMENTAL_COLLECTIONS: Readonly<Record<string, string>> = {
-  sid: 'Experimental: C64 .sid files are transcribed into editable GoatTracker songs from what their player plays. The result approximates the original and can sound noticeably different.',
-};
 
 const activeNotice = computed(() =>
   activeCollectionId.value === null ? null : (EXPERIMENTAL_COLLECTIONS[activeCollectionId.value] ?? null),

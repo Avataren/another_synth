@@ -259,7 +259,8 @@
           @play-index="player.playIndex($event)"
           @remove="player.remove($event)"
           @add="showDemoBrowser = true"
-          @refill="player.refill()"
+          :playlist-sources="playlistSources"
+          @refill="player.refill($event ?? undefined)"
           @clear="player.clear()"
           @close="showPlaylist = false"
           @update:repeat="jukebox.setRepeat($event)"
@@ -333,7 +334,7 @@ const {
   trackCount,
 } = host;
 const player = useJukeboxPlayer(host);
-const { jukebox, isBusy, queuedFiles } = player;
+const { jukebox, isBusy, queuedFiles, playlistSources } = player;
 const playbackStore = host.playbackStore;
 const { isPlaying, playbackRow, currentSequenceIndex } =
   storeToRefs(playbackStore);

@@ -27,6 +27,23 @@ export interface DemoCollection {
   songs: DemoSong[];
 }
 
+/**
+ * Collections whose import is still experimental, with what the user should
+ * expect: a C64 .sid holds a player's code, not a song, so it is transcribed
+ * from what the player plays, and the result only approximates the original.
+ *
+ * Shown with a warning in the demo browser, and left out of the jukebox's
+ * standard playlist -- they can still be queued by hand or as a playlist of
+ * their own.
+ */
+export const EXPERIMENTAL_COLLECTIONS: Readonly<Record<string, string>> = {
+  sid: 'Experimental: C64 .sid files are transcribed into editable GoatTracker songs from what their player plays. The result approximates the original and can sound noticeably different.',
+};
+
+export function isExperimentalCollection(id: string): boolean {
+  return id in EXPERIMENTAL_COLLECTIONS;
+}
+
 /** Directory the manifest and the modules are served from. */
 export const DEMO_BASE_URL = 'demos';
 
@@ -82,5 +99,25 @@ export function useDemoManifest(base = DEMO_BASE_URL) {
     return collections.value.flatMap((collection) => collection.songs);
   }
 
-  return { collections, loading, error, load, allSongs };
+  /** Every song outside the experimental collections, in manifest order. */
+  function standardSongs(): DemoSong[] {
+    return collections.value
+      .filter((collection) => !isExperimentalCollection(collection.id))
+      .flatMap((collection) => collection.songs);
+  }
+
+  /** The songs of one collection, or none if it is not published. */
+  function collectionSongs(id: string): DemoSong[] {
+    return collections.value.find((collection) => collection.id === id)?.songs ?? [];
+  }
+
+  return {
+    collections,
+    loading,
+    error,
+    load,
+    allSongs,
+    standardSongs,
+    collectionSongs,
+  };
 }

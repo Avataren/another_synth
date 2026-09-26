@@ -2,8 +2,13 @@ import { computed, ref } from 'vue';
 import {
   useJukeboxStore,
   entryFromDemoSong,
+  type JukeboxPlaylistSource,
 } from 'src/stores/jukebox-store';
-import { useDemoManifest, type DemoSong } from 'src/composables/useDemoManifest';
+import {
+  useDemoManifest,
+  isExperimentalCollection,
+  type DemoSong,
+} from 'src/composables/useDemoManifest';
 import { recordLoadedSongHash } from 'src/composables/song-identity';
 import type { TrackerSongHost } from 'src/composables/useTrackerSongHost';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
@@ -74,7 +79,25 @@ async function fetchModuleBytes(url: string): Promise<ArrayBuffer> {
  */
 export function useJukeboxPlayer(host: TrackerSongHost) {
   const jukebox = useJukeboxStore();
-  const { load: loadDemoManifest, allSongs: allDemoSongs } = useDemoManifest();
+  const {
+    collections: demoCollections,
+    load: loadDemoManifest,
+    standardSongs,
+    collectionSongs,
+  } = useDemoManifest();
+
+  /** One entry per published collection, for the single-format playlists. */
+  const playlistSources = computed<JukeboxPlaylistSource[]>(() =>
+    demoCollections.value
+      .filter((collection) => collection.songs.length > 0)
+      .map((collection) => ({
+        id: collection.id,
+        name: collection.name,
+        format: collection.songs[0]?.format ?? null,
+        count: collection.songs.length,
+        experimental: isExperimentalCollection(collection.id),
+      })),
+  );
 
   /** A song is being fetched and its instruments rebuilt. */
   const busy = ref(false);
@@ -300,10 +323,22 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
     await playIndex(next);
   }
 
-  /** Queue every published demo, in random order. */
-  async function fillFromManifest(pinnedFile?: string): Promise<void> {
+  /**
+   * Queue published demos in random order: one collection's songs when
+   * `collectionId` names one, otherwise every song outside the experimental
+   * collections.
+   *
+   * A pinned file only stays pinned if it is in the new list; a playlist of
+   * one format does not keep a song of another at its head.
+   */
+  async function fillFromManifest(
+    pinnedFile?: string,
+    collectionId?: string,
+  ): Promise<void> {
     await loadDemoManifest();
-    jukebox.setEntries(allDemoSongs().map(entryFromDemoSong), true, pinnedFile);
+    const songs =
+      collectionId === undefined ? standardSongs() : collectionSongs(collectionId);
+    jukebox.setEntries(songs.map(entryFromDemoSong), true, pinnedFile);
   }
 
   /** Fill the playlist if it is empty, then play from where it stands. */
@@ -386,11 +421,27 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
     if (jukebox.active) void playIndex(jukebox.currentIndex);
   }
 
-  async function refill(): Promise<void> {
-    // Pin whatever is playing so refilling the queue does not interrupt it.
-    await fillFromManifest(
-      host.playbackStore.isPlaying ? jukebox.current?.file : undefined,
-    );
+  /**
+   * Replace the queue with a fresh playlist -- the standard one, or one
+   * collection's songs when `collectionId` names it.
+   *
+   * Whatever is playing is pinned so the refill does not interrupt it. If it
+   * is not part of the new playlist -- a MOD playing when an AHX playlist is
+   * picked -- the new playlist starts right away instead: that is what
+   * picking it asked for.
+   */
+  async function refill(collectionId?: string): Promise<void> {
+    const playing = host.playbackStore.isPlaying ? jukebox.current?.file : undefined;
+    await fillFromManifest(playing, collectionId);
+    if (
+      playing !== undefined &&
+      jukebox.current?.file !== playing &&
+      jukebox.active &&
+      jukebox.hasEntries
+    ) {
+      await playIndex(0);
+      return;
+    }
     whenIdle(() => void prefetchNext());
   }
 
@@ -430,6 +481,7 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
     busy,
     isBusy,
     queuedFiles,
+    playlistSources,
     playIndex,
     step,
     start,

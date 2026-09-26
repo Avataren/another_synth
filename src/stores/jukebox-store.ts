@@ -24,6 +24,16 @@ export interface JukeboxEntry {
   bytes: number;
 }
 
+/** A demo collection a single-format playlist can be built from. */
+export interface JukeboxPlaylistSource {
+  id: string;
+  name: string;
+  /** Format label of the collection's first song, for its badge. */
+  format: string | null;
+  count: number;
+  experimental: boolean;
+}
+
 /**
  * Fisher-Yates, returning a new array.
  *
