@@ -14,6 +14,8 @@ export interface SidSongTransportTracker {
   readonly sidSubsong: number;
   readonly sequence: string[];
   readonly patterns: ReadonlyArray<{ id: string; rows: number }>;
+  /** The flat subsongs (their per-voice restarts say where the played song loops to). */
+  readonly sidFlat: ReadonlyArray<{ readonly restarts: readonly number[] }>;
   syncSidWriteBack(): boolean;
 }
 
@@ -59,9 +61,10 @@ const SID_VOICES = 3;
  * positions are consecutive row ranges of that count (the flat song,
  * `sid-doc/flat.ts`), so row `r` of sequence position `p` is song row
  * `start(p) + r`. Past the song's end the player
- * plays on (each voice loops its orderlist); the playhead then shows the row
- * modulo the song's length, which is exact when every voice restarts at its
- * top and a display approximation otherwise.
+ * plays on (each voice loops its orderlist); the playhead then wraps into the
+ * loop of the voice whose rows the player counts (`loopVoice`), exact when
+ * every voice restarts at the same position (a flat song made by
+ * `flattenSidDoc` or compiled from one) and a display approximation otherwise.
  *
  * Edits: a doc change while playing reloads the song once the edits pause
  * (`SID_RELOAD_IDLE_MS`) and puts it back at the row it was on (a load, a
@@ -133,10 +136,39 @@ export class SidSongTransport {
     return this.positionStart(this.positionCount());
   }
 
-  /** The grid place (sequence position, row) of song row `row` (modulo the song's length). */
+  /**
+   * The voice whose rows the player counts: the longest first pass through the
+   * played doc's orderlists, the first on a tie (`first_pass_rows`, player.rs).
+   */
+  private loopVoice(): number {
+    const doc = this.playDoc();
+    const lists = doc?.subsongs[0]?.orderlists ?? [];
+    let best = { rows: 0, voice: 0 };
+    lists.forEach((list, voice) => {
+      const rows = list.entries.reduce((sum, e) => sum + (doc?.patterns[e.pattern]?.rows.length ?? 0) * e.repeat, 0);
+      if (rows > best.rows) best = { rows, voice };
+    });
+    return best.voice;
+  }
+
+  /** The song row the played song loops back to after its last (the counted voice's restart). */
+  private loopStart(): number {
+    const restarts = this.deps.trackerStore.sidFlat[this.deps.trackerStore.sidSubsong]?.restarts ?? [];
+    const restart = restarts[this.loopVoice()] ?? restarts[0] ?? 0;
+    return this.positionStart(Math.max(0, Math.min(this.positionCount() - 1, restart)));
+  }
+
+  /** The grid place (sequence position, row) of song row `row` (past the end, wrapped into the song's loop). */
   placeOf(row: number): { position: number; row: number } {
     const total = this.songLength();
-    let r = total > 0 ? row % total : 0;
+    let r = 0;
+    if (total > 0) {
+      if (row < total) r = row;
+      else {
+        const start = Math.min(this.loopStart(), total - 1);
+        r = start + ((row - total) % (total - start));
+      }
+    }
     for (let p = 0; p < this.positionCount(); p++) {
       const rows = this.positionRows(p);
       if (r < rows) return { position: p, row: r };

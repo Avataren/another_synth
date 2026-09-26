@@ -683,6 +683,7 @@
                   <span v-else>{{ getInstrumentDisplayName(slot) }}</span>
                 </div>
                 <PatchPicker
+                  v-if="!isSidSong"
                   :model-value="slot.patchId ?? null"
                   :patches="availablePatches"
                   placeholder="Select patch"
@@ -709,7 +710,7 @@
                     :decimals="2"
                     scale="mini"
                     :unitFunc="formatGainAsDb"
-                    :disable="isAhxSlot(slot)"
+                    :disable="isAhxSlot(slot) || isSidSong"
                     @update:model-value="onSlotVolumeChange(slot.slot, $event)"
                   />
                 </div>
@@ -717,10 +718,10 @@
                   <button
                     type="button"
                     class="icon-action-button"
-                    :title="isReadOnly ? readOnlyHint : hasDocStructure ? ahxInstrumentsHint : 'New patch'"
-                    :disabled="isReadOnly || hasDocStructure"
+                    :title="isReadOnly ? readOnlyHint : canAddSidInstrumentAt(slot.slot) ? 'New SID instrument' : hasDocStructure ? ahxInstrumentsHint : 'New patch'"
+                    :disabled="isReadOnly || (hasDocStructure && !canAddSidInstrumentAt(slot.slot))"
                     @click.stop="
-                      createNewSongPatch(slot.slot);
+                      onAddInstrumentClick(slot.slot);
                       refocusTracker();
                     "
                   >
@@ -1061,7 +1062,7 @@ import SongExportDialog from 'src/components/tracker/SongExportDialog.vue';
 import NewSongDialog, { type NewSongChoice } from 'src/components/tracker/NewSongDialog.vue';
 import { snapshotEditorSong } from 'src/audio/tracker/ahx-source';
 import type { AhxEditGate } from 'src/audio/tracker/ahx-doc/edit-guard';
-import { sidMinTempo, type SidChipModel } from 'src/audio/tracker/sid-doc';
+import { SID_MAX_INSTRUMENTS, sidMinTempo, type SidChipModel } from 'src/audio/tracker/sid-doc';
 import { ahxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
   channelsFromSelection,
@@ -1367,15 +1368,25 @@ const ahxChannelsHint = computed(() =>
       ? 'AHX songs have exactly 4 channels'
       : `This HVL song has ${hvlDocChannels.value} channels, set by its file`
 );
-const ahxLengthHint = computed(() =>
-  isSidSong.value
-    ? "A SID song's positions follow its voices' orderlists"
-    : 'All the tracks of an AHX or HVL song have the same length'
-);
+const ahxLengthHint = 'All the tracks of an AHX or HVL song have the same length';
 // HVL instruments are listed and edited like AHX ones (plan-hvl-instruments-0923).
+/** A new SID instrument goes in the first free slot (GoatTracker numbers them in order, up to 63). */
+function canAddSidInstrumentAt(slotNumber: number): boolean {
+  const doc = trackerStore.sidDoc;
+  return trackerStore.isSidEditable && doc !== null && slotNumber === doc.instruments.length + 1 && slotNumber <= SID_MAX_INSTRUMENTS;
+}
+function onAddInstrumentClick(slotNumber: number): void {
+  if (!isSidSong.value) {
+    void createNewSongPatch(slotNumber);
+    return;
+  }
+  if (!canAddSidInstrumentAt(slotNumber)) return;
+  const added = trackerStore.addSidInstrument();
+  if (added !== null) setActiveInstrument(added);
+}
 const ahxInstrumentsHint = computed(() =>
   isSidSong.value
-    ? "SID instruments are the song's own and edited in their own editor"
+    ? 'SID instruments are numbered in order: add one in the first free slot, edit it in its own editor'
     : hvlDocChannels.value === null
     ? 'AHX instruments are numbered in order and edited in their own editor'
     : 'HVL instruments are numbered in order and edited in their own editor'
@@ -2087,6 +2098,24 @@ const editingContext: TrackerEditingContext = {
   onNotePreview: (trackIndex: number, instrumentId: string) => {
     setTrackAudioNodeForInstrument(trackIndex, instrumentId);
     host.markTrackNotePlayed(trackIndex);
+  },
+  // A typed note on an AHX or SID song's own instrument sounds on that
+  // format's preview voice, as a key on the note keyboard does.
+  previewSongInstrumentNote: (instrumentId: string, midi: number, durationMs: number) => {
+    if (!playbackStore.isTrackAudible(activeTrack.value)) return false;
+    const ahxInstrument = ahxInstrumentNumberFor(instrumentId);
+    if (ahxInstrument !== undefined) {
+      void playbackStore.previewAhxNoteOn(ahxInstrument, midi);
+      window.setTimeout(() => playbackStore.previewAhxNoteOff(midi), durationMs);
+      return true;
+    }
+    const sidInstrument = sidInstrumentNumberFor(instrumentId);
+    if (sidInstrument !== undefined) {
+      void playbackStore.previewSidNoteOn(sidInstrument, midi);
+      window.setTimeout(() => playbackStore.previewSidNoteOff(midi), durationMs);
+      return true;
+    }
+    return false;
   },
 };
 

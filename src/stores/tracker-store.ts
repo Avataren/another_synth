@@ -68,7 +68,9 @@ import {
 } from 'src/audio/tracker/ahx-doc';
 import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import { readModOrigin, type ModOrigin } from 'src/audio/tracker/mod-origin';
+import { editSidInstrument, newSidInstrument } from 'src/audio/tracker/sid-instrument-edit';
 import {
+  SID_MAX_INSTRUMENT_NAME_LENGTH,
   SID_MAX_PATTERN_ROWS,
   blankSidFlatCell,
   compileSidFlatSong,
@@ -1098,6 +1100,20 @@ export const useTrackerStore = defineStore('trackerStore', {
       if (!slot) return;
       const previous = slot.instrumentName;
       slot.instrumentName = name?.trim() ?? '';
+      // A SID slot lists the doc's instrument: the name is the doc's (the
+      // .sng/.sid writers take it from there), cut to GoatTracker's 16
+      // characters. The caller has taken the undo step; the slots follow the doc.
+      const doc = this.sidDoc;
+      if (slot.instrumentFormat === 'sid' && doc !== null && this.isSidEditable) {
+        const result = editSidInstrument(doc, slotNumber, { name: slot.instrumentName.slice(0, SID_MAX_INSTRUMENT_NAME_LENGTH) });
+        if (!result.ok) {
+          slot.instrumentName = previous;
+          reportAhxEditNotice(result.reason);
+          return;
+        }
+        this.commitSidDoc(result.doc);
+        return;
+      }
       // An AHX slot's name is the instrument's own (the AHX exporter writes
       // `ahxData.name` into the file), so a rename has to reach it too. An
       // unchanged name is not a rename: import seeds `instrumentName` with
@@ -1634,6 +1650,17 @@ export const useTrackerStore = defineStore('trackerStore', {
      * changes the doc gets an undo step, then is committed. Returns whether the
      * doc changed.
      */
+    /**
+     * Appends a new SID instrument (GoatTracker's new-instrument defaults, its
+     * own wave and pulse rows: `newSidInstrument`) as one undo step, and
+     * returns its number, or null when the song has no room (the notice says why).
+     */
+    addSidInstrument(): number | null {
+      const doc = this.sidDoc;
+      if (doc === null || !this.isSidEditable) return null;
+      if (!this.editSidDoc(newSidInstrument(doc))) return null;
+      return this.sidDoc?.instruments.length ?? null;
+    },
     editSidDoc(result: SidOpResult): boolean {
       if (!this.isSidEditable) return false;
       if (!result.ok) {

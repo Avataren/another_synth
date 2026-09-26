@@ -38,6 +38,12 @@ export interface TrackerEditingContext {
   // Also provides instrumentId so the caller can set the audio node for visualization
   onNotePreview?: (trackIndex: number, instrumentId: string) => void;
   /**
+   * Sounds a typed note on an instrument that has no patch (an AHX or SID
+   * song's own instrument, played by its format's preview voice). Returns
+   * whether it took the note; `previewNote` falls back to the song bank.
+   */
+  previewSongInstrumentNote?: (instrumentId: string, midi: number, durationMs: number) => boolean;
+  /**
    * Set when the store can hold an editable AHX song. The handlers that can
    * write something an AHX step has no home for ask it first, before their undo
    * snapshot and before the cursor moves (a refusal must leave no phantom
@@ -59,6 +65,9 @@ export interface TrackerEditingContext {
  *
  * @param context - Editing context with all dependencies
  */
+/** How long a typed note sounds. */
+const NOTE_PREVIEW_MS = 250;
+
 export function useTrackerEditing(context: TrackerEditingContext) {
   /** `true` when an AHX song cannot take `check`; the gate has reported why. */
   const refusedByAhx = (check: Parameters<AhxEditGate['refuse']>[0]): boolean => context.ahx?.refuse(check) ?? false;
@@ -220,6 +229,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
    * Preview a note by playing it briefly
    */
   async function previewNote(instrumentId: string, midi: number, velocity = 100) {
+    if (context.previewSongInstrumentNote?.(instrumentId, midi, NOTE_PREVIEW_MS)) return;
     if (!hasPatchForInstrument(instrumentId)) return;
     await context.songBank.prepareInstrument(instrumentId);
     // Mark the active track as having a note playing (for waveform visualizer)
@@ -228,7 +238,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     context.songBank.noteOn(instrumentId, midi, velocity);
     window.setTimeout(() => {
       context.songBank.noteOff(instrumentId, midi);
-    }, 250);
+    }, NOTE_PREVIEW_MS);
   }
 
   /**

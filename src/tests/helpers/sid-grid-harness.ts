@@ -18,7 +18,11 @@ import { buildSidChainSong } from './sid-chain-song';
  * (default: `adoptSidDoc(doc)`); nothing writes into the doc but the store's
  * write-back of what the composables did. Needs an active Pinia.
  */
-export function sidGridHarness(doc: SidDoc = buildSidChainSong(), adopt?: () => void) {
+export function sidGridHarness(
+  doc: SidDoc = buildSidChainSong(),
+  adopt?: () => void,
+  options: Pick<TrackerEditingContext, 'previewSongInstrumentNote'> = {},
+) {
   const store = useTrackerStore();
   if (adopt) adopt();
   else store.adoptSidDoc(doc);
@@ -82,6 +86,7 @@ export function sidGridHarness(doc: SidDoc = buildSidChainSong(), adopt?: () => 
     },
     midiToTrackerNote,
     ahx: gate,
+    ...options,
   };
   const selectionContext: TrackerSelectionContext = {
     activeRow,
