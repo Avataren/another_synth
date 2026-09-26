@@ -8,8 +8,8 @@
  *
  * The same model as the app's chip (`rust-wasm/src/sid/envelope.rs`): the
  * measured rate periods, a 15-bit rate counter compared for equality, linear
- * attack, the piecewise-exponential divider in decay and release, sustain
- * and zero holds. Here it runs step by step rather than cycle by cycle.
+ * attack, the piecewise-exponential divider in decay and release, the
+ * sustain hold and the zero-freeze latch. Here it runs step by step rather than cycle by cycle.
  */
 
 /** Chip cycles per envelope step, by rate nibble (the measured periods). */
@@ -28,6 +28,8 @@ export class SidEnvelope {
   private counter = 0;
   private exp = 0;
   private gate = false;
+  /** The zero freeze: set by a step that lands on 0, cleared only by a gate-on. */
+  private holdZero = true;
   private ad = 0;
   private sr = 0;
 
@@ -42,8 +44,10 @@ export class SidEnvelope {
   }
 
   setGate(on: boolean): void {
-    if (on && !this.gate) this.stage = ATTACK;
-    else if (!on && this.gate) this.stage = RELEASE;
+    if (on && !this.gate) {
+      this.stage = ATTACK;
+      this.holdZero = false;
+    } else if (!on && this.gate) this.stage = RELEASE;
     this.gate = on;
   }
 
@@ -52,10 +56,10 @@ export class SidEnvelope {
     return SID_RATE_PERIODS[nibble]!;
   }
 
-  /** Nothing a step does changes the level: decay at the sustain level, or decay/release at zero. */
+  /** Nothing a step does changes the level: frozen at zero, or decay at the sustain level. */
   private holding(): boolean {
-    if (this.stage === ATTACK) return false;
-    return this.level === 0 || (this.stage === DECAY && this.level === (this.sr >> 4) * 17);
+    if (this.holdZero) return true;
+    return this.stage === DECAY && this.level === (this.sr >> 4) * 17;
   }
 
   /** Run `cycles` chip cycles. */
@@ -83,16 +87,20 @@ export class SidEnvelope {
   }
 
   private step(): void {
-    if (this.stage === ATTACK) {
-      this.exp = 0;
-      this.level = Math.min(255, this.level + 1);
-      if (this.level === 255) this.stage = DECAY;
-      return;
+    if (this.stage !== ATTACK) {
+      this.exp++;
+      if (this.exp < expPeriod(this.level)) return;
     }
-    this.exp++;
-    if (this.exp < expPeriod(this.level)) return;
     this.exp = 0;
-    if (!this.holding()) this.level--;
+    if (this.holdZero) return;
+    if (this.stage === ATTACK) {
+      this.level = (this.level + 1) & 0xff;
+      if (this.level === 255) this.stage = DECAY;
+    } else if (this.stage === RELEASE || this.level !== (this.sr >> 4) * 17) {
+      // An unfrozen 0 (a gate-on with no attack step yet) wraps to 255.
+      this.level = (this.level - 1) & 0xff;
+    }
+    if (this.level === 0) this.holdZero = true;
   }
 }
 

@@ -41,8 +41,16 @@
 //!   (public descriptions of the comparator): decay stops when the level
 //!   EQUALS the sustain value. Lowering S mid-sustain resumes the decay. Raising
 //!   it above the current level never matches, so the decay runs on to 0.
-//! - Zero freeze: at level 0, decay and release stop. Only a new gate-on
-//!   (attack) moves the counter.
+//! - Zero freeze: a step that lands on 0 freezes the counter there, and
+//!   only a gate-on (attack) unlocks it. The freeze is a latch, not "level
+//!   is 0": a gate-on clears it even if no attack step follows, and a
+//!   release step from an unfrozen 0 wraps the 8-bit counter to 255, which
+//!   then releases from full level. The same wrap runs the other way: an
+//!   attack step from 255 lands on 0 and freezes. reSID models both, as
+//!   measured on ENV3. Songs lean on the first: a one-frame gate-on whose
+//!   attack step the ADSR delay bug holds back (Stinsen's "Tribal
+//!   Tribunal", voices 2 and 3) plays its whole release, and holding at 0
+//!   instead silenced those voices.
 //! - The TEST bit does not touch the envelope. The datasheet's TEST text
 //!   names only the oscillator, noise and pulse outputs.
 //!
@@ -92,6 +100,7 @@ pub struct Envelope {
     rate_counter: u16,
     exp_counter: u8,
     gate: bool,
+    hold_zero: bool,
 }
 
 impl Default for Envelope {
@@ -106,6 +115,7 @@ impl Default for Envelope {
             rate_counter: 0,
             exp_counter: 0,
             gate: false,
+            hold_zero: true,
         }
     }
 }
@@ -144,6 +154,7 @@ impl Envelope {
     pub fn set_gate(&mut self, gate: bool) {
         if gate && !self.gate {
             self.stage = Stage::Attack;
+            self.hold_zero = false;
         } else if !gate && self.gate {
             self.stage = Stage::Release;
         }
@@ -168,26 +179,32 @@ impl Envelope {
             return;
         }
         self.rate_counter = 0;
+        if self.stage != Stage::Attack {
+            self.exp_counter += 1;
+            if self.exp_counter < exp_period(self.level) {
+                return;
+            }
+        }
+        self.exp_counter = 0;
+        if self.hold_zero {
+            return;
+        }
         match self.stage {
             Stage::Attack => {
-                self.exp_counter = 0;
-                self.level = self.level.saturating_add(1);
+                self.level = self.level.wrapping_add(1);
                 if self.level == 255 {
                     self.stage = Stage::DecaySustain;
                 }
             }
-            Stage::DecaySustain | Stage::Release => {
-                self.exp_counter += 1;
-                if self.exp_counter < exp_period(self.level) {
-                    return;
-                }
-                self.exp_counter = 0;
-                let hold = self.level == 0
-                    || (self.stage == Stage::DecaySustain && self.level == self.sustain * 17);
-                if !hold {
-                    self.level -= 1;
+            Stage::DecaySustain => {
+                if self.level != self.sustain * 17 {
+                    self.level = self.level.wrapping_sub(1);
                 }
             }
+            Stage::Release => self.level = self.level.wrapping_sub(1),
+        }
+        if self.level == 0 {
+            self.hold_zero = true;
         }
     }
 }
@@ -205,6 +222,43 @@ mod tests {
             let d = RATE_PERIODS[i] as f64 - nominal;
             assert!((0.0..1.6).contains(&d), "nibble {i}: {d}");
         }
+    }
+
+    #[test]
+    fn gate_on_without_an_attack_step_releases_from_full() {
+        // Release rate 3 leaves the counter above attack rate 0's period, so the
+        // gate-on waits on the ADSR delay bug. The gate drops before any attack
+        // step: the release step from the unfrozen 0 wraps to 255 (reSID).
+        let mut env = Envelope::default();
+        env.set_sr(0x03);
+        for _ in 0..50 {
+            env.clock();
+        }
+        env.set_ad(0x00);
+        env.set_sr(0x0A);
+        env.set_gate(true);
+        for _ in 0..100 {
+            env.clock();
+        }
+        assert_eq!(env.level(), 0, "the attack is still waiting on the counter's wrap");
+        env.set_gate(false);
+        for _ in 0..0x8000 {
+            env.clock();
+        }
+        assert!(env.level() > 200, "released from 255, got {}", env.level());
+
+        // A decay that lands on 0 freezes: the gate-off after it stays silent.
+        let mut env = Envelope::default();
+        env.set_gate(true);
+        for _ in 0..20_000 {
+            env.clock();
+        }
+        assert_eq!(env.level(), 0, "attack 0, decay 0 to sustain 0");
+        env.set_gate(false);
+        for _ in 0..0x8000 {
+            env.clock();
+        }
+        assert_eq!(env.level(), 0);
     }
 
     #[test]

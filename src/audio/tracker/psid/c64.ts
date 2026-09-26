@@ -306,6 +306,8 @@ class Voice3 {
   envAt = 0;
   rateCount = 0;
   expCount = 0;
+  /** The zero freeze: set by a step that lands on 0, cleared only by a gate-on (reSID's `hold_zero`). */
+  holdZero = true;
 
   syncOsc(now: number): void {
     const dt = now - this.at;
@@ -368,8 +370,14 @@ class Voice3 {
       }
       this.envAt = next;
       this.rateCount = 0;
+      if (this.holdZero) {
+        this.envAt = now;
+        return;
+      }
       if (this.state === 'attack') {
+        // From 255 (a release step after a gate-on that never stepped) the counter wraps to 0 and freezes.
         this.env = (this.env + 1) & 0xff;
+        if (this.env === 0) this.holdZero = true;
         if (this.env === 0xff) this.state = 'decay';
         continue;
       }
@@ -377,8 +385,11 @@ class Voice3 {
       if (++this.expCount < expPeriod) continue;
       this.expCount = 0;
       const sustain = (this.sr >> 4) * 0x11;
-      if (this.env > 0 && !(this.state === 'decay' && this.env <= sustain)) this.env--;
-      if (this.env === 0 || (this.state === 'decay' && this.env <= sustain)) {
+      // An unfrozen 0 (a gate-on with no attack step yet) wraps to 255 in release.
+      if (this.state === 'release') this.env = (this.env - 1) & 0xff;
+      else if (this.env > sustain) this.env--;
+      if (this.env === 0) this.holdZero = true;
+      if (this.holdZero || (this.state === 'decay' && this.env <= sustain)) {
         // Held (sustain) or frozen at zero until the next gate change.
         this.envAt = now;
         return;
@@ -393,7 +404,10 @@ class Voice3 {
     const gateOff = (v & 1) === 0 && (this.ctrl & 1) !== 0;
     if (v & 0x08) this.acc = 0;
     this.ctrl = v;
-    if (gateOn) this.state = 'attack';
+    if (gateOn) {
+      this.state = 'attack';
+      this.holdZero = false;
+    }
     if (gateOff) this.state = 'release';
   }
 }

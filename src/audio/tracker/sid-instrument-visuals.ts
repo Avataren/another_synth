@@ -176,19 +176,23 @@ export function sidEnvelopeLevels(ad: number, sr: number, gateFrames: number, fr
   let level = 0;
   let rate = 0;
   let exp = 0;
+  // The zero freeze (`hold_zero`): the gate-on at the start clears it.
+  let holdZero = false;
   const period = () => SID_RATE_PERIODS[stage === 'attack' ? attack : stage === 'decay' ? decay : release] as number;
   const tick = () => {
-    if (stage === 'attack') {
-      exp = 0;
-      level = Math.min(255, level + 1);
-      if (level === 255) stage = 'decay';
-      return;
+    if (stage !== 'attack') {
+      exp += 1;
+      if (exp < expPeriod(level)) return;
     }
-    exp += 1;
-    if (exp < expPeriod(level)) return;
     exp = 0;
-    const hold = level === 0 || (stage === 'decay' && level === sustain * 17);
-    if (!hold) level -= 1;
+    if (holdZero) return;
+    if (stage === 'attack') {
+      level = (level + 1) & 0xff;
+      if (level === 255) stage = 'decay';
+    } else if (stage === 'release' || level !== sustain * 17) {
+      level = (level - 1) & 0xff;
+    }
+    if (level === 0) holdZero = true;
   };
   const clock = (cycles: number) => {
     let left = cycles;
