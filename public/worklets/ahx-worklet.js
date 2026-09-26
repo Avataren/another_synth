@@ -3371,6 +3371,7 @@ async function __wbg_init(module_or_path) {
 // src/audio/worklets/ahx-core.ts
 var CONTINUE_PHASE_ON_TRIGGER = true;
 var POSITION_INTERVAL_SECONDS = 0.04;
+var SCOPE_INTERVAL_SECONDS = 1 / 120;
 var AHX_SCOPE_POINTS = 256;
 var END_FADE_FRAMES = 32;
 function fadeOutTail(buffer) {
@@ -3400,6 +3401,7 @@ var AhxProcessorCore = class {
     /** One `waveforms` payload, refilled in place each report (posting clones it). */
     __publicField(this, "scopeData", new Int16Array(0));
     __publicField(this, "framesSincePosition", 0);
+    __publicField(this, "framesSinceScope", 0);
     __publicField(this, "lastPosition", -1);
     __publicField(this, "lastRow", -1);
     __publicField(this, "songEndReported", false);
@@ -3537,7 +3539,7 @@ var AhxProcessorCore = class {
       }
       if (this.preview) {
         this.reportPListRow(player);
-        if (this.capture) this.reportPreviewWaveforms(player, left.length);
+        if (this.capture) this.reportWaveforms(player, left.length);
       }
     } catch (error) {
       this.dropPlayer();
@@ -3668,12 +3670,12 @@ var AhxProcessorCore = class {
         }
       }
     }
+    if (this.capture) this.reportWaveforms(player, frames);
     this.framesSincePosition += frames;
     if (this.framesSincePosition < this.sampleRate * POSITION_INTERVAL_SECONDS) {
       return false;
     }
     this.framesSincePosition = 0;
-    if (this.capture) this.postWaveforms(player);
     const position = player.position();
     const row = player.row();
     if (position === this.lastPosition && row === this.lastRow) return false;
@@ -3701,11 +3703,11 @@ var AhxProcessorCore = class {
     this.lastPlistInstrument = instrument;
     this.post({ type: "plist-row", instrument, row });
   }
-  /** Preview mode: the voices' waveforms at the song's report rate. */
-  reportPreviewWaveforms(player, frames) {
-    this.framesSincePosition += frames;
-    if (this.framesSincePosition < this.sampleRate * POSITION_INTERVAL_SECONDS) return;
-    this.framesSincePosition = 0;
+  /** The voices' waveforms at the scope rate (`SCOPE_INTERVAL_SECONDS`). */
+  reportWaveforms(player, frames) {
+    this.framesSinceScope += frames;
+    if (this.framesSinceScope < this.sampleRate * SCOPE_INTERVAL_SECONDS) return;
+    this.framesSinceScope = 0;
     this.postWaveforms(player);
   }
   /** Snapshots every voice into the reused buffer and posts it. Allocates nothing per report. */
@@ -3723,6 +3725,7 @@ var AhxProcessorCore = class {
   }
   resetReporting() {
     this.framesSincePosition = 0;
+    this.framesSinceScope = 0;
     this.lastPosition = -1;
     this.lastRow = -1;
     this.songEndReported = false;
