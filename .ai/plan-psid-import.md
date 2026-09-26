@@ -308,3 +308,32 @@ a per-note `8xx` wave pointer would share one instrument between chord shapes); 
 whose note table sits off GoatTracker's plays up to 50 cents off (a quarter of the sample, under
 2% of frames within 10 cents), which GoatTracker's fixed table cannot hold; the filter (not yet
 measured); multispeed tunes.
+
+## 9. Accents as commands, not instruments (2026-09-26)
+
+Brief (Morten): the import made far too many instruments, recreating accents that should be
+effects on one instrument. Commando, Chimera and RoboCop 3 filled all 63 slots, with many of
+them repeating one sound: another start of the pulse sweep, a drum on another bass note, a cut
+wave program that left two instruments the same.
+
+- **Fold** (`transcribe/fold.ts`): GoatTracker runs a row's tick-0 command after the note's
+  instrument init (player.s `mt_tick0jump1`), so an instrument that differs from another in
+  one thing only (attack/decay, sustain/release, wave, pulse or filter pointer) plays exactly as
+  that one plus `5xx`, `6xx`, `8xx`, `9xx` or `Axx` on its rows. It folds when all its rows
+  have a free command column; twins merge outright. `psid-fold.test.ts` checks this against
+  the registers GoatTracker's player writes, frame for frame. Letting a quarter of the rows
+  lose their accent to a portamento already there saved little (Commando 27 -> 24) and cost
+  RoboCop 3 0.005, so it was dropped.
+- **Drums that follow the melody:** a group writes its noise pitch relative to the row's note
+  when its notes agree only that way (`NoiseMode`; Hubbard's snares move with the bass line).
+- Grouping into more than 63 before the fold made more table programs than the 255 rows hold,
+  so they were cut: Chimera and RoboCop 3 came out with more instruments and no better. Grouping
+  still stops at 63 first. A silent frame keeping its note out of the wave table saved nothing,
+  and lost Golden Axe 0.029 (its `$01` frames count as sounding), so it was dropped too.
+
+Start songs, instruments (fidelity): Commando 63 -> 27 (0.962 -> 0.960), Chimera 63 -> 21
+(0.954), RoboCop 3 63 -> 29 (0.906), Crazy Comets 61 -> 35, Golden Axe 61 -> 35, R-Type
+52 -> 25, Last Ninja 55 -> 44, Ocean Loader 2 41 -> 23; no fidelity change past 0.003 either
+way. Whole-file Commando (19 subsongs): 63 -> 54, 0.957 -> 0.960. Left: vibrato pairs (the same sound with and
+without instrument vibrato: Knucklebusters stays at 48, Last Ninja's vibrato delays). GoatTracker
+has no exact per-row "no vibrato", and a `4xx` ends at the next row's empty command.

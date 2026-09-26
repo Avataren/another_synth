@@ -41,6 +41,13 @@ export const MAX_TRANSCRIBED_INSTRUMENTS = 63;
 /** Semitones from the row's note; `a<n>`: absolute note n (noise, whose pitch does not follow the melody); between semitones; no frequency. */
 type PitchClass = number | `a${number}` | 'free' | 'none';
 
+/**
+ * How a group's noise frames name their pitch: absolute (a drum that sounds
+ * the same under any note) or relative to the row's note (Hubbard's drums,
+ * transposed with the bass line). A group takes the one its notes agree in.
+ */
+export type NoiseMode = 'absolute' | 'relative';
+
 export interface Timbre {
   readonly ad: number;
   readonly sr: number;
@@ -54,6 +61,8 @@ export interface Timbre {
   /** Per frame: the control byte and the pitch class. */
   readonly ctrl: readonly number[];
   readonly pitch: readonly PitchClass[];
+  /** As `pitch`, with the noise frames relative to the row's note. */
+  readonly relPitch: readonly PitchClass[];
 }
 
 /** Notes of one timbre. */
@@ -62,6 +71,8 @@ export interface NoteGroup {
   /** The longest member: its frames define the tables. */
   readonly rep: NoteProgram;
   readonly members: NoteProgram[];
+  /** How its noise frames' pitch is written; null until two of its notes tell (absolute then). */
+  noise: NoiseMode | null;
 }
 
 /** One instrument to build: a timbre, with or without its vibrato. */
@@ -72,7 +83,7 @@ export interface InstrumentPlan {
 }
 
 /** The pitch class of frame `f` of a note on `base`. */
-const pitchClass = (f: ProgramFrame, base: number): PitchClass => {
+const pitchClass = (f: ProgramFrame, base: number, noise: NoiseMode = 'absolute'): PitchClass => {
   if (f.owned) return 'free';
   // A silent frame (the test bit holds the oscillator, or no waveform): its pitch is not heard.
   if (f.ctrl & 0x08 || !(f.ctrl & 0xf0)) return 'free';
@@ -80,7 +91,7 @@ const pitchClass = (f: ProgramFrame, base: number): PitchClass => {
   const k = Math.round(f.pitch);
   if (Math.abs(f.pitch - k) > PITCH_SNAP) return 'free';
   // Noise: its pitch is the drum's, whatever the note.
-  if (f.ctrl & 0x80) return `a${Math.max(1, Math.min(95, base + k))}`;
+  if (f.ctrl & 0x80 && noise === 'absolute') return `a${Math.max(1, Math.min(95, base + k))}`;
   return k;
 };
 
@@ -95,6 +106,7 @@ export function timbreOf(p: NoteProgram): Timbre {
     filter: p.filter && p.frames.length > 0 ? `${p.frames[0]!.mode},${p.frames[0]!.resonance}` : '',
     ctrl: p.frames.map((f) => f.ctrl),
     pitch: p.frames.map((f) => pitchClass(f, p.base)),
+    relPitch: p.frames.map((f) => pitchClass(f, p.base, 'relative')),
   };
 }
 
@@ -112,15 +124,19 @@ function pulseShape(p: NoteProgram): string {
   return `${pw[0]! >> 8},${Math.sign(d)}${Math.round(Math.log2(Math.abs(d)))}`;
 }
 
-/** `short` plays the start of what `long` plays (a between-semitones pitch matches any); `pulse`: the pulse shapes must agree. */
-function isPrefix(short: Timbre, long: Timbre, pulse = true): boolean {
+/**
+ * `short` plays the start of what `long` plays (a between-semitones pitch
+ * matches any), its noise pitched as `noise` says; `pulse`: the pulse shapes
+ * must agree.
+ */
+function isPrefix(short: Timbre, long: Timbre, pulse = true, noise: NoiseMode = 'absolute'): boolean {
   if (pulse && short.pulseShape !== long.pulseShape) return false;
   if (short.ad !== long.ad || short.sr !== long.sr || short.pulse !== long.pulse || short.legato !== long.legato || short.filter !== long.filter) return false;
   if (short.ctrl.length > long.ctrl.length) return false;
   for (let i = 0; i < short.ctrl.length; i++) {
     if (short.ctrl[i] !== long.ctrl[i]) return false;
-    const a = short.pitch[i];
-    const b = long.pitch[i];
+    const a = noise === 'absolute' ? short.pitch[i] : short.relPitch[i];
+    const b = noise === 'absolute' ? long.pitch[i] : long.relPitch[i];
     if (a !== b && a !== 'free' && b !== 'free') return false;
   }
   return true;
@@ -147,6 +163,24 @@ function distance(a: Timbre, b: Timbre): number {
 
 const vibratoKey = (v: VibratoFit): string => `${v.left},${v.right}`;
 
+/**
+ * Whether `timbre` joins `group` (`isPrefix`), in the group's noise mode or,
+ * while it has none, in either; a join that only one mode allows settles the
+ * group's (a drum on another note that matches only relative to it: the drum
+ * follows the melody).
+ */
+function joins(timbre: Timbre, group: NoteGroup, pulse: boolean, noise: NoiseMode | null = group.noise): boolean {
+  if (noise !== null) {
+    if (!isPrefix(timbre, group.timbre, pulse, noise)) return false;
+    group.noise = noise;
+    return true;
+  }
+  const abs = isPrefix(timbre, group.timbre, pulse, 'absolute');
+  const rel = isPrefix(timbre, group.timbre, pulse, 'relative');
+  if (abs !== rel) group.noise = abs ? 'absolute' : 'relative';
+  return abs || rel;
+}
+
 /** The instrument plans of `programs`: timbres, split by vibrato; never more than `max` (the least used merge into their nearest). */
 export function groupNotes(programs: readonly NoteProgram[], max = MAX_TRANSCRIBED_INSTRUMENTS): InstrumentPlan[] {
   // Notes that differ only in how their pulse width starts share an instrument (and its pulse)
@@ -158,7 +192,11 @@ export function groupNotes(programs: readonly NoteProgram[], max = MAX_TRANSCRIB
   for (let i = plans.length - 1; i >= 0 && plans.length > max; i--) {
     const victim = plans[i]!;
     const host = plans.find(
-      (p, k) => k !== i && (p.vibrato === null) === (victim.vibrato === null) && isPrefix(victim.group.timbre, p.group.timbre, false),
+      (p, k) =>
+        k !== i &&
+        (p.vibrato === null) === (victim.vibrato === null) &&
+        (victim.group.noise === null || p.group.noise === null || victim.group.noise === p.group.noise) &&
+        joins(victim.group.timbre, p.group, false, p.group.noise ?? victim.group.noise),
     );
     if (host === undefined) continue;
     host.members.push(...victim.members);
@@ -173,9 +211,9 @@ function plansOf(programs: readonly NoteProgram[], pulse: boolean): InstrumentPl
   const groups: NoteGroup[] = [];
   for (const p of sorted) {
     const timbre = timbreOf(p);
-    const home = groups.find((g) => isPrefix(timbre, g.timbre, pulse));
+    const home = groups.find((g) => joins(timbre, g, pulse));
     if (home !== undefined) home.members.push(p);
-    else groups.push({ timbre, rep: p, members: [p] });
+    else groups.push({ timbre, rep: p, members: [p], noise: null });
   }
   const plans: InstrumentPlan[] = [];
   for (const g of groups) {
@@ -356,7 +394,7 @@ function slideFrames(frames: readonly ProgramFrame[]): Set<number> {
  * The per-frame wave steps of a note (frames 1..n): its waveform and note.
  * `vibratoFrom`: from this frame (1-based) on the pitch is left to the vibrato.
  */
-export function waveSteps(rep: NoteProgram, vibratoFrom: number | null): WaveStep[] {
+export function waveSteps(rep: NoteProgram, vibratoFrom: number | null, noise: NoiseMode | null = null): WaveStep[] {
   const steps: WaveStep[] = [];
   let lastNote: number | null = null;
   // Where the vibrato takes over, the note it swings around (the mean of its swing).
@@ -365,7 +403,7 @@ export function waveSteps(rep: NoteProgram, vibratoFrom: number | null): WaveSte
   const centre = vibratoFrom === null ? null : Math.round(swing.reduce((a, f) => a + f.pitch!, 0) / Math.max(1, swing.length));
   rep.frames.forEach((f, i) => {
     const frame = i + 1;
-    const pc = pitchClass(f, rep.base);
+    const pc = pitchClass(f, rep.base, noise ?? 'absolute');
     let right = NO_CHANGE;
     const free = (vibratoFrom !== null && frame >= vibratoFrom) || !!f.owned;
     if (free && !f.owned && frame === vibratoFrom && centre !== null && rep.base + centre !== lastNote) {
@@ -784,7 +822,7 @@ function stepUsage(plan: InstrumentPlan, steps: number): number[] {
  * last frame, which then holds.
  */
 function fitWavePrograms(plans: readonly InstrumentPlan[], budget: number): TableProgram[] {
-  const steps = plans.map((p) => waveSteps(p.group.rep, p.vibrato?.from ?? null));
+  const steps = plans.map((p) => waveSteps(p.group.rep, p.vibrato?.from ?? null, p.group.noise));
   const cuts = steps.map((s) => s.length);
   const usage = plans.map((p, i) => stepUsage(p, steps[i]!.length));
   const programs = steps.map((s) => waveProgram(s));

@@ -106,25 +106,30 @@ describe('the row grid', () => {
   });
 });
 
-/** Each fixture's start song, alone, and the score it must keep (today's, less two points). */
-const FLOORS: readonly (readonly [string, number])[] = [
-  ['hubbard_rob/commando.sid', 0.94],
-  ['hubbard_rob/crazy_comets.sid', 0.90],
-  ['hubbard_rob/knucklebusters.sid', 0.94],
-  ['hubbard_rob/chimera.sid', 0.86],
-  ['galway_martin/arkanoid.sid', 0.83],
-  ['galway_martin/comic_bakery.sid', 0.92],
-  ['galway_martin/commando_high_score.sid', 0.94],
-  ['galway_martin/ocean_loader_1.sid', 0.96],
-  ['galway_martin/ocean_loader_2.sid', 0.96],
-  ['daglish_ben/krakout.sid', 0.95],
-  ['daglish_ben/last_ninja.sid', 0.84],
-  ['huelsbeck_chris/great_giana_sisters.sid', 0.97],
-  ['huelsbeck_chris/r_type.sid', 0.94],
-  ['joseph_richard/defender_of_the_crown.sid', 0.97],
-  ['tel_jeroen/golden_axe.sid', 0.87],
-  ['tel_jeroen/robocop_3.sid', 0.88],
-  ['chiptunesak/vibratotest.sid', 0.92],
+/**
+ * Each fixture's start song, alone: the score it must keep (today's, less two
+ * points), and the most instruments it may take (today's: a sound's accents
+ * are commands on one instrument, `fold.ts`; before, Commando, Chimera and
+ * RoboCop 3 filled all 63).
+ */
+const FLOORS: readonly (readonly [string, number, number])[] = [
+  ['hubbard_rob/commando.sid', 0.94, 27],
+  ['hubbard_rob/crazy_comets.sid', 0.90, 35],
+  ['hubbard_rob/knucklebusters.sid', 0.94, 48],
+  ['hubbard_rob/chimera.sid', 0.86, 21],
+  ['galway_martin/arkanoid.sid', 0.83, 20],
+  ['galway_martin/comic_bakery.sid', 0.92, 14],
+  ['galway_martin/commando_high_score.sid', 0.94, 7],
+  ['galway_martin/ocean_loader_1.sid', 0.96, 24],
+  ['galway_martin/ocean_loader_2.sid', 0.96, 23],
+  ['daglish_ben/krakout.sid', 0.95, 32],
+  ['daglish_ben/last_ninja.sid', 0.84, 44],
+  ['huelsbeck_chris/great_giana_sisters.sid', 0.97, 20],
+  ['huelsbeck_chris/r_type.sid', 0.94, 25],
+  ['joseph_richard/defender_of_the_crown.sid', 0.97, 1],
+  ['tel_jeroen/golden_axe.sid', 0.87, 35],
+  ['tel_jeroen/robocop_3.sid', 0.88, 29],
+  ['chiptunesak/vibratotest.sid', 0.92, 1],
 ];
 
 /** The formats the app exports a SID song to, each of which must take the transcription. */
@@ -140,12 +145,13 @@ function exportsEverywhere(doc: SidDoc): void {
 }
 
 describe('importPsid: the start song of every fixture', () => {
-  it.each(FLOORS)('%s plays at least %f like the original, and exports to .sng, .sid and .prg', (name, floor) => {
+  it.each(FLOORS)('%s plays at least %f like the original on at most %i instruments, and exports to .sng, .sid and .prg', (name, floor, most) => {
     const r = imported(name, [startOf(name)]);
     expect(r.method).toBe('transcribed');
     expect(r.doc.subsongs.length).toBe(1);
     expect(r.fidelity).not.toBeNull();
     expect(r.fidelity!.score).toBeGreaterThanOrEqual(floor);
+    expect(r.doc.instruments.length).toBeLessThanOrEqual(most);
     // The comparison covered the song (or all of a short one), aligned within a few frames.
     expect(r.fidelity!.frames).toBeGreaterThan(Math.min(2900, r.reports[0]!.frames! - 100));
     exportsEverywhere(r.doc);

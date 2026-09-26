@@ -9,12 +9,14 @@ import {
   SID_MAX_SPEED_MULTIPLIER,
   SID_MAX_SUBSONGS,
   type SidDoc,
+  type SidInstrument,
 } from 'src/audio/tracker/sid-doc';
 import { gtPackedPatternSize } from 'src/audio/tracker/sid-export';
 import { captureSid, type SidTrace } from '../sid-capture';
 import type { PsidFile } from '../psid-file';
 import { estimateTuning, traceFrames, type TraceFrames } from './frames';
 import { detectGrid, rowLength, rowOfFrame, tempoChanges, type RowGrid } from './grid';
+import { foldInstruments } from './fold';
 import { buildInstruments, groupNotes, TableBuilder, type InstrumentPlan } from './instruments';
 import { filterDriver, noteBase, notePrograms, onsetsOf, placeNotes, splitLines, type NoteProgram } from './notes';
 import { planPitch, type PitchRow } from './pitch';
@@ -278,7 +280,16 @@ function staticFilter(prep: Prepared, tables: TableBuilder): { row: number; comm
 
 type Built = { readonly ok: true; readonly doc: SidDoc; readonly rows: readonly SubsongRows[] } | { readonly ok: false; readonly reason: string };
 
-/** One song of `preps`: instruments grouped across all of them, tables fitted, rows compiled. */
+/** An instrument's name numbered `n` (its number after `foldInstruments`). */
+const renumbered = (name: string, n: number): string => `${name.replace(/ ?\d*$/, '')} ${n}`.slice(0, 16);
+
+/**
+ * One song of `preps`: instruments grouped across all of them, tables
+ * fitted, rows compiled; then every instrument that differs from another in
+ * one thing only folded into it, as a command on its rows (`foldInstruments`).
+ * (Grouping into more than 63 before the fold makes more table programs than
+ * GoatTracker's 255 rows hold: they are cut, and the song sounds no closer.)
+ */
 function build(file: PsidFile, preps: readonly Prepared[], speedMultiplier: number): Built {
   const tables = new TableBuilder();
   // A gate timer must stay below every row's length (GoatTracker reads the next row
@@ -286,14 +297,26 @@ function build(file: PsidFile, preps: readonly Prepared[], speedMultiplier: numb
   let rowFrames = 127;
   for (const prep of preps) for (let k = 0; k < prep.loop.length; k++) rowFrames = Math.min(rowFrames, rowLength(prep.grid, k));
   const plans = groupNotes(preps.flatMap((p) => p.programs), SID_MAX_INSTRUMENTS);
-  const instruments = buildInstruments(plans, tables, rowFrames, instrumentName);
+  const built = buildInstruments(plans, tables, rowFrames, instrumentName);
   if (!tables.fits) return { ok: false, reason: "GoatTracker's tables are full" };
+  const folded = foldInstruments(built, songRows(preps, plans, built, tables, speedMultiplier));
+  const instruments = folded.instruments.map((ins, i) => ({ ...ins, name: renumbered(ins.name, i + 1) }));
+  return compileSong(file, preps, speedMultiplier, instruments, tables, folded.songs);
+}
+
+/** The rows of every subsong of `preps`, their notes on the instruments `built` (1-based) of `plans`. */
+function songRows(
+  preps: readonly Prepared[],
+  plans: readonly InstrumentPlan[],
+  instruments: readonly SidInstrument[],
+  tables: TableBuilder,
+  speedMultiplier: number,
+): SubsongRows[] {
   const instrumentOf = new Map<NoteProgram, number>();
   plans.forEach((plan, i) => {
     for (const m of plan.members) instrumentOf.set(m, i + 1);
   });
-
-  const rowsList = preps.map((prep) => {
+  return preps.map((prep) => {
     // Tempo: where the row length changes, and again at the loop row (the song comes
     // back there from its end); row 0 at 1x may rely on GoatTracker's start tempo 6.
     const tempo = tempoChanges(prep.grid, prep.loop.length).filter(
@@ -314,7 +337,17 @@ function build(file: PsidFile, preps: readonly Prepared[], speedMultiplier: numb
     );
     return subsongRows(prep.loop, prep.grid, prep.programs, instrumentOf, (n) => instruments[n - 1]?.gateTimer ?? 2, tempo, staticFilter(prep, tables), pitch);
   });
+}
 
+/** The song of `rowsList` (one per subsong of `preps`) on `instruments` and `tables`, compiled through the flat model. */
+function compileSong(
+  file: PsidFile,
+  preps: readonly Prepared[],
+  speedMultiplier: number,
+  instruments: SidInstrument[],
+  tables: TableBuilder,
+  rowsList: readonly SubsongRows[],
+): Built {
   const base = makeSidDoc({
     format: 'sid',
     version: SID_FILE_VERSION,
