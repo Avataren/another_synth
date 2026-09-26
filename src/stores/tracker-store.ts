@@ -2178,7 +2178,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         return null;
       }
     },
-    /** Marks the grid as reconciled with the doc (it was just built from it) and makes sure the watcher runs. */
+    /** Marks the grid as reconciled with the doc (it was just built from it) and makes sure the watchers run. */
     primeAhxWriteBack() {
       const cache = ahxSyncCacheOf(this);
       cache.cells = this.patterns.map((pattern) => pattern.tracks.map((track) => toRaw(track.entries)));
@@ -2191,6 +2191,16 @@ export const useTrackerStore = defineStore('trackerStore', {
           () => (this.ahxDoc === null ? null : this.patterns.map((pattern) => pattern.tracks.map((track) => track.entries))),
           () => {
             this.syncAhxWriteBack();
+          }
+        );
+        // The title is in the file too (its song name): a rename reaches the
+        // bytes as it is typed, as a grid edit does, not only at the next
+        // flush point. Silent (`flushAhxBytes`): a name is not audio, so the
+        // engine is not reloaded for it.
+        watch(
+          () => (this.ahxDoc === null ? null : this.currentSong.title),
+          (title) => {
+            if (title !== null) this.flushAhxBytes();
           }
         );
       });

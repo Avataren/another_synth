@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { parseAhx } from '@another-synth/tracker-playback';
 import { useTrackerStore, type TrackerSongFile } from 'src/stores/tracker-store';
@@ -178,12 +178,14 @@ describe('the store\'s new AHX song', () => {
     expect(store.instrumentSlots.slice(0, 4).map((s) => s.instrumentName)).toEqual([defaultAhxInstrument().name, ...presets.map((p) => p.name)]);
     writeNote(store, 0, 0, 'C-3', '02');
     writeNote(store, 1, 4, 'C-4', '04');
+    store.currentSong.title = 'First tune';
+    await nextTick();
 
-    // The engine's bytes follow the edits, and they sound.
+    // The engine's bytes follow the edits and the title, and they sound.
     const playing = store.currentAhxBytes()!;
     expect(currentAhxSource()).toEqual(playing);
+    expect(parseAhx(playing).name).toBe('First tune');
     expect(peak(renderAhx(playing, 0.5))).toBeGreaterThan(0.05);
-    store.currentSong.title = 'First tune';
 
     // Save, then open the .cmod in a fresh app.
     const { io, saved, notify } = fileIO(store);
@@ -222,6 +224,28 @@ describe('the store\'s new AHX song', () => {
     store.resetToNewAhxSong('ahx');
     expect(store.moduleFormat).toBe('ahx');
     expect(store.sidDoc).toBeNull();
+  });
+});
+
+describe('a rename reaches the engine\'s bytes as it is typed, not only at the next flush', () => {
+  for (const format of ['ahx', 'hvl'] as const) {
+    it(`${format}: the bytes carry the new name after the tick, without a Play, save or export`, async () => {
+      const store = await newSong(format);
+      const before = currentAhxSource();
+      store.currentSong.title = 'Renamed';
+      await nextTick();
+      const after = currentAhxSource()!;
+      expect(after).not.toBe(before);
+      expect(parseAhx(after).name).toBe('Renamed');
+      expect(after).toEqual(store.currentAhxBytes());
+    });
+  }
+
+  it('a loaded song is not rebuilt by its own title (its bytes stay the file\'s)', async () => {
+    const store = await newSong('hvl');
+    const loaded = currentAhxSource();
+    await nextTick();
+    expect(currentAhxSource()).toBe(loaded);
   });
 });
 
