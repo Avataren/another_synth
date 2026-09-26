@@ -696,8 +696,9 @@
                   @close="refocusTracker"
                   @click.stop
                 />
+                <!-- An AHX/HVL or SID song's instruments are its doc's: no synth patch goes in (assignPatchToSlot refuses one). -->
                 <PatchPicker
-                  v-else-if="!isSidSong"
+                  v-else-if="!hasDocStructure"
                   :model-value="slot.patchId ?? null"
                   :patches="availablePatches"
                   placeholder="Select patch"
@@ -2582,6 +2583,19 @@ async function createNewSong(choice: NewSongChoice) {
     } catch (err) {
       console.error('[New song] could not create the SID song', err);
       $q.notify({ type: 'negative', message: `Could not create the SID song: ${(err as Error).message}`, timeout: 5000 });
+    }
+    return;
+  }
+  if (choice.format === 'ahx' || choice.format === 'hvl') {
+    // A new AHX/HVL song is a file loaded as an opened .ahx/.hvl is (the
+    // store's resetToNewAhxSong), then wired by the same load path: song bank,
+    // module format, and the song's bytes installed for the engine.
+    const kind = choice.format.toUpperCase();
+    try {
+      await applyNewSong(() => trackerStore.resetToNewAhxSong(choice.format, choice.options));
+    } catch (err) {
+      console.error(`[New song] could not create the ${kind} song`, err);
+      $q.notify({ type: 'negative', message: `Could not create the ${kind} song: ${(err as Error).message}`, timeout: 5000 });
     }
     return;
   }

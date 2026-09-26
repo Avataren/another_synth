@@ -54,7 +54,7 @@ export const AHX_HELP: Readonly<Record<AhxHelpKey, string>> = {
   volume:
     'How loud this instrument is overall (0 is silent, 64 is full); the volume envelope shapes it over the note.',
   waveLength:
-    'How many steps one cycle of the sound is drawn with: short (0) sounds rough and gritty, long (5) sounds smoother and fuller, and the pitch stays the same.',
+    'How many steps one cycle of the sound is drawn with, which also picks its octave: at 3 notes play at their written pitch, each step down plays an octave higher (0 is three octaves up) and each step up an octave lower (5 is two octaves down). Fewer steps also sound rougher, more sound smoother.',
   vibratoDelay:
     'How long the note stays steady before the pitch starts to wobble (0 wobbles from the very start).',
   vibratoSpeed:
@@ -84,7 +84,7 @@ export const AHX_HELP: Readonly<Record<AhxHelpKey, string>> = {
   plistAdd: 'Adds a new empty step at the end of the PList, the little score that changes the sound during a note.',
   plistRow: 'A step of the PList, the little score that changes the sound during a note.',
   plistNote:
-    'Changes the pitch on this step: relative steps are semitones above the key you play, fixed ones are an absolute note; 0 keeps the pitch.',
+    'Changes the pitch on this step: relative steps are semitones above the key you play, fixed ones are an absolute note; 0 keeps the pitch the note already had (on a channel that has not played yet, a semitone below the key).',
   plistFixed:
     'Ticked, this step plays its own fixed pitch whatever key is played; unticked, its note is an offset above the key you play.',
   plistWaveform:

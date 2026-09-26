@@ -396,9 +396,12 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
 
   /**
    * Put a new song into the tracker the way a load does: `reset` makes it the
-   * store's song (`resetToNewSidSong`, plan-sid-authoring.md phase 3), and
-   * everything after is `applySongFile`'s, so a new SID song is wired to the
-   * song bank and the SID transport exactly as a loaded `.sng` is.
+   * store's song (`resetToNewSidSong`, plan-sid-authoring.md phase 3, or
+   * `resetToNewAhxSong`), and everything after is `applySongFile`'s, so a new
+   * SID song is wired to the song bank and the SID transport exactly as a
+   * loaded `.sng` is, and a new AHX/HVL song gets its bytes installed for the
+   * engine exactly as an opened `.ahx`/`.hvl` does (its doc's: an AHX song's
+   * built from the store, an HVL song's `base`).
    */
   async function applyNewSong(reset: () => void): Promise<void> {
     try {

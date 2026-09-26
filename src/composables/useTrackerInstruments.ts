@@ -159,6 +159,10 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
    * Handle patch selection for a slot
    */
   async function onPatchSelect(slotNumber: number, patchId: string) {
+    // An AHX/HVL or SID song's slots are its doc's instruments: the store
+    // refuses a patch there (and a clear), so refuse before the undo step.
+    if (context.trackerStore.hasDocStructure) return;
+
     if (!patchId) {
       await clearInstrument(slotNumber);
       return;

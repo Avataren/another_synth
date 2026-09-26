@@ -106,7 +106,7 @@
         <fieldset class="ahx-card">
           <legend>Level &amp; wave</legend>
           <p class="ahx-dim ahx-note" data-testid="ahx-group-intro-level">
-            How loud the instrument is, and how finely its tone is drawn.
+            How loud the instrument is, and how finely its wave is drawn, which also sets its octave.
           </p>
           <div class="ahx-fields">
             <AhxSliderField
@@ -903,12 +903,17 @@ const filterLowerHint = computed(() =>
     : '',
 );
 
-/** Wave lengths 0..=5 as the samples a cycle has (4 << n). */
+/**
+ * Wave lengths 0..=5 as the samples a cycle has (4 << n). The cycle is read at
+ * the note's rate whatever its length (`voice.rs` `set_audio`), so each step
+ * down doubles the pitch: 3 is the written one.
+ */
+const WAVE_LENGTH_OCTAVE = ['3 octaves up', '2 octaves up', '1 octave up', 'the written pitch', '1 octave down', '2 octaves down'];
 const WAVE_LENGTH_OPTIONS = [0, 1, 2, 3, 4, 5].map((value) => ({
   value,
   label: String(value),
   sub: String(ahxWaveCycleLength(value)),
-  title: `${ahxWaveCycleLength(value)} samples per cycle`,
+  title: `${ahxWaveCycleLength(value)} samples per cycle: ${WAVE_LENGTH_OCTAVE[value]}`,
 }));
 
 const WAVE_GLYPH: Record<AhxWaveformKind | 'unknown', string> = {

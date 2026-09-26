@@ -17,7 +17,7 @@ import {
 } from 'src/audio/tracker/ahx-doc';
 import { DEFAULT_AHX_INSTRUMENT_NAME, defaultAhxInstrument } from 'src/audio/tracker/ahx-instrument-edit';
 import { plainDoc } from './helpers/ahx-doc-fixtures';
-import { firstDifference, peak, renderAhx } from './helpers/ahx-render';
+import { RENDER_SAMPLE_RATE, firstDifference, peak, pitchHz, renderAhx } from './helpers/ahx-render';
 
 const slots = () => [{ ahxData: defaultAhxInstrument() }];
 const build = (doc: AhxDoc, title = doc.songName) => buildAhxFile({ doc, slots: slots(), title }).bytes;
@@ -171,10 +171,35 @@ describe('defaultAhxInstrument', () => {
     expect(ins.plist.entries[0]!.waveform).toBe(2);
   });
 
+  it('plays the key: its first row sets relative note 1, so C-4 on a fresh channel is C-4, not B-3', () => {
+    // Note 0 would keep the fresh voice's pitch, 0, and play note + track - 1 (voice.rs calc_period).
+    expect(ins.plist.entries[0]!.note).toBe(1);
+    expect(ins.plist.entries[0]!.fixed).toBe(false);
+    const doc = ok(setStep(createNewAhxDoc({ trackLength: 8 }), 1, 0, step(37)));
+    const hz = pitchHz(renderAhx(build(doc), 0.4), RENDER_SAMPLE_RATE * 0.05, RENDER_SAMPLE_RATE * 0.35);
+    // C-4 is 261.6 Hz, B-3 246.9: a semitone is 6 %.
+    expect(Math.abs(hz / 261.63 - 1)).toBeLessThan(0.02);
+  });
+
   it('is audible at low, middle and high pitches through the real engine', () => {
     for (const note of [1, 25, 49, 60]) {
       const doc = ok(setStep(createNewAhxDoc({ trackLength: 8 }), 1, 0, step(note)));
       expect(peak(renderAhx(build(doc), 1)), `note ${note}`).toBeGreaterThan(AUDIBLE);
+    }
+  });
+});
+
+describe('wave length is an octave switch (what AHX_HELP.waveLength says)', () => {
+  it('plays C-4 at its written pitch at 3, and an octave up for each step down', () => {
+    const doc = ok(setStep(createNewAhxDoc({ trackLength: 8 }), 1, 0, step(37)));
+    const hzAt = (waveLength: number): number => {
+      const bytes = buildAhxFile({ doc, slots: [{ ahxData: { ...defaultAhxInstrument(), waveLength } }], title: 'x' }).bytes;
+      return pitchHz(renderAhx(bytes, 0.4), RENDER_SAMPLE_RATE * 0.05, RENDER_SAMPLE_RATE * 0.35);
+    };
+    const c4 = 261.63;
+    for (const waveLength of [0, 1, 2, 3, 4, 5]) {
+      const expected = c4 * 2 ** (3 - waveLength);
+      expect(Math.abs(hzAt(waveLength) / expected - 1), `wave length ${waveLength}`).toBeLessThan(0.03);
     }
   });
 });

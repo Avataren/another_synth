@@ -62,6 +62,34 @@ describe('the New Song dialog', () => {
     expect(w.find('[data-testid="new-song-problem"]').text()).toBe('Not a new SID song: a pattern has 1-128 rows.');
   });
 
+  it('makes an AHX song with its speed and track rows, and no channel count (AHX is always 4)', async () => {
+    const w = mountDialog();
+    await w.find('[data-testid="new-song-format-ahx"]').setValue(true);
+    expect(w.find('[data-testid="new-song-sid-options"]').exists()).toBe(false);
+    expect(w.find('[data-testid="new-song-hvl-channels"]').exists()).toBe(false);
+    expect(w.find('[data-testid="new-song-ahx-note"]').text()).toContain('Add from preset');
+    const rows = w.find('[data-testid="new-song-ahx-rows"]');
+    expect(rows.findAll('option').map((o) => o.text())).toEqual(['8', '12', '16', '32', '48', '64']);
+    expect(w.find('[data-testid="new-song-ahx-speed"]').findAll('option')).toHaveLength(4);
+    await w.find('form').trigger('submit');
+    expect(created(w)).toEqual([[{ format: 'ahx', options: { trackLength: 64, speedMultiplier: 1 } }]]);
+    await rows.setValue(16);
+    await w.find('[data-testid="new-song-ahx-speed"]').setValue(4);
+    await w.find('form').trigger('submit');
+    expect(created(w)![1]).toEqual([{ format: 'ahx', options: { trackLength: 16, speedMultiplier: 4 } }]);
+  });
+
+  it('makes an HVL song with its channel count (4 to 16)', async () => {
+    const w = mountDialog();
+    await w.find('[data-testid="new-song-format-hvl"]').setValue(true);
+    const channels = w.find('[data-testid="new-song-hvl-channels"]');
+    expect(channels.findAll('option').map((o) => Number(o.text()))).toEqual(Array.from({ length: 13 }, (_, i) => i + 4));
+    await channels.setValue(12);
+    await w.find('[data-testid="new-song-ahx-rows"]').setValue(32);
+    await w.find('form').trigger('submit');
+    expect(created(w)).toEqual([[{ format: 'hvl', options: { trackLength: 32, speedMultiplier: 1, channels: 12 } }]]);
+  });
+
   it('closes on Escape and on Cancel', async () => {
     const w = mountDialog();
     await w.find('[data-testid="new-song-dialog"]').trigger('keydown', { key: 'Escape' });

@@ -78,3 +78,30 @@ export function rowStartFrame(render: AhxRender, position: number, row: number):
   const i = render.events.findIndex((e) => e.type === 'position' && e.position === position && e.row === row);
   return i < 0 ? undefined : render.eventFrames[i];
 }
+
+/**
+ * The fundamental of a steady tone in frames `from`..`to` of a render (left
+ * plus right, DC removed), by autocorrelation: the first lag whose correlation
+ * comes within 90 % of the zero-lag one, walked up to its local peak. Whole
+ * frames only, so the answer is within a few percent: good for telling
+ * semitones (6 %) and octaves apart.
+ */
+export function pitchHz(render: AhxRender, from: number, to: number): number {
+  const x: number[] = [];
+  for (let i = from; i < to; i++) x.push((render.l[i] ?? 0) + (render.r[i] ?? 0));
+  const mean = x.reduce((a, b) => a + b, 0) / x.length;
+  for (let i = 0; i < x.length; i++) x[i]! -= mean;
+  const ac = (lag: number): number => {
+    let sum = 0;
+    for (let i = 0; i + lag < x.length; i++) sum += x[i]! * x[i + lag]!;
+    return sum;
+  };
+  const zero = ac(0);
+  if (zero === 0) return 0;
+  const maxLag = Math.floor(x.length / 2);
+  let lag = 1;
+  while (lag < maxLag && ac(lag) > 0) lag++;
+  while (lag < maxLag && ac(lag) < 0.9 * zero) lag++;
+  while (lag + 1 < maxLag && ac(lag + 1) > ac(lag)) lag++;
+  return lag >= maxLag ? 0 : RENDER_SAMPLE_RATE / lag;
+}

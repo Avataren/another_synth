@@ -16,7 +16,18 @@ export {
 export * from './ops';
 export * from './size-budget';
 export { entriesToTrack } from './entries';
-export { createNewAhxDoc, NEW_AHX_SONG_NAME, NEW_AHX_SPEED_MULTIPLIERS, NEW_AHX_TRACK_LENGTHS, type NewAhxDocOptions } from './new-song';
+export {
+  createNewAhxDoc,
+  createNewHvlDoc,
+  newHvlMixgain,
+  NEW_AHX_SONG_NAME,
+  NEW_AHX_SPEED_MULTIPLIERS,
+  NEW_AHX_TRACK_LENGTHS,
+  NEW_HVL_DEFSTEREO,
+  NEW_HVL_SONG_NAME,
+  type NewAhxDocOptions,
+  type NewHvlDocOptions,
+} from './new-song';
 export {
   AHX_IMPORT_FALLBACK_TITLE,
   HVL_IMPORT_FALLBACK_TITLE,

@@ -349,8 +349,11 @@ export const DEFAULT_AHX_INSTRUMENT_NAME = 'New instrument';
  * The instrument "New AHX instrument" starts from: audible, with an envelope
  * that goes up, down and out (attack and decay are never both 0 frames, which
  * would make the release ramp the wrong way), and one PList row that selects
- * the sawtooth wave. Not the AHX tracker's own default (unverified); a
- * test renders it through the real engine.
+ * the sawtooth wave and sets relative note 1, the key played. A row with note
+ * 0 would keep the voice's pitch, which on a fresh channel is 0 and plays a
+ * semitone flat (`voice.rs` `calc_period`: `note + transpose + trackNote -
+ * 1`). Not the AHX tracker's own default (unverified); a test renders it
+ * through the real engine.
  */
 export function defaultAhxInstrument(): AhxInstrument {
   return {
@@ -369,6 +372,6 @@ export function defaultAhxInstrument(): AhxInstrument {
     hardCutRelease: false,
     hardCutReleaseFrames: 0,
     envelope: { aFrames: 1, aVolume: 64, dFrames: 10, dVolume: 48, sFrames: 0, rFrames: 10, rVolume: 0 },
-    plist: { speed: 1, entries: [{ note: 0, waveform: 2, fixed: false, fx: [0, 0], fxParam: [0, 0] }] },
+    plist: { speed: 1, entries: [{ note: 1, waveform: 2, fixed: false, fx: [0, 0], fxParam: [0, 0] }] },
   };
 }

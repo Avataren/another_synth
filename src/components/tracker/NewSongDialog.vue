@@ -30,9 +30,19 @@
           <span class="new-song-format-name">SID (GoatTracker)</span>
           <span class="new-song-format-note">Three C64 voices; saves as a GoatTracker 2 .sng.</span>
         </label>
+        <label class="new-song-format">
+          <input v-model="format" type="radio" value="ahx" data-testid="new-song-format-ahx" />
+          <span class="new-song-format-name">AHX</span>
+          <span class="new-song-format-note">Four Amiga synth channels; exports as an .ahx.</span>
+        </label>
+        <label class="new-song-format">
+          <input v-model="format" type="radio" value="hvl" data-testid="new-song-format-hvl" />
+          <span class="new-song-format-name">HVL (HivelyTracker)</span>
+          <span class="new-song-format-note">AHX with up to 16 channels, ring modulation and panning; exports as an .hvl.</span>
+        </label>
       </fieldset>
 
-      <div v-if="format === 'sid'" class="new-song-sid" data-testid="new-song-sid-options">
+      <div v-if="format === 'sid'" class="new-song-options" data-testid="new-song-sid-options">
         <label class="new-song-field">
           <span>Chip</span>
           <select v-model="chipModel" data-testid="new-song-chip">
@@ -72,6 +82,30 @@
         <p v-if="sidProblem" class="new-song-problem" role="alert" data-testid="new-song-problem">{{ sidProblem }}</p>
       </div>
 
+      <div v-if="format === 'ahx' || format === 'hvl'" class="new-song-options" data-testid="new-song-ahx-options">
+        <label class="new-song-field">
+          <span>Speed</span>
+          <select v-model.number="ahxSpeedMultiplier" data-testid="new-song-ahx-speed">
+            <option v-for="m in NEW_AHX_SPEED_MULTIPLIERS" :key="m" :value="m">{{ m === 1 ? '1x (50 Hz)' : `${m}x` }}</option>
+          </select>
+        </label>
+        <label class="new-song-field">
+          <span>Track rows</span>
+          <select v-model.number="trackLength" data-testid="new-song-ahx-rows">
+            <option v-for="n in NEW_AHX_TRACK_LENGTHS" :key="n" :value="n">{{ n }}</option>
+          </select>
+        </label>
+        <label v-if="format === 'hvl'" class="new-song-field">
+          <span>Channels</span>
+          <select v-model.number="channels" data-testid="new-song-hvl-channels">
+            <option v-for="n in HVL_CHANNEL_COUNTS" :key="n" :value="n">{{ n }}</option>
+          </select>
+        </label>
+        <p class="new-song-note" data-testid="new-song-ahx-note">
+          Starts with one plain instrument. Add more with "Add from preset" in the instrument list.
+        </p>
+      </div>
+
       <div class="new-song-actions">
         <button type="button" class="new-song-cancel" data-testid="new-song-cancel" @click="emit('close')">Cancel</button>
         <button type="submit" class="new-song-create" data-testid="new-song-create" :disabled="sidProblem !== null">
@@ -97,9 +131,26 @@ import {
   type NewSidDocOptions,
   type SidChipModel,
 } from 'src/audio/tracker/sid-doc';
+import {
+  HVL_MAX_CHANNELS,
+  HVL_MIN_CHANNELS,
+  NEW_AHX_SPEED_MULTIPLIERS,
+  NEW_AHX_TRACK_LENGTHS,
+  type NewAhxDocOptions,
+} from 'src/audio/tracker/ahx-doc';
 
-/** What the user chose: a native song, or a SID song with its options (`resetToNewSidSong`). */
-export type NewSongChoice = { format: 'native' } | { format: 'sid'; options: NewSidDocOptions };
+/** A new AHX or HVL song's options (`resetToNewAhxSong`); `channels` is HVL's only. */
+export type NewAhxSongChoiceOptions = Required<Pick<NewAhxDocOptions, 'trackLength' | 'speedMultiplier'>> & { channels?: number };
+
+/**
+ * What the user chose: a native song, a SID song with its options
+ * (`resetToNewSidSong`), or an AHX or HVL song with its options
+ * (`resetToNewAhxSong`).
+ */
+export type NewSongChoice =
+  | { format: 'native' }
+  | { format: 'sid'; options: NewSidDocOptions }
+  | { format: 'ahx' | 'hvl'; options: NewAhxSongChoiceOptions };
 
 interface Props {
   open: boolean;
@@ -112,12 +163,16 @@ const SPEEDS = Array.from({ length: SID_MAX_SPEED_MULTIPLIER }, (_, i) => i + 1)
 
 const headingId = 'new-song-heading';
 const dialogEl = ref<HTMLElement | null>(null);
-const format = ref<'native' | 'sid'>('native');
+const format = ref<NewSongChoice['format']>('native');
 const chipModel = ref<SidChipModel>(SID_DEFAULT_CHIP_MODEL);
 const speedMultiplier = ref(1);
 const tempo = ref(SID_DEFAULT_TEMPO);
 const tempoEdited = ref(false);
 const patternRows = ref(64);
+const HVL_CHANNEL_COUNTS = Array.from({ length: HVL_MAX_CHANNELS - HVL_MIN_CHANNELS + 1 }, (_, i) => HVL_MIN_CHANNELS + i);
+const ahxSpeedMultiplier = ref<NewAhxSongChoiceOptions['speedMultiplier']>(1);
+const trackLength = ref<NewAhxSongChoiceOptions['trackLength']>(64);
+const channels = ref(HVL_MIN_CHANNELS);
 let opener: HTMLElement | null = null;
 
 // GoatTracker's start tempo follows the multispeed (6 frames per row per 1x) until the user sets one.
@@ -170,9 +225,25 @@ watch(
   { immediate: true },
 );
 
+function choice(): NewSongChoice {
+  switch (format.value) {
+    case 'sid':
+      return { format: 'sid', options: { ...sidOptions.value } };
+    case 'ahx':
+      return { format: 'ahx', options: { trackLength: trackLength.value, speedMultiplier: ahxSpeedMultiplier.value } };
+    case 'hvl':
+      return {
+        format: 'hvl',
+        options: { trackLength: trackLength.value, speedMultiplier: ahxSpeedMultiplier.value, channels: channels.value },
+      };
+    default:
+      return { format: 'native' };
+  }
+}
+
 function create(): void {
   if (sidProblem.value !== null) return;
-  emit('create', format.value === 'sid' ? { format: 'sid', options: { ...sidOptions.value } } : { format: 'native' });
+  emit('create', choice());
 }
 
 /** Esc closes; Tab stays inside; no key reaches the tracker's shortcuts underneath. */
@@ -265,7 +336,7 @@ function onKeydown(event: KeyboardEvent): void {
   font-size: 13px;
   opacity: 0.8;
 }
-.new-song-sid {
+.new-song-options {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px 14px;

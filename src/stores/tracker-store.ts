@@ -48,6 +48,8 @@ import {
   assignTrack,
   buildAhxFile,
   buildAhxSlots,
+  createNewAhxDoc,
+  createNewHvlDoc,
   decodeAhxFile,
   docChannels,
   docFromSong,
@@ -68,8 +70,12 @@ import {
   type AhxEditCheck,
   type AhxOpContext,
   type AhxPositionMap,
+  type NewAhxDocOptions,
+  type NewHvlDocOptions,
 } from 'src/audio/tracker/ahx-doc';
 import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
+import { defaultAhxInstrument } from 'src/audio/tracker/ahx-instrument-edit';
+import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import { readModOrigin, type ModOrigin } from 'src/audio/tracker/mod-origin';
 import { editSidInstrument, newSidInstrument } from 'src/audio/tracker/sid-instrument-edit';
 import { addSidPreset, applySidPreset } from 'src/audio/tracker/sid-presets';
@@ -1629,6 +1635,34 @@ export const useTrackerStore = defineStore('trackerStore', {
      */
     resetToNewSidSong(options: NewSidDocOptions = {}) {
       this.adoptSidDoc(createNewSidDoc(options));
+    },
+    /**
+     * A new AHX or HVL song from scratch: `createNewAhxDoc`'s song (or
+     * `createNewHvlDoc`'s, `options.channels` wide) with one instrument, the
+     * editor's default, written as a file and loaded the way an opened `.ahx`
+     * or `.hvl` is (`importAhxToTrackerSong`, then `loadSongFile`, which gives
+     * it its doc and slots). Throws what those refuse. The caller rewires the
+     * song bank and playback, and installs the song's bytes, as it does after
+     * any load (`useTrackerFileIO`'s `applyNewSong`).
+     */
+    resetToNewAhxSong(format: AhxSongFormat, options: NewAhxDocOptions & Pick<NewHvlDocOptions, 'channels'> = {}) {
+      const instrument = defaultAhxInstrument();
+      let bytes: Uint8Array;
+      if (format === 'hvl') {
+        const doc = createNewHvlDoc({ ...options, instruments: [instrument] });
+        bytes = buildAhxFile({ doc, slots: [], title: doc.songName }).bytes;
+      } else {
+        const { trackLength, speedMultiplier, name } = options;
+        const doc = createNewAhxDoc({
+          ...(trackLength === undefined ? {} : { trackLength }),
+          ...(speedMultiplier === undefined ? {} : { speedMultiplier }),
+          ...(name === undefined ? {} : { name }),
+        });
+        bytes = buildAhxFile({ doc, slots: [{ ahxData: instrument }], title: doc.songName }).bytes;
+      }
+      // No file was opened, so no file hash stands (as `resetToNewSong`).
+      clearLoadedSongHash();
+      this.loadSongFile(importAhxToTrackerSong(bytes.slice().buffer));
     },
     /**
      * Replaces the song's doc with an edited one (an op's result). An edit of
