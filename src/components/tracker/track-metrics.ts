@@ -53,20 +53,21 @@ export const STANDARD_TRACK_COLUMNS = trackColumns(true, false);
  *
  * SID (GoatTracker) steps are note, instrument, one command; AHX steps the
  * same; HVL steps add a second effect. None has a volume column. For every
- * other format the second effect column is the user's `preferExtraEffect`,
- * and so it is for an AHX/HVL song played without a doc (`ahxDocFormat`
- * null), where whether it is HVL is not known here.
+ * other format the second effect column is the user's `preferExtraEffect`.
+ * `ahxSongFormat` is whether an AHX song is AHX or HVL (`trackerStore.ahxSongFormat`);
+ * `null` only when neither its doc nor its bytes say, which leaves the
+ * preference in charge.
  */
 export function songTrackColumns(
   moduleFormat: ModuleFormat,
-  ahxDocFormat: 'ahx' | 'hvl' | null,
+  ahxSongFormat: 'ahx' | 'hvl' | null,
   preferExtraEffect: boolean,
 ): TrackColumns {
   if (moduleFormat === 'sid') return trackColumns(false, false);
   if (moduleFormat === 'ahx') {
     return trackColumns(
       false,
-      ahxDocFormat === null ? preferExtraEffect : ahxDocFormat === 'hvl',
+      ahxSongFormat === null ? preferExtraEffect : ahxSongFormat === 'hvl',
     );
   }
   return trackColumns(true, preferExtraEffect);

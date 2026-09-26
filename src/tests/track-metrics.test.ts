@@ -120,8 +120,9 @@ describe('columns per song format', () => {
       expect(songTrackColumns(format, null, false)).toBe(STD);
       expect(songTrackColumns(format, null, true)).toBe(DUAL);
     }
-    // An AHX/HVL song played without a doc: which of the two is not known.
+    // An AHX song whose doc and bytes both say nothing of AHX or HVL.
     expect(songTrackColumns('ahx', null, true)).toBe(trackColumns(false, true));
+    expect(songTrackColumns('ahx', null, false)).toBe(trackColumns(false, false));
   });
 
   it('hands out one shared value per combination', () => {

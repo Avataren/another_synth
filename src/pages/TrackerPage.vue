@@ -1504,13 +1504,13 @@ const isFullscreen = ref(false);
 const trackColumns = computed(() =>
   songTrackColumns(
     trackerStore.moduleFormat,
-    trackerStore.ahxDoc?.format ?? null,
+    trackerStore.ahxSongFormat,
     userSettings.value.showTrackerExtraEffectColumn,
   ),
 );
 /** The dual-FX toggle only means something where the format leaves it open. */
 const extraEffectColumnFixed = computed(
-  () => trackerStore.isSidSong || (trackerStore.isAhxSong && trackerStore.ahxDoc !== null),
+  () => trackerStore.isSidSong || trackerStore.ahxSongFormat !== null,
 );
 const visibleColumns = computed(() => visibleColumnIndices(trackColumns.value));
 // A song whose rows lack the column the cursor sits on (a MOD's volume column,
