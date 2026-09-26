@@ -16,8 +16,8 @@
  *   node scripts/build-demo-manifest.mjs <source-root> <output-dir>
  *
  * <source-root> holds one directory per collection, e.g. amiga/ and ft2/. A
- * collection may group its songs one directory deeper (goattracker/<artist>/);
- * those keep their subdirectory in the manifest's `file` path.
+ * collection may group its songs one directory deeper (goattracker/<artist>/,
+ * sid/<composer>/); those keep their subdirectory in the manifest's `file` path.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,9 +28,10 @@ const COLLECTION_LABELS = {
   s3m: 'Scream Tracker 3',
   ahx: 'AHX / HivelyTracker',
   goattracker: 'GoatTracker',
+  sid: 'C64 SID',
 };
 
-const EXTENSIONS = new Set(['.mod', '.xm', '.s3m', '.ahx', '.hvl', '.sng']);
+const EXTENSIONS = new Set(['.mod', '.xm', '.s3m', '.ahx', '.hvl', '.sng', '.sid']);
 
 /** Read a fixed-length, NUL-terminated ASCII string. */
 function readAscii(buf, offset, length) {
@@ -103,12 +104,45 @@ function describeSng(buf) {
   };
 }
 
+/** A fixed-length, NUL-terminated Latin-1 string (a SID header's texts: Hülsbeck's ü is $FC). */
+function readLatin1(buf, offset, length) {
+  let out = '';
+  for (let i = offset; i < Math.min(offset + length, buf.length); i++) {
+    const code = buf[i];
+    if (code === 0) break;
+    if ((code >= 32 && code < 127) || code >= 160) out += String.fromCharCode(code);
+  }
+  return out.trim();
+}
+
+/**
+ * A C64 `.sid` (PSID/RSID, HVSC's SID_file_format.txt): the magic, the song
+ * name at $16 and the author at $36 (32 Latin-1 bytes each), the subsong
+ * count at $0E. The app transcribes it into a GoatTracker song
+ * (plan-psid-import.md), three voices like the chip. SIDs are known by their
+ * composer, so the title carries the author too.
+ */
+function describeSid(buf) {
+  if (buf.length < 0x76) return null;
+  const magic = readAscii(buf, 0, 4);
+  if (magic !== 'PSID' && magic !== 'RSID') return null;
+  const name = readLatin1(buf, 0x16, 32);
+  const author = readLatin1(buf, 0x36, 32);
+  return {
+    title: [name, author].filter((x) => x !== '').join(' · '),
+    format: magic,
+    channels: 3,
+    subsongs: (buf[0x0e] << 8) | buf[0x0f],
+  };
+}
+
 function describeModule(buf, file) {
   const ext = path.extname(file).toLowerCase();
 
   if (ext === '.ahx') return describeAhx(buf, 'AHX');
   if (ext === '.hvl') return describeAhx(buf, 'HVL');
   if (ext === '.sng') return describeSng(buf);
+  if (ext === '.sid') return describeSid(buf);
 
   if (ext === '.xm') {
     if (readAscii(buf, 0, 17) !== 'Extended Module:' || buf[37] !== 0x1a) {

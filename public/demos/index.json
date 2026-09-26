@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-26T10:37:37.259Z",
+  "generated": "2026-09-26T13:14:06.348Z",
   "collections": [
     {
       "id": "ahx",
@@ -2658,6 +2658,140 @@
           "instruments": 26,
           "file": "s3m/when_the_heavens_fall.s3m",
           "bytes": 846302
+        }
+      ]
+    },
+    {
+      "id": "sid",
+      "name": "C64 SID",
+      "songs": [
+        {
+          "title": "Krakout · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 22,
+          "file": "sid/daglish_ben/krakout.sid",
+          "bytes": 6142
+        },
+        {
+          "title": "The Last Ninja · Ben Daglish & Anthony Lees",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 11,
+          "file": "sid/daglish_ben/last_ninja.sid",
+          "bytes": 35617
+        },
+        {
+          "title": "Arkanoid · Martin Galway",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 20,
+          "file": "sid/galway_martin/arkanoid.sid",
+          "bytes": 9834
+        },
+        {
+          "title": "Comic Bakery · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 14,
+          "file": "sid/galway_martin/comic_bakery.sid",
+          "bytes": 8574
+        },
+        {
+          "title": "Commando High-Score · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/galway_martin/commando_high_score.sid",
+          "bytes": 4020
+        },
+        {
+          "title": "Ocean Loader 1 · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/galway_martin/ocean_loader_1.sid",
+          "bytes": 5292
+        },
+        {
+          "title": "Ocean Loader 2 · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/galway_martin/ocean_loader_2.sid",
+          "bytes": 3449
+        },
+        {
+          "title": "Chimera · Rob Hubbard",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 4,
+          "file": "sid/hubbard_rob/chimera.sid",
+          "bytes": 12440
+        },
+        {
+          "title": "Commando · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 19,
+          "file": "sid/hubbard_rob/commando.sid",
+          "bytes": 4165
+        },
+        {
+          "title": "Crazy Comets · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 17,
+          "file": "sid/hubbard_rob/crazy_comets.sid",
+          "bytes": 4494
+        },
+        {
+          "title": "Knucklebusters · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 11,
+          "file": "sid/hubbard_rob/knucklebusters.sid",
+          "bytes": 7178
+        },
+        {
+          "title": "The Great Giana Sisters · Chris Hülsbeck",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 23,
+          "file": "sid/huelsbeck_chris/great_giana_sisters.sid",
+          "bytes": 23445
+        },
+        {
+          "title": "R-Type · Chris Hülsbeck & Ramiro Vaca",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 14,
+          "file": "sid/huelsbeck_chris/r_type.sid",
+          "bytes": 40666
+        },
+        {
+          "title": "Defender of the Crown · Richard Joseph",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 10,
+          "file": "sid/joseph_richard/defender_of_the_crown.sid",
+          "bytes": 10956
+        },
+        {
+          "title": "Golden Axe · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 23,
+          "file": "sid/tel_jeroen/golden_axe.sid",
+          "bytes": 14196
+        },
+        {
+          "title": "RoboCop 3 · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 20,
+          "file": "sid/tel_jeroen/robocop_3.sid",
+          "bytes": 10590
         }
       ]
     }

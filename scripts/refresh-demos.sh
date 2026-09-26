@@ -13,9 +13,9 @@
 # delete unwanted modules from public/demos/ by hand so the removal is a
 # reviewable part of the commit.
 #
-# .mod, .xm, .s3m, .ahx, .hvl and .sng are recognised, in a collection directory
-# or one subdirectory below it (goattracker/<artist>/). Anything else in the directory
-# is left alone and stays out of the manifest.
+# .mod, .xm, .s3m, .ahx, .hvl, .sng and .sid are recognised, in a collection
+# directory or one subdirectory below it (goattracker/<artist>/, sid/<composer>/).
+# Anything else in the directory is left alone and stays out of the manifest.
 #
 #   scripts/refresh-demos.sh [source-root]
 set -euo pipefail

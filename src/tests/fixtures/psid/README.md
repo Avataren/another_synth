@@ -7,6 +7,9 @@ These are music files, the compositions of their authors; copyright stays with t
 header of each file names the author and the release). Thanks to the composers, and to the
 High Voltage SID Collection (HVSC), where the Hubbard, Galway, Daglish, Hülsbeck, Joseph and Tel files come from.
 
+The same files, all but `vibratotest.sid` (a test tune), are published as the demo browser's
+C64 SID collection (`public/demos/sid/<composer>/`).
+
 Names follow the house convention (lowercase, runs of anything else become `_`, under the
 composer's folder, HVSC style: `hubbard_rob` for `/MUSICIANS/H/Hubbard_Rob/`).
 
