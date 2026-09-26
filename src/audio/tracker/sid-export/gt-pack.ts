@@ -886,6 +886,26 @@ function findTableDuplicates(
 }
 
 /**
+ * The rows GoatTracker's packer would leave out of table `num` (0 wave, 1
+ * pulse, 2 filter, 3 speed) as duplicates of earlier ones
+ * (`findTableDuplicates`), given the rows something reaches (`used`, 1-based).
+ * Which parts it compares depends on where the table's parts sit, unused rows
+ * included; the `.sid` unpacker (`psid/gt-unpack/`) lays a table out so that
+ * none are, as in the song that was packed.
+ */
+export function gtTableDuplicateRows(num: number, left: readonly number[], right: readonly number[], used: readonly boolean[]): number[] {
+  const pad = (t: readonly number[]): number[] => Array.from({ length: MAX_TABLELEN }, (_, i) => t[i] ?? 0);
+  const lt = [0, 1, 2, 3].map((t) => (t === num ? pad(left) : pad([])));
+  const rt = [0, 1, 2, 3].map((t) => (t === num ? pad(right) : pad([])));
+  const tableused = [0, 1, 2, 3].map((t) => Array.from({ length: MAX_TABLELEN + 1 }, (_, i) => t === num && used[i] === true));
+  const tablemap = [0, 1, 2, 3].map(() => Array.from({ length: MAX_TABLELEN + 1 }, (_, i) => i));
+  findTableDuplicates(num, lt, rt, tableused, tablemap);
+  const out: number[] = [];
+  for (let r = 1; r <= MAX_TABLELEN; r++) if (used[r] === true && !tableused[num]![r]) out.push(r);
+  return out;
+}
+
+/**
  * The bytes `rows` pack to in GoatTracker's player (`packPattern`, with every
  * effect on, as the export dialog's build packs them), or more than 256 when
  * the player cannot read the pattern. For a writer that must keep patterns

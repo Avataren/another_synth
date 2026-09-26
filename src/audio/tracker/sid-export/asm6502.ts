@@ -45,7 +45,7 @@ export interface AsmError {
   readonly reason: string;
 }
 
-type Mode =
+export type Mode =
   | 'imp'
   | 'acc'
   | 'imm'
@@ -124,7 +124,7 @@ const OPCODES: Readonly<Record<string, Partial<Record<Mode, number>>>> = {
 };
 
 /** Bytes an instruction takes, by mode. */
-const MODE_SIZE: Readonly<Record<Mode, number>> = {
+export const MODE_SIZE: Readonly<Record<Mode, number>> = {
   imp: 1,
   acc: 1,
   imm: 2,
@@ -205,7 +205,7 @@ function tokenize(text: string, line: number): Token[] {
 
 // ---------------------------------------------------------------- expressions
 
-type Expr =
+export type Expr =
   | { readonly k: 'num'; readonly v: number }
   | { readonly k: 'sym'; readonly name: string }
   | { readonly k: 'defined'; readonly name: string }
@@ -579,4 +579,101 @@ function run(source: string): AsmResult {
     }
   }
   return { ok: true, origin, bytes, symbols };
+}
+
+// ---------------------------------------------------------------- the source as a tree
+
+/**
+ * A statement of the source, with every `.IF` branch parsed (the assembler
+ * above lays out only the branches its defines select). For matching the
+ * source against bytes that it assembled to under defines not known
+ * (`psid/gt-unpack/player-match.ts`).
+ */
+export type AsmStmt =
+  | { readonly k: 'if'; readonly line: number; readonly cond: Expr; readonly then: AsmStmt[]; readonly else: AsmStmt[] }
+  | { readonly k: 'label'; readonly line: number; readonly name: string }
+  | { readonly k: 'assign'; readonly line: number; readonly name: string; readonly expr: Expr }
+  | { readonly k: 'org'; readonly line: number; readonly expr: Expr }
+  | { readonly k: 'bytes'; readonly line: number; readonly args: readonly Expr[] }
+  | { readonly k: 'op'; readonly line: number; readonly code: number; readonly mode: Mode; readonly arg?: Expr };
+
+/** `source` as a statement tree, or the line it cannot read. Never throws. */
+export function parseAsmTree(source: string): { readonly ok: true; readonly stmts: AsmStmt[] } | AsmError {
+  try {
+    const root: AsmStmt[] = [];
+    // The lists statements go to: the innermost open branch last.
+    const open: { node: Extract<AsmStmt, { k: 'if' }>; inElse: boolean }[] = [];
+    const current = (): AsmStmt[] => {
+      const top = open[open.length - 1];
+      return top === undefined ? root : top.inElse ? top.node.else : top.node.then;
+    };
+    for (const [index, text] of source.split('\n').entries()) {
+      const line = index + 1;
+      const p = new Parser(tokenize(text, line), line);
+      while (p.peek() !== undefined) {
+        const t = p.peek()!;
+        if (t.t === 'dir' && t.v === 'IF') {
+          p.pos++;
+          const node: Extract<AsmStmt, { k: 'if' }> = { k: 'if', line, cond: p.expr(), then: [], else: [] };
+          current().push(node);
+          open.push({ node, inElse: false });
+          continue;
+        }
+        if (t.t === 'dir' && t.v === 'ELSE') {
+          p.pos++;
+          const top = open[open.length - 1];
+          if (top === undefined || top.inElse) throw new AsmFail(line, '.ELSE without .IF');
+          top.inElse = true;
+          continue;
+        }
+        if (t.t === 'dir' && t.v === 'ENDIF') {
+          p.pos++;
+          if (open.pop() === undefined) throw new AsmFail(line, '.ENDIF without .IF');
+          continue;
+        }
+        if (t.t === 'sym' && p.toks[p.pos + 1]?.t === 'op' && (p.toks[p.pos + 1] as { v: string }).v === ':') {
+          current().push({ k: 'label', line, name: t.v });
+          p.pos += 2;
+          continue;
+        }
+        if (t.t === 'sym' && p.toks[p.pos + 1]?.t === 'op' && (p.toks[p.pos + 1] as { v: string }).v === '=') {
+          p.pos += 2;
+          current().push({ k: 'assign', line, name: t.v, expr: p.expr() });
+          continue;
+        }
+        if (t.t === 'dir' && t.v === 'ORG') {
+          p.pos++;
+          current().push({ k: 'org', line, expr: p.expr() });
+          continue;
+        }
+        if (t.t === 'dir' && t.v === 'BYTE') {
+          p.pos++;
+          p.expectOp('(');
+          const args = [p.expr()];
+          while (p.isOp(',')) {
+            p.pos++;
+            args.push(p.expr());
+          }
+          p.expectOp(')');
+          current().push({ k: 'bytes', line, args });
+          continue;
+        }
+        if (t.t === 'sym' && OPCODES[t.v.toLowerCase()] !== undefined) {
+          const mnemonic = t.v.toLowerCase();
+          p.pos++;
+          const { mode, arg } = operand(p, mnemonic);
+          const code = OPCODES[mnemonic]![mode];
+          if (code === undefined) throw new AsmFail(line, `${mnemonic} has no ${mode} addressing mode`);
+          current().push({ k: 'op', line, code, mode, ...(arg ? { arg } : {}) });
+          continue;
+        }
+        throw new AsmFail(line, `can't read "${t.v}" here`);
+      }
+    }
+    if (open.length > 0) throw new AsmFail(open[open.length - 1]!.node.line, '.IF without .ENDIF');
+    return { ok: true, stmts: root };
+  } catch (e) {
+    if (e instanceof AsmFail) return { ok: false, line: e.line, reason: e.message };
+    throw e;
+  }
 }

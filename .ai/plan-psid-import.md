@@ -1,7 +1,7 @@
 # Plan: import `.sid` (PSID/RSID) files as editable GoatTracker songs
 
-Status: **PHASES 1-3 LANDED 2026-09-26** on branch `claude/wonderful-gauss-ycn0ve` (phase 4,
-exact GoatTracker unpack, and phase 5 refinements open; see §6). Follows
+Status: **PHASES 1-4 LANDED 2026-09-26** on branch `claude/wonderful-gauss-ycn0ve` (phase 5
+refinements open; see §6 and §7). Follows
 `.ai/plan-sid-authoring.md` (phases 1-5 landed: GT-native doc, `.sng` export, flat song
 model, new SID songs, `.sid`/`.prg`/`.bin` export with GoatTracker's own `player.s`).
 
@@ -179,8 +179,7 @@ frames only was "decimated" to 25 Hz; a between-semitones pitch set no note at a
 
 Open, by payoff:
 
-1. **Exact GoatTracker unpack** (phase 4): the GT corpus round trip (`.sng` -> `.sid` ->
-   transcribe) averages about 0.85; unpacking would make it exact.
+1. ~~Exact GoatTracker unpack~~ (phase 4): landed, §7.
 2. **GoatTracker's 208 patterns** limit the subsongs of big game soundtracks: Giana imports 9
    of 23 (its 3,700-note title takes most of them), The Last Ninja 3 of 11. Transposed pattern
    reuse would fit more.
@@ -192,3 +191,54 @@ Open, by payoff:
 5. Transcription: Hubbard-style pulse sweeps that run on across notes (the instrument restarts
    them), Tel's pitch effects (RoboCop 3 voice 3 pitch 0.37), the filter on Knucklebusters'
    long subsong, NTSC tempo.
+
+## 7. Phase 4: GoatTracker files, unpacked (2026-09-26)
+
+A `.sid` whose player is GoatTracker 2's is not transcribed: its song data is read back into
+the song it was packed from (`psid/gt-unpack/`), which then plays and packs exactly like the
+file.
+
+**D8. The player's build is read off its code.** The relocator assembles `player.s` under
+defines it computes from the song (a feature the song does not use is left out; the
+instrument groups' first numbers, the frequency table's first note, the hard-restart
+envelope, the start tempo, the fixed first wave and gate timer...) and appends the data,
+which the code reads at absolute addresses. `player-match.ts` walks `player.s`
+(`parseAsmTree`: every `.IF` branch parsed) against the file's bytes as an assembler would lay
+it out, with the defines unknown: an opcode must be the byte there; an operand with one
+unknown in it fixes that unknown (`cpy #FIRSTNOHRINSTR`, `lda mt_insad-1,y`, a forward
+branch), one with more waits until the others are fixed (`mt_freqtbllo-FIRSTNOTE` resolves
+when `mt_freqtbllo-$80` or the data start pins the label); an `.IF` on unknown defines takes
+the side the bytes agree with, narrowing the defines' ranges, and backtracks when later bytes
+disagree. About 10 ms a file. The relocator's author info (32 bytes written into the assembled
+player) is taken as it is.
+
+**D9. The data, back through the packer.** `gt-unpack/index.ts` inverts `gt-pack.ts` step by
+step: orderlists (a repeat is written after its pattern), patterns (an unchanged command and a
+repeated instrument are left out, runs of rests packed, a tempo parameter one less: 2 reads as
+F02 when the build has funktempo code, else F03, which play alike), instruments renumbered
+into hard-restart, no-hard-restart and legato groups (at multispeed the packer counts one
+no-hard-restart instrument too many), the tables as the build encodes them (wave delays,
+simple pulse, filter modes). It writes a GTS5 `.sng` image and reads it with `importGtSong`,
+so the doc is the one a `.sng` import makes. Two things the packer's input had are put back so
+packing gives the same bytes: a speed-table row an instrument pointed to with vibrato delay 0
+(it never vibrates, the packer writes neither) goes back to an instrument without vibrato; and
+a table part the packer's duplicate scan would now merge (its scan steps through the table as
+the song had it, unused rows included, and the closed-up table lines parts up differently)
+gets a blank row before it, never reached.
+
+**D10. The check is packing again.** `exact` when the doc packs (in either build the export
+dialog makes, at the file's player and zero-page addresses) to the file's C64 bytes. A file
+built with an option this app's export does not have (buffered writes, sound effects, volume,
+author info) unpacks but cannot be exact; `importPsid` keeps it when it plays like the file
+(fidelity 0.98 or better), else transcribes.
+
+Measured: the 84-song corpus exported in both builds, 168 of 168 exact and playing the same
+notes with the same instruments; GoatTracker 2.77's own files (`fixtures/gt-sids`), 4 of 4
+exact; builds with the other relocator options, unpacked to the notes packed. Tests:
+`src/tests/psid-gt-unpack.test.ts`.
+
+Not unpacked (transcribed instead): players of other GoatTracker versions
+(`vibratotest.sid`, from ChiptuneSAK's test data); ghost-register builds (they never write the
+SID, so they are not distributed as `.sid`). Lost, as the packer drops them: instrument names,
+instruments and table rows nothing used, an instrument written again on a note that already
+had it.

@@ -39,9 +39,11 @@ export function psidImportSummaryOf(songFile: TrackerSongFile): string | null {
 export function psidImportSummary(r: PsidImport): string {
   const who = [r.file.name.trim(), r.file.author.trim()].filter((x) => x !== '').join(' by ') || 'The tune';
   const subsongs = r.doc.subsongs.length;
-  const parts = [
-    `${who}: transcribed from its own C64 player into a GoatTracker song (${subsongs} of ${r.file.songs} subsong${r.file.songs === 1 ? '' : 's'}).`,
-  ];
+  const count = `${subsongs} of ${r.file.songs} subsong${r.file.songs === 1 ? '' : 's'}`;
+  const parts =
+    r.method === 'unpacked'
+      ? [`${who}: a GoatTracker song, unpacked from the file${r.exact ? ' exactly' : ''} (${count}).`]
+      : [`${who}: transcribed from its own C64 player into a GoatTracker song (${count}).`];
   if (r.fidelity !== null) {
     parts.push(`Its first subsong plays ${Math.round(r.fidelity.score * 100)}% like the original, frame by frame.`);
   }

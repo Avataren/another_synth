@@ -15,8 +15,8 @@ import playerSource from './gt2/player.s?raw';
  * writes for the song's `.sng` (`.ai/sid-oracle/psid_gate.ts`).
  */
 
-export { assemble6502, type AsmError, type AsmResult } from './asm6502';
-export { GT_PACK_DEFAULTS, gtPackedPatternSize, gtPackSource, type GtPack, type GtPackOptions } from './gt-pack';
+export { assemble6502, parseAsmTree, type AsmError, type AsmResult, type AsmStmt } from './asm6502';
+export { GT_PACK_DEFAULTS, gtPackedPatternSize, gtPackSource, gtTableDuplicateRows, type GtPack, type GtPackOptions } from './gt-pack';
 export {
   basicSysStub,
   c64ScreenCodes,
