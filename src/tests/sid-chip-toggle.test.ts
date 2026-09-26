@@ -26,7 +26,7 @@ beforeEach(() => {
 
 describe('SidChipModelToggle', () => {
   it('shows both models, marks the song\'s one, and asks for the other only', async () => {
-    const w = mount(SidChipModelToggle, { props: { model: '6581' } });
+    const w = mount(SidChipModelToggle, { props: { model: '6581', revision: 'gt' } });
     const b8580 = w.get('[data-testid="sid-chip-8580"]');
     const b6581 = w.get('[data-testid="sid-chip-6581"]');
     expect(b6581.classes()).toContain('active');
@@ -39,8 +39,18 @@ describe('SidChipModelToggle', () => {
   });
 
   it('disabled while a song loads', () => {
-    const w = mount(SidChipModelToggle, { props: { model: '8580', disabled: true } });
+    const w = mount(SidChipModelToggle, { props: { model: '8580', revision: 'gt', disabled: true } });
     expect(w.get('[data-testid="sid-chip-6581"]').attributes('disabled')).toBeDefined();
+  });
+
+  it('offers the 6581 revision on a 6581 song only, and asks for a change', async () => {
+    const w8580 = mount(SidChipModelToggle, { props: { model: '8580', revision: 'gt' } });
+    expect(w8580.find('[data-testid="sid-revision"]').exists()).toBe(false);
+    const w = mount(SidChipModelToggle, { props: { model: '6581', revision: 'gt' } });
+    const select = w.get('[data-testid="sid-revision"]');
+    expect((select.element as HTMLSelectElement).value).toBe('gt');
+    await select.setValue('r3');
+    expect(w.emitted('select-revision')).toEqual([['r3']]);
   });
 });
 

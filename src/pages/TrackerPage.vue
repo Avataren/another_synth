@@ -75,8 +75,10 @@
             v-if="sidChipModel"
             compact
             :model="sidChipModel"
+            :revision="userSettings.sid6581Revision"
             :disabled="isLoadingSong"
             @select="onSidChipSelect"
+            @select-revision="onSidRevisionSelect"
           />
 
           <span class="strip-divider" aria-hidden="true"></span>
@@ -574,8 +576,10 @@
             <SidChipModelToggle
               v-if="sidChipModel"
               :model="sidChipModel"
+              :revision="userSettings.sid6581Revision"
               :disabled="isLoadingSong"
               @select="onSidChipSelect"
+              @select-revision="onSidRevisionSelect"
             />
             <div class="volume-control">
               <q-icon name="volume_up" size="14px" class="volume-icon" />
@@ -1069,6 +1073,7 @@ import {
 } from 'src/composables/demo-deep-link';
 import StereoLevelMeter from 'src/components/tracker/StereoLevelMeter.vue';
 import SidChipModelToggle from 'src/components/tracker/SidChipModelToggle.vue';
+import type { Sid6581Revision } from 'src/audio/worklets/sid-core';
 import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import PatchPicker from 'src/components/PatchPicker.vue';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
@@ -1264,6 +1269,11 @@ const isSidSong = computed(() => trackerStore.isSidSong);
 const sidChipModel = computed(() => (isSidSong.value ? trackerStore.sidDoc?.chipModel ?? null : null));
 function onSidChipSelect(model: SidChipModel): void {
   trackerStore.setSidChip(model);
+  refocusTracker();
+}
+/** Which 6581 plays a 6581 song: the user's setting, heard at once (useTrackerSongHost applies it). */
+function onSidRevisionSelect(revision: Sid6581Revision): void {
+  userSettingsStore.updateSetting('sid6581Revision', revision);
   refocusTracker();
 }
 /**
