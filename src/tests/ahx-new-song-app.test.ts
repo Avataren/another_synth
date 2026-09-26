@@ -242,7 +242,7 @@ describe('a rename reaches the engine\'s bytes as it is typed, not only at the n
   }
 
   it('a loaded song is not rebuilt by its own title (its bytes stay the file\'s)', async () => {
-    const store = await newSong('hvl');
+    await newSong('hvl');
     const loaded = currentAhxSource();
     await nextTick();
     expect(currentAhxSource()).toBe(loaded);
