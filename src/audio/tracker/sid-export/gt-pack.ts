@@ -1,5 +1,5 @@
 import { sidTableFreqReg } from '@another-synth/tracker-playback';
-import { gtNoteByte, gtOrderlistBytes, type SidDoc } from 'src/audio/tracker/sid-doc';
+import { gtNoteByte, gtOrderlistBytes, type SidDoc, type SidDocRow } from 'src/audio/tracker/sid-doc';
 import { GT_GATE_NO_GATEOFF, GT_GATE_NO_HARD_RESTART } from 'src/audio/tracker/sid-doc/gt-sng-read';
 
 /**
@@ -883,6 +883,20 @@ function findTableDuplicates(
       d += len;
     }
   }
+}
+
+/**
+ * The bytes `rows` pack to in GoatTracker's player (`packPattern`, with every
+ * effect on, as the export dialog's build packs them), or more than 256 when
+ * the player cannot read the pattern. For a writer that must keep patterns
+ * exportable (the `.sid` importer, plan-psid-import.md).
+ */
+export function gtPackedPatternSize(rows: readonly SidDocRow[]): number {
+  const src = rows.flatMap((r) => [gtNoteByte(r.note), r.instrument, r.command, r.param]);
+  const f = Object.fromEntries(FLAG_NAMES.map((n) => [n, 0])) as Record<Flag, number>;
+  const identity = Array.from({ length: MAX_TABLELEN + 1 }, (_, i) => i);
+  const packed = packPattern(src, rows.length, f, [identity, identity, identity, identity], Array.from({ length: MAX_INSTR }, (_, i) => i));
+  return packed === null ? 257 : packed.length;
 }
 
 /**

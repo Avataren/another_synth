@@ -16,7 +16,7 @@ import playerSource from './gt2/player.s?raw';
  */
 
 export { assemble6502, type AsmError, type AsmResult } from './asm6502';
-export { GT_PACK_DEFAULTS, gtPackSource, type GtPack, type GtPackOptions } from './gt-pack';
+export { GT_PACK_DEFAULTS, gtPackedPatternSize, gtPackSource, type GtPack, type GtPackOptions } from './gt-pack';
 export {
   basicSysStub,
   c64ScreenCodes,
