@@ -131,16 +131,27 @@ export function deriveLedCoefficients(
   };
 }
 
-/** Coefficients for both stages at one sample rate. */
+/**
+ * Coefficients for both stages at one sample rate.
+ *
+ * Each cutoff is held just under Nyquist first: the sliders reach 20 kHz, and
+ * at 22.05 kHz a cutoff past 11 kHz would take the prewarp's tan() past pi/2
+ * and the filter unstable. At 44.1 kHz and up the cap sits above the sliders'
+ * range, so it changes nothing there.
+ */
 export function deriveAmigaLpfCoefficients(
   sampleRate: number,
   params: AmigaLpfParams,
 ): AmigaLpfCoefficients {
+  const maxCutoffHz = sampleRate * 0.49;
   return {
-    rc: deriveRcPrewarpedCoefficients(sampleRate, params.staticCutoffHz),
+    rc: deriveRcPrewarpedCoefficients(
+      sampleRate,
+      Math.min(params.staticCutoffHz, maxCutoffHz),
+    ),
     led: deriveLedCoefficients(
       sampleRate,
-      params.ledCutoffHz,
+      Math.min(params.ledCutoffHz, maxCutoffHz),
       params.ledResDb,
     ),
   };

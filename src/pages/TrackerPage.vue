@@ -1549,10 +1549,8 @@ const INSTRUMENT_PAGE_WINDOW = 5;
 const engineRateLabel = computed(() => {
   const rate = audioContext.value?.sampleRate;
   if (!rate) return 'engine idle';
-  // Trailing zeroes are noise at a glance: 48 kHz, but 44.1 kHz.
-  const khz = rate / 1000;
-  const shown = Number.isInteger(khz) ? khz.toFixed(0) : khz.toFixed(1);
-  return `${shown} kHz`;
+  // Trailing zeroes are noise at a glance: 48 kHz, but 44.1 and 22.05 kHz.
+  return `${Number((rate / 1000).toFixed(2))} kHz`;
 });
 
 const engineRateTitle = computed(() => {

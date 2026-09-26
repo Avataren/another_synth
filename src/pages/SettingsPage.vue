@@ -446,6 +446,7 @@
                       )
                     "
                   >
+                    <option value="22050">22.05 kHz</option>
                     <option value="44100">44.1 kHz</option>
                     <option value="48000">
                       48 kHz{{ deviceDefaultRate === 48000 ? ' (default)' : '' }}
@@ -458,8 +459,11 @@
                   <span class="toggle-description">
                     A higher rate gives the engine more room above the audible
                     band, so what does alias lands further out of the way. Costs
-                    CPU across the whole graph. A rate the browser will not run
-                    falls back to 44.1 kHz.
+                    CPU across the whole graph. 22.05 kHz goes the other way:
+                    nothing above about 11 kHz survives, and the grit that
+                    folds back is part of the sound, as on the sound cards and
+                    replayers of the 90s. A rate the browser will not run falls
+                    back to 44.1 kHz.
                     <template v-if="runningSampleRate !== null">
                       Currently running at
                       <strong>{{ formatRate(runningSampleRate) }}</strong
@@ -796,7 +800,8 @@ const sampleRateNeedsReload = computed(
 
 function formatRate(hz: number): string {
   const khz = hz / 1000;
-  return `${Number.isInteger(khz) ? khz.toFixed(0) : khz.toFixed(1)} kHz`;
+  // Up to two decimals, trailing zeroes dropped: 48, 44.1, 22.05 kHz.
+  return `${Number(khz.toFixed(2))} kHz`;
 }
 
 function reloadForSampleRate() {

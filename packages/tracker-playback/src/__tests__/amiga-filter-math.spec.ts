@@ -279,3 +279,20 @@ function magnitude(stages: Stage[], freq: number, fs: number): number {
 function dcGain(stages: Stage[]): number {
   return runCascade(stages).reduce((sum, v) => sum + v, 0);
 }
+describe('Amiga LPF at 22.05 kHz', () => {
+  it('stays stable with both cutoffs at the sliders\' 20 kHz top', () => {
+    // 20 kHz is past Nyquist (11.025 kHz) here: uncapped, tan() goes negative
+    // and the poles leave the unit circle. The cap holds them inside.
+    const c = deriveAmigaLpfCoefficients(22050, {
+      staticCutoffHz: 20000,
+      ledCutoffHz: 20000,
+      ledResDb: 0,
+    });
+    expect(Math.abs(c.rc.a1)).toBeLessThan(1);
+    expect(Math.abs(c.led.a2)).toBeLessThan(1);
+    expect(Math.abs(c.led.a1)).toBeLessThan(1 + c.led.a2);
+    for (const v of [c.rc.b0, c.rc.b1, c.led.b0, c.led.b1, c.led.b2]) {
+      expect(v).toBeGreaterThan(0);
+    }
+  });
+});
