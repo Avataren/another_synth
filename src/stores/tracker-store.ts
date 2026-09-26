@@ -657,6 +657,16 @@ export const useTrackerStore = defineStore('trackerStore', {
     isAhxSong(): boolean {
       return this.moduleFormat === 'ahx';
     },
+    /**
+     * Whether an AHX song is AHX or HVL: its doc's format when it has a doc
+     * (the doc is rebuilt on every edit), else its source header's, so a song
+     * played without a doc (an HVL wider than 16 channels) still knows.
+     * `null` for every other song, and for one with neither.
+     */
+    ahxSongFormat(): AhxSongFormat | null {
+      if (this.moduleFormat !== 'ahx') return null;
+      return this.ahxDoc?.format ?? ahxSourceInfo.value?.format ?? null;
+    },
     /** The song is an AHX song with a doc: its grid is edited and written back to the doc. */
     isAhxEditable(): boolean {
       return this.moduleFormat === 'ahx' && this.ahxDoc !== null;

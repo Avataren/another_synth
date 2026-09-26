@@ -1,5 +1,4 @@
 import { computed, watch, type ComputedRef } from 'vue';
-import { ahxSourceInfo } from 'src/audio/tracker/ahx-source';
 import {
   brandIdForSong,
   formatBrand,
@@ -26,7 +25,7 @@ export interface ActiveFormatBrand {
 export function useActiveFormatBrand(): ComputedRef<ActiveFormatBrand> {
   const store = useTrackerStore();
   return computed(() => {
-    const variant = store.moduleFormat === 'ahx' ? (store.ahxDoc?.format ?? ahxSourceInfo.value?.format ?? null) : null;
+    const variant = store.ahxSongFormat;
     const id = brandIdForSong(store.moduleFormat, variant);
     return {
       id,

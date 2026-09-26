@@ -344,7 +344,7 @@ const rowsCount = computed(() => trackerStore.currentPatternRows);
 const trackColumns = computed(() =>
   songTrackColumns(
     trackerStore.moduleFormat,
-    trackerStore.ahxDoc?.format ?? null,
+    trackerStore.ahxSongFormat,
     userSettings.value.showTrackerExtraEffectColumn,
   ),
 );
