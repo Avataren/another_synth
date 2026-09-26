@@ -14,6 +14,7 @@ import {
 import { exportGtSong } from 'src/audio/tracker/sid-doc/gt-sng-write';
 import { exportSid } from 'src/audio/tracker/sid-export';
 import { SID_PRESETS, SID_PRESET_CATEGORIES, addSidPreset, applySidPreset, sidPresetOptions, sidPresetUsesFilter } from 'src/audio/tracker/sid-presets';
+import { sidInstrumentTableRows, sidRowSetsSize, sidUnusedTableRows } from 'src/audio/tracker/sid-table-rows';
 
 /**
  * The SID preset library (`sid-presets.ts`): every preset goes into a song,
@@ -33,6 +34,14 @@ const ok = (result: ReturnType<typeof addSidPreset>): SidDoc => {
   if (!result.ok) throw new Error(result.reason);
   return result.doc;
 };
+
+/** What instrument `n` plays: its settings and the contents of every row it reaches, in order (row numbers aside). */
+function programOf(doc: SidDoc, n: number) {
+  const { wavePtr, pulsePtr, filterPtr, speedPtr, ...settings } = doc.instruments[n - 1]!;
+  const reached = sidInstrumentTableRows(doc, n);
+  const rows = (t: 'wave' | 'pulse' | 'filter' | 'speed') => [...reached[t]].sort((a, b) => a - b).map((r) => doc.tables[t][r - 1]!);
+  return { settings, starts: [wavePtr, pulsePtr, filterPtr, speedPtr].map((p) => p > 0), wave: rows('wave').map((r) => (r.left === 0xff ? r.left : r)), pulse: rows('pulse').map((r) => (r.left === 0xff ? r.left : r)), filter: rows('filter'), speed: rows('speed') };
+}
 
 /** A new song holding every preset, instrument 2 onwards, in library order. */
 function everyPreset(): SidDoc {
@@ -101,14 +110,43 @@ describe('the SID preset library', () => {
     expect(modeRow(v3).right).toBe(0xf4);
   });
 
-  it('replaces an instrument in place, the others untouched', () => {
+  it('replaces an instrument in place; the others play the same rows (renumbered)', () => {
     const doc = ok(addSidPreset(createNewSidDoc({}), 'bass-pulse'));
     const replaced = ok(applySidPreset(doc, 1, 'drum-snare'));
     expect(replaced.instruments).toHaveLength(2);
     expect(replaced.instruments[0]!.name).toBe('Snare');
-    expect(replaced.instruments[1]).toBe(doc.instruments[1]);
+    expect(programOf(replaced, 2)).toEqual(programOf(doc, 2));
     expect(applySidPreset(doc, 5, 'drum-snare').ok).toBe(false);
     expect(addSidPreset(doc, 'no-such').ok).toBe(false);
+  });
+
+  it('frees the rows only the replaced instrument reached, so replacing again and again does not grow the tables', () => {
+    let doc = ok(addSidPreset(createNewSidDoc({}), 'bass-pulse'));
+    doc = ok(applySidPreset(doc, 1, 'lead-pwm'));
+    const settled = doc.tables;
+    for (const id of ['arp-major', 'drum-tom', 'bass-acid', 'lead-pwm']) doc = ok(applySidPreset(doc, 1, id));
+    expect(doc.tables).toEqual(settled);
+    expect(sidRowSetsSize(sidUnusedTableRows(doc))).toBe(0);
+  });
+
+  it('keeps rows another instrument or a pattern command still reaches', () => {
+    let doc = ok(addSidPreset(createNewSidDoc({}), 'lead-pwm'));
+    doc = ok(addSidPreset(doc, 'lead-pwm'));
+    // Instruments 2 and 3 share their rows; a pattern starts instrument 2's pulse program by command 9.
+    const pulse = doc.instruments[1]!.pulsePtr;
+    doc = ok(setSidRow(doc, 0, 0, { note: 0, instrument: 0, command: 0x9, param: pulse }));
+    const before3 = programOf(doc, 3);
+    const replaced = ok(applySidPreset(doc, 2, 'drum-kick'));
+    expect(programOf(replaced, 3)).toEqual(before3);
+    const row = replaced.patterns[0]!.rows[0]!;
+    expect(replaced.tables.pulse[row.param - 1]).toEqual(doc.tables.pulse[pulse - 1]);
+  });
+
+  it('leaves rows nothing reached before alone (a sequence being written)', () => {
+    const base = createNewSidDoc({});
+    const scratch = { ...base, tables: { ...base.tables, wave: [...base.tables.wave, { left: 0x21, right: 0x00 }, { left: 0xff, right: 0x00 }] } };
+    const replaced = ok(applySidPreset(scratch, 1, 'bass-sub'));
+    expect(replaced.tables.wave.slice(0, 2)).toEqual(scratch.tables.wave.slice(2));
   });
 
   it('scales the gate timer at multispeed, as a new instrument\'s is', () => {

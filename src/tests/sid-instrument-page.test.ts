@@ -530,3 +530,42 @@ describe('SidInstrumentPage: presets', () => {
     expect(sid()).toBe(before);
   });
 });
+
+describe('SidInstrumentPage: table views and clean-up', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    clearAhxEditNotice();
+    useTrackerStore().adoptSidDoc(buildSidChainSong());
+  });
+
+  const shownRows = (w: VueWrapper, table: string) => w.findAll(`[data-testid^="sid-${table}-row-"]`).map((r) => Number(r.attributes('data-row')));
+
+  it('"only this instrument\'s rows" hides the rest of each table, and shows them again', async () => {
+    const { w } = await mountEditor(2);
+    const all = shownRows(w, 'wave');
+    expect(all).toHaveLength(sid().tables.wave.length);
+    await w.get('[data-testid="sid-tables-only-mine"]').setValue(true);
+    const mine = shownRows(w, 'wave');
+    expect(mine.length).toBeGreaterThan(0);
+    expect(mine.length).toBeLessThan(all.length);
+    expect(mine).toContain(sid().instruments[1]!.wavePtr);
+    await w.get('[data-testid="sid-tables-only-mine"]').setValue(false);
+    expect(shownRows(w, 'wave')).toEqual(all);
+  });
+
+  it('removes the rows nothing reaches, as one undo step, and says how many', async () => {
+    const store = useTrackerStore();
+    const doc = sid();
+    // Two rows no instrument or command reaches.
+    store.editSidDoc({ ok: true, doc: { ...doc, tables: { ...doc.tables, wave: [...doc.tables.wave, { left: 0x21, right: 0 }, { left: 0xff, right: 0 }] } } });
+    const withOrphans = sid();
+    const { w } = await mountEditor(2);
+    const button = w.get('[data-testid="sid-tables-cleanup"]');
+    expect(button.text()).toBe('Remove 2 unused rows');
+    await button.trigger('click');
+    expect(sid().tables.wave).toHaveLength(withOrphans.tables.wave.length - 2);
+    expect(w.get('[data-testid="sid-tables-cleanup"]').text()).toBe('No unused rows');
+    store.undo();
+    expect(sid()).toBe(withOrphans);
+  });
+});

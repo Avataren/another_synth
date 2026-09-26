@@ -470,6 +470,23 @@
             simply how many rows it has; each instrument's part of it is marked in green, the row the frame cursor is on is
             lit, and <span class="sid-warn">shared</span> rows are reached by other instruments too. Row numbers are hex.
           </p>
+          <div class="sid-tables-tools">
+            <label class="sid-check" title="Hide the rows of the song's tables that this instrument does not play">
+              <input v-model="onlyMine" type="checkbox" data-testid="sid-tables-only-mine" />
+              Only this instrument's rows
+            </label>
+            <q-btn
+              flat
+              dense
+              size="sm"
+              icon="cleaning_services"
+              :label="unusedCount > 0 ? `Remove ${unusedCount} unused row${unusedCount === 1 ? '' : 's'}` : 'No unused rows'"
+              :disable="unusedCount === 0"
+              data-testid="sid-tables-cleanup"
+              title="Delete every table row that no instrument and no pattern command reaches (left over from edits or presets). The other rows are renumbered, and every pointer, jump and command follows them; the song sounds the same. One undo step."
+              @click="removeUnusedRows"
+            />
+          </div>
           <div class="sid-tables">
             <SidTableCard
               v-for="table in SID_TABLE_NAMES"
@@ -484,6 +501,7 @@
               :current="currentRow[table]"
               :used-by="users[table]"
               :instrument="instrumentNumber"
+              :only-mine="onlyMine"
               @set-byte="(index, side, event) => setTableByte(table, index, side, event)"
               @insert="(at) => commit(insertSidTableRow(doc!, table, at))"
               @delete="(at) => commit(deleteSidTableRow(doc!, table, at))"
@@ -550,7 +568,6 @@ import {
   editSidTableByte,
   hexByte,
   newSidInstrument,
-  sidTableRowsFrom,
   setSidInstrumentFilterStart,
   setSidInstrumentStartWidth,
   sidInstrumentFilterStart,
@@ -570,6 +587,10 @@ import {
   sidControlName,
   sidNoteName,
   sidTableUsers,
+  sidInstrumentTableRows,
+  sidRowSetsSize,
+  sidUnusedTableRows,
+  removeUnusedSidTableRows,
   sidWaveClass,
   sidWaveformName,
 } from 'src/audio/tracker/sid-table-rows';
@@ -924,12 +945,21 @@ const firstWaveMeaning = computed(() => {
 // The tables
 // ---------------------------------------------------------------------------
 
+/** Per table, the rows this instrument plays: from its pointers, and through its wave rows' commands. */
 const reached = computed(() => {
-  const ins = instrument.value;
   const d = doc.value;
-  const from = (table: SidTableName) => (d && ins && ins[SID_TABLE_POINTER[table]] ? sidTableRowsFrom(d, table, ins[SID_TABLE_POINTER[table]]) : []);
-  return { wave: from('wave'), pulse: from('pulse'), filter: from('filter'), speed: from('speed') };
+  if (!d || !instrument.value) return { wave: [], pulse: [], filter: [], speed: [] };
+  const own = sidInstrumentTableRows(d, instrumentNumber.value);
+  const sorted = (table: SidTableName) => [...own[table]].sort((a, b) => a - b);
+  return { wave: sorted('wave'), pulse: sorted('pulse'), filter: sorted('filter'), speed: sorted('speed') };
 });
+/** Show only this instrument's rows in the four tables. */
+const onlyMine = ref(false);
+/** Rows nothing in the song reaches, all tables together. */
+const unusedCount = computed(() => (doc.value ? sidRowSetsSize(sidUnusedTableRows(doc.value)) : 0));
+function removeUnusedRows(): void {
+  if (doc.value) commit(removeUnusedSidTableRows(doc.value));
+}
 const users = computed(() => {
   const d = doc.value;
   const of = (table: SidTableName) => (d ? sidTableUsers(d, table) : new Map<number, number[]>());
@@ -1275,5 +1305,12 @@ onUnmounted(() => {
 }
 .sid-tables-intro {
   line-height: 1.45;
+}
+.sid-tables-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 8px;
 }
 </style>

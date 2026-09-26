@@ -1,5 +1,6 @@
 import {
   SID_MAX_TABLE_ROWS,
+  SID_TABLE_NAMES,
   makeSidDoc,
   sidDocProblem,
   type SidChipModel,
@@ -193,6 +194,17 @@ const PATTERN_COMMANDS: Record<SidTableName, readonly number[]> = {
 };
 
 /**
+ * The table a wave-table row's command names a row of ($F1-$F4 and $FE the
+ * speed table, $F8 the wave table, $F9 pulse, $FA filter), or null for any
+ * other row and for a parameter of 0.
+ */
+function waveCommandTable(row: SidTableRow): SidTableName | null {
+  if (row.left < 0xf0 || row.left === 0xff || row.right === 0) return null;
+  const cmd = row.left & 0x0f;
+  return cmd >= 0x1 && cmd <= 0x4 ? 'speed' : cmd === 0xe ? 'speed' : cmd === 0x8 ? 'wave' : cmd === 0x9 ? 'pulse' : cmd === 0xa ? 'filter' : null;
+}
+
+/**
  * Moves every reference to a row of `table` through `move` (a 1-based row
  * to its new number): the instruments' pointers, the table's own jumps,
  * wave-table commands ($F1-$F4, $FE speed; $F8 wave; $F9 pulse; $FA filter)
@@ -210,12 +222,7 @@ function remapReferences(doc: SidDoc, table: SidTableName, rows: SidTableRow[], 
   // Jumps in the edited table itself.
   tables[table] = rows.map((row) => (row.left === 0xff && row.right !== 0 ? { left: 0xff, right: move(row.right) } : row));
   // Wave-table commands that name a row of this table.
-  const waveCommandFor = (cmd: number): SidTableName | null =>
-    cmd >= 0x1 && cmd <= 0x4 ? 'speed' : cmd === 0xe ? 'speed' : cmd === 0x8 ? 'wave' : cmd === 0x9 ? 'pulse' : cmd === 0xa ? 'filter' : null;
-  tables.wave = tables.wave.map((row) => {
-    if (row.left < 0xf0 || row.left === 0xff || row.right === 0) return row;
-    return waveCommandFor(row.left & 0x0f) === table ? { left: row.left, right: move(row.right) } : row;
-  });
+  tables.wave = tables.wave.map((row) => (waveCommandTable(row) === table ? { left: row.left, right: move(row.right) } : row));
   const commands = PATTERN_COMMANDS[table];
   const patterns = doc.patterns.map((pattern): SidDocPattern => {
     let changed = false;
@@ -360,4 +367,114 @@ export function appendSidTableTemplate(doc: SidDoc, table: SidTableName, id: str
   const instruments = doc.instruments.slice();
   instruments[n - 1] = { ...ins, [SID_TABLE_POINTER[table]]: start };
   return finish({ ...doc, instruments, tables: { ...doc.tables, [table]: [...doc.tables[table], ...rows] } });
+}
+
+// ---------------------------------------------------------------------------
+// Rows nothing reaches
+// ---------------------------------------------------------------------------
+
+/** Per table, a set of 1-based rows. */
+export type SidTableRowSets = Record<SidTableName, Set<number>>;
+
+const emptyRowSets = (): SidTableRowSets => ({ wave: new Set(), pulse: new Set(), filter: new Set(), speed: new Set() });
+
+/**
+ * The rows reached from the starts `seed` names: from a start, a table plays
+ * on row by row and follows its jumps (`sidTableRowsFrom`); a speed-table
+ * start is that one row (a vibrato, a slide speed, a funktempo pair). A
+ * reached wave row whose command names a row of a table ($F1-$F4, $F8, $F9,
+ * $FA, $FE) reaches from there too.
+ */
+function reachFrom(doc: SidDoc, seed: (start: (table: SidTableName, row: number) => void) => void): SidTableRowSets {
+  const sets = emptyRowSets();
+  const start = (table: SidTableName, ptr: number): void => {
+    if (ptr === 0) return;
+    const rows = table === 'speed' ? (ptr <= doc.tables.speed.length ? [ptr] : []) : sidTableRowsFrom(doc, table, ptr);
+    for (const r of rows) {
+      if (sets[table].has(r)) continue;
+      sets[table].add(r);
+      if (table !== 'wave') continue;
+      const row = doc.tables.wave[r - 1] as SidTableRow;
+      const target = waveCommandTable(row);
+      if (target !== null) start(target, row.right);
+    }
+  };
+  seed(start);
+  return sets;
+}
+
+/** The rows instrument `n` (1-based) reaches: from its four pointers, and through its wave rows' commands. */
+export function sidInstrumentTableRows(doc: SidDoc, n: number): SidTableRowSets {
+  const ins = doc.instruments[n - 1];
+  return reachFrom(doc, (start) => {
+    if (!ins) return;
+    for (const table of SID_TABLE_NAMES) start(table, ins[SID_TABLE_POINTER[table]]);
+  });
+}
+
+/**
+ * The rows something in the song reaches: any instrument (used by a pattern
+ * or not), and any pattern command that names a table row (8/9/A, 1-4, E),
+ * in any pattern. Wider than what an export keeps (only what the song plays),
+ * so an instrument waiting to be used keeps its rows.
+ */
+export function sidReachedTableRows(doc: SidDoc): SidTableRowSets {
+  return reachFrom(doc, (start) => {
+    for (const ins of doc.instruments) for (const table of SID_TABLE_NAMES) start(table, ins[SID_TABLE_POINTER[table]]);
+    for (const pattern of doc.patterns) {
+      for (const row of pattern.rows) {
+        if (row.param === 0) continue;
+        for (const table of SID_TABLE_NAMES) if (PATTERN_COMMANDS[table].includes(row.command)) start(table, row.param);
+      }
+    }
+  });
+}
+
+/** Per table, the rows nothing in the song reaches (`sidReachedTableRows`). */
+export function sidUnusedTableRows(doc: SidDoc): SidTableRowSets {
+  const reached = sidReachedTableRows(doc);
+  const unused = emptyRowSets();
+  for (const table of SID_TABLE_NAMES) {
+    for (let r = 1; r <= doc.tables[table].length; r++) if (!reached[table].has(r)) unused[table].add(r);
+  }
+  return unused;
+}
+
+/** How many rows `sets` holds, all tables together. */
+export const sidRowSetsSize = (sets: SidTableRowSets): number => SID_TABLE_NAMES.reduce((n, t) => n + sets[t].size, 0);
+
+/**
+ * `doc` without rows `remove` of each table; every pointer, jump and command
+ * that names a row kept is renumbered with it (`remapReferences`). A
+ * reference to a removed row becomes 0 (none / a stop): meant for rows
+ * nothing reaches, whose only references are from other unreached rows.
+ * Fields only: the caller validates (`finish`).
+ */
+export function withoutSidTableRows(doc: SidDoc, remove: SidTableRowSets): SidDoc {
+  let next = doc;
+  for (const table of SID_TABLE_NAMES) {
+    const gone = remove[table];
+    if (gone.size === 0) continue;
+    const rows = next.tables[table];
+    const kept: SidTableRow[] = [];
+    const renumber = new Map<number, number>();
+    rows.forEach((row, i) => {
+      if (gone.has(i + 1)) return;
+      kept.push(row);
+      renumber.set(i + 1, kept.length);
+    });
+    next = remapReferences(next, table, kept, (r) => renumber.get(r) ?? 0);
+  }
+  return next;
+}
+
+/**
+ * Removes every row nothing in the song reaches (`sidUnusedTableRows`), the
+ * rest renumbered: GoatTracker's tables as dense as an export packs them,
+ * without dropping an instrument no pattern plays yet. One undo step.
+ */
+export function removeUnusedSidTableRows(doc: SidDoc): SidOpResult {
+  const unused = sidUnusedTableRows(doc);
+  if (sidRowSetsSize(unused) === 0) return { ok: true, doc };
+  return finish(withoutSidTableRows(doc, unused));
 }

@@ -1,5 +1,6 @@
 import {
   DEFAULT_SID_INSTRUMENT,
+  SID_TABLE_NAMES,
   SID_MAX_INSTRUMENT_NAME_LENGTH,
   SID_MAX_TABLE_ROWS,
   makeSidDoc,
@@ -11,6 +12,7 @@ import {
   type SidTableName,
   type SidTableRow,
 } from 'src/audio/tracker/sid-doc';
+import { sidInstrumentTableRows, sidReachedTableRows, withoutSidTableRows, type SidTableRowSets } from 'src/audio/tracker/sid-table-rows';
 
 /**
  * Ready-made GoatTracker instruments: a library of basses, leads, arpeggios,
@@ -797,19 +799,30 @@ export function addSidPreset(doc: SidDoc, id: string, options: SidPresetOptions 
 }
 
 /**
- * `doc` with instrument `n` (1-based) replaced by preset `id`. Rows the old
- * instrument pointed at stay in the tables (another instrument or a pattern
- * command may use them); exports keep only the rows something reaches.
+ * `doc` with instrument `n` (1-based) replaced by preset `id`. The old
+ * instrument's rows are freed first, the rows only it reached: a row another
+ * instrument or a pattern command reaches stays (and every reference is
+ * renumbered around the rows that go). Rows nothing reached before are left
+ * alone: they may be a sequence being written.
  */
 export function applySidPreset(doc: SidDoc, n: number, id: string, options: SidPresetOptions = {}): SidOpResult {
   const preset = sidPreset(id);
   if (!preset) return { ok: false, reason: `There is no SID preset "${id}".` };
-  if (!doc.instruments[n - 1]) return { ok: false, reason: `There is no instrument ${n}.` };
-  const built = build(doc, preset, options);
-  if ('error' in built) return { ok: false, reason: built.error };
+  const old = doc.instruments[n - 1];
+  if (!old) return { ok: false, reason: `There is no instrument ${n}.` };
+  const own = sidInstrumentTableRows(doc, n);
   const instruments = doc.instruments.slice();
-  instruments[n - 1] = built.instrument;
-  return finish({ ...doc, instruments, tables: built.tables });
+  instruments[n - 1] = { ...old, wavePtr: 0, pulsePtr: 0, filterPtr: 0, speedPtr: 0 };
+  const detached: SidDoc = { ...doc, instruments };
+  const stillReached = sidReachedTableRows(detached);
+  const free: SidTableRowSets = { wave: new Set(), pulse: new Set(), filter: new Set(), speed: new Set() };
+  for (const table of SID_TABLE_NAMES) for (const row of own[table]) if (!stillReached[table].has(row)) free[table].add(row);
+  const freed = withoutSidTableRows(detached, free);
+  const built = build(freed, preset, options);
+  if ('error' in built) return { ok: false, reason: built.error };
+  const next = freed.instruments.slice();
+  next[n - 1] = built.instrument;
+  return finish({ ...freed, instruments: next, tables: built.tables });
 }
 
 /** Whether preset `id` uses the filter (it then needs a voice to route to). */

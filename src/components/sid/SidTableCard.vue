@@ -22,8 +22,13 @@
           <tr v-if="rows.length === 0">
             <td colspan="4" class="sid-dim sid-table__empty">Empty. Add a row, or start a sequence below.</td>
           </tr>
+          <tr v-else-if="visibleRows.length === 0">
+            <td colspan="4" class="sid-dim sid-table__empty" :data-testid="`sid-${table}-none-mine`">
+              This instrument uses none of this table's rows.
+            </td>
+          </tr>
           <tr
-            v-for="(row, index) in rows"
+            v-for="index in visibleRows"
             :key="index"
             :data-row="index + 1"
             :class="{
@@ -43,7 +48,7 @@
                 class="sid-hex"
                 maxlength="2"
                 spellcheck="false"
-                :value="hexByte(row[side])"
+                :value="hexByte(rows[index]![side])"
                 :aria-label="`${label} row ${hexByte(index + 1)} ${side === 'left' ? columns[0] : columns[1]}`"
                 :data-testid="`sid-${table}-${index + 1}-${side}`"
                 @focus="selected = index + 1"
@@ -52,7 +57,7 @@
               />
             </td>
             <td class="sid-table__what" :data-testid="`sid-${table}-${index + 1}-desc`">
-              {{ describeSidTableRow(table, row, rows.length, chip) }}
+              {{ describeSidTableRow(table, rows[index]!, rows.length, chip) }}
               <span v-if="othersOn(index + 1).length" class="sid-table__shared" :title="`Also reached by instrument ${othersOn(index + 1).map(hexByte).join(', ')}: an edit here changes them too.`">
                 shared
               </span>
@@ -162,6 +167,8 @@ interface Props {
   /** Per row, the instruments other than this one that reach it. */
   usedBy: ReadonlyMap<number, readonly number[]>;
   instrument: number;
+  /** Show only the rows this instrument reaches (`reached`), hiding the rest of the song's table. */
+  onlyMine?: boolean;
 }
 const props = defineProps<Props>();
 const emit = defineEmits<{
@@ -186,6 +193,19 @@ const full = computed(() => props.rows.length >= SID_MAX_TABLE_ROWS);
 /** The selected row (1-based), the one the row buttons act on. */
 const selected = ref<number | null>(null);
 const scroller = ref<HTMLElement | null>(null);
+
+/** The 0-based indexes of the rows shown, in table order. */
+const visibleRows = computed<number[]>(() =>
+  props.onlyMine ? [...props.reached].sort((a, b) => a - b).map((r) => r - 1).filter((i) => i < props.rows.length) : props.rows.map((_, i) => i),
+);
+
+/** The shown row after (`step` 1) or before (-1) 1-based row `row`, or null at the end. */
+function neighbour(row: number, step: 1 | -1): number | null {
+  const shown = visibleRows.value;
+  const at = shown.indexOf(row - 1);
+  const next = shown[at + step];
+  return at === -1 || next === undefined ? null : next + 1;
+}
 
 const othersOn = (row: number): number[] => (props.usedBy.get(row) ?? []).filter((n) => n !== props.instrument);
 
@@ -212,11 +232,13 @@ function onKey(index: number, side: 'left' | 'right', event: KeyboardEvent): voi
   if (event.key === 'ArrowDown' || event.key === 'Enter') {
     event.preventDefault();
     (event.target as HTMLInputElement).blur();
-    if (row < props.rows.length) focusCell(row + 1, side);
+    const next = neighbour(row, 1);
+    if (next !== null) focusCell(next, side);
   } else if (event.key === 'ArrowUp') {
     event.preventDefault();
     (event.target as HTMLInputElement).blur();
-    if (row > 1) focusCell(row - 1, side);
+    const previous = neighbour(row, -1);
+    if (previous !== null) focusCell(previous, side);
   } else if (event.key === 'Insert') {
     event.preventDefault();
     if (!full.value) emit('insert', row);
