@@ -309,9 +309,9 @@ describe('AhxProcessorCore over the real wasm', () => {
       core.handle({ type: 'preview-note-on', instrument: 1, note: 25, velocity: 127 });
       render(core, SAMPLE_RATE / 2);
       const posted = waveforms(events);
-      // About 25 Hz, as a playing song reports.
-      expect(posted.length).toBeGreaterThanOrEqual(10);
-      expect(posted.length).toBeLessThanOrEqual(15);
+      // About 120 Hz, as a playing song reports.
+      expect(posted.length).toBeGreaterThanOrEqual(45);
+      expect(posted.length).toBeLessThanOrEqual(62);
       // The previewed note is voice 0's.
       const voice0 = (posted.at(-1) as Waveforms).data.subarray(0, AHX_SCOPE_POINTS);
       expect(voice0.some((v) => v !== 0)).toBe(true);
@@ -335,7 +335,7 @@ describe('AhxProcessorCore over the real wasm', () => {
       expect(waveforms(events)).toHaveLength(0);
     });
 
-    it('posts every voice at about 25 Hz, non-silent, within full scale', () => {
+    it('posts every voice at about 120 Hz, non-silent, within full scale', () => {
       const { core, events } = capturingCore();
       core.handle({ type: 'set-capture', enabled: true });
       core.handle({ type: 'load-song', id: nextId++, bytes: fixture('karma.ahx') });
@@ -343,9 +343,10 @@ describe('AhxProcessorCore over the real wasm', () => {
       render(core, SAMPLE_RATE * 2);
 
       const posted = waveforms(events);
-      // One per ~40 ms interval (quantised up to whole 128-frame quanta).
-      expect(posted.length).toBeGreaterThanOrEqual(40);
-      expect(posted.length).toBeLessThanOrEqual(60);
+      // One per ~8.3 ms interval (quantised up to whole 128-frame quanta:
+      // 3 quanta at 44.1 kHz, so ~115 Hz), faster than the display refreshes.
+      expect(posted.length).toBeGreaterThanOrEqual(180);
+      expect(posted.length).toBeLessThanOrEqual(245);
       const last = posted.at(-1) as Waveforms;
       expect(last).toMatchObject({ channels: 4, points: AHX_SCOPE_POINTS });
       expect(last.data).toHaveLength(4 * AHX_SCOPE_POINTS);
@@ -436,11 +437,11 @@ describe('AhxProcessorCore over the real wasm', () => {
 
       core.handle({ type: 'restart' });
       core.handle({ type: 'play' });
-      render(core, QUANTUM * 15); // just past the first interval
+      render(core, QUANTUM * 4); // just past the first scope interval
       const first = waveforms(events)[n] as Waveforms;
       expect(first).toBeDefined();
-      // The first report lands 14 quanta (1792 frames) in, so the oldest 256
-      // of the window's 2048 frames (32 points) predate the restart: the
+      // The first report lands 3 quanta (384 frames) in, so the oldest 1664
+      // of the window's 2048 frames (208 points) predate the restart: the
       // rewound engine cleared them, whatever was playing when it paused.
       for (let v = 0; v < first.channels; v++) {
         const head = first.data.subarray(v * first.points, v * first.points + 16);

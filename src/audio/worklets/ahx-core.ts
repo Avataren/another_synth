@@ -299,6 +299,13 @@ export type AhxEvent =
 /** How often `position` events go out while playing (about 25 per second). */
 const POSITION_INTERVAL_SECONDS = 0.04;
 
+/**
+ * How often `waveforms` events go out while capture is on (about 120 per
+ * second): faster than any common display refresh, so every animation frame
+ * draws a fresh window instead of repeating one for two or three frames.
+ */
+const SCOPE_INTERVAL_SECONDS = 1 / 120;
+
 /** Points per voice in a `waveforms` event: the 2048-frame capture ring decimated 8:1. */
 export const AHX_SCOPE_POINTS = 256;
 
@@ -338,6 +345,7 @@ export class AhxProcessorCore {
   /** One `waveforms` payload, refilled in place each report (posting clones it). */
   private scopeData = new Int16Array(0);
   private framesSincePosition = 0;
+  private framesSinceScope = 0;
   private lastPosition = -1;
   private lastRow = -1;
   private songEndReported = false;
@@ -487,7 +495,7 @@ export class AhxProcessorCore {
         this.reportPListRow(player);
         // A preview voice is never "playing" a song, so `report` (which posts
         // the song's waveforms) does not run: the editor's scope gets its own.
-        if (this.capture) this.reportPreviewWaveforms(player, left.length);
+        if (this.capture) this.reportWaveforms(player, left.length);
       }
     } catch (error) {
       // A wasm trap leaves the instance unusable; go silent rather than
@@ -647,12 +655,12 @@ export class AhxProcessorCore {
         }
       }
     }
+    if (this.capture) this.reportWaveforms(player, frames);
     this.framesSincePosition += frames;
     if (this.framesSincePosition < this.sampleRate * POSITION_INTERVAL_SECONDS) {
       return false;
     }
     this.framesSincePosition = 0;
-    if (this.capture) this.postWaveforms(player);
     const position = player.position();
     const row = player.row();
     if (position === this.lastPosition && row === this.lastRow) return false;
@@ -682,11 +690,11 @@ export class AhxProcessorCore {
     this.post({ type: 'plist-row', instrument, row });
   }
 
-  /** Preview mode: the voices' waveforms at the song's report rate. */
-  private reportPreviewWaveforms(player: AhxWasmPlayer, frames: number): void {
-    this.framesSincePosition += frames;
-    if (this.framesSincePosition < this.sampleRate * POSITION_INTERVAL_SECONDS) return;
-    this.framesSincePosition = 0;
+  /** The voices' waveforms at the scope rate (`SCOPE_INTERVAL_SECONDS`). */
+  private reportWaveforms(player: AhxWasmPlayer, frames: number): void {
+    this.framesSinceScope += frames;
+    if (this.framesSinceScope < this.sampleRate * SCOPE_INTERVAL_SECONDS) return;
+    this.framesSinceScope = 0;
     this.postWaveforms(player);
   }
 
@@ -706,6 +714,7 @@ export class AhxProcessorCore {
 
   private resetReporting(): void {
     this.framesSincePosition = 0;
+    this.framesSinceScope = 0;
     this.lastPosition = -1;
     this.lastRow = -1;
     this.songEndReported = false;
