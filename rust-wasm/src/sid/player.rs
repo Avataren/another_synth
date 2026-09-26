@@ -607,10 +607,17 @@ impl SidSongPlayer {
     fn frame_core(&mut self) {
         self.row_ended = false;
         self.filter_step();
+        // The preview voice is always channel 1, whichever voice an
+        // instrument's filter table routes: it is heard filtered when any is.
+        let res_filt = if self.preview && self.res_filt & 0x07 != 0 {
+            (self.res_filt & 0xF8) | 0x01
+        } else {
+            self.res_filt
+        };
         self.filter_regs = [
             (self.cutoff & 0x07) as u8,
             (self.cutoff >> 3) as u8,
-            self.res_filt,
+            res_filt,
             (self.mode << 4) | self.volume,
         ];
         if !self.preview {

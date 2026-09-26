@@ -37,6 +37,8 @@ import { canEditSlot, resolveInstrumentEditorRoute } from 'src/audio/tracker/ins
 import { ahxSlotRedirect } from 'src/router/ahx-slot-guard';
 import { clearAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import { buildSidChainSong } from './helpers/sid-chain-song';
+import PatchPicker from 'src/components/PatchPicker.vue';
+import { SID_PRESETS } from 'src/audio/tracker/sid-presets';
 
 /**
  * plan-sid-tracking.md S4: the SID instrument page, mounted on a real tracker
@@ -501,5 +503,30 @@ describe('SidInstrumentPage', () => {
     useTrackerStore().resetToNewSong();
     const { w } = await mountEditor(1);
     expect(w.find('[data-testid="sid-instrument-missing"]').exists()).toBe(true);
+  });
+});
+
+describe('SidInstrumentPage: presets', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    clearAhxEditNotice();
+    useTrackerStore().adoptSidDoc(buildSidChainSong());
+  });
+
+  it('loads a preset into the instrument shown (one undo step, on the chosen filter voice) and says what it is', async () => {
+    const { w } = await mountEditor(2);
+    const before = sid();
+    await w.get('[data-testid="sid-preset-voice"]').setValue('2');
+    const picker = w.getComponent(PatchPicker);
+    expect(picker.props('patches')).toHaveLength(SID_PRESETS.length);
+    picker.vm.$emit('select', { id: 'bass-acid', name: 'Acid Bass', bankId: 'sid-presets', bankName: 'SID presets' });
+    await nextTick();
+    const ins = sid().instruments[1]!;
+    expect(ins.name).toBe('Acid Bass');
+    expect(sid().tables.filter[ins.filterPtr - 1]!.right & 0x07).toBe(0x02);
+    expect(sid().instruments[0]).toBe(before.instruments[0]);
+    expect(w.get('[data-testid="sid-preset-note"]').text()).toContain('squelch');
+    useTrackerStore().undo();
+    expect(sid()).toBe(before);
   });
 });

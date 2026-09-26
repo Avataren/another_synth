@@ -24,6 +24,25 @@
         />
       </div>
       <div class="sid-banner__actions">
+        <div v-if="doc && instrument" class="sid-preset-load" data-testid="sid-preset-load">
+          <PatchPicker
+            :model-value="null"
+            :patches="presetOptions"
+            placeholder="Load preset…"
+            @select="loadPreset($event.id)"
+          />
+          <label
+            class="sid-preset-voice"
+            title="The chip has one filter for all three voices: a preset that uses it filters this voice. Pick the voice the instrument plays on."
+          >
+            Filter voice
+            <select v-model.number="presetFilterVoice" data-testid="sid-preset-voice">
+              <option :value="1">1</option>
+              <option :value="2">2</option>
+              <option :value="3">3</option>
+            </select>
+          </label>
+        </div>
         <q-btn
           v-if="doc"
           flat
@@ -60,6 +79,10 @@
         />
         <q-btn flat dense color="white" icon="arrow_back" label="Back to Tracker" title="Press Escape to return" @click="backToTracker" />
       </div>
+    </div>
+
+    <div v-if="loadedPreset && instrument" class="sid-preset-note" data-testid="sid-preset-note">
+      <strong>{{ loadedPreset.name }}</strong> ({{ loadedPreset.category }}): {{ loadedPreset.description }}
     </div>
 
     <div v-if="editNotice" class="sid-notice" role="alert" data-testid="sid-notice">{{ editNotice.message }}</div>
@@ -505,6 +528,8 @@ import { computed, onMounted, onUnmounted, ref, shallowRef, watch, type Componen
 import { useRoute, useRouter } from 'vue-router';
 import { formatInstrumentId, sidFreqRegToHz, sidTableFreqReg } from '@another-synth/tracker-playback';
 import { useTrackerStore } from 'src/stores/tracker-store';
+import PatchPicker from 'src/components/PatchPicker.vue';
+import { sidPreset, sidPresetOptions, type SidPreset } from 'src/audio/tracker/sid-presets';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { AHX_DEFAULT_OCTAVE, useAhxPlayInput } from 'src/composables/useAhxPlayInput';
@@ -669,6 +694,18 @@ function deleteInstrument(confirmed = false): void {
     const left = trackerStore.sidDoc?.instruments.length ?? 0;
     if (left > 0) void router.push({ name: 'sid-instrument-editor', params: { slot: String(Math.min(n, left)) } });
   }
+}
+/** The preset list, and the voice a preset's filter is routed to. */
+const presetOptions = sidPresetOptions();
+const presetFilterVoice = ref(1);
+/** The preset just loaded into this instrument, described under the banner until another instrument is shown. */
+const loadedPreset = shallowRef<SidPreset | null>(null);
+watch(instrumentNumber, () => {
+  loadedPreset.value = null;
+});
+/** Replaces this instrument with preset `id` (one undo step; its name becomes the preset's). */
+function loadPreset(id: string): void {
+  if (trackerStore.applySidPresetTo(instrumentNumber.value, id, presetFilterVoice.value)) loadedPreset.value = sidPreset(id) ?? null;
 }
 function addInstrument(): void {
   if (!doc.value) return;
@@ -1031,6 +1068,24 @@ onUnmounted(() => {
 }
 .sid-notice {
   background: rgba(255, 170, 60, 0.12);
+}
+.sid-preset-load {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 200px;
+}
+.sid-preset-voice {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+.sid-preset-note {
+  padding: 8px 24px;
+  font-size: 13px;
+  background: rgba(120, 160, 255, 0.1);
 }
 .sid-sound-band {
   display: flex;

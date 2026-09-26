@@ -292,6 +292,31 @@ fn preview_plays_an_instrument_without_the_sequencer() {
     assert_eq!(p.chip().voice(0).control() & GATE, 0, "note off clears the gate");
 }
 
+#[test]
+fn preview_routes_a_filter_meant_for_any_voice_to_voice_1() {
+    // Instrument 1's filter table: low-pass, resonance 8, voice 3 only; cutoff 40.
+    let mut song = chord();
+    song.instruments[0].filter_ptr = 1;
+    song.tables.filter = vec![
+        TableRow { left: 0x90, right: 0x84 },
+        TableRow { left: 0x00, right: 0x40 },
+        TableRow { left: 0xFF, right: 0x00 },
+    ];
+    let mut p = player(&song);
+    p.set_preview(true);
+    assert!(p.preview_note_on(1, 57));
+    p.frame();
+    p.frame();
+    // The preview plays on voice 1: routed there, resonance kept.
+    assert_eq!(p.chip().written(0x17), 0x81);
+    // Played in the song, the routing is the table's own.
+    let mut q = player(&song);
+    for _ in 0..3 {
+        q.frame();
+    }
+    assert_eq!(q.chip().written(0x17), 0x84);
+}
+
 // ---------------------------------------------------------------------------
 // The wasm shell
 // ---------------------------------------------------------------------------

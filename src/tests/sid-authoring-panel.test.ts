@@ -68,6 +68,33 @@ describe('the instrument panel of a SID song', () => {
   });
 });
 
+describe('SID presets from the store', () => {
+  it('adds a preset as the next instrument, and replaces one in place, each one undo step', () => {
+    const store = newSong();
+    const fresh = store.sidDoc;
+    expect(store.addSidPresetInstrument('drum-kick')).toBe(2);
+    expect(store.sidDoc!.instruments[1]!.name).toBe('Kick');
+    expect(store.instrumentSlots[1]!.instrumentName).toBe('Kick');
+    const withKick = store.sidDoc;
+    expect(store.applySidPresetTo(1, 'bass-saw', 3)).toBe(true);
+    const doc = store.sidDoc!;
+    expect(doc.instruments[0]!.name).toBe('Filter Saw Bass');
+    expect(doc.tables.filter[doc.instruments[0]!.filterPtr - 1]!.right & 0x07).toBe(0x04);
+    store.undo();
+    expect(store.sidDoc).toBe(withKick);
+    store.undo();
+    expect(store.sidDoc).toBe(fresh);
+  });
+
+  it('refuses an unknown preset, saying so, and changes nothing', () => {
+    const store = newSong();
+    const doc = store.sidDoc;
+    expect(store.addSidPresetInstrument('nope')).toBeNull();
+    expect(store.sidDoc).toBe(doc);
+    expect(ahxEditNotice.value?.message).toMatch(/no SID preset/);
+  });
+});
+
 describe('a note typed into a SID song', () => {
   it('is written and sounds on the song\'s instrument through the preview hook', () => {
     const preview = vi.fn(() => true);

@@ -696,6 +696,20 @@
                   @close="refocusTracker"
                   @click.stop
                 />
+                <PatchPicker
+                  v-else-if="canPickSidPresetAt(slot.slot)"
+                  :model-value="null"
+                  :patches="sidPresetList"
+                  :placeholder="slot.slot <= (trackerStore.sidDoc?.instruments.length ?? 0) ? 'Load preset' : 'Add from preset'"
+                  @select="
+                    (p) => {
+                      onSidPresetSelect(slot.slot, p.id);
+                      refocusTracker();
+                    }
+                  "
+                  @close="refocusTracker"
+                  @click.stop
+                />
                 <div
                   class="instrument-volume"
                   @click.stop
@@ -1063,6 +1077,7 @@ import NewSongDialog, { type NewSongChoice } from 'src/components/tracker/NewSon
 import { snapshotEditorSong } from 'src/audio/tracker/ahx-source';
 import type { AhxEditGate } from 'src/audio/tracker/ahx-doc/edit-guard';
 import { SID_MAX_INSTRUMENTS, sidMinTempo, type SidChipModel } from 'src/audio/tracker/sid-doc';
+import { sidPresetOptions } from 'src/audio/tracker/sid-presets';
 import { ahxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
   channelsFromSelection,
@@ -1374,6 +1389,23 @@ const ahxLengthHint = 'All the tracks of an AHX or HVL song have the same length
 function canAddSidInstrumentAt(slotNumber: number): boolean {
   const doc = trackerStore.sidDoc;
   return trackerStore.isSidEditable && doc !== null && slotNumber === doc.instruments.length + 1 && slotNumber <= SID_MAX_INSTRUMENTS;
+}
+/** SID presets (`sid-presets.ts`), picked into a slot like a patch: a filled slot is replaced, the first free one added. */
+const sidPresetList = sidPresetOptions();
+function canPickSidPresetAt(slotNumber: number): boolean {
+  const doc = trackerStore.sidDoc;
+  return trackerStore.isSidEditable && doc !== null && slotNumber <= Math.min(doc.instruments.length + 1, SID_MAX_INSTRUMENTS);
+}
+function onSidPresetSelect(slotNumber: number, id: string): void {
+  const doc = trackerStore.sidDoc;
+  if (doc === null || !canPickSidPresetAt(slotNumber)) return;
+  // A preset's filter goes on the voice the cursor is on: the one it is about to be played on.
+  const voice = Math.max(1, Math.min(3, activeTrack.value + 1));
+  const done =
+    slotNumber <= doc.instruments.length
+      ? trackerStore.applySidPresetTo(slotNumber, id, voice)
+      : trackerStore.addSidPresetInstrument(id, voice) !== null;
+  if (done) setActiveInstrument(slotNumber);
 }
 function onAddInstrumentClick(slotNumber: number): void {
   if (!isSidSong.value) {

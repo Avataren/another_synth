@@ -69,6 +69,7 @@ import {
 import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import { readModOrigin, type ModOrigin } from 'src/audio/tracker/mod-origin';
 import { editSidInstrument, newSidInstrument } from 'src/audio/tracker/sid-instrument-edit';
+import { addSidPreset, applySidPreset } from 'src/audio/tracker/sid-presets';
 import {
   SID_MAX_INSTRUMENT_NAME_LENGTH,
   SID_MAX_PATTERN_ROWS,
@@ -1660,6 +1661,23 @@ export const useTrackerStore = defineStore('trackerStore', {
       if (doc === null || !this.isSidEditable) return null;
       if (!this.editSidDoc(newSidInstrument(doc))) return null;
       return this.sidDoc?.instruments.length ?? null;
+    },
+    /**
+     * Appends SID preset `id` as a new instrument (one undo step; its filter,
+     * if it has one, on voice `filterVoice`) and returns its number, or null
+     * when the song has no room (the notice says why).
+     */
+    addSidPresetInstrument(id: string, filterVoice = 1): number | null {
+      const doc = this.sidDoc;
+      if (doc === null || !this.isSidEditable) return null;
+      if (!this.editSidDoc(addSidPreset(doc, id, { filterVoice }))) return null;
+      return this.sidDoc?.instruments.length ?? null;
+    },
+    /** Replaces SID instrument `n` with preset `id` (one undo step). */
+    applySidPresetTo(n: number, id: string, filterVoice = 1): boolean {
+      const doc = this.sidDoc;
+      if (doc === null || !this.isSidEditable) return false;
+      return this.editSidDoc(applySidPreset(doc, n, id, { filterVoice }));
     },
     editSidDoc(result: SidOpResult): boolean {
       if (!this.isSidEditable) return false;
