@@ -70,6 +70,10 @@ wasm-opt = ['-O3', '--enable-simd']
 name = "graph_benchmark"
 harness = true
 
+[[bench]]
+name = "sid_render"
+harness = false
+
 [[bin]]
 name = "composition"
 path = "src/bin/composition.rs"

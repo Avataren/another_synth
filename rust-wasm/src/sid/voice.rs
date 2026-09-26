@@ -89,6 +89,19 @@ pub fn attack_lag_tau_cycles() -> f64 {
     ATTACK_FLOOR_6581_S / 9f64.ln() * PAL_CLOCK_HZ
 }
 
+/// `level as f64 / 255.0` for every envelope level: the per-cycle amplitude
+/// read as a table, the same values without a divide per voice per cycle
+/// (the render loop's hottest line before; `benches/sid_render.rs`).
+static LEVEL_AMP: [f64; 256] = {
+    let mut t = [0.0; 256];
+    let mut level = 0;
+    while level < 256 {
+        t[level] = level as f64 / 255.0;
+        level += 1;
+    }
+    t
+};
+
 #[derive(Debug, Clone, Copy)]
 pub struct Voice {
     model: SidModel,
@@ -212,7 +225,7 @@ impl Voice {
     #[inline]
     pub fn envelope_amplitude(&self) -> f64 {
         match self.model {
-            SidModel::Sid8580 => self.env.level() as f64 / 255.0,
+            SidModel::Sid8580 => LEVEL_AMP[self.env.level() as usize],
             SidModel::Sid6581 => self.amp,
         }
     }
@@ -223,7 +236,7 @@ impl Voice {
     pub fn output(&self) -> f64 {
         match self.model {
             SidModel::Sid8580 => {
-                (self.wave as f64 - 2048.0) / 2048.0 * (self.env.level() as f64 / 255.0)
+                (self.wave as f64 - 2048.0) / 2048.0 * (LEVEL_AMP[self.env.level() as usize])
             }
             SidModel::Sid6581 => ((self.wave as f64 - 2048.0) / 2048.0 + self.dc) * self.amp,
         }
@@ -320,7 +333,7 @@ impl Voice {
             None => {}
         }
         if self.model == SidModel::Sid6581 {
-            let target = self.env.level() as f64 / 255.0;
+            let target = LEVEL_AMP[self.env.level() as usize];
             self.amp = if target > self.amp {
                 self.amp + (target - self.amp) * self.lag_alpha
             } else {
@@ -331,6 +344,8 @@ impl Voice {
 
     #[inline]
     fn select(&self, source_acc: u32) -> Option<u16> {
-        waveform_output(self.model, self.control, self.acc, source_acc, self.pw, self.noise.output())
+        // The noise taps only matter when noise is selected; skip gathering them.
+        let noise = if self.control & NOISE != 0 { self.noise.output() } else { 0 };
+        waveform_output(self.model, self.control, self.acc, source_acc, self.pw, noise)
     }
 }

@@ -458,11 +458,7 @@ impl Chip {
     }
 
     fn render_inner(&mut self, out: &mut [f32], mut taps: Option<[&mut [f32]; 3]>) {
-        let filt_bits = self.res_filt & 0x07;
-        let voice3_direct = self.mode_vol & VOICE3_OFF == 0;
-        let volume = self.volume_level(self.mode_vol);
         let mask = self.voice_mask;
-        let tap_gain = volume * self.base_gain * self.trim;
         for (k, o) in out.iter_mut().enumerate() {
             self.cycle_frac += self.cycles_per_sample;
             let n = self.cycle_frac as u32;
@@ -474,6 +470,13 @@ impl Chip {
                     *s += v.output();
                 }
             }
+            // Routing and volume as of the sample's last cycle: a scheduled
+            // $17/$18 write lands inside `clock`, mid-call, and is heard from
+            // this sample on, as its filter coefficients already are (`write`).
+            let filt_bits = self.res_filt & 0x07;
+            let voice3_direct = self.mode_vol & VOICE3_OFF == 0;
+            let volume = self.volume_level(self.mode_vol);
+            let tap_gain = volume * self.base_gain * self.trim;
             let mut filt_in = 0.0;
             let mut direct = 0.0;
             for (i, s) in sum.iter().enumerate() {

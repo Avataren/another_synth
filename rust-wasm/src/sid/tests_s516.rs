@@ -261,6 +261,25 @@ fn write_after_applies_a_write_on_its_cycle_not_before() {
 }
 
 #[test]
+fn a_volume_write_that_lands_mid_render_is_heard_from_its_sample() {
+    // Voice 1 as DC: a pulse of width 0 is always high, held at full envelope.
+    // VOL 0, so the chip is silent until the scheduled $18 write, which lands
+    // ~90 samples into a single 200-sample render (2000 cycles / 22.34 per
+    // sample). The mix must follow it there, not at the next render call.
+    let mut c = Chip::new(SidModel::Sid8580).unwrap();
+    c.write(0x05, 0x00);
+    c.write(0x06, 0xF0);
+    c.write(0x04, 0x41);
+    c.clock_cycles(20_000);
+    assert_eq!(c.voice(0).envelope_level(), 255);
+    c.write_after(2_000, 0x18, 0x0F);
+    let mut out = [0f32; 200];
+    c.render(&mut out);
+    assert!(out[..85].iter().all(|&s| s == 0.0), "silent before the write lands");
+    assert!(out[95..].iter().all(|&s| s.abs() > 0.1), "audible from the write on");
+}
+
+#[test]
 fn a_spaced_note_on_lands_on_the_adsr_delay_bug_and_an_instant_one_does_not() {
     // Instant writes: the rate counter is still under the attack period (9)
     // when the gate opens, so the 2 ms attack starts at once: 5 ms later the
