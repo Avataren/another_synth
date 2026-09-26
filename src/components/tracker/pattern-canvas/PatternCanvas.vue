@@ -1590,6 +1590,18 @@ watch(
   () => schedule(['static']),
 );
 
+/*
+ * The store edits a cell by giving its track a new `entries` array in place
+ * (`updateEntryAt`, the SID/AHX write-backs), so the `tracks` array itself
+ * stays the same and the watch above never hears of it. Watch each track's
+ * entries and interpolations too; the static pass diffs them
+ * (`diffPaintState`) and repairs only the changed cells.
+ */
+watch(
+  () => props.tracks.map((track) => [track.entries, track.interpolations]),
+  () => schedule(['static']),
+);
+
 /**
  * Upcoming-pattern feeds: queue the off-path pre-render of the next pattern
  * while it plays; a null (stopped, deleted pattern) cancels any pending one.

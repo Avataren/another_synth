@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { nextTick, reactive } from 'vue';
 import PatternCanvas from 'src/components/tracker/pattern-canvas/PatternCanvas.vue';
 import {
   GUTTER_WIDTH_PX,
@@ -2459,6 +2459,21 @@ describe('device-pixel stability of the scrolled view', () => {
     pumpFrame();
     expect(drawImageOn(viewCtx).length).toBe(blitsBefore + 1);
     expect(drawImageOn(viewCtx).at(-1)!.sy).toBe(201);
+    wrapper.unmount();
+  });
+});
+
+describe('an edit made in place, as the store makes it', () => {
+  it('a reactive track given a new entries array repaints (the tracks array stays the same)', async () => {
+    const tracks = reactive([makeTrack('t0'), makeTrack('t1')]) as TrackerTrackData[];
+    const wrapper = mountCanvas({ tracks });
+    pumpFrame();
+    const bitmap = bitmapOf(wrapper);
+    const fillsBefore = fillsOn(bitmap).length;
+    tracks[0]!.entries = editedTrack(tracks[0]!, 5).entries;
+    await nextTick();
+    pumpFrame();
+    expect(fillsOn(bitmap).length).toBeGreaterThan(fillsBefore);
     wrapper.unmount();
   });
 });
