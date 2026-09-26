@@ -30,7 +30,7 @@
 //! - Volume DAC: GENERIC-6581 vs 8580. The 8580 stays linear, VOL / 15. See
 //!   `R4AR` for the INFERRED 6581 table.
 //!
-//! `R3` and `R4` are MEASURED on real chips, cutoff only: filter sweeps and
+//! `R2`, `R3` and `R4` are MEASURED on real chips, cutoff only: filter sweeps and
 //! music recorded from Stone Oakvalley's Authentic SID Collection (SOASC),
 //! one physical chip each (method and data: `.ai/sid-soasc/NOTES.md`). Chips
 //! of one revision vary about as much as the revisions do, so each profile
@@ -50,6 +50,9 @@ pub enum DieRevision {
     /// only (cutoff curve, resonance map, soft limit); every other trait is
     /// R4AR's. Named here because a GT song is mixed against that filter.
     GtRef,
+    /// A 6581R2: SOASC's MOS6581 4982 (1982). Bright; cutoff measured from
+    /// filter sweeps (`R2`).
+    R2,
     /// A 6581R3: SOASC's MOS6581 2383 (1983). Brightest of the measured
     /// chips; cutoff fitted from music recordings (`R3`).
     R3,
@@ -59,10 +62,30 @@ pub enum DieRevision {
 }
 
 impl DieRevision {
+    /// Every revision, in the order a picker lists them.
+    pub const ALL: [DieRevision; 5] = [DieRevision::GtRef, DieRevision::R2, DieRevision::R3, DieRevision::R4, DieRevision::R4AR];
+
+    /// The revision's name on the wasm API and in the app's settings.
+    pub const fn name(self) -> &'static str {
+        match self {
+            DieRevision::GtRef => "gt",
+            DieRevision::R2 => "r2",
+            DieRevision::R3 => "r3",
+            DieRevision::R4 => "r4",
+            DieRevision::R4AR => "r4ar",
+        }
+    }
+
+    /// The revision called `name` (`name`), or `None`.
+    pub fn from_name(name: &str) -> Option<DieRevision> {
+        DieRevision::ALL.into_iter().find(|r| r.name() == name)
+    }
+
     pub const fn profile(self) -> &'static RevisionProfile {
         match self {
             DieRevision::R4AR => &R4AR,
             DieRevision::GtRef => &GT_REF,
+            DieRevision::R2 => &R2,
             DieRevision::R3 => &R3,
             DieRevision::R4 => &R4,
         }
@@ -272,6 +295,49 @@ pub const R4: RevisionProfile = RevisionProfile {
         (0x740, 16_161.0),
         (0x780, 17_881.0),
         (0x7C0, 19_508.0),
+        (0x7FF, 19_688.0),
+    ],
+    cutoff_ceiling_hz: f64::INFINITY,
+    ..GT_REF
+};
+
+/// SOASC's 6581R2 chip (MOS6581 4982). MEASURED cutoff: SIDBENCH sweeps as
+/// for `R4`. The chip's curve is `R4`'s shifted along the register,
+/// fc(reg) = R4(reg + 680), within 6.5% mean over its measured points
+/// (350 Hz-13 kHz); the anchors are that shifted curve, which keeps the
+/// three measured profiles on one shape. Above ~15 kHz the sweeps cannot
+/// resolve the cutoff; the curve reaches the end of the measured range
+/// (~19.7 kHz) near 0x540. No ceiling.
+///
+/// Everything but the cutoff is GT_REF's, as for `R4`.
+pub const R2: RevisionProfile = RevisionProfile {
+    revision: DieRevision::R2,
+    cutoff_anchors_lo: &[
+        (0x000, 340.0),
+        (0x040, 358.0),
+        (0x080, 389.0),
+        (0x0C0, 457.0),
+        (0x100, 559.0),
+        (0x140, 674.0),
+        (0x180, 813.0),
+        (0x1C0, 1_021.0),
+        (0x200, 1_427.0),
+        (0x240, 2_206.0),
+        (0x280, 2_996.0),
+        (0x2C0, 4_281.0),
+        (0x300, 5_642.0),
+        (0x340, 7_752.0),
+        (0x380, 8_736.0),
+        (0x3C0, 10_428.0),
+        (0x3FF, 12_208.0),
+    ],
+    cutoff_anchors_hi: &[
+        (0x400, 12_235.0),
+        (0x440, 13_943.0),
+        (0x480, 15_691.0),
+        (0x4C0, 17_262.0),
+        (0x500, 18_917.0),
+        (0x540, 19_688.0),
         (0x7FF, 19_688.0),
     ],
     cutoff_ceiling_hz: f64::INFINITY,

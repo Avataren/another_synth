@@ -24,6 +24,8 @@ export interface SidWasmPlayer {
   clear_loop_rows(): void;
   set_gain(gain: number): void;
   set_mute_solo(mute: number, solo: number): void;
+  /** Play the 6581 as revision `name` (`Sid6581Revision`) from now on; `false` for an unknown name. An 8580 song ignores it. */
+  set_revision(name: string): boolean;
   /** Mix into `out`, voice taps into `v0..v2`; silence while paused. Returns frames. */
   render(out: Float32Array, v0: Float32Array, v1: Float32Array, v2: Float32Array): number;
   song_row(): number;
@@ -40,6 +42,13 @@ export interface SidWasmPlayer {
   preview_note_off(): void;
   free(): void;
 }
+
+/**
+ * Which 6581 the chip plays (`DieRevision::name`, rust-wasm/src/sid/revision.rs):
+ * `gt` is GoatTracker's reSID filter (the default); `r2`, `r3`, `r4` are real
+ * chips measured from recordings; `r4ar` is the older generic profile.
+ */
+export type Sid6581Revision = 'gt' | 'r2' | 'r3' | 'r4' | 'r4ar';
 
 export type SidWasmPlayerCtor = new (bytes: Uint8Array, sampleRate: number) => SidWasmPlayer;
 
@@ -81,6 +90,8 @@ export type SidCommand =
   | { type: 'set-stop-at-end'; enabled: boolean }
   /** Bit masks, bit `i` = voice `i`. Outlives the song. */
   | { type: 'set-mute-solo'; mute: number; solo: number }
+  /** The 6581 revision, applied at once without a reload. Outlives the song. */
+  | { type: 'set-revision'; revision: Sid6581Revision }
   /** Keyboard-preview worklet: every song loaded from now on is a preview voice. Send it before the load. */
   | { type: 'set-preview'; enabled: boolean }
   /** Preview: `instrument` (1-based) at note table index `note` (0 = C-0 .. 92 = G#7). */
@@ -114,6 +125,7 @@ export class SidProcessorCore {
   private stopAtEnd = false;
   private mute = 0;
   private solo = 0;
+  private revision: Sid6581Revision = 'gt';
   private preview = false;
   private loop: { start: number; end: number } | null = null;
   private framesSincePosition = 0;
@@ -166,6 +178,10 @@ export class SidProcessorCore {
         this.mute = command.mute >>> 0;
         this.solo = command.solo >>> 0;
         this.player?.set_mute_solo(this.mute, this.solo);
+        break;
+      case 'set-revision':
+        this.revision = command.revision;
+        this.player?.set_revision(command.revision);
         break;
       case 'set-preview':
         this.preview = command.enabled;
@@ -226,6 +242,7 @@ export class SidProcessorCore {
       const player = new this.PlayerCtor(data, this.sampleRate);
       player.set_gain(this.gain);
       player.set_mute_solo(this.mute, this.solo);
+      player.set_revision(this.revision);
       if (this.preview) player.enable_preview();
       this.player = player;
       this.applyLoop();

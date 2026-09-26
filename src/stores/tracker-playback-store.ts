@@ -14,6 +14,7 @@ import {
   type PlaybackMode,
 } from 'src/audio/tracker/ahx-song-transport';
 import { SidSongTransport } from 'src/audio/tracker/sid-song-transport';
+import type { Sid6581Revision } from 'src/audio/tracker/sid-player';
 import { debugLog } from 'src/diagnostics/debug-log';
 
 export type { PlaybackMode };
@@ -489,6 +490,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   /** The SID keyboard preview voice's full scale, for the instrument page's scope (`null`: not known yet). */
   function getSidPreviewFullScale(): number | null {
     return sid.previewFullScale();
+  }
+
+  /** Play SID songs' 6581 as `revision` (the user's setting), at once, mid-song. */
+  function setSidRevision(revision: Sid6581Revision): void {
+    sid.setRevision(revision);
   }
 
   /** The SID transport itself (tests and diagnostics). */
@@ -1037,6 +1043,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     getSidVoiceFullScale,
     getSidPreviewFullScale,
     sidTransport,
+    setSidRevision,
 
     // Mute/Solo
     toggleMute,

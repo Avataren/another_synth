@@ -242,6 +242,29 @@ impl Chip {
         })
     }
 
+    /// Switch the 6581 revision while playing: the filter's curve, resonance
+    /// and soft limit, the voices' DAC DC, the gain and the volume DAC all
+    /// become `profile`'s, exactly what `with_profile` would have built.
+    /// Oscillators, envelopes, registers and filter state carry on. An 8580
+    /// keeps its own traits (the filter only records the profile).
+    pub fn set_profile(&mut self, profile: &'static RevisionProfile) {
+        self.filter.set_profile(profile);
+        if self.model == SidModel::Sid6581 {
+            for v in self.voices.iter_mut() {
+                v.set_dc(profile.voice_dc);
+            }
+            self.trim = profile.gain_trim;
+            self.base_gain = profile.chip_gain(CHIP_GAIN);
+            self.mix_dc = profile.mix_dc;
+            self.volume_dac = profile.volume_table();
+        }
+    }
+
+    /// The revision profile the chip plays (on an 8580, the one it was given).
+    pub fn profile(&self) -> &'static RevisionProfile {
+        self.filter.profile()
+    }
+
     /// Which voices reach the output (bit `i` = voice `i`; `ALL_VOICES` is the
     /// real chip). A masked voice still runs (sync, ring mod and OSC3/ENV3
     /// are unaffected); only its contribution to the mix and its tap drop.

@@ -7,6 +7,7 @@ import {
   defaultSampleOversampleFactor,
 } from 'src/audio/device-profile';
 import { setSampleQuality } from 'src/audio/sample-quality';
+import type { Sid6581Revision } from 'src/audio/worklets/sid-core';
 
 /**
  * User settings interface
@@ -151,6 +152,15 @@ export interface UserSettings {
     ceilingDb: number;
     releaseMs: number;
   };
+
+  /**
+   * Which 6581 a SID song plays on (8580 songs are unaffected). `gt` is the
+   * filter GoatTracker's playback has, what GT songs were mixed against, so it
+   * is the default; `r2`, `r3` and `r4` are real chips measured from
+   * recordings (rust-wasm/src/sid/revision.rs), brighter to darker: r3 > r2 >
+   * r4. Applied live, mid-song.
+   */
+  sid6581Revision: Sid6581Revision;
 }
 
 /**
@@ -226,6 +236,7 @@ export const defaultSettings: UserSettings = {
     ceilingDb: -1.5,
     releaseMs: 150,
   },
+  sid6581Revision: 'gt',
 };
 
 const STORAGE_KEY = 'synth-user-settings';

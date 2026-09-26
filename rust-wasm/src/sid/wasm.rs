@@ -13,6 +13,7 @@
 //! natively.
 
 use super::chip::ALL_VOICES;
+use super::revision::DieRevision;
 use super::song::SidSong;
 use super::{SidModel, SidSongPlayer, GT_NOTE_COUNT};
 #[cfg(feature = "wasm")]
@@ -132,6 +133,24 @@ impl SidPlayer {
             SidModel::Sid8580 => "8580".to_string(),
             SidModel::Sid6581 => "6581".to_string(),
         }
+    }
+
+    /// Play the 6581 as revision `name` (`DieRevision::name`: "gt", "r2",
+    /// "r3", "r4", "r4ar") from the next sample on, without a reload. An 8580
+    /// song keeps its chip. `false` for an unknown name, which changes nothing.
+    pub fn set_revision(&mut self, name: &str) -> bool {
+        match DieRevision::from_name(name) {
+            Some(r) => {
+                self.player.chip_mut().set_profile(r.profile());
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The name of the 6581 revision the chip plays (`set_revision`).
+    pub fn revision(&self) -> String {
+        self.player.chip().profile().revision.name().to_string()
     }
 
     /// A voice tap's full scale (`Chip::tap_full_scale`) at gain 1.0.

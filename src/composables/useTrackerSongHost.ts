@@ -152,6 +152,13 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
     { immediate: true },
   );
 
+  // The 6581 the user picked in Settings; the SID worklets apply it live.
+  watch(
+    () => userSettingsStore.settings.sid6581Revision,
+    (revision) => playbackStore.setSidRevision(revision),
+    { immediate: true },
+  );
+
   /**
    * Ordered by track index, for the spectrum analyzer's per-channel mode --
    * which only applies to the classic 4-channel Amiga layout.

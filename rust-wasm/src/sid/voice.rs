@@ -147,6 +147,11 @@ impl Voice {
         }
     }
 
+    /// Set the 6581 DAC offset (`with_dc`), e.g. on a revision switch.
+    pub fn set_dc(&mut self, dc: f64) {
+        self.dc = dc;
+    }
+
     pub fn model(&self) -> SidModel {
         self.model
     }

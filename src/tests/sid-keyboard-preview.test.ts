@@ -23,6 +23,7 @@ function fakeClient(): FakeClient {
     audioContext: context,
     output: { connect: () => undefined },
     setPreview: () => undefined,
+    setRevision: () => undefined,
     loadSong: () => {
       log.push('load');
       return Promise.resolve({});

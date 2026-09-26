@@ -1,6 +1,6 @@
-import type { SidCommand, SidEvent, SidSongInfo } from 'src/audio/worklets/sid-core';
+import type { Sid6581Revision, SidCommand, SidEvent, SidSongInfo } from 'src/audio/worklets/sid-core';
 
-export type { SidSongInfo } from 'src/audio/worklets/sid-core';
+export type { Sid6581Revision, SidSongInfo } from 'src/audio/worklets/sid-core';
 
 /** Where the SID song is, as the worklet last reported it (about 25 Hz). */
 export interface SidPosition {
@@ -130,6 +130,11 @@ export class SidPlayerClient {
 
   setGain(gain: number): void {
     this.send({ type: 'set-gain', gain });
+  }
+
+  /** Which 6581 the chip plays; heard at once, no reload. Outlives the song. */
+  setRevision(revision: Sid6581Revision): void {
+    this.send({ type: 'set-revision', revision });
   }
 
   /** Make this worklet a preview voice: songs loaded from now on are played by keys. Before the load. */

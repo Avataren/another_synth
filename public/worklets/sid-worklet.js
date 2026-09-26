@@ -2526,6 +2526,19 @@ var SidPlayer = class {
     return ret !== 0;
   }
   /**
+   * Play the 6581 as revision `name` (`DieRevision::name`: "gt", "r2",
+   * "r3", "r4", "r4ar") from the next sample on, without a reload. An 8580
+   * song keeps its chip. `false` for an unknown name, which changes nothing.
+   * @param {string} name
+   * @returns {boolean}
+   */
+  set_revision(name) {
+    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.sidplayer_set_revision(this.__wbg_ptr, ptr0, len0);
+    return ret !== 0;
+  }
+  /**
    * Loops song rows `start..end` (`end` exclusive; `end <= start` plays on).
    * @param {number} start
    * @param {number} end
@@ -2651,6 +2664,22 @@ var SidPlayer = class {
   channels() {
     const ret = wasm.sidplayer_channels(this.__wbg_ptr);
     return ret >>> 0;
+  }
+  /**
+   * The name of the 6581 revision the chip plays (`set_revision`).
+   * @returns {string}
+   */
+  revision() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+      const ret = wasm.sidplayer_revision(this.__wbg_ptr);
+      deferred1_0 = ret[0];
+      deferred1_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
   }
   /**
    * Moves to the start of song row `row`, keeping the play/pause state
@@ -3357,6 +3386,7 @@ var SidProcessorCore = class {
     __publicField(this, "stopAtEnd", false);
     __publicField(this, "mute", 0);
     __publicField(this, "solo", 0);
+    __publicField(this, "revision", "gt");
     __publicField(this, "preview", false);
     __publicField(this, "loop", null);
     __publicField(this, "framesSincePosition", 0);
@@ -3402,6 +3432,10 @@ var SidProcessorCore = class {
         this.mute = command.mute >>> 0;
         this.solo = command.solo >>> 0;
         this.player?.set_mute_solo(this.mute, this.solo);
+        break;
+      case "set-revision":
+        this.revision = command.revision;
+        this.player?.set_revision(command.revision);
         break;
       case "set-preview":
         this.preview = command.enabled;
@@ -3459,6 +3493,7 @@ var SidProcessorCore = class {
       const player = new this.PlayerCtor(data, this.sampleRate);
       player.set_gain(this.gain);
       player.set_mute_solo(this.mute, this.solo);
+      player.set_revision(this.revision);
       if (this.preview) player.enable_preview();
       this.player = player;
       this.applyLoop();

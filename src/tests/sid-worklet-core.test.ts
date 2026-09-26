@@ -214,4 +214,35 @@ describe('SidProcessorCore over the real wasm', () => {
     expect(core.disposed).toBe(true);
     expect(peak(render(core, 4410).mix)).toBe(0);
   });
+  it('plays the 6581 revision it is told, whether told before or after the load', () => {
+    const run = (setup: (core: SidProcessorCore) => void) => {
+      const { core } = newCore();
+      setup(core);
+      core.handle({ type: 'play' });
+      return render(core, ROW * 16).mix;
+    };
+    const load = (core: SidProcessorCore) => core.handle({ type: 'load-song', id: nextId++, bytes: chainBytes() });
+    const gt = run(load);
+    const r3First = run((core) => {
+      core.handle({ type: 'set-revision', revision: 'r3' });
+      load(core);
+    });
+    const r3After = run((core) => {
+      load(core);
+      core.handle({ type: 'set-revision', revision: 'r3' });
+    });
+    const gtAgain = run((core) => {
+      core.handle({ type: 'set-revision', revision: 'r3' });
+      load(core);
+      core.handle({ type: 'set-revision', revision: 'gt' });
+    });
+    // The setting outlives the song: before the load or after, the same sound.
+    expect(r3After).toEqual(r3First);
+    expect(gtAgain).toEqual(gt);
+    // Voice 3's filtered saw (from row 10) is heard through R3's brighter filter.
+    const from = ROW * 10;
+    let diff = 0;
+    for (let i = from; i < gt.length; i++) diff = Math.max(diff, Math.abs((gt[i] ?? 0) - (r3First[i] ?? 0)));
+    expect(diff).toBeGreaterThan(0.01 * peak(gt));
+  });
 });

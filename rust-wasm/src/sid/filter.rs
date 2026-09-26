@@ -285,6 +285,18 @@ impl Filter {
         self.mode
     }
 
+    /// The 6581 profile this filter plays (an 8580 ignores it).
+    pub fn profile(&self) -> &'static RevisionProfile {
+        self.profile
+    }
+
+    /// Play `profile` from now on: the coefficients are recomputed for the
+    /// current registers, the integrator state carries on.
+    pub fn set_profile(&mut self, profile: &'static RevisionProfile) {
+        self.profile = profile;
+        self.set(self.cutoff_reg, self.res);
+    }
+
     /// Mode bits (LP/BP/HP); other bits are ignored.
     pub fn set_mode(&mut self, mode: u8) {
         self.mode = mode & (LP | BP | HP);

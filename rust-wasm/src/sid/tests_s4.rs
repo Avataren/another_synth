@@ -387,3 +387,23 @@ fn sid_player_preview_sounds_without_play() {
     assert!(peak > 0.05, "preview is audible: {peak}");
     assert_eq!(p.song_row(), 0);
 }
+
+#[test]
+fn sid_player_shell_switches_the_6581_revision_while_playing() {
+    let mut song = chord();
+    song.model = SidModel::Sid6581;
+    let bytes = song.to_bytes();
+    let mut p = SidPlayer::new(&bytes, 44_100.0).unwrap();
+    assert_eq!(p.revision(), "gt");
+    p.play();
+    let (mut out, mut a, mut b, mut c) = (vec![0.0; 4096], vec![0.0; 4096], vec![0.0; 4096], vec![0.0; 4096]);
+    p.render(&mut out, &mut a, &mut b, &mut c);
+    for name in ["r2", "r3", "r4", "r4ar", "gt"] {
+        assert!(p.set_revision(name), "{name}");
+        assert_eq!(p.revision(), name);
+        assert!(p.is_playing());
+        p.render(&mut out, &mut a, &mut b, &mut c);
+    }
+    assert!(!p.set_revision("r5"));
+    assert_eq!(p.revision(), "gt");
+}

@@ -1,7 +1,7 @@
 import type { Ref } from 'vue';
 import type { Song as PlaybackSong } from '@another-synth/tracker-playback';
 import { SID_INDEX_TO_MIDI, serializeSidFile, sidDocForSubsong, type SidDoc } from 'src/audio/tracker/sid-doc';
-import { createSidPlayer, type SidPlayerClient, type SidPosition } from 'src/audio/tracker/sid-player';
+import { createSidPlayer, type Sid6581Revision, type SidPlayerClient, type SidPosition } from 'src/audio/tracker/sid-player';
 import { reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 
@@ -93,8 +93,21 @@ export class SidSongTransport {
   /** Bumped by every preview note-on and note-off: a strike still awaiting the voice goes only if nothing came after it. */
   private previewSeq = 0;
   private previewOutputListeners = new Set<(node: AudioNode | null) => void>();
+  /** The 6581 revision both worklets play (the user's setting). */
+  private revision: Sid6581Revision = 'gt';
 
   constructor(private readonly deps: SidSongTransportDeps) {}
+
+  /**
+   * Play the 6581 as `revision` (the song's worklet and the keyboard preview,
+   * now and any made later). Heard at once, mid-song, without a reload; an
+   * 8580 song ignores it.
+   */
+  setRevision(revision: Sid6581Revision): void {
+    this.revision = revision;
+    this.client?.setRevision(revision);
+    this.preview?.setRevision(revision);
+  }
 
   get isActive(): boolean {
     return this.active;
@@ -190,6 +203,7 @@ export class SidSongTransport {
       .then((client) => {
         client.output.connect(bank.output);
         client.setStopAtEnd(!this.deps.loopSong.value);
+        client.setRevision(this.revision);
         this.clientUnsubs = [
           client.onPosition(this.handlePosition),
           client.onSongEnd(this.handleSongEnd),
@@ -461,6 +475,7 @@ export class SidSongTransport {
       .then((client) => {
         client.output.connect(bank.output);
         client.setPreview(true);
+        client.setRevision(this.revision);
         this.preview = client;
         for (const listener of this.previewOutputListeners) listener(client.output);
         return client;

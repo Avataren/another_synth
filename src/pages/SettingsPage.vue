@@ -533,6 +533,48 @@
                 </div>
               </div>
             </section>
+
+            <section class="settings-section">
+              <div class="section-header">
+                <h2>SID Chip</h2>
+              </div>
+              <div class="settings-content">
+                <div class="select-setting">
+                  <label class="select-label" for="sid-6581-revision">
+                    6581 revision
+                  </label>
+                  <select
+                    id="sid-6581-revision"
+                    class="setting-select"
+                    :value="settings.sid6581Revision"
+                    @change="
+                      updateSetting(
+                        'sid6581Revision',
+                        ($event.target as HTMLSelectElement)
+                          .value as Sid6581Revision,
+                      )
+                    "
+                  >
+                    <option
+                      v-for="option in sidRevisionOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                  <span class="toggle-description">
+                    The 6581's filter differed from chip to chip, often by more
+                    than between revisions: the same song can sound muffled on
+                    one C64 and bright on another. GoatTracker's filter is what
+                    most GT songs were mixed against. The others are real chips,
+                    measured from recordings (one of each), and open well past
+                    GoatTracker's 4 kHz cutoff limit. 8580 songs are unaffected;
+                    a change is heard at once, even mid-song.
+                  </span>
+                </div>
+              </div>
+            </section>
           </template>
         </div>
       </transition>
@@ -634,6 +676,7 @@ import {
   defaultAudioLatencyMode,
   defaultAudioSampleRate,
 } from 'src/audio/device-profile';
+import type { Sid6581Revision } from 'src/audio/worklets/sid-core';
 import AppVersion from 'src/components/AppVersion.vue';
 
 const themeStore = useThemeStore();
@@ -658,6 +701,14 @@ const {
 const userSettingsStore = useUserSettingsStore();
 const { settings } = storeToRefs(userSettingsStore);
 const { updateSetting } = userSettingsStore;
+
+/** The 6581 revisions offered, in the order of the chips' brightness after the default. */
+const sidRevisionOptions: { value: Sid6581Revision; label: string }[] = [
+  { value: 'gt', label: 'GoatTracker (reSID) — default' },
+  { value: 'r3', label: 'R3 — bright (real chip, 1983)' },
+  { value: 'r2', label: 'R2 — bright (real chip, 1982)' },
+  { value: 'r4', label: 'R4 — dark (real chip, 1987)' },
+];
 
 const tabs = [
   { id: 'appearance' as const, label: 'Appearance' },
