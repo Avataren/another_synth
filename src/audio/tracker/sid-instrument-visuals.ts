@@ -246,7 +246,7 @@ export function sidCutoffHz(model: SidChipModel, reg: number): number {
 
 /** `resonance_q_for`: the resonance nibble's Q on `model`. */
 export function sidResonanceQ(model: SidChipModel, res: number): number {
-  return model === '8580' ? 0.707 * 2 ** ((res & 0xf) / 8) : 0.707 + 0.0698 * (res & 0xf);
+  return model === '8580' ? 0.707 + (res & 0xf) / 15 : 0.707 + 0.0698 * (res & 0xf);
 }
 
 /**

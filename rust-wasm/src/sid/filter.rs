@@ -21,7 +21,13 @@
 //! - Cutoff: 11-bit register (FC_LO bits 0-2, FC_HI bits 0-7). The 8580 curve
 //!   is documented as near-linear over the datasheet range, so
 //!   fc = 30 + reg * (12000 - 30) / 2047 Hz (5.85 Hz per step).
-//! - Resonance: Q = 0.707 * 2^(res / 8). Butterworth at 0, +8.3 dB peak at 15.
+//! - Resonance: Q = 0.707 + res / 15. Butterworth at 0, Q 1.707 (+4.6 dB)
+//!   at 15: GoatTracker's reSID map (filter.cpp:269-278, one map for both
+//!   models; `.ai/sid-chip-comparison-report.md` 6.6). S0's inferred
+//!   0.707 * 2^(res / 8) reached Q 2.59 and ran resonant 8580 songs ~3.6 dB
+//!   hot: plasma_intro's res-15 HP+BP bass attacks peaked at 0.87 with
+//!   1.3x GT's RMS, into the app's limiter; with this map they match GT's
+//!   RMS within 2 %.
 //! - Ceiling (S5.12): `Filter::set` clamps the mapped cutoff to 4 kHz, the
 //!   limit GoatTracker 2's reSID playback applies (`CUTOFF_CEILING_DELTA_HZ`),
 //!   on the 8580 and on the 6581 profiles that follow GT (`GT_REF`, `R4AR`).
@@ -83,9 +89,9 @@ pub fn cutoff_hz(reg: u16) -> f64 {
     30.0 + (reg & 0x7FF) as f64 * (12_000.0 - 30.0) / 2047.0
 }
 
-/// 8580 resonance nibble -> Q.
+/// 8580 resonance nibble -> Q: GoatTracker's reSID map (header).
 pub fn resonance_q(res: u8) -> f64 {
-    0.707 * 2f64.powf((res & 0xF) as f64 / 8.0)
+    0.707 + (res & 0xF) as f64 / 15.0
 }
 
 /// 6581 cutoff floor (register 0), Hz.
@@ -371,7 +377,8 @@ mod tests {
         assert!((cutoff_hz(0x7FF) - 12_000.0).abs() < 1e-9);
         assert_eq!(cutoff_hz(0x800), cutoff_hz(0)); // 11 bits only
         assert!((resonance_q(0) - 0.707).abs() < 1e-12);
-        assert!((resonance_q(8) - 1.414).abs() < 1e-12);
+        assert!((resonance_q(15) - 1.707).abs() < 1e-12);
+        assert!((resonance_q(8) - (0.707 + 8.0 / 15.0)).abs() < 1e-12);
         for r in 0..15 {
             assert!(resonance_q(r + 1) > resonance_q(r));
         }
@@ -557,7 +564,7 @@ mod tests {
     #[test]
     fn resonance_6581_is_weaker_than_the_8580() {
         // Q = 0.707 * 2^(res/12): 0 -> 0.707, 12 -> 1.414, 15 -> 0.707 * 2^1.25
-        // = 0.707 * 2.378414 = 1.681539. The 8580 reaches 2.6 at 15.
+        // = 0.707 * 2.378414 = 1.681539. The 8580 (reSID's map) reaches 1.707.
         assert!((resonance_q_6581_with(&R4AR, 0) - 0.707).abs() < 1e-12);
         assert!((resonance_q_6581_with(&R4AR, 12) - 1.414).abs() < 1e-12);
         assert!((resonance_q_6581_with(&R4AR, 15) - 1.681539).abs() < 1e-6);

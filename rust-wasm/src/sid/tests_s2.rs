@@ -118,13 +118,16 @@ fn check_pin(model: SidModel, hash: u64, values: &[u32]) {
 /// before 4_410, are unchanged). With the fitted thresholds set back to
 /// plain AND / 1536 and the old 6581 cutoff map, both old pins reproduced
 /// bit-exactly, so those two fixes are the whole change.
-const PIN_8580_HASH: u64 = 0xdcc0_3268_6ce7_5fb2;
+/// Re-captured for the 8580 resonance map (reSID's 0.707 + res / 15; the
+/// program's res 10 goes from Q 1.68 to 1.37). With S0's exponential map
+/// back, the previous pin reproduced bit-exactly.
+const PIN_8580_HASH: u64 = 0x90e5_528f_4cec_f367;
 const PIN_8580_VALUES: [u32; 33] = [
-    0x3a2732a2, 0xbdaf3087, 0xbab77906, 0x3e82a673, 0x3e90d05f, 0xbe008509, 0xbe75070c,
-    0x3e863d77, 0x3ee014eb, 0x3dc99392, 0xbc3fd25f, 0xbd3dd8ee, 0xbd352993, 0xbe1b8f53,
-    0x3e6d4caf, 0x3ea1993b, 0xbd0884cf, 0x3e827275, 0x3d8120d7, 0xbdaba425, 0x3e69e9f7,
-    0xbdbfc0ae, 0x3ddc3a11, 0x3d162f24, 0x3c8f11db, 0x3bb60fc8, 0x3b23fbc5, 0xbe9a9200,
-    0xbdd65304, 0xbdb64948, 0xbdb2fe7b, 0x3dc74b62, 0xbdc06f45,
+    0x3a29691d, 0xbda35198, 0x39be78be, 0x3e83b39b, 0x3e91955f, 0xbe075d23, 0xbe6b2b6a,
+    0x3e835faf, 0x3ee2b9c6, 0x3dac74b7, 0x3bc93b22, 0xbd050b5c, 0xbd3393fb, 0xbe24c18f,
+    0x3e72bbc0, 0x3e9a318a, 0xbbbae05b, 0x3e7fb744, 0x3d8127a3, 0xbdb4b7d8, 0x3e69c45d,
+    0xbdc93b0d, 0x3ddc051c, 0x3d15e992, 0x3c8f2d73, 0x3bb6c5d0, 0x3b241134, 0xbe9a91ea,
+    0xbdd652f6, 0xbdb64946, 0xbdb2fe7b, 0x3dc74b62, 0xbdc06f45,
 ];
 
 #[test]
@@ -229,9 +232,8 @@ fn same_program_both_models_sane_and_different() {
 fn each_instance_uses_its_own_filter_maps() {
     // Same register writes; each chip's filter reports its own map.
     // Hand values from filter.rs: reg 0x200 -> 8580 3023.96 Hz, 6581 420 Hz
-    // (a measured anchor since S5.12 R2; S2's logistic gave 383.63). Res 15 -> 8580 Q 0.707 * 2^1.875 = 0.707 * 3.668016 = 2.593287
-    // (first written as 2.6093, an arithmetic slip the test caught);
-    // 6581 1.681539.
+    // (a measured anchor since S5.12 R2; S2's logistic gave 383.63). Res 15 -> 8580 Q 0.707 + 15 / 15 = 1.707
+    // (reSID's map; S0's 0.707 * 2^(res / 8) gave 2.593287); 6581 1.681539.
     let mut a = chip(SidModel::Sid8580);
     let mut b = chip(SidModel::Sid6581);
     for c in [&mut a, &mut b] {
@@ -242,7 +244,7 @@ fn each_instance_uses_its_own_filter_maps() {
     assert_eq!(b.filter().model(), SidModel::Sid6581);
     assert!((a.filter().cutoff() - 3023.96).abs() < 0.01);
     assert!((b.filter().cutoff() - 420.0).abs() < 1e-9);
-    assert!((a.filter().q() - 2.593287).abs() < 1e-6);
+    assert!((a.filter().q() - 1.707).abs() < 1e-12);
     assert!((b.filter().q() - 1.681539).abs() < 1e-6);
     for c in [&a, &b] {
         for i in 0..3 {
