@@ -17,8 +17,11 @@ import {
   PANEL_CHROME_PX,
   type PatternLayout,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
-import { trackWidthPx } from 'src/components/tracker/track-metrics';
+import { trackColumns, trackWidthPx } from 'src/components/tracker/track-metrics';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
+
+const STD = trackColumns(true, false);
+const DUAL = trackColumns(true, true);
 
 /**
  * The canvas pattern renderer draws clicks and cells onto the same pixels the
@@ -32,7 +35,7 @@ import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 
 const layout = (trackCount = 4, showExtraEffectColumn = false, rowCount = 64): PatternLayout => ({
   trackCount,
-  showExtraEffectColumn,
+  columns: trackColumns(true, showExtraEffectColumn),
   rowCount,
 });
 
@@ -54,17 +57,17 @@ describe('row metrics', () => {
 describe('totalTracksWidth', () => {
   it('has no trailing gap after the last column', () => {
     // Width of n columns + (n-1) gaps; re-derived from track-metrics.
-    expect(totalTracksWidth(1, false)).toBe(180);
-    expect(totalTracksWidth(2, false)).toBe(180 + 10 + 180);
-    expect(totalTracksWidth(4, true)).toBe(4 * 240 + 3 * 10);
+    expect(totalTracksWidth(1, STD)).toBe(180);
+    expect(totalTracksWidth(2, STD)).toBe(180 + 10 + 180);
+    expect(totalTracksWidth(4, DUAL)).toBe(4 * 240 + 3 * 10);
   });
 
   it('uses the tightened pitch past eight channels', () => {
-    expect(totalTracksWidth(9, false)).toBe(9 * 168 + 8 * 6);
+    expect(totalTracksWidth(9, STD)).toBe(9 * 168 + 8 * 6);
   });
 
   it('is zero for an empty pattern', () => {
-    expect(totalTracksWidth(0, false)).toBe(0);
+    expect(totalTracksWidth(0, STD)).toBe(0);
   });
 });
 
@@ -86,7 +89,7 @@ describe('columnFractionOffsets', () => {
   it('reproduces the five CSS fr ratios', () => {
     const content = 180 - 2 * entryHorizontalInsetPx;
     const unit = content / (1.6 + 1 + 0.35 + 0.35 + 1.8);
-    const offsets = columnFractionOffsets(180, false);
+    const offsets = columnFractionOffsets(180, STD);
     expect(offsets).toHaveLength(6);
     expect(offsets[1]).toBeCloseTo(1.6 * unit, 6);
     expect(offsets[2]).toBeCloseTo(2.6 * unit, 6);
@@ -98,31 +101,31 @@ describe('columnFractionOffsets', () => {
   it('reproduces the dual-effect six-column ratios', () => {
     const content = 240 - 2 * entryHorizontalInsetPx;
     const unit = content / (1.6 + 1 + 0.35 + 0.35 + 1.5 + 1.5);
-    const offsets = columnFractionOffsets(240, true);
+    const offsets = columnFractionOffsets(240, DUAL);
     expect(offsets).toHaveLength(7);
     expect(offsets[5]).toBeCloseTo(4.8 * unit, 6);
     expect(offsets[6]).toBeCloseTo(content, 6);
   });
 
   it('starts every column set at the content origin', () => {
-    expect(columnFractionOffsets(180, false)[0]).toBe(0);
-    expect(columnFractionOffsets(240, true)[0]).toBe(0);
+    expect(columnFractionOffsets(180, STD)[0]).toBe(0);
+    expect(columnFractionOffsets(240, DUAL)[0]).toBe(0);
   });
 });
 
 describe('macroNibbleWidth', () => {
   it('is one third of the effect column, either mode', () => {
-    const offsets5 = columnFractionOffsets(180, false);
-    expect(macroNibbleWidth(180, false)).toBeCloseTo((offsets5[5]! - offsets5[4]!) / 3, 6);
+    const offsets5 = columnFractionOffsets(180, STD);
+    expect(macroNibbleWidth(180, STD)).toBeCloseTo((offsets5[5]! - offsets5[4]!) / 3, 6);
 
-    const offsets6 = columnFractionOffsets(240, true);
-    expect(macroNibbleWidth(240, true)).toBeCloseTo((offsets6[5]! - offsets6[4]!) / 3, 6);
+    const offsets6 = columnFractionOffsets(240, DUAL);
+    expect(macroNibbleWidth(240, DUAL)).toBeCloseTo((offsets6[5]! - offsets6[4]!) / 3, 6);
   });
 
   it('keeps nibbles equal width within their column', () => {
-    const w = macroNibbleWidth(180, false);
+    const w = macroNibbleWidth(180, STD);
     // Three nibbles tile the effect column exactly.
-    expect(3 * w).toBeCloseTo(columnFractionOffsets(180, false)[5]! - columnFractionOffsets(180, false)[4]!, 6);
+    expect(3 * w).toBeCloseTo(columnFractionOffsets(180, STD)[5]! - columnFractionOffsets(180, STD)[4]!, 6);
   });
 });
 
@@ -130,30 +133,30 @@ describe('panel width and analyser gutter reserve', () => {
   it('sizes the panel to the content width plus its chrome', () => {
     // 18px padding per side + 1px border per side.
     expect(PANEL_CHROME_PX).toBe(38);
-    expect(patternPanelWidth(GUTTER_WIDTH_PX + totalTracksWidth(2, false))).toBe(448 + 38);
-    expect(patternPanelWidth(GUTTER_WIDTH_PX + totalTracksWidth(4, false))).toBe(828 + 38);
+    expect(patternPanelWidth(GUTTER_WIDTH_PX + totalTracksWidth(2, STD))).toBe(448 + 38);
+    expect(patternPanelWidth(GUTTER_WIDTH_PX + totalTracksWidth(4, STD))).toBe(828 + 38);
   });
 
   it('stays at the natural width for a small song (no viewport fill)', () => {
     // Bug 2: the DOM grid renders a 4ch song as a narrow centered grid. The
     // panel width must derive from the content, never from the viewport, so
     // the page centers it with room for the analyser around it.
-    const content = GUTTER_WIDTH_PX + totalTracksWidth(4, false);
+    const content = GUTTER_WIDTH_PX + totalTracksWidth(4, STD);
     expect(patternPanelWidth(content)).toBeLessThan(1000);
   });
 
   it('reserves one track column per side when the analyser is on', () => {
-    expect(reservedSideGutterPx(true, 4, false, 4000)).toBe(trackWidthPx(4, false));
-    expect(reservedSideGutterPx(true, 2, false, 4000)).toBe(trackWidthPx(2, false));
+    expect(reservedSideGutterPx(true, 4, STD, 4000)).toBe(trackWidthPx(4, STD));
+    expect(reservedSideGutterPx(true, 2, STD, 4000)).toBe(trackWidthPx(2, STD));
   });
 
   it('caps the reserve at 15% of the available width', () => {
-    expect(reservedSideGutterPx(true, 4, false, 1000)).toBe(150);
-    expect(reservedSideGutterPx(true, 4, false, 100)).toBe(15);
+    expect(reservedSideGutterPx(true, 4, STD, 1000)).toBe(150);
+    expect(reservedSideGutterPx(true, 4, STD, 100)).toBe(15);
   });
 
   it('reserves nothing when the analyser is off', () => {
-    expect(reservedSideGutterPx(false, 4, false, 4000)).toBe(0);
+    expect(reservedSideGutterPx(false, 4, STD, 4000)).toBe(0);
   });
 });
 

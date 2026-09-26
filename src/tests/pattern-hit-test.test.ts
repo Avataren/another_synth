@@ -6,8 +6,11 @@ import {
   type PatternLayout,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
 import { columnFractionOffsets } from 'src/components/tracker/pattern-canvas/pattern-layout';
-import { trackPitchPx, trackWidthPx } from 'src/components/tracker/track-metrics';
+import { trackColumns, trackPitchPx, trackWidthPx } from 'src/components/tracker/track-metrics';
 import { hitTest } from 'src/components/tracker/pattern-canvas/pattern-hit-test';
+
+const STD = trackColumns(true, false);
+const DUAL = trackColumns(true, true);
 
 /**
  * The canvas grid replaces the DOM's data-cell click targets, so a pointer
@@ -20,7 +23,7 @@ import { hitTest } from 'src/components/tracker/pattern-canvas/pattern-hit-test'
 
 const layout = (trackCount = 4, showExtraEffectColumn = false, rowCount = 64): PatternLayout => ({
   trackCount,
-  showExtraEffectColumn,
+  columns: trackColumns(true, showExtraEffectColumn),
   rowCount,
 });
 
@@ -32,9 +35,9 @@ function cellCenter(
   count: number,
   extra: boolean,
 ): { x: number; y: number } {
-  const pitch = trackPitchPx(count, extra);
-  const width = trackWidthPx(count, extra);
-  const offsets = columnFractionOffsets(width, extra);
+  const pitch = trackPitchPx(count, trackColumns(true, extra));
+  const width = trackWidthPx(count, trackColumns(true, extra));
+  const offsets = columnFractionOffsets(width, trackColumns(true, extra));
   const x = trackIndex * pitch + entryHorizontalInsetPx + (offsets[column]! + offsets[column + 1]!) / 2;
   const y = row * (rowHeightPx + rowGapPx) + rowHeightPx / 2;
   return { x, y };
@@ -72,9 +75,9 @@ describe('hitTest round-trips through the layout', () => {
 describe('effect columns report macro nibbles', () => {
   it('splits column 4 into three nibbles, single-effect mode', () => {
     const count = 4;
-    const width = trackWidthPx(count, false);
-    const offsets = columnFractionOffsets(width, false);
-    const colLeft = trackWidthPx(count, false) * 0 + entryHorizontalInsetPx + offsets[4]!;
+    const width = trackWidthPx(count, STD);
+    const offsets = columnFractionOffsets(width, STD);
+    const colLeft = trackWidthPx(count, STD) * 0 + entryHorizontalInsetPx + offsets[4]!;
     const nibble = (offsets[5]! - offsets[4]!) / 3;
     for (const n of [0, 1, 2]) {
       const x = colLeft + nibble * (n + 0.5);
@@ -90,8 +93,8 @@ describe('effect columns report macro nibbles', () => {
 
   it('splits columns 4 and 5 into nibbles in dual-effect mode', () => {
     const count = 4;
-    const width = trackWidthPx(count, true);
-    const offsets = columnFractionOffsets(width, true);
+    const width = trackWidthPx(count, DUAL);
+    const offsets = columnFractionOffsets(width, DUAL);
     for (const column of [4, 5]) {
       const left = entryHorizontalInsetPx + offsets[column]!;
       const nibble = (offsets[column + 1]! - offsets[column]!) / 3;
@@ -103,8 +106,8 @@ describe('effect columns report macro nibbles', () => {
 
   it('clamps nibble indices to 0-2 at the column edges', () => {
     const count = 4;
-    const width = trackWidthPx(count, false);
-    const offsets = columnFractionOffsets(width, false);
+    const width = trackWidthPx(count, STD);
+    const offsets = columnFractionOffsets(width, STD);
     const colLeft = entryHorizontalInsetPx + offsets[4]!;
     const colRight = entryHorizontalInsetPx + offsets[5]!;
     const hitFirst = hitTest(colLeft + 0.5, 15, layout(count), 0);
@@ -121,7 +124,7 @@ describe('dead space and boundaries', () => {
   });
 
   it('hits nothing in the track gap between columns', () => {
-    const x = trackWidthPx(4, false) + 5; // inside the 10px gap after track 0
+    const x = trackWidthPx(4, STD) + 5; // inside the 10px gap after track 0
     expect(hitTest(x, 15, layout(), 0)).toBeNull();
   });
 
@@ -132,7 +135,7 @@ describe('dead space and boundaries', () => {
 
   it('hits nothing beyond the last track or last row', () => {
     const count = 4;
-    const beyond = trackPitchPx(count, false) * count + 50;
+    const beyond = trackPitchPx(count, STD) * count + 50;
     expect(hitTest(beyond, 15, layout(count), 0)).toBeNull();
     const below = 64 * (rowHeightPx + rowGapPx);
     expect(hitTest(50, below, layout(count), 0)).toBeNull();
@@ -163,5 +166,26 @@ describe('scroll offset', () => {
     const scrollTop = row * (rowHeightPx + rowGapPx);
     // y=0 in the scrolled view is row 10's top edge.
     expect(hitTest(20, 0, layout(), scrollTop)).toEqual({ row: 10, trackIndex: 0, column: 0 });
+  });
+});
+
+describe('a song without a volume column', () => {
+  const noVolume = (trackCount = 4): PatternLayout => ({
+    trackCount,
+    columns: trackColumns(false, false),
+    rowCount: 64,
+  });
+
+  it('never hits the volume columns: the effect cell follows the instrument', () => {
+    const columns = trackColumns(false, false);
+    const width = trackWidthPx(4, columns);
+    const offsets = columnFractionOffsets(width, columns);
+    const hits = new Set<number>();
+    for (let x = entryHorizontalInsetPx; x < width - entryHorizontalInsetPx; x += 0.5) {
+      const hit = hitTest(x, rowHeightPx / 2, noVolume(), 0);
+      if (hit) hits.add(hit.column);
+    }
+    expect([...hits].sort()).toEqual([0, 1, 4]);
+    expect(offsets[2]).toBe(offsets[4]);
   });
 });

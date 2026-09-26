@@ -15,6 +15,9 @@ import { stubLog } from './helpers/pattern-canvas-stub';
 import { plistLegendCells, PLIST_TRACK_WIDTH_PX } from 'src/components/ahx/plist-legend';
 import { columnFractionOffsets, entryHorizontalInsetPx, GUTTER_WIDTH_PX } from 'src/components/tracker/pattern-canvas/pattern-layout';
 import { defaultAhxInstrument } from 'src/audio/tracker/ahx-instrument-edit';
+import { trackColumns } from 'src/components/tracker/track-metrics';
+
+const DUAL = trackColumns(true, true);
 
 /**
  * T6: the PList canvas host (batch B3, static). What jsdom can assert: the
@@ -107,7 +110,7 @@ describe('the legend', () => {
     const w = host({ instrument: instrumentWith(2) });
     const cells = plistLegendCells(PLIST_TRACK_WIDTH_PX);
     expect(cells.map((c) => c.label)).toEqual(['Note', 'Tone', 'Command 1', 'Command 2']);
-    const offsets = columnFractionOffsets(PLIST_TRACK_WIDTH_PX, true);
+    const offsets = columnFractionOffsets(PLIST_TRACK_WIDTH_PX, DUAL);
     const wanted = { note: 0, tone: 1, cmd1: 4, cmd2: 5 } as const;
     for (const cell of cells) {
       const node = w.get(`[data-testid="ahx-plist-canvas-legend-${cell.key}"]`);

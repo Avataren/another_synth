@@ -11,6 +11,7 @@ import {
   trackGapPx,
   trackPitchPx,
   trackWidthPx,
+  type TrackColumns,
 } from '../track-metrics';
 import type { TrackerEntryData, TrackerTrackData } from '../tracker-types';
 
@@ -47,19 +48,31 @@ export const entryHorizontalInsetPx = 10 + 1;
  * them out. Without the extra effect column the effect cell is one wider
  * (1.8fr) column holding all three macro nibbles; with it, the effect cell
  * splits into two 1.5fr columns, one per macro.
+ *
+ * Without a volume column (AHX, HVL, SID) both volume digits are zero wide
+ * rather than gone, so column indices keep their meaning: offsets[2] and
+ * offsets[3] sit on the effect column's left edge and nothing can hit them.
  */
-const BASE_FRACTIONS = [1.6, 1, 0.35, 0.35, 1.8] as const;
-const DUAL_FRACTIONS = [1.6, 1, 0.35, 0.35, 1.5, 1.5] as const;
+const FRACTIONS: readonly (readonly (readonly number[])[])[] = [
+  [
+    [1.6, 1, 0, 0, 1.8],
+    [1.6, 1, 0, 0, 1.5, 1.5],
+  ],
+  [
+    [1.6, 1, 0.35, 0.35, 1.8],
+    [1.6, 1, 0.35, 0.35, 1.5, 1.5],
+  ],
+];
 
 /** Width of the whole pattern (all track columns with their gaps). */
 export function totalTracksWidth(
   trackCount: number,
-  showExtraEffectColumn: boolean,
+  columns: TrackColumns,
 ): number {
   if (trackCount <= 0) return 0;
   // Last column has no trailing gap: count widths + (count-1) gaps.
   return (
-    trackCount * trackWidthPx(trackCount, showExtraEffectColumn) +
+    trackCount * trackWidthPx(trackCount, columns) +
     (trackCount - 1) * trackGapPx(trackCount)
   );
 }
@@ -96,12 +109,12 @@ export function patternPanelWidth(contentWidth: number): number {
 export function reservedSideGutterPx(
   reserveSideGutter: boolean,
   trackCount: number,
-  showExtraEffectColumn: boolean,
+  columns: TrackColumns,
   availableWidth: number,
 ): number {
   if (!reserveSideGutter) return 0;
   return Math.min(
-    trackWidthPx(trackCount, showExtraEffectColumn),
+    trackWidthPx(trackCount, columns),
     0.15 * availableWidth,
   );
 }
@@ -119,11 +132,11 @@ export function entryBoxRect(
   row: number,
   layout: PatternLayout,
 ): { x: number; y: number; width: number; height: number } {
-  const pitch = trackPitchPx(layout.trackCount, layout.showExtraEffectColumn);
+  const pitch = trackPitchPx(layout.trackCount, layout.columns);
   return {
     x: trackIndex * pitch,
     y: rowY(row),
-    width: trackWidthPx(layout.trackCount, layout.showExtraEffectColumn),
+    width: trackWidthPx(layout.trackCount, layout.columns),
     height: rowHeightPx,
   };
 }
@@ -141,13 +154,10 @@ export function entryBoxRect(
  *
  * Every cell of a full-grid paint asks for the offsets of the same track
  * width, so this was building an array (and re-running the reduce) once per
- * cell. Both slots are keyed by the width they were computed for; callers
- * only ever read the result, so the array is shared rather than copied.
+ * cell. Each slot is keyed by the width it was computed for; callers only
+ * ever read the result, so the array is shared rather than copied.
  */
-let baseOffsetsWidth = Number.NaN;
-let baseOffsets: readonly number[] = [];
-let dualOffsetsWidth = Number.NaN;
-let dualOffsets: readonly number[] = [];
+const offsetMemo = new Map<TrackColumns, { width: number; offsets: readonly number[] }>();
 
 function computeColumnFractionOffsets(
   trackWidth: number,
@@ -170,20 +180,14 @@ function computeColumnFractionOffsets(
 
 export function columnFractionOffsets(
   trackWidth: number,
-  showExtraEffectColumn: boolean,
+  columns: TrackColumns,
 ): readonly number[] {
-  if (showExtraEffectColumn) {
-    if (dualOffsetsWidth !== trackWidth) {
-      dualOffsets = computeColumnFractionOffsets(trackWidth, DUAL_FRACTIONS);
-      dualOffsetsWidth = trackWidth;
-    }
-    return dualOffsets;
-  }
-  if (baseOffsetsWidth !== trackWidth) {
-    baseOffsets = computeColumnFractionOffsets(trackWidth, BASE_FRACTIONS);
-    baseOffsetsWidth = trackWidth;
-  }
-  return baseOffsets;
+  const memo = offsetMemo.get(columns);
+  if (memo !== undefined && memo.width === trackWidth) return memo.offsets;
+  const fractions = FRACTIONS[columns.volume ? 1 : 0]![columns.extraEffect ? 1 : 0]!;
+  const offsets = computeColumnFractionOffsets(trackWidth, fractions);
+  offsetMemo.set(columns, { width: trackWidth, offsets });
+  return offsets;
 }
 
 /**
@@ -195,9 +199,9 @@ export function columnFractionOffsets(
  */
 export function macroNibbleWidth(
   trackWidth: number,
-  showExtraEffectColumn: boolean,
+  columns: TrackColumns,
 ): number {
-  const offsets = columnFractionOffsets(trackWidth, showExtraEffectColumn);
+  const offsets = columnFractionOffsets(trackWidth, columns);
   // Effect column (index 4) spans offsets[4]..offsets[5].
   return (offsets[5]! - offsets[4]!) / 3;
 }
@@ -205,7 +209,7 @@ export function macroNibbleWidth(
 /** Everything a hit test or cell renderer needs about one pattern's geometry. */
 export interface PatternLayout {
   trackCount: number;
-  showExtraEffectColumn: boolean;
+  columns: TrackColumns;
   rowCount: number;
 }
 

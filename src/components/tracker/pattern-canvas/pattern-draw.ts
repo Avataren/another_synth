@@ -294,7 +294,7 @@ function drawEntryCells(
   // `padding: 6px 10px` + 1px border.
   const contentX = box.x + entryHorizontalInsetPx;
   const contentY = box.y + box.height / 2;
-  const offsets = columnFractionOffsets(box.width, layout.showExtraEffectColumn);
+  const offsets = columnFractionOffsets(box.width, layout.columns);
   const offsetAt = (column: number): number => offsets[column]!;
   const cellLeft = (column: number): number => contentX + offsetAt(column);
   const cellWidth = (column: number): number => offsetAt(column + 1) - offsetAt(column);
@@ -304,8 +304,11 @@ function drawEntryCells(
   drawText(ctx, cells.instrument.display, cellLeft(1), contentY, instrumentColor, theme, opts.bold);
   // Volume chars share the 0.35fr column (TrackerEntry renders both spans
   // side by side; each is one character wide).
-  drawText(ctx, cells.volumeHi.display, cellLeft(2), contentY, volumeColor, theme, opts.bold);
-  drawText(ctx, cells.volumeLo.display, cellLeft(3), contentY, volumeColor, theme, opts.bold);
+  // A song without a volume column (AHX, HVL, SID) draws neither.
+  if (layout.columns.volume) {
+    drawText(ctx, cells.volumeHi.display, cellLeft(2), contentY, volumeColor, theme, opts.bold);
+    drawText(ctx, cells.volumeLo.display, cellLeft(3), contentY, volumeColor, theme, opts.bold);
+  }
 
   // Effect cell: interpolation tint under the digits (TrackerEntry's
   // .interpolated-linear/.interpolated-exponential backgrounds). The bright
@@ -331,7 +334,7 @@ function drawEntryCells(
   }
 
   // Second effect column only exists in dual-effect mode.
-  if (layout.showExtraEffectColumn) {
+  if (layout.columns.extraEffect) {
     const nibbleWidth2 = cellWidth(5) / 3;
     for (let i = 0; i < cells.macro2Digits.length; i++) {
       drawText(ctx, cells.macro2Digits[i]!, cellLeft(5) + i * nibbleWidth2, contentY, effectColor, theme, true);
@@ -518,19 +521,20 @@ export function buildTrailSpanIndex(
     const track = tracks[trackIndex];
     if (!track) continue;
     const box = entryBoxRect(trackIndex, 0, layout);
-    const offsets = columnFractionOffsets(box.width, layout.showExtraEffectColumn);
+    const offsets = columnFractionOffsets(box.width, layout.columns);
     const contentX = box.x + entryHorizontalInsetPx;
     const at = (column: number): number => offsets[column]!;
     for (const entry of track.entries) {
       if (entry.row < 0 || entry.row >= layout.rowCount) continue;
       if (hasNoteEvent(entry)) {
-        // Columns 0-3: note, instrument, both volume digits.
+        // Columns 0-3: note, instrument, both volume digits (zero wide
+        // when the song has none).
         push(entry.row, { x: contentX + at(0), width: at(4) - at(0) });
       }
       if (hasEffect(entry.macro)) {
         push(entry.row, { x: contentX + at(4), width: at(5) - at(4) });
       }
-      if (layout.showExtraEffectColumn && hasEffect(entry.macro2)) {
+      if (layout.columns.extraEffect && hasEffect(entry.macro2)) {
         push(entry.row, { x: contentX + at(5), width: at(6) - at(5) });
       }
     }
@@ -642,9 +646,9 @@ export function drawSelectionBar(
     const leftTrack = Math.max(0, Math.min(trackStart, layout.trackCount - 1));
     const rightTrack = Math.max(0, Math.min(trackEnd, layout.trackCount - 1));
     if (rightTrack < leftTrack) continue;
-    const x = leftTrack * trackPitchPx(layout.trackCount, layout.showExtraEffectColumn);
+    const x = leftTrack * trackPitchPx(layout.trackCount, layout.columns);
     const right =
-      (rightTrack + 1) * trackPitchPx(layout.trackCount, layout.showExtraEffectColumn) -
+      (rightTrack + 1) * trackPitchPx(layout.trackCount, layout.columns) -
       trackGapPx(layout.trackCount);
     const y = rowY(row);
     ctx.fillStyle = theme.selectedBg;
@@ -658,8 +662,8 @@ export function drawSelectionBar(
 function totalPatternWidth(layout: PatternLayout): number {
   if (layout.trackCount <= 0) return 0;
   return (
-    (layout.trackCount - 1) * trackPitchPx(layout.trackCount, layout.showExtraEffectColumn) +
-    trackWidthPx(layout.trackCount, layout.showExtraEffectColumn)
+    (layout.trackCount - 1) * trackPitchPx(layout.trackCount, layout.columns) +
+    trackWidthPx(layout.trackCount, layout.columns)
   );
 }
 
@@ -747,7 +751,7 @@ export function drawActiveRowBar(
   const bgColor = withAlpha(borderColor, PLAYBACK_BAR_FILL_ALPHA);
 
   const trackCount = data.trackCount ?? layout.trackCount;
-  const barWidth = activeRowBarWidthPx(trackCount, layout.showExtraEffectColumn);
+  const barWidth = activeRowBarWidthPx(trackCount, layout.columns);
   const width = barWidth ?? totalPatternWidth(layout);
   const y = rowY(data.playbackRow);
 
@@ -809,7 +813,7 @@ export function cursorCellRect(
   if (!track) return null;
 
   const box = entryBoxRect(trackIndex, row, layout);
-  const offsets = columnFractionOffsets(box.width, layout.showExtraEffectColumn);
+  const offsets = columnFractionOffsets(box.width, layout.columns);
   const col = Math.max(0, Math.min(column, offsets.length - 2));
   let x = box.x + entryHorizontalInsetPx + offsets[col]!;
   let width = offsets[col + 1]! - offsets[col]!;

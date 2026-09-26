@@ -24,6 +24,7 @@
       {{ cells.instrument.display }}
     </span>
     <span
+      v-if="showVolumeColumn"
       class="cell volume volume-high"
       :class="{ 'cell-active': activeCells[2] }"
       data-cell="2"
@@ -31,6 +32,7 @@
       {{ cells.volumeHi.display }}
     </span>
     <span
+      v-if="showVolumeColumn"
       class="cell volume volume-low"
       :class="{ 'cell-active': activeCells[3] }"
       data-cell="3"
@@ -101,6 +103,8 @@ interface Props {
   activeMacroNibble: number;
   interpolationType?: 'linear' | 'exponential' | undefined;
   showExtraEffectColumn: boolean;
+  /** AHX, HVL and SID rows have no volume column: its two cells are not rendered. */
+  showVolumeColumn: boolean;
   /**
    * The playback buffer slot this entry's track sits in, when inside one.
    * Static per slot; used only to drop `.row-playing` in the hidden buffer
@@ -153,7 +157,8 @@ const entryClasses = computed(() => ({
   'row-bar': !props.active && !props.selected && rowType.value === 'bar',
   'row-beat': !props.active && !props.selected && rowType.value === 'beat',
   'row-sub': !props.active && !props.selected && rowType.value === 'sub',
-  'dual-effects': props.showExtraEffectColumn
+  'dual-effects': props.showExtraEffectColumn,
+  'no-volume': !props.showVolumeColumn
 }));
 
 // Default cells for empty entries - reused across empty rows (frozen to prevent reactivity overhead)
@@ -246,6 +251,16 @@ function onMouseEnterRow() {
 
 .tracker-entry.dual-effects {
   grid-template-columns: 1.6fr 1fr 0.35fr 0.35fr 1.5fr 1.5fr;
+}
+
+/* No volume column (AHX, HVL, SID): track-metrics' VOLUME_WIDTH narrower. */
+.tracker-entry.no-volume {
+  min-width: 134px;
+  grid-template-columns: 1.6fr 1fr 1.8fr;
+}
+
+.tracker-entry.no-volume.dual-effects {
+  grid-template-columns: 1.6fr 1fr 1.5fr 1.5fr;
 }
 
 .tracker-entry:hover {

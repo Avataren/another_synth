@@ -13,8 +13,11 @@ export interface TrackerNavigationContext {
   rowsCount: Ref<number>;
   currentPattern: ComputedRef<TrackerPattern | undefined>;
 
-  // Constants
-  columnsPerTrack: Ref<number>;
+  /**
+   * The semantic column indices a row shows, left to right (`visibleColumnIndices`):
+   * a song without a volume column skips 2 and 3, one effect column stops at 4.
+   */
+  visibleColumns: Ref<readonly number[]>;
 
   // Functions
   clearSelection: () => void;
@@ -85,20 +88,28 @@ export function useTrackerNavigation(context: TrackerNavigationContext) {
       }
     }
 
-    const nextColumn = context.activeColumn.value + delta;
+    const columns = context.visibleColumns.value;
+    // A cursor left on a hidden column (the layout changed under it) steps
+    // from the nearest visible column to its left.
+    let position = columns.indexOf(context.activeColumn.value);
+    if (position < 0) {
+      position = columns.filter((column) => column < context.activeColumn.value).length - 1;
+      if (delta < 0) position += 1;
+    }
+    const nextPosition = position + delta;
 
     // Wrap to previous track if moving left from first column
-    if (nextColumn < 0) {
+    if (nextPosition < 0) {
       context.activeTrack.value =
         (context.activeTrack.value - 1 + context.currentPattern.value.tracks.length) %
         context.currentPattern.value.tracks.length;
-      context.activeColumn.value = context.columnsPerTrack.value - 1;
+      context.activeColumn.value = columns[columns.length - 1]!;
       context.activeMacroNibble.value = 0;
       return;
     }
 
     // Wrap to next track if moving right from last column
-    if (nextColumn >= context.columnsPerTrack.value) {
+    if (nextPosition >= columns.length) {
       context.activeTrack.value =
         (context.activeTrack.value + 1) % context.currentPattern.value.tracks.length;
       context.activeColumn.value = 0;
@@ -107,7 +118,7 @@ export function useTrackerNavigation(context: TrackerNavigationContext) {
     }
 
     // Normal column movement
-    context.activeColumn.value = nextColumn;
+    context.activeColumn.value = columns[nextPosition]!;
     if (context.activeColumn.value !== 4) {
       context.activeMacroNibble.value = 0;
     }

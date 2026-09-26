@@ -144,6 +144,7 @@ import type { PListNibble } from 'src/audio/tracker/plist-edit';
 import type { TrackerSelectionRect } from 'src/components/tracker/tracker-types';
 import { createPListTrackMemo, rawPListEntries } from 'src/audio/tracker/plist-track';
 import { plistLegendCells, PLIST_TRACK_WIDTH_PX } from './plist-legend';
+import { trackColumns } from 'src/components/tracker/track-metrics';
 
 interface Props {
   instrument: AhxInstrument | null;
@@ -241,7 +242,7 @@ const playbackRow = computed(() =>
 );
 
 const legend = computed(() => plistLegendCells(PLIST_TRACK_WIDTH_PX));
-const panelWidth = patternPanelWidth(GUTTER_WIDTH_PX + totalTracksWidth(1, true));
+const panelWidth = patternPanelWidth(GUTTER_WIDTH_PX + totalTracksWidth(1, trackColumns(true, true)));
 const stageHeight = computed(() => STAGE_CHROME_PX + Math.min(rowCount.value, VIEW_ROWS) * rowPitchPx);
 
 // PatternCanvas caps its panel by `containerWidth - 36` and shows a

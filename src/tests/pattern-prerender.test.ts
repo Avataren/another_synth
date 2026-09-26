@@ -12,6 +12,10 @@ import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern
 import { buildTrackAccents } from 'src/components/tracker/pattern-canvas/track-accents';
 import type { UpcomingPatternInfo } from 'src/components/tracker/pattern-buffering';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
+import { trackColumns } from 'src/components/tracker/track-metrics';
+
+const STD = trackColumns(true, false);
+const DUAL = trackColumns(true, true);
 
 /**
  * Pure tests for the upcoming-pattern pre-render (§3.2): the bitmap extent
@@ -102,8 +106,8 @@ function makeRecordingSurface(width: number, height: number) {
 describe('preRenderExtent', () => {
   it('is the gutter plus every track column, by the pattern row count', () => {
     const info = makeInfo('p1', [makeTrack('a', []), makeTrack('b', [])], 64);
-    expect(preRenderExtent(info, false)).toEqual({
-      width: GUTTER_WIDTH_PX + totalTracksWidth(2, false),
+    expect(preRenderExtent(info, STD)).toEqual({
+      width: GUTTER_WIDTH_PX + totalTracksWidth(2, STD),
       height: 64 * 36, // rowPitchPx
     });
   });
@@ -113,7 +117,7 @@ describe('paintUpcoming', () => {
   it('paints the full static grid (gutter + tracks) and reports success', () => {
     const info = makeInfo('p1', [makeTrack('a', [0, 1]), makeTrack('b', [2])]);
     const { surface, calls } = makeRecordingSurface(400, 1200);
-    expect(paintUpcoming(surface, info, false, null)).toBe(true);
+    expect(paintUpcoming(surface, info, STD, null)).toBe(true);
     // Same shape as paintStatic: background fill, gutter rows, translated
     // track grid, selection overlay skipped when nothing is selected.
     expect(calls[0]).toBe('clear');
@@ -128,7 +132,7 @@ describe('paintUpcoming', () => {
       height: 100,
       getContext: () => null,
     } as unknown as OffscreenCanvas;
-    expect(paintUpcoming(surface, info, false, null)).toBe(false);
+    expect(paintUpcoming(surface, info, STD, null)).toBe(false);
   });
 
   it('bakes the selection overlay in when one is active', () => {
@@ -137,49 +141,49 @@ describe('paintUpcoming', () => {
     const { surface } = makeRecordingSurface(400, 1200);
     // No direct assertion on pixels — the overlay op sequence mirrors
     // paintStatic's; the component test pins the swap behavior end to end.
-    expect(paintUpcoming(surface, info, false, selection)).toBe(true);
+    expect(paintUpcoming(surface, info, STD, selection)).toBe(true);
   });
 });
 
 describe('canAdoptPreRender', () => {
   const tracks = [makeTrack('a', [0, 1]), makeTrack('b', [2])];
   const info = makeInfo('p1', tracks);
-  const meta = metaFromInfo(info, false, null);
+  const meta = metaFromInfo(info, STD, null);
 
   it('adopts when the arriving props match the painted content', () => {
     // The swap arrives with the pattern's tracks/rows as the new props.
-    expect(canAdoptPreRender(meta, tracks, 32, false, null)).toBe(true);
+    expect(canAdoptPreRender(meta, tracks, 32, STD, null)).toBe(true);
   });
 
   it('rejects when there is no meta or no arriving content', () => {
-    expect(canAdoptPreRender(null, tracks, 32, false, null)).toBe(false);
-    expect(canAdoptPreRender(meta, null, 32, false, null)).toBe(false);
+    expect(canAdoptPreRender(null, tracks, 32, STD, null)).toBe(false);
+    expect(canAdoptPreRender(meta, null, 32, STD, null)).toBe(false);
   });
 
   it('rejects a different pattern (stale pre-render)', () => {
     const other = makeInfo('p2', [makeTrack('a', [0]), makeTrack('b', [1])]);
-    expect(canAdoptPreRender(meta, other.tracks, other.rows, false, null)).toBe(false);
+    expect(canAdoptPreRender(meta, other.tracks, other.rows, STD, null)).toBe(false);
   });
 
   it('rejects after an edit replaced entry objects on the upcoming pattern', () => {
     const edited = [makeTrack('a', [0, 1]), makeTrack('b', [2])];
     // Same pattern id and rows, but the keystroke replaced entry objects.
-    expect(canAdoptPreRender(meta, edited, 32, false, null)).toBe(false);
+    expect(canAdoptPreRender(meta, edited, 32, STD, null)).toBe(false);
   });
 
   it('rejects a row-count or dual-effect change', () => {
-    expect(canAdoptPreRender(meta, tracks, 64, false, null)).toBe(false);
-    expect(canAdoptPreRender(meta, tracks, 32, true, null)).toBe(false);
+    expect(canAdoptPreRender(meta, tracks, 64, STD, null)).toBe(false);
+    expect(canAdoptPreRender(meta, tracks, 32, DUAL, null)).toBe(false);
   });
 
   it('rejects a selection change since the swap would paint without it', () => {
     const selection = { rowStart: 0, rowEnd: 1, trackStart: 0, trackEnd: 1 };
-    expect(canAdoptPreRender(meta, tracks, 32, false, selection)).toBe(false);
-    const metaSel = metaFromInfo(info, false, selection);
-    expect(canAdoptPreRender(metaSel, tracks, 32, false, { ...selection })).toBe(true);
+    expect(canAdoptPreRender(meta, tracks, 32, STD, selection)).toBe(false);
+    const metaSel = metaFromInfo(info, STD, selection);
+    expect(canAdoptPreRender(metaSel, tracks, 32, STD, { ...selection })).toBe(true);
   });
 
   it('rejects a track-count change', () => {
-    expect(canAdoptPreRender(meta, [tracks[0]!], 32, false, null)).toBe(false);
+    expect(canAdoptPreRender(meta, [tracks[0]!], 32, STD, null)).toBe(false);
   });
 });

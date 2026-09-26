@@ -10,6 +10,7 @@ import {
   rowY,
   totalTracksWidth,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
+import { trackColumns } from 'src/components/tracker/track-metrics';
 
 /**
  * The renderer used to refuse any pattern whose full-resolution bitmap
@@ -22,7 +23,7 @@ import {
 /** The bitmap extent, in CSS pixels, of a pattern this size. */
 function extent(tracks: number, rows: number, dualFx = false) {
   return {
-    width: GUTTER_WIDTH_PX + totalTracksWidth(tracks, dualFx),
+    width: GUTTER_WIDTH_PX + totalTracksWidth(tracks, trackColumns(true, dualFx)),
     height: rowY(rows),
   };
 }

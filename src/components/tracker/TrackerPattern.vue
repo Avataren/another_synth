@@ -56,6 +56,7 @@
             :visible-start-row="visibleRange.startRow"
             :visible-end-row="visibleRange.endRow"
             :show-extra-effect-column="showExtraEffectColumn"
+            :show-volume-column="columns.volume"
             :transpose-label="transposeLabels?.[index]"
             :transpose-title="transposeTitles?.[index]"
             :transpose-editable="transposeEditable"
@@ -125,6 +126,7 @@
               :visible-start-row="bufferVisibleRange(slotKey).startRow"
               :visible-end-row="bufferVisibleRange(slotKey).endRow"
               :show-extra-effect-column="showExtraEffectColumn"
+              :show-volume-column="columns.volume"
               :transpose-label="transposeLabels?.[index]"
               :transpose-title="transposeTitles?.[index]"
               :transpose-editable="transposeEditable"
@@ -141,7 +143,7 @@
 import { computed, onMounted, provide, ref, watch } from 'vue';
 import TrackerTrack from './TrackerTrack.vue';
 import type { TrackerSelectionRect, TrackerTrackData } from './tracker-types';
-import { trackGapPx, trackWidthPx } from './track-metrics';
+import { trackColumns, trackGapPx, trackWidthPx } from './track-metrics';
 import { activeRowBarWidthPx } from './pattern-buffering';
 import { TRACKER_PLAYBACK_ROW, TRACKER_SLOT_VISIBLE } from './use-tracker-playback-row';
 
@@ -170,6 +172,8 @@ interface Props {
   containerHeight: number;
   isMouseSelecting: boolean;
   showExtraEffectColumn: boolean;
+  /** Whether rows have a volume column (default true; AHX, HVL and SID have none). */
+  showVolumeColumn?: boolean;
   /**
    * The current position's per-channel transpose labels (`T0`, `T-1`, …), one
    * per channel, doc order. Display only: the byte lives in the position, not
@@ -195,8 +199,13 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   upcomingPattern: null,
-  transposeEditable: true
+  transposeEditable: true,
+  showVolumeColumn: true
 });
+
+const columns = computed(() =>
+  trackColumns(props.showVolumeColumn, props.showExtraEffectColumn),
+);
 
 const emit = defineEmits<{
   (event: 'rowSelected', row: number): void;
@@ -220,7 +229,7 @@ const headerHeight = `${headerHeightPx}px`;
 // Shared with the waveform row above the pattern, which has to line up with
 // these exactly -- see track-metrics.ts.
 const trackWidth = computed(
-  () => `${trackWidthPx(props.tracks.length, props.showExtraEffectColumn)}px`,
+  () => `${trackWidthPx(props.tracks.length, columns.value)}px`,
 );
 const trackGap = computed(() => `${trackGapPx(props.tracks.length)}px`);
 
@@ -240,7 +249,7 @@ const trackGap = computed(() => `${trackGapPx(props.tracks.length)}px`);
  */
 const sideGutter = computed(() =>
   props.reserveSideGutter
-    ? `${trackWidthPx(props.tracks.length, props.showExtraEffectColumn)}px`
+    ? `${trackWidthPx(props.tracks.length, columns.value)}px`
     : '0px',
 );
 
@@ -367,7 +376,7 @@ const patternAreaRef = ref<HTMLElement | null>(null);
  * hidden.
  */
 const activeBarWidth = computed(() =>
-  activeRowBarWidthPx(props.tracks.length, props.showExtraEffectColumn),
+  activeRowBarWidthPx(props.tracks.length, columns.value),
 );
 
 const activeBarStyle = computed(() => {

@@ -273,10 +273,14 @@
             />
             <span>Auto-scroll</span>
           </label>
-          <label class="toggle toolbar-toggle">
+          <label
+            class="toggle toolbar-toggle"
+            :title="extraEffectColumnFixed ? 'This song\'s format sets its effect columns' : ''"
+          >
             <input
               v-model="userSettings.showTrackerExtraEffectColumn"
               type="checkbox"
+              :disabled="extraEffectColumnFixed"
               @change="blurAndRefocusTracker"
             />
             <span>Dual FX cols</span>
@@ -915,7 +919,8 @@
             :container-width="patternAreaWidth"
             :container-height="patternAreaHeight"
             :is-mouse-selecting="isMouseSelecting"
-            :show-extra-effect-column="userSettings.showTrackerExtraEffectColumn"
+            :show-extra-effect-column="trackColumns.extraEffect"
+            :show-volume-column="trackColumns.volume"
             :reserve-side-gutter="spectrumAnalyzerVisible"
             :granular-scroll="userSettings.granularPlaybackScroll"
             :enable-editing="isEditMode"
@@ -948,7 +953,8 @@
             :scroll-top="patternAreaScrollTop"
             :container-height="patternAreaHeight"
             :is-mouse-selecting="isMouseSelecting"
-            :show-extra-effect-column="userSettings.showTrackerExtraEffectColumn"
+            :show-extra-effect-column="trackColumns.extraEffect"
+            :show-volume-column="trackColumns.volume"
             :reserve-side-gutter="spectrumAnalyzerVisible"
             :upcoming-pattern="upcomingPattern"
             :transpose-labels="ahxTransposeLabels.length > 0 ? ahxTransposeLabels : undefined"
@@ -1037,8 +1043,10 @@ import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import PatternCanvas from 'src/components/tracker/pattern-canvas/PatternCanvas.vue';
 import { selectUpcomingPattern } from 'src/components/tracker/pattern-buffering';
 import {
+  songTrackColumns,
   trackGapPx,
   trackWidthPx,
+  visibleColumnIndices,
 } from 'src/components/tracker/track-metrics';
 import { visiblePageWindow } from 'src/components/tracker/page-window';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
@@ -1488,9 +1496,30 @@ watch(isReadOnly, (readOnly) => {
   if (readOnly) editModeRequested.value = false;
 });
 const isFullscreen = ref(false);
-const columnsPerTrack = computed(() =>
-  userSettings.value.showTrackerExtraEffectColumn ? 6 : 5,
+/**
+ * The cells this song's rows have: no volume column for AHX, HVL or SID, and
+ * a second effect column where the format has one (HVL) or, for MOD-style
+ * songs, where the user asked for it.
+ */
+const trackColumns = computed(() =>
+  songTrackColumns(
+    trackerStore.moduleFormat,
+    trackerStore.ahxDoc?.format ?? null,
+    userSettings.value.showTrackerExtraEffectColumn,
+  ),
 );
+/** The dual-FX toggle only means something where the format leaves it open. */
+const extraEffectColumnFixed = computed(
+  () => trackerStore.isSidSong || (trackerStore.isAhxSong && trackerStore.ahxDoc !== null),
+);
+const visibleColumns = computed(() => visibleColumnIndices(trackColumns.value));
+// A song whose rows lack the column the cursor sits on (a MOD's volume column,
+// then an AHX song is loaded) puts it on the nearest visible one to its left.
+watch(visibleColumns, (columns) => {
+  if (columns.includes(activeColumn.value)) return;
+  activeColumn.value = columns.filter((column) => column < activeColumn.value).pop() ?? 0;
+  activeMacroNibble.value = 0;
+});
 /** How many page numbers the instrument pager shows at once. */
 const INSTRUMENT_PAGE_WINDOW = 5;
 
@@ -1548,10 +1577,7 @@ function stepInstrumentPage(delta: number) {
  */
 const trackerTrackWidth = computed(
   () =>
-    `${trackWidthPx(
-      trackCount.value,
-      userSettings.value.showTrackerExtraEffectColumn,
-    )}px`,
+    `${trackWidthPx(trackCount.value, trackColumns.value)}px`,
 );
 const trackerTrackGap = computed(() => `${trackGapPx(trackCount.value)}px`);
 const trackerContainer = ref<HTMLDivElement | null>(null);
@@ -2127,7 +2153,7 @@ const navigationContext: TrackerNavigationContext = {
   activeMacroNibble,
   rowsCount,
   currentPattern,
-  columnsPerTrack,
+  visibleColumns,
   clearSelection,
 };
 
@@ -2930,7 +2956,7 @@ watch(
 );
 
 watch(
-  () => userSettings.value.showTrackerExtraEffectColumn,
+  trackColumns,
   async () => {
     await nextTick();
     refreshVisualizerAlignment();

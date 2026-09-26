@@ -9,6 +9,7 @@ import { GUTTER_WIDTH_PX } from 'src/components/tracker/pattern-canvas/pattern-l
 import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import { buildTrackAccents } from 'src/components/tracker/pattern-canvas/track-accents';
 import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/tracker-types';
+import { trackColumns } from 'src/components/tracker/track-metrics';
 
 /**
  * The bright playing-row TEXT pre-render (task: light up the playing row's
@@ -144,7 +145,7 @@ const theme: PatternTheme = {
 
 const layout = (trackCount = 2, showExtraEffectColumn = false, rowCount = 8) => ({
   trackCount,
-  showExtraEffectColumn,
+  columns: trackColumns(true, showExtraEffectColumn),
   rowCount,
 });
 

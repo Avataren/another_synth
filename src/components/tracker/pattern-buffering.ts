@@ -1,5 +1,5 @@
 import type { TrackerTrackData } from './tracker-types';
-import { trackPitchPx, trackWidthPx } from './track-metrics';
+import { trackPitchPx, trackWidthPx, type TrackColumns } from './track-metrics';
 
 /**
  * Pure helpers extracted from the pattern-grid buffering work so the
@@ -42,10 +42,10 @@ export function selectUpcomingPattern(
  * pitch (width + gap) per additional column. Pure math from track-metrics,
  * replacing a nextTick DOM measurement that raced the pattern swap.
  */
-export function activeRowBarWidthPx(trackCount: number, showExtraEffectColumn: boolean): number | null {
+export function activeRowBarWidthPx(trackCount: number, columns: TrackColumns): number | null {
   if (trackCount <= 0) return null;
   return (
-    trackWidthPx(trackCount, showExtraEffectColumn) +
-    (trackCount - 1) * trackPitchPx(trackCount, showExtraEffectColumn)
+    trackWidthPx(trackCount, columns) +
+    (trackCount - 1) * trackPitchPx(trackCount, columns)
   );
 }

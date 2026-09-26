@@ -14,7 +14,7 @@ import {
   entryHorizontalInsetPx,
   GUTTER_WIDTH_PX,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
-import { trackWidthPx } from 'src/components/tracker/track-metrics';
+import { trackColumns, trackWidthPx } from 'src/components/tracker/track-metrics';
 
 export type PListLegendKey = 'note' | 'tone' | 'cmd1' | 'cmd2';
 
@@ -30,7 +30,7 @@ export interface PListLegendCell {
 }
 
 /** The one track's width: dual-effect layout, one track. */
-export const PLIST_TRACK_WIDTH_PX = trackWidthPx(1, true);
+export const PLIST_TRACK_WIDTH_PX = trackWidthPx(1, trackColumns(true, true));
 
 /** Canvas grid column each label sits over (dual-effect layout). */
 const COLUMN: Readonly<Record<PListLegendKey, number>> = { note: 0, tone: 1, cmd1: 4, cmd2: 5 };
@@ -56,7 +56,7 @@ const TITLE: Readonly<Record<PListLegendKey, string>> = {
 
 /** The four legend cells for a track `trackWidth` px wide (the canvas's own column geometry). */
 export function plistLegendCells(trackWidth: number = PLIST_TRACK_WIDTH_PX): PListLegendCell[] {
-  const offsets = columnFractionOffsets(trackWidth, true);
+  const offsets = columnFractionOffsets(trackWidth, trackColumns(true, true));
   return (Object.keys(COLUMN) as PListLegendKey[]).map((key) => {
     const column = COLUMN[key];
     return {

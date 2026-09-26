@@ -12,6 +12,7 @@
  * Pure module: no canvas, no DOM — the component feeds it plain data.
  */
 
+import type { TrackColumns } from '../track-metrics';
 import type {
   TrackerEntryData,
   TrackerInterpolationRange,
@@ -28,7 +29,7 @@ export interface PaintedTrack {
 /** Content snapshot of the static bitmap's last paint. */
 export interface PaintState {
   rowCount: number;
-  showExtraEffectColumn: boolean;
+  columns: TrackColumns;
   selection: TrackerSelectionRect | null;
   tracks: PaintedTrack[];
 }
@@ -55,12 +56,12 @@ export const INCREMENTAL_MAX_RATIO = 0.25;
 export function buildPaintState(
   tracks: TrackerTrackData[],
   rows: number,
-  showExtraEffectColumn: boolean,
+  columns: TrackColumns,
   selection: TrackerSelectionRect | null,
 ): PaintState {
   return {
     rowCount: rows,
-    showExtraEffectColumn,
+    columns,
     selection: selection ? { ...selection } : null,
     tracks: tracks.map((track) => ({
       entries: track.entries,
@@ -96,11 +97,11 @@ export function diffPaintState(
   painted: PaintState,
   tracks: TrackerTrackData[],
   rows: number,
-  showExtraEffectColumn: boolean,
+  columns: TrackColumns,
   selection: TrackerSelectionRect | null,
 ): CellDiff[] | null {
   if (painted.rowCount !== rows) return null;
-  if (painted.showExtraEffectColumn !== showExtraEffectColumn) return null;
+  if (painted.columns !== columns) return null;
   if (
     (painted.selection === null) !== (selection === null) ||
     (painted.selection !== null &&

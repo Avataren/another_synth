@@ -13,6 +13,7 @@
  * for the real 2D context in tests, exactly as in pattern-draw.
  */
 
+import type { TrackColumns } from '../track-metrics';
 import { GUTTER_WIDTH_PX, rowY, totalTracksWidth, type PatternLayout } from './pattern-layout';
 import { drawRowNumbers, drawSelectionBar, drawStaticGrid } from './pattern-draw';
 import { getTheme } from './pattern-theme';
@@ -41,7 +42,7 @@ export interface PreRenderMeta {
   /** Per-track content references the bitmap was painted from. */
   tracks: PaintedTrackRefs[];
   rows: number;
-  showExtraEffectColumn: boolean;
+  columns: TrackColumns;
   selection: TrackerSelectionRect | null;
   /** CSS extent the bitmap was sized for (device size = ceil(css × dpr)). */
   cssWidth: number;
@@ -51,10 +52,10 @@ export interface PreRenderMeta {
 /** Bitmap extent (CSS px) a pre-render for `info` must be sized for. */
 export function preRenderExtent(
   info: UpcomingPatternInfo,
-  showExtraEffectColumn: boolean,
+  columns: TrackColumns,
 ): { width: number; height: number } {
   return {
-    width: GUTTER_WIDTH_PX + totalTracksWidth(info.tracks.length, showExtraEffectColumn),
+    width: GUTTER_WIDTH_PX + totalTracksWidth(info.tracks.length, columns),
     height: rowY(info.rows),
   };
 }
@@ -62,10 +63,10 @@ export function preRenderExtent(
 /** Snapshot the tracks a pre-render was (or is about to be) painted from. */
 export function metaFromInfo(
   info: UpcomingPatternInfo,
-  showExtraEffectColumn: boolean,
+  columns: TrackColumns,
   selection: TrackerSelectionRect | null,
 ): PreRenderMeta {
-  const extent = preRenderExtent(info, showExtraEffectColumn);
+  const extent = preRenderExtent(info, columns);
   return {
     upcomingId: info.id,
     tracks: info.tracks.map((track) => ({
@@ -73,7 +74,7 @@ export function metaFromInfo(
       interpolations: track.interpolations,
     })),
     rows: info.rows,
-    showExtraEffectColumn,
+    columns,
     selection: selection ? { ...selection } : null,
     cssWidth: extent.width,
     cssHeight: extent.height,
@@ -94,7 +95,7 @@ export function metaFromInfo(
 export function paintUpcoming(
   surface: HTMLCanvasElement | OffscreenCanvas,
   upcoming: UpcomingPatternInfo,
-  showExtraEffectColumn: boolean,
+  columns: TrackColumns,
   selection: TrackerSelectionRect | null,
 ): boolean {
   const rawCtx = surface.getContext('2d');
@@ -103,7 +104,7 @@ export function paintUpcoming(
   const theme = getTheme();
   const l: PatternLayout = {
     trackCount: upcoming.tracks.length,
-    showExtraEffectColumn,
+    columns,
     rowCount: upcoming.rows,
   };
 
@@ -135,12 +136,12 @@ export function canAdoptPreRender(
   meta: PreRenderMeta | null,
   tracks: TrackerTrackData[] | null,
   rows: number,
-  showExtraEffectColumn: boolean,
+  columns: TrackColumns,
   selection: TrackerSelectionRect | null,
 ): boolean {
   if (!meta || !tracks) return false;
   if (meta.rows !== rows) return false;
-  if (meta.showExtraEffectColumn !== showExtraEffectColumn) return false;
+  if (meta.columns !== columns) return false;
   if (meta.tracks.length !== tracks.length) return false;
   for (let i = 0; i < meta.tracks.length; i++) {
     const painted = meta.tracks[i]!;

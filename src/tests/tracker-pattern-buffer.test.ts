@@ -189,6 +189,7 @@ describe('TrackerTrack stable keys', () => {
         visibleStartRow: 0,
         visibleEndRow: 7,
         showExtraEffectColumn: false,
+        showVolumeColumn: true,
       },
     });
 

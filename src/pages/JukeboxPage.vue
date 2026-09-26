@@ -208,9 +208,8 @@
               :container-width="patternAreaWidth"
               :container-height="patternAreaHeight"
               :is-mouse-selecting="false"
-              :show-extra-effect-column="
-                userSettings.showTrackerExtraEffectColumn
-              "
+              :show-extra-effect-column="trackColumns.extraEffect"
+              :show-volume-column="trackColumns.volume"
               :reserve-side-gutter="spectrumAnalyzerVisible"
               :granular-scroll="userSettings.granularPlaybackScroll"
               :upcoming-pattern="upcomingPattern"
@@ -233,9 +232,8 @@
               :scroll-top="patternAreaScrollTop"
               :container-height="patternAreaHeight"
               :is-mouse-selecting="false"
-              :show-extra-effect-column="
-                userSettings.showTrackerExtraEffectColumn
-              "
+              :show-extra-effect-column="trackColumns.extraEffect"
+              :show-volume-column="trackColumns.volume"
               :reserve-side-gutter="spectrumAnalyzerVisible"
               :upcoming-pattern="upcomingPattern"
             />
@@ -287,6 +285,7 @@ import { useQuasar } from 'quasar';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import PatternCanvas from 'src/components/tracker/pattern-canvas/PatternCanvas.vue';
 import { selectUpcomingPattern } from 'src/components/tracker/pattern-buffering';
+import { songTrackColumns } from 'src/components/tracker/track-metrics';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import JukeboxPanel from 'src/components/tracker/JukeboxPanel.vue';
@@ -341,6 +340,14 @@ const { isPlaying, playbackRow, currentSequenceIndex } =
 
 const trackerStore = host.trackerStore;
 const rowsCount = computed(() => trackerStore.currentPatternRows);
+/** The cells this song's rows have (no volume column for AHX, HVL or SID). */
+const trackColumns = computed(() =>
+  songTrackColumns(
+    trackerStore.moduleFormat,
+    trackerStore.ahxDoc?.format ?? null,
+    userSettings.value.showTrackerExtraEffectColumn,
+  ),
+);
 
 /**
  * The pattern the sequencer plays after the current one, for the grid's

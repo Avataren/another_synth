@@ -137,7 +137,7 @@ import {
   preRenderExtent,
   type PreRenderMeta,
 } from './pattern-prerender';
-import { trackPitchPx, trackWidthPx } from '../track-metrics';
+import { trackColumns, trackPitchPx, trackWidthPx } from '../track-metrics';
 import type { UpcomingPatternInfo } from '../pattern-buffering';
 import type {
   TrackerEntryData,
@@ -163,6 +163,11 @@ interface Props {
   containerHeight: number;
   isMouseSelecting: boolean;
   showExtraEffectColumn: boolean;
+  /**
+   * Whether rows have a volume column (default true). AHX, HVL and SID steps
+   * have none, so those songs pass false and the two digits are not drawn.
+   */
+  showVolumeColumn?: boolean;
   /** Whether the spectrum analyser is on and needs gutters to draw in. */
   reserveSideGutter: boolean;
   /**
@@ -223,6 +228,7 @@ const props = withDefaults(defineProps<Props>(), {
   granularScroll: true,
   showTrail: true,
   transposeEditable: true,
+  showVolumeColumn: true,
 });
 
 const emit = defineEmits<{
@@ -262,15 +268,20 @@ const bitmapBudget = computed(() =>
   isMobileDevice.value ? MOBILE_BITMAP_BUDGET : DESKTOP_BITMAP_BUDGET,
 );
 
+/** The row's optional cells, as one shared value (identity-comparable). */
+const columns = computed(() =>
+  trackColumns(props.showVolumeColumn, props.showExtraEffectColumn),
+);
+
 const layout = computed<PatternLayout>(() => ({
   trackCount: props.tracks.length,
-  showExtraEffectColumn: props.showExtraEffectColumn,
+  columns: columns.value,
   rowCount: props.rows,
 }));
 
 /** Full bitmap extent in CSS pixels: gutter + every track column. */
 const contentWidth = computed(
-  () => GUTTER_WIDTH_PX + totalTracksWidth(props.tracks.length, props.showExtraEffectColumn),
+  () => GUTTER_WIDTH_PX + totalTracksWidth(props.tracks.length, columns.value),
 );
 const totalRowsHeight = computed(() => Math.max(0, props.rows) * rowPitchPx);
 
@@ -296,7 +307,7 @@ const reservedGutterPx = computed(() =>
   reservedSideGutterPx(
     props.reserveSideGutter,
     props.tracks.length,
-    props.showExtraEffectColumn,
+    columns.value,
     availableWidth.value,
   ),
 );
@@ -308,7 +319,7 @@ const panelMaxWidth = computed(() =>
 
 const sideGutter = computed(() =>
   props.reserveSideGutter
-    ? `${trackWidthPx(props.tracks.length, props.showExtraEffectColumn)}px`
+    ? `${trackWidthPx(props.tracks.length, columns.value)}px`
     : '0px',
 );
 
@@ -343,8 +354,8 @@ const trackAccents = computed(() => {
 
 function headerTrackStyle(index: number) {
   return {
-    left: `${GUTTER_WIDTH_PX + index * trackPitchPx(layout.value.trackCount, layout.value.showExtraEffectColumn)}px`,
-    width: `${trackWidthPx(layout.value.trackCount, layout.value.showExtraEffectColumn)}px`,
+    left: `${GUTTER_WIDTH_PX + index * trackPitchPx(layout.value.trackCount, layout.value.columns)}px`,
+    width: `${trackWidthPx(layout.value.trackCount, layout.value.columns)}px`,
     '--track-accent': trackAccent(index, { trackAccents: trackAccents.value }),
   };
 }
@@ -622,7 +633,7 @@ function repaintCells(diffs: CellDiff[]): boolean {
   paintedState = buildPaintState(
     props.tracks,
     props.rows,
-    props.showExtraEffectColumn,
+    columns.value,
     props.selectionRect,
   );
   // A repaired cell may have changed its glyphs; rebake the bright variant —
@@ -671,7 +682,7 @@ function paintStatic(): boolean {
   paintedState = buildPaintState(
     props.tracks,
     props.rows,
-    props.showExtraEffectColumn,
+    columns.value,
     props.selectionRect,
   );
   // The bright playing-row text is baked from this same content/theme, so a
@@ -851,7 +862,7 @@ function paintPreRender(): void {
   // ensureBitmap would give that extent -- which is the screen's DPR unless
   // the pattern is too big to paint at it. A surface sized any other way
   // could not be adopted, and the swap would repaint from scratch.
-  const extent = preRenderExtent(upcoming, props.showExtraEffectColumn);
+  const extent = preRenderExtent(upcoming, columns.value);
   const scale = bitmapScaleFor(
     extent.width,
     extent.height,
@@ -890,11 +901,11 @@ function paintPreRender(): void {
     return;
   }
   rawCtx.setTransform(scale, 0, 0, scale, 0, 0);
-  if (!paintUpcoming(surface, upcoming, props.showExtraEffectColumn, props.selectionRect)) {
+  if (!paintUpcoming(surface, upcoming, columns.value, props.selectionRect)) {
     preRenderMeta = null;
     return;
   }
-  preRenderMeta = metaFromInfo(upcoming, props.showExtraEffectColumn, props.selectionRect);
+  preRenderMeta = metaFromInfo(upcoming, columns.value, props.selectionRect);
 }
 
 /** Queue the off-path pre-render paint (idle when available, else rAF). */
@@ -1213,7 +1224,7 @@ function runFrame(): void {
           preRenderMeta,
           props.tracks,
           props.rows,
-          props.showExtraEffectColumn,
+          columns.value,
           props.selectionRect,
         )
       ) {
@@ -1230,7 +1241,7 @@ function runFrame(): void {
         paintedState = buildPaintState(
           props.tracks,
           props.rows,
-          props.showExtraEffectColumn,
+          columns.value,
           props.selectionRect,
         );
         // The adopted bitmap is a different pattern at a possibly different
@@ -1265,7 +1276,7 @@ function runFrame(): void {
           paintedState,
           props.tracks,
           props.rows,
-          props.showExtraEffectColumn,
+          columns.value,
           props.selectionRect,
         );
         if (diffs !== null) {
@@ -1586,7 +1597,7 @@ watch(
 // ---------------------------------------------------------------------
 
 watch(
-  () => [props.tracks, props.rows, props.showExtraEffectColumn, props.selectionRect],
+  () => [props.tracks, props.rows, columns.value, props.selectionRect],
   () => schedule(['static']),
 );
 

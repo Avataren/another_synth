@@ -3,11 +3,7 @@ import {
   GUTTER_WIDTH_PX,
   totalTracksWidth,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
-import {
-  trackGapPx,
-  trackPitchPx,
-  trackWidthPx,
-} from 'src/components/tracker/track-metrics';
+import { trackColumns, trackGapPx, trackPitchPx, trackWidthPx } from 'src/components/tracker/track-metrics';
 import {
   canvasVisualizerPadding,
   domVisualizerPadding,
@@ -32,7 +28,7 @@ import {
  */
 
 const columnStart = (index: number, count: number, extra: boolean) =>
-  index * trackPitchPx(count, extra);
+  index * trackPitchPx(count, trackColumns(true, extra));
 
 describe('DOM grid padding (measured against the panel border box)', () => {
   it('reproduces the historic measurement', () => {
@@ -84,7 +80,7 @@ describe('canvas renderer padding', () => {
     // track cells. The bitmap's viewport is the canvas scroller, client C.
     for (const count of [4, 9, 17, 24, 32]) {
       const extra = false;
-      const tracksWidth = totalTracksWidth(count, extra);
+      const tracksWidth = totalTracksWidth(count, trackColumns(true, extra));
       // Row spanning [0, R]; scroller starting at S with client width C.
       const R = 1600;
       const S = 40;
@@ -93,7 +89,7 @@ describe('canvas renderer padding', () => {
       // Strip client width from the row's grid layout minus the pads.
       const stripClient = R - VISUALIZER_SPACER_PX - VISUALIZER_ROW_GAP_PX - pads.left - pads.right;
       // Strip scrollWidth is just its cells: N*W + (N-1)*G.
-      const stripScrollWidth = (count - 1) * trackPitchPx(count, extra) + trackWidthPx(count, extra);
+      const stripScrollWidth = (count - 1) * trackPitchPx(count, trackColumns(true, extra)) + trackWidthPx(count, trackColumns(true, extra));
       const stripExtent = stripScrollWidth - stripClient;
       // The bitmap's own horizontal extent: content (gutter + tracks) minus
       // the viewport. Equal extents => 1:1 offset mapping at every position.

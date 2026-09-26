@@ -5,6 +5,7 @@
  * columns 0-3 are note / instrument / volumeHi / volumeLo, column 4 is the
  * effect cell (with `macroNibble` 0-2 when the click lands on a specific
  * nibble), and column 5 is the second effect cell in dual-effect mode.
+ * A song without a volume column never hits 2 or 3: they are zero wide.
  */
 
 import {
@@ -15,7 +16,7 @@ import {
   rowGapPx,
   type PatternLayout,
 } from './pattern-layout';
-import { trackPitchPx, trackWidthPx } from '../track-metrics';
+import { trackPitchPx, trackWidthPx, type TrackColumns } from '../track-metrics';
 
 export interface PatternHit {
   row: number;
@@ -52,16 +53,16 @@ export function hitTest(
   const row = Math.floor(localY / (rowHeightPx + rowGapPx));
 
   if (x < 0) return null;
-  const pitch = trackPitchPx(layout.trackCount, layout.showExtraEffectColumn);
+  const pitch = trackPitchPx(layout.trackCount, layout.columns);
   const trackIndex = Math.floor(x / pitch);
   if (trackIndex >= layout.trackCount) return null;
 
   // The flex gap between entry boxes is dead space, exactly as in the DOM.
-  const boxWidth = trackWidthPx(layout.trackCount, layout.showExtraEffectColumn);
+  const boxWidth = trackWidthPx(layout.trackCount, layout.columns);
   const withinTrack = x - trackIndex * pitch;
   if (withinTrack >= boxWidth) return null;
 
-  const column = hitColumn(withinTrack, boxWidth, layout.showExtraEffectColumn);
+  const column = hitColumn(withinTrack, boxWidth, layout.columns);
   if (column === null) return null;
 
   if (column.column === 4 || column.column === 5) {
@@ -83,14 +84,14 @@ export function hitTest(
 function hitColumn(
   withinBox: number,
   boxWidth: number,
-  showExtraEffectColumn: boolean,
+  columns: TrackColumns,
 ): { column: number; macroNibble?: number } | null {
   const contentX = withinBox - entryHorizontalInsetPx;
-  const offsets = columnFractionOffsets(boxWidth, showExtraEffectColumn);
+  const offsets = columnFractionOffsets(boxWidth, columns);
   for (let column = 0; column < offsets.length - 1; column++) {
     if (contentX >= offsets[column]! && contentX < offsets[column + 1]!) {
       if (column === 4 || column === 5) {
-        const nibbleWidth = macroNibbleWidth(boxWidth, showExtraEffectColumn);
+        const nibbleWidth = macroNibbleWidth(boxWidth, columns);
         const nibble = Math.floor(
           (contentX - offsets[column]!) / nibbleWidth,
         );

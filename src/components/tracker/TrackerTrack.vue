@@ -27,6 +27,7 @@
           :active-macro-nibble="activeMacroNibble"
           :interpolation-type="interpolatedRows[row] ?? undefined"
           :show-extra-effect-column="props.showExtraEffectColumn"
+          :show-volume-column="props.showVolumeColumn"
           :buffer-slot="props.bufferSlot"
           @select-cell="onSelectCell"
           @start-selection="onStartSelection"
@@ -55,6 +56,7 @@ interface Props {
   visibleStartRow: number;
   visibleEndRow: number;
   showExtraEffectColumn: boolean;
+  showVolumeColumn: boolean;
   /**
    * The current position's per-channel transpose, rendered as a header badge
    * (`T-1` style). Display only: the byte lives in the position (the doc), not

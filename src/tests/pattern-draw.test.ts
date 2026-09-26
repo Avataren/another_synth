@@ -20,7 +20,7 @@ import {
   GUTTER_WIDTH_PX,
   macroNibbleWidth,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
-import { trackPitchPx, trackWidthPx } from 'src/components/tracker/track-metrics';
+import { trackColumns, trackPitchPx, trackWidthPx } from 'src/components/tracker/track-metrics';
 import { activeRowBarWidthPx } from 'src/components/tracker/pattern-buffering';
 import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import { buildTrackAccents } from 'src/components/tracker/pattern-canvas/track-accents';
@@ -29,6 +29,8 @@ import type {
   TrackerSelectionRect,
   TrackerTrackData,
 } from 'src/components/tracker/tracker-types';
+
+const STD = trackColumns(true, false);
 
 /**
  * Draw-op parity tests: a call-recording mock CanvasRenderingContext2D
@@ -176,7 +178,7 @@ const theme: PatternTheme = {
 
 const layout = (trackCount = 2, showExtraEffectColumn = false, rowCount = 32) => ({
   trackCount,
-  showExtraEffectColumn,
+  columns: trackColumns(true, showExtraEffectColumn),
   rowCount,
 });
 
@@ -331,9 +333,9 @@ describe('drawEntryBox', () => {
     // The cursor cell and the hit test both split the effect column into
     // plain thirds; the digits must sit on exactly those boundaries so the
     // digit under the pointer is the digit the cursor highlights.
-    const trackWidth = trackWidthPx(1, false);
-    const offsets = columnFractionOffsets(trackWidth, false);
-    const nibbleWidth = macroNibbleWidth(trackWidth, false);
+    const trackWidth = trackWidthPx(1, STD);
+    const offsets = columnFractionOffsets(trackWidth, STD);
+    const nibbleWidth = macroNibbleWidth(trackWidth, STD);
     const digitX = (i: number) => entryHorizontalInsetPx + offsets[4]! + i * nibbleWidth;
     const digits = texts(ctx).filter((c) => ['A', 'B', 'C'].includes(c.text));
     expect(digits.map((d) => d.x)).toEqual([digitX(0), digitX(1), digitX(2)]);
@@ -353,6 +355,20 @@ describe('drawEntryBox', () => {
     drawEntryBox(ctxDual, 0, 0, layout(1, true, 1), theme, track, entry, undefined, false);
     const dual = texts(ctxDual).map((c) => c.text);
     expect(dual).toEqual(expect.arrayContaining(['A', 'B', 'C', 'D', 'E', 'F']));
+  });
+
+  it('draws no volume digits for a song without a volume column', () => {
+    const entry: TrackerEntryData = { row: 0, note: 'C-4', instrument: '01', macro: 'ABC' };
+    const track = makeTrack([entry]);
+    const ctx = makeMockCtx();
+    const l = { trackCount: 1, columns: trackColumns(false, false), rowCount: 1 };
+    drawEntryBox(ctx, 0, 0, l, theme, track, entry, undefined, false);
+    // Note, instrument and three effect nibbles: the two volume dots are gone.
+    expect(texts(ctx).map((c) => c.text)).toEqual(['C-4', '01', 'A', 'B', 'C']);
+
+    const withVolume = makeMockCtx();
+    drawEntryBox(withVolume, 0, 0, layout(1, false, 1), theme, track, entry, undefined, false);
+    expect(texts(withVolume).map((c) => c.text)).toEqual(['C-4', '01', '.', '.', 'A', 'B', 'C']);
   });
 
   it('takes the per-track accent from the theme ramp, reflecting past its length', () => {
@@ -456,8 +472,8 @@ describe('drawSelectionBar', () => {
  */
 describe('buildTrailSpanIndex', () => {
   const l = layout(2, false, 32);
-  const width = trackWidthPx(2, false);
-  const offsets = columnFractionOffsets(width, false);
+  const width = trackWidthPx(2, STD);
+  const offsets = columnFractionOffsets(width, STD);
   const noteX = entryHorizontalInsetPx + offsets[0]!;
   const noteWidth = offsets[4]! - offsets[0]!;
   const effectX = entryHorizontalInsetPx + offsets[4]!;
@@ -484,8 +500,8 @@ describe('buildTrailSpanIndex', () => {
   it('spans an event’s own columns: note+instrument+volume, and the effect', () => {
     const tracks = [makeTrack([{ row: 1, note: 'C-4', macro: 'A08' }])];
     const spans = buildTrailSpanIndex(layout(1, false, 32), tracks).get(1)!;
-    const single = trackWidthPx(1, false);
-    const o = columnFractionOffsets(single, false);
+    const single = trackWidthPx(1, STD);
+    const o = columnFractionOffsets(single, STD);
     expect(spans[0]!.x).toBeCloseTo(entryHorizontalInsetPx + o[0]!, 5);
     expect(spans[0]!.width).toBeCloseTo(o[4]! - o[0]!, 5);
     expect(spans[1]!.x).toBeCloseTo(entryHorizontalInsetPx + o[4]!, 5);
@@ -495,7 +511,7 @@ describe('buildTrailSpanIndex', () => {
   it('offsets spans by the track they sit in', () => {
     const tracks = [makeTrack([]), makeTrack([{ row: 2, note: 'C-4', macro: 'A08' }])];
     const spans = buildTrailSpanIndex(l, tracks).get(2)!;
-    const pitch = trackPitchPx(2, false);
+    const pitch = trackPitchPx(2, STD);
     expect(spans[0]!.x).toBeCloseTo(pitch + noteX, 5);
     expect(spans[0]!.width).toBeCloseTo(noteWidth, 5);
     expect(spans[1]!.x).toBeCloseTo(pitch + effectX, 5);
@@ -527,7 +543,7 @@ describe('drawActiveRowBar', () => {
       expect(pill.strokeStyle).toBe(theme.accentPrimary);
       expect(pill.radius).toBe(PLAYBACK_BAR_RADIUS_PX); // the DOM's border-radius
     }
-    const tracksPill = pills.find((c) => c.width === activeRowBarWidthPx(4, false)!);
+    const tracksPill = pills.find((c) => c.width === activeRowBarWidthPx(4, STD)!);
     expect(tracksPill).toBeDefined();
     // Border is PLAYBACK_BAR_BORDER_PX per .row-playback-bar, recorded at trace time.
     expect(pills.every((p) => p.lineWidth === PLAYBACK_BAR_BORDER_PX)).toBe(true);
@@ -586,7 +602,7 @@ describe('drawActiveRowBar', () => {
       const translateX = GUTTER_WIDTH_PX - viewLeft; // paintOverlay's shift
       const pills = paths(ctx).filter((c) => c.y === 3 * 36);
       const gutter = pills.find((c) => c.width === GUTTER_WIDTH_PX);
-      const tracks = pills.find((c) => c.width === activeRowBarWidthPx(16, false));
+      const tracks = pills.find((c) => c.width === activeRowBarWidthPx(16, STD));
       expect(gutter).toBeDefined();
       expect(tracks).toBeDefined();
       // Static-bitmap labels live at bitmap x [0, 78) → screen x [-viewLeft,

@@ -4,6 +4,10 @@ import {
   selectUpcomingPattern,
 } from 'src/components/tracker/pattern-buffering';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
+import { trackColumns } from 'src/components/tracker/track-metrics';
+
+const STD = trackColumns(true, false);
+const DUAL = trackColumns(true, true);
 
 /**
  * Pin the guard rules the pattern grid's playback double-buffer relies on:
@@ -81,16 +85,16 @@ describe('selectUpcomingPattern', () => {
 
 describe('activeRowBarWidthPx', () => {
   it('is null for a zero-channel pattern', () => {
-    expect(activeRowBarWidthPx(0, false)).toBeNull();
+    expect(activeRowBarWidthPx(0, STD)).toBeNull();
   });
 
   it('equals one column width for a single track', () => {
-    expect(activeRowBarWidthPx(1, false)).toBe(180);
+    expect(activeRowBarWidthPx(1, STD)).toBe(180);
   });
 
   it('equals first width plus (n-1) pitches for wider patterns', () => {
     for (const count of [1, 2, 4, 8, 9, 16, 17, 32]) {
-      const width = activeRowBarWidthPx(count, false);
+      const width = activeRowBarWidthPx(count, STD);
       expect(width).not.toBeNull();
       expect(width).toBeGreaterThan(0);
     }
@@ -98,15 +102,15 @@ describe('activeRowBarWidthPx', () => {
 
   it('spans to the far edge of the last column including gaps', () => {
     // 4 channels: 180 + 3 * (180 + 10) = 750 (no trailing gap after the last column)
-    expect(activeRowBarWidthPx(4, false)).toBe(750);
+    expect(activeRowBarWidthPx(4, STD)).toBe(750);
     // Dual FX column widens every pitch.
-    expect(activeRowBarWidthPx(4, true)).toBe(240 + 3 * (240 + 10));
+    expect(activeRowBarWidthPx(4, DUAL)).toBe(240 + 3 * (240 + 10));
   });
 
   it('is monotonic in channel count', () => {
     let prev = 0;
     for (const count of [1, 4, 8, 9, 16, 17, 32]) {
-      const width = activeRowBarWidthPx(count, false) ?? 0;
+      const width = activeRowBarWidthPx(count, STD) ?? 0;
       expect(width).toBeGreaterThanOrEqual(prev);
       prev = width;
     }

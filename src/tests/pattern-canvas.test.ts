@@ -17,6 +17,9 @@ import { setCache } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import { buildTrackAccents } from 'src/components/tracker/pattern-canvas/track-accents';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
+import { trackColumns } from 'src/components/tracker/track-metrics';
+
+const STD = trackColumns(true, false);
 
 /**
  * PatternCanvas component tests (plan §5D).
@@ -565,7 +568,7 @@ function installScrollExtents(wrapper: MountedCanvas): void {
     configurable: true,
   });
   Object.defineProperty(hscroll, 'scrollWidth', {
-    value: GUTTER_WIDTH_PX + totalTracksWidth(2, false),
+    value: GUTTER_WIDTH_PX + totalTracksWidth(2, STD),
     configurable: true,
   });
 }
@@ -645,7 +648,7 @@ describe('panel width (min-width + centered)', () => {
     const wrapper = mountCanvas({ containerWidth: VIEWPORT_W });
     const root = wrapper.find('.pattern-canvas');
     // Two full-width tracks + gap + the 78px row gutter, plus 38px chrome.
-    const expected = GUTTER_WIDTH_PX + totalTracksWidth(2, false) + 38;
+    const expected = GUTTER_WIDTH_PX + totalTracksWidth(2, STD) + 38;
     expect(root.attributes('style')).toContain(`--panel-width: ${expected}px`);
     // The bug: the panel filled the whole available width. A narrow song in
     // a wide viewport must stay at its natural width so the page can center
@@ -656,14 +659,14 @@ describe('panel width (min-width + centered)', () => {
 
   it('follows the pattern content width when tracks are added', async () => {
     const wrapper = mountCanvas({ containerWidth: 4000 });
-    const before = GUTTER_WIDTH_PX + totalTracksWidth(2, false) + 38;
+    const before = GUTTER_WIDTH_PX + totalTracksWidth(2, STD) + 38;
     expect(wrapper.find('.pattern-canvas').attributes('style')).toContain(
       `--panel-width: ${before}px`,
     );
     const added = [makeTrack('x'), makeTrack('y'), makeTrack('z')];
     await wrapper.setProps({ tracks: [...(wrapper.props('tracks') as TrackerTrackData[]), ...added] });
     await nextTick();
-    const after = GUTTER_WIDTH_PX + totalTracksWidth(5, false) + 38;
+    const after = GUTTER_WIDTH_PX + totalTracksWidth(5, STD) + 38;
     expect(wrapper.find('.pattern-canvas').attributes('style')).toContain(
       `--panel-width: ${after}px`,
     );
@@ -1020,7 +1023,7 @@ describe('overlay on playbackRow change', () => {
 
     const bar = pathsOn(overlayCtx)
       .filter((c) => c.height === rowHeightPx)
-      .find((c) => c.width === activeRowBarWidthPx(2, false));
+      .find((c) => c.width === activeRowBarWidthPx(2, STD));
     expect(bar).toBeDefined();
     // rowY(2) − scrollTop, not rowY(2): the bar lands in viewport space,
     // pinned past the gutter minus the horizontal scroll.
@@ -1046,7 +1049,7 @@ describe('overlay on playbackRow change', () => {
     // across frames — take the newest pill, painted after the scroll.)
     const bar = pathsOn(overlayCtx)
       .filter((c) => c.height === rowHeightPx)
-      .filter((c) => c.width === activeRowBarWidthPx(2, false))
+      .filter((c) => c.width === activeRowBarWidthPx(2, STD))
       .at(-1);
     expect(bar).toBeDefined();
     expect(bar!.y).toBeCloseTo(2 * rowPitchPx - 180, 5);
@@ -1346,7 +1349,7 @@ describe('scroll prop → blit window', () => {
 
     const bitmap = bitmapOf(wrapper);
     // Two full-width tracks (180px) + one 10px gap + the 78px gutter.
-    const contentWidth = GUTTER_WIDTH_PX + totalTracksWidth(2, false);
+    const contentWidth = GUTTER_WIDTH_PX + totalTracksWidth(2, STD);
     const totalRowsHeight = 32 * rowPitchPx;
     const expected = blitWindow(
       scrollTop,
@@ -1580,7 +1583,7 @@ describe('pointer → cell', () => {
     const hit = hitTest(
       x - GUTTER_WIDTH_PX,
       y,
-      { trackCount: 2, showExtraEffectColumn: false, rowCount: 32 },
+      { trackCount: 2, columns: STD, rowCount: 32 },
       0,
     );
     expect(hit).not.toBeNull();
@@ -1697,7 +1700,7 @@ describe('playback bar accents', () => {
     expect(gutterPill!.x).toBe(-scrollLeft);
     // Tracks pill stays at pattern-space 0 → screen 78 − 30. Edge-adjacent
     // to the gutter pill (78 − 30 = −30 + 78), never overlapping it.
-    const tracksPill = pills.find((p) => p.width === activeRowBarWidthPx(2, false));
+    const tracksPill = pills.find((p) => p.width === activeRowBarWidthPx(2, STD));
     expect(tracksPill!.x).toBe(GUTTER_WIDTH_PX - scrollLeft);
     expect(gutterPill!.x + GUTTER_WIDTH_PX).toBe(tracksPill!.x);
     wrapper.unmount();
@@ -2273,7 +2276,7 @@ describe('touch-pan band repaint (pan-jitter)', () => {
       // the viewport edge (the 2026-09-04 drift report).
       expect(gutterPill.x + view.left).toBe(0);
       const tracksPill = pills.find(
-        (p) => p.width === activeRowBarWidthPx(2, false),
+        (p) => p.width === activeRowBarWidthPx(2, STD),
       )!;
       expect(tracksPill.x).toBeCloseTo(GUTTER_WIDTH_PX - view.left, 5);
       // Edge-adjacent to the tracks pill — never sliding under it.
@@ -2356,7 +2359,7 @@ describe('gutter pill tracks the gutter under programmatic pan', () => {
       expect(gutterPill.x + view.left).toBe(0);
       expect(gutterPill.y).toBeCloseTo(3 * rowPitchPx - view.top, 5);
       const tracksPill = pills.find(
-        (p) => p.width === activeRowBarWidthPx(2, false),
+        (p) => p.width === activeRowBarWidthPx(2, STD),
       )!;
       expect(tracksPill.x).toBeCloseTo(GUTTER_WIDTH_PX - view.left, 5);
       // Edge-adjacent, never overlapping, at any origin.
