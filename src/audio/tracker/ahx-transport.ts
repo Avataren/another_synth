@@ -7,6 +7,7 @@ import {
 } from 'src/audio/tracker/ahx-player';
 import { reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import {
+  ahxInstrumentCount,
   currentAhxInstrumentEdits,
   lastGoodAhxLoad,
   recordAhxLoad,
@@ -321,7 +322,17 @@ export class AhxTransport {
    * load applies every recorded edit.
    */
   replaceInstruments(edits: ReadonlyArray<AhxInstrumentEdit>): Promise<void>[] {
-    return this.client ? this.client.replaceInstruments(edits) : edits.map(() => Promise.resolve());
+    if (!this.client) return edits.map(() => Promise.resolve());
+    // An instrument added since the worklet's song was loaded (a preset added
+    // to a stopped song) is not in that song, whose engine would refuse its
+    // edit. Nothing is lost by not sending it: the song is stale, and the next
+    // load (a Play, a resume, a live reload) is of the editor's bytes, which
+    // have the instrument, with every recorded edit applied (`editsToApply`).
+    const held = this.loadedSource ? ahxInstrumentCount(this.loadedSource) : Infinity;
+    const sent = edits.filter((edit) => edit.instrument <= held);
+    const answers = sent.length > 0 ? this.client.replaceInstruments(sent) : [];
+    let next = 0;
+    return edits.map((edit) => (edit.instrument <= held ? (answers[next++] ?? Promise.resolve()) : Promise.resolve()));
   }
 
   play(): void {

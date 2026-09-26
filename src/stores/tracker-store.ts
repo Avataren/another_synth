@@ -41,6 +41,7 @@ import {
   type ReplaceAhxBytesOptions,
 } from 'src/audio/tracker/ahx-source';
 import {
+  AHX_MAX_INSTRUMENTS,
   ahxEditRefusal,
   ahxInstrumentBytes,
   allocTrack,
@@ -53,6 +54,8 @@ import {
   encodeAhxFile,
   entriesToTrack,
   fileInstruments,
+  fillAhxSlot,
+  instrumentAddRefusal,
   instrumentGrowthRefusal,
   isBlankTrack,
   projectAhxPatterns,
@@ -70,6 +73,7 @@ import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-e
 import { readModOrigin, type ModOrigin } from 'src/audio/tracker/mod-origin';
 import { editSidInstrument, newSidInstrument } from 'src/audio/tracker/sid-instrument-edit';
 import { addSidPreset, applySidPreset } from 'src/audio/tracker/sid-presets';
+import { ahxPresetFits, ahxPresetInstrument } from 'src/audio/tracker/ahx-presets';
 import {
   SID_MAX_INSTRUMENT_NAME_LENGTH,
   SID_MAX_PATTERN_ROWS,
@@ -1678,6 +1682,77 @@ export const useTrackerStore = defineStore('trackerStore', {
       const doc = this.sidDoc;
       if (doc === null || !this.isSidEditable) return false;
       return this.editSidDoc(applySidPreset(doc, n, id, { filterVoice }));
+    },
+    /**
+     * Appends AHX/HVL preset `id` (`ahx-presets.ts`) as the song's next
+     * instrument, as one undo step, and returns its number; null, with the
+     * reason on the edit notice, when the preset is not one this song can play
+     * as written (`ahxPresetFits`), the song already has 63 instruments, or
+     * the file has no room for it. An AHX song's instruments are its slots; an
+     * HVL song's are its doc's, which the slots mirror, so both are written.
+     * The engine's bytes are rebuilt with the new instrument count and the
+     * keyboard preview reloads them (`instrumentsChanged`).
+     */
+    addAhxPresetInstrument(id: string): number | null {
+      if (!this.isAhxEditable) return null;
+      // A grid edit not yet written back belongs to the doc the instrument joins.
+      this.syncAhxWriteBack();
+      const doc = this.ahxDoc as AhxDoc;
+      const instrument = ahxPresetFits(id, doc.format, doc.version) ? ahxPresetInstrument(id) : undefined;
+      if (!instrument) {
+        reportAhxEditNotice(`There is no ${doc.format === 'hvl' ? 'HVL' : 'AHX'} preset "${id}" for this song.`);
+        return null;
+      }
+      const instruments = fileInstruments(doc, this.instrumentSlots);
+      const n = instruments.length + 1;
+      const slot = this.instrumentSlots.find((s) => s.slot === n);
+      if (n > AHX_MAX_INSTRUMENTS || !slot) {
+        reportAhxEditNotice(`A song holds ${AHX_MAX_INSTRUMENTS} instruments at most.`);
+        return null;
+      }
+      const refusal = instrumentAddRefusal(doc, ahxInstrumentBytes(instruments, doc.format), instrument);
+      if (refusal !== null) {
+        reportAhxEditNotice(refusal);
+        return null;
+      }
+      this.pushHistory();
+      fillAhxSlot(slot, instrument, doc.format === 'hvl' ? 'HVL presets' : 'AHX presets');
+      if (doc.format === 'hvl') {
+        this.commitAhxDoc({ ...doc, instruments: [...doc.instruments, { ...instrument }] }, { instrumentsChanged: true });
+      } else {
+        this.ahxRevision += 1;
+        this.publishAhxBytes({ instrumentsChanged: true });
+      }
+      return n;
+    },
+    /**
+     * Replaces AHX/HVL instrument `n` with preset `id`, name and all, as one
+     * undo step, through the instrument page's own path (`updateAhxInstrument`,
+     * then the rename). False, with the reason on the edit notice, for a preset
+     * this song cannot play as written or one that grows the file past its limit.
+     */
+    applyAhxPresetTo(n: number, id: string): boolean {
+      if (!this.isAhxEditable) return false;
+      const doc = this.ahxDoc as AhxDoc;
+      const instrument = ahxPresetFits(id, doc.format, doc.version) ? ahxPresetInstrument(id) : undefined;
+      if (!instrument) {
+        reportAhxEditNotice(`There is no ${doc.format === 'hvl' ? 'HVL' : 'AHX'} preset "${id}" for this song.`);
+        return false;
+      }
+      const refusal = this.ahxInstrumentRefusal(n, instrument);
+      if (refusal !== null) {
+        reportAhxEditNotice(refusal);
+        return false;
+      }
+      this.pushHistory();
+      if (this.updateAhxInstrument(n, instrument) === 'rejected') {
+        this.undoStack.pop();
+        return false;
+      }
+      this.setInstrumentName(n, instrument.name);
+      const slot = this.instrumentSlots.find((s) => s.slot === n);
+      if (slot) slot.patchName = slot.instrumentName;
+      return true;
     },
     editSidDoc(result: SidOpResult): boolean {
       if (!this.isSidEditable) return false;

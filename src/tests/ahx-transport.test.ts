@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AhxTransport } from 'src/audio/tracker/ahx-transport';
+import { buildAhxFile, createNewAhxDoc } from 'src/audio/tracker/ahx-doc';
+import { defaultAhxInstrument } from 'src/audio/tracker/ahx-instrument-edit';
 import type {
   AhxPlayerClient,
   AhxPosition,
@@ -240,5 +242,22 @@ describe('AhxTransport', () => {
     await expect(loading).rejects.toThrow(/disposed/);
     expect(fake.raw.dispose).toHaveBeenCalledOnce();
     expect(fake.raw.output.connect).not.toHaveBeenCalled();
+  });
+
+  it('does not send the engine an edit of an instrument the song it holds does not have yet (one added since the load)', async () => {
+    const { fake, transport } = setup();
+    const replaceInstruments = vi.fn((edits: ReadonlyArray<unknown>) => edits.map(() => Promise.resolve()));
+    (fake.raw as unknown as { replaceInstruments: typeof replaceInstruments }).replaceInstruments = replaceInstruments;
+    const doc = createNewAhxDoc({ trackLength: 8 });
+    const twoInstruments = buildAhxFile({ doc, slots: [{ ahxData: defaultAhxInstrument() }, { ahxData: defaultAhxInstrument() }], title: 't' }).bytes;
+    await transport.load(twoInstruments);
+    const edit = (instrument: number) => ({ instrument, bytes: new Uint8Array([instrument]) });
+    const answers = transport.replaceInstruments([edit(2), edit(3), edit(1)]);
+    expect(answers).toHaveLength(3);
+    await Promise.all(answers);
+    expect(replaceInstruments).toHaveBeenCalledWith([edit(2), edit(1)]);
+    replaceInstruments.mockClear();
+    transport.replaceInstruments([edit(3)]);
+    expect(replaceInstruments).not.toHaveBeenCalled();
   });
 });

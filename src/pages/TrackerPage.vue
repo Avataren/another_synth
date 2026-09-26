@@ -683,7 +683,21 @@
                   <span v-else>{{ getInstrumentDisplayName(slot) }}</span>
                 </div>
                 <PatchPicker
-                  v-if="!isSidSong"
+                  v-if="canPickAhxPresetAt(slot.slot)"
+                  :model-value="null"
+                  :patches="ahxPresetList"
+                  :placeholder="slot.slot <= ahxInstrumentCount ? 'Load preset' : 'Add from preset'"
+                  @select="
+                    (p) => {
+                      onAhxPresetSelect(slot.slot, p.id);
+                      refocusTracker();
+                    }
+                  "
+                  @close="refocusTracker"
+                  @click.stop
+                />
+                <PatchPicker
+                  v-else-if="!isSidSong"
                   :model-value="slot.patchId ?? null"
                   :patches="availablePatches"
                   placeholder="Select patch"
@@ -1078,6 +1092,8 @@ import { snapshotEditorSong } from 'src/audio/tracker/ahx-source';
 import type { AhxEditGate } from 'src/audio/tracker/ahx-doc/edit-guard';
 import { SID_MAX_INSTRUMENTS, sidMinTempo, type SidChipModel } from 'src/audio/tracker/sid-doc';
 import { sidPresetOptions } from 'src/audio/tracker/sid-presets';
+import { ahxPresetOptions } from 'src/audio/tracker/ahx-presets';
+import { AHX_MAX_INSTRUMENTS, fileInstruments } from 'src/audio/tracker/ahx-doc';
 import { ahxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
   channelsFromSelection,
@@ -1407,6 +1423,27 @@ function onSidPresetSelect(slotNumber: number, id: string): void {
       : trackerStore.addSidPresetInstrument(id, voice) !== null;
   if (done) setActiveInstrument(slotNumber);
 }
+/** AHX/HVL presets (`ahx-presets.ts`), the ones this song's format and version play as written: a filled slot is replaced, the first free one added. */
+const ahxPresetList = computed(() => {
+  const doc = trackerStore.ahxDoc;
+  return doc !== null && trackerStore.isAhxEditable ? ahxPresetOptions(doc.format, doc.version) : [];
+});
+/** How many instruments the AHX/HVL song has (numbered without gaps). */
+const ahxInstrumentCount = computed(() => {
+  const doc = trackerStore.ahxDoc;
+  return doc === null ? 0 : fileInstruments(doc, trackerStore.instrumentSlots).length;
+});
+function canPickAhxPresetAt(slotNumber: number): boolean {
+  return trackerStore.isAhxEditable && slotNumber <= Math.min(ahxInstrumentCount.value + 1, AHX_MAX_INSTRUMENTS);
+}
+function onAhxPresetSelect(slotNumber: number, id: string): void {
+  if (!canPickAhxPresetAt(slotNumber)) return;
+  const done =
+    slotNumber <= ahxInstrumentCount.value
+      ? trackerStore.applyAhxPresetTo(slotNumber, id)
+      : trackerStore.addAhxPresetInstrument(id) !== null;
+  if (done) setActiveInstrument(slotNumber);
+}
 function onAddInstrumentClick(slotNumber: number): void {
   if (!isSidSong.value) {
     void createNewSongPatch(slotNumber);
@@ -1420,8 +1457,8 @@ const ahxInstrumentsHint = computed(() =>
   isSidSong.value
     ? 'SID instruments are numbered in order: add one in the first free slot, edit it in its own editor'
     : hvlDocChannels.value === null
-    ? 'AHX instruments are numbered in order and edited in their own editor'
-    : 'HVL instruments are numbered in order and edited in their own editor'
+    ? 'AHX instruments are numbered in order: add one from a preset in the first free slot, edit it in its own editor'
+    : 'HVL instruments are numbered in order: add one from a preset in the first free slot, edit it in its own editor'
 );
 /** What the edit composables ask before an edit an AHX step has no home for (see `AhxEditGate`). */
 const ahxEditGate: AhxEditGate = {

@@ -12,6 +12,8 @@ import {
   type AhxWasmPlayerCtor,
 } from 'src/audio/worklets/ahx-core';
 import { AhxPreview } from 'src/audio/tracker/ahx-preview';
+import { buildAhxFile, createNewAhxDoc } from 'src/audio/tracker/ahx-doc';
+import { defaultAhxInstrument } from 'src/audio/tracker/ahx-instrument-edit';
 import type { AhxPlayerClient } from 'src/audio/tracker/ahx-player';
 
 const ROOT = resolve(__dirname, '../..');
@@ -333,5 +335,29 @@ describe('AhxPreview', () => {
     expect(raw.dispose).toHaveBeenCalled();
     await preview.noteOn(bytes, 1, 48);
     expect(calls.filter((c) => c.startsWith('on:'))).toHaveLength(1);
+  });
+
+  it('leaves an edit to a load not yet posted, and does not send one for an instrument its song lacks', async () => {
+    const { client, raw } = fakeClient(ctx);
+    const replaceInstrument = vi.fn(async () => undefined);
+    (raw as unknown as { replaceInstrument: typeof replaceInstrument }).replaceInstrument = replaceInstrument;
+    const song = (count: number) =>
+      buildAhxFile({ doc: createNewAhxDoc({ trackLength: 8 }), slots: Array.from({ length: count }, () => ({ ahxData: defaultAhxInstrument() })), title: 't' }).bytes;
+    const preview = new AhxPreview(host, async () => client);
+    await preview.preload(song(2));
+    await preview.replaceInstrument(2, new Uint8Array([2]));
+    expect(replaceInstrument).toHaveBeenCalledTimes(1);
+    // Instrument 3 is not in the song the worklet holds.
+    await preview.replaceInstrument(3, new Uint8Array([3]));
+    expect(replaceInstrument).toHaveBeenCalledTimes(1);
+    // An instrument was added: the reload is on its way, and an edit made meanwhile rides with it.
+    // (Instrument 2 is in the old song too: only the pending load keeps the edit from reaching it.)
+    const reloading = preview.preload(song(3));
+    await preview.replaceInstrument(2, new Uint8Array([2]));
+    expect(replaceInstrument).toHaveBeenCalledTimes(1);
+    await reloading;
+    expect(raw.loadSong).toHaveBeenCalledTimes(2);
+    await preview.replaceInstrument(3, new Uint8Array([3]));
+    expect(replaceInstrument).toHaveBeenCalledTimes(2);
   });
 });

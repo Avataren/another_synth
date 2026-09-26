@@ -1,4 +1,4 @@
-import type { AhxSong } from '@another-synth/tracker-playback';
+import type { AhxInstrument, AhxSong } from '@another-synth/tracker-playback';
 import { TOTAL_SLOTS, formatInstrumentId } from '@another-synth/tracker-playback';
 import type { InstrumentSlot } from 'src/stores/tracker-store';
 
@@ -26,13 +26,18 @@ export function buildAhxSlots(song: AhxSong): InstrumentSlot[] {
     const slot = slots[n - 1];
     if (!instrument || !slot) continue;
 
-    slot.bankName = 'AHX Import';
-    slot.patchName = instrument.name.trim() || `Instrument ${formatInstrumentId(n)}`;
-    slot.instrumentName = slot.patchName;
-    slot.source = 'song';
-    slot.instrumentType = 'ahx';
-    slot.instrumentFormat = 'ahx';
-    slot.ahxData = instrument;
+    fillAhxSlot(slot, instrument, 'AHX Import');
   }
   return slots;
+}
+
+/** Makes `slot` list the song's AHX instrument `instrument` (an import's, or one added from a preset under `bankName`). */
+export function fillAhxSlot(slot: InstrumentSlot, instrument: AhxInstrument, bankName: string): void {
+  slot.bankName = bankName;
+  slot.patchName = instrument.name.trim() || `Instrument ${formatInstrumentId(slot.slot)}`;
+  slot.instrumentName = slot.patchName;
+  slot.source = 'song';
+  slot.instrumentType = 'ahx';
+  slot.instrumentFormat = 'ahx';
+  slot.ahxData = instrument;
 }

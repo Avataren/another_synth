@@ -3,9 +3,10 @@ import {
   createAhxPlayer,
   type AhxPListRow,
   type AhxPlayerClient,
+  type AhxSongInfo,
 } from 'src/audio/tracker/ahx-player';
 import type { AhxTransportHost } from 'src/audio/tracker/ahx-transport';
-import { currentAhxInstrumentEdits, type AhxInstrumentEdit } from 'src/audio/tracker/ahx-source';
+import { ahxInstrumentCount, currentAhxInstrumentEdits, type AhxInstrumentEdit } from 'src/audio/tracker/ahx-source';
 
 /**
  * Playing an AHX song's instruments from the keyboard.
@@ -36,6 +37,8 @@ export class AhxPreview {
   private client: AhxPlayerClient | null = null;
   private creating: Promise<AhxPlayerClient> | null = null;
   private loadedSource: Uint8Array | null = null;
+  /** A load is on its way to being posted (`prepare`): until it is, edits are left to it. */
+  private loadPending = false;
   private loading: { bytes: Uint8Array; promise: Promise<AhxPlayerClient | null> } | null = null;
   /** The key that should be sounding: set at note-on, cleared by its note-off. */
   private wanted: { midi: number } | null = null;
@@ -155,7 +158,13 @@ export class AhxPreview {
    * worklet yet (its load applies every edit).
    */
   replaceInstrument(instrument: number, bytes: Uint8Array): Promise<void> {
-    return this.client ? this.client.replaceInstrument(instrument, bytes) : Promise.resolve();
+    // Not sent where it cannot land, and need not: a load about to be posted
+    // applies every recorded edit, this one included, and a song that lacks the
+    // instrument (one added since it was loaded) is stale, so its next load is
+    // of bytes that have it, with every edit applied (`prepare`).
+    if (!this.client || this.loadPending) return Promise.resolve();
+    if (this.loadedSource && instrument > ahxInstrumentCount(this.loadedSource)) return Promise.resolve();
+    return this.client.replaceInstrument(instrument, bytes);
   }
 
   /** Release whatever sounds (focus lost, song changed). */
@@ -227,10 +236,21 @@ export class AhxPreview {
     if (this.client && this.client.audioContext !== this.host.audioContext) {
       this.disposeClient();
     }
-    const client = await this.ensureClient();
-    if (this.loadedSource === bytes) return client;
-    this.loadedSource = null;
-    const info = await client.loadSong(bytes, 2, this.editsToApply());
+    if (this.loadedSource === bytes && this.client) return this.client;
+    // From here until the load is posted, an edit would reach the old song:
+    // `replaceInstrument` leaves it to this load, which takes every recorded edit.
+    this.loadPending = true;
+    let client: AhxPlayerClient;
+    let loading: Promise<AhxSongInfo>;
+    try {
+      client = await this.ensureClient();
+      if (this.loadedSource === bytes) return client;
+      this.loadedSource = null;
+      loading = client.loadSong(bytes, 2, this.editsToApply());
+    } finally {
+      this.loadPending = false;
+    }
+    const info = await loading;
     this.loadedSource = bytes;
     if (info.rejectedInstruments && info.rejectedInstruments.length > 0) {
       this.onRejectedEdits?.(info.rejectedInstruments);

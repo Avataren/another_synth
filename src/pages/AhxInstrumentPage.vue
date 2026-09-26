@@ -25,6 +25,14 @@
           >Edits not audible</span
         >
       </div>
+      <div v-if="instrument && presetOptions.length > 0" class="ahx-preset-load" data-testid="ahx-preset-load">
+        <PatchPicker
+          :model-value="null"
+          :patches="presetOptions"
+          placeholder="Load preset…"
+          @select="loadPreset($event.id)"
+        />
+      </div>
       <q-btn
         flat
         dense
@@ -34,6 +42,10 @@
         title="Press Escape to return"
         @click="backToTracker"
       />
+    </div>
+
+    <div v-if="loadedPreset && instrument" class="ahx-preset-note" data-testid="ahx-preset-note">
+      <strong>{{ loadedPreset.name }}</strong> ({{ loadedPreset.category }}): {{ loadedPreset.description }}
     </div>
 
     <div v-if="!audible" class="ahx-notice" role="alert" data-testid="ahx-source-missing">
@@ -646,7 +658,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   AHX_MAX_PLIST_ENTRIES,
@@ -728,6 +740,8 @@ import {
   type AhxNumberFieldKey,
   type AhxPListEdit,
 } from 'src/audio/tracker/ahx-instrument-edit';
+import { ahxPreset, ahxPresetOptions, type AhxPreset } from 'src/audio/tracker/ahx-presets';
+import PatchPicker from 'src/components/PatchPicker.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -747,6 +761,21 @@ const slotNumber = computed<number | null>(() => {
 const slot = computed(() =>
   trackerStore.instrumentSlots.find((s) => s.slot === slotNumber.value),
 );
+
+/** The presets this song plays as written (its format and version), offered only for a song that can be edited. */
+const presetOptions = computed(() => {
+  const doc = trackerStore.ahxDoc;
+  return doc !== null && trackerStore.isAhxEditable ? ahxPresetOptions(doc.format, doc.version) : [];
+});
+/** The preset just loaded into this instrument, described under the banner until another instrument is shown. */
+const loadedPreset = shallowRef<AhxPreset | null>(null);
+watch(slotNumber, () => {
+  loadedPreset.value = null;
+});
+/** Replaces this instrument with preset `id` (one undo step; its name becomes the preset's). */
+function loadPreset(id: string): void {
+  if (slotNumber.value !== null && trackerStore.applyAhxPresetTo(slotNumber.value, id)) loadedPreset.value = ahxPreset(id) ?? null;
+}
 const instrument = computed(() => slot.value?.ahxData ?? null);
 const displayName = computed(
   () => slot.value?.instrumentName || slot.value?.patchName || 'Empty',
@@ -1273,6 +1302,16 @@ onUnmounted(() => {
   position: static;
 }
 
+.ahx-preset-load {
+  min-width: 200px;
+  margin-left: auto;
+  margin-right: 8px;
+}
+.ahx-preset-note {
+  padding: 8px 24px;
+  font-size: 13px;
+  background: rgba(120, 160, 255, 0.1);
+}
 .ahx-notice {
   margin: 8px 12px 0;
   padding: 8px 12px;

@@ -91,3 +91,14 @@ export function instrumentGrowthRefusal(
   const rows = (after - before) / plistEntryBytes(doc.format);
   return growthRefusal(before, after, rows === 1 ? 'a PList row' : `${formatBytes(rows)} PList rows`);
 }
+
+/**
+ * Why `added` cannot join the song as a new instrument, when it grows the file
+ * past the limit; `null` otherwise. `instrumentBytes` is what the song's
+ * instruments take now (`ahxInstrumentBytes` for the doc's format).
+ */
+export function instrumentAddRefusal(doc: AhxDoc, instrumentBytes: number, added: Pick<AhxInstrument, 'plist'>): string | null {
+  const before = ahxUsedBytes(doc, instrumentBytes);
+  const after = ahxUsedBytes(doc, instrumentBytes + ahxInstrumentBytes([added], doc.format));
+  return growthRefusal(before, after, 'an instrument');
+}

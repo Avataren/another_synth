@@ -23,6 +23,8 @@ export const AHX_MAX_TRACKS = 256;
 /** The header's position count is 12 bits, and the loader rejects more than 1000. */
 export const AHX_MAX_POSITIONS = 1000;
 export const AHX_MAX_TRACK_LENGTH = 64;
+/** A step's instrument is 6 bits, so a song can play instruments 1..63 (`ops.ts` `stepProblem`). */
+export const AHX_MAX_INSTRUMENTS = 63;
 /** The 16-bit `nameOffset`: everything before the string table must fit under it. */
 export const AHX_SIZE_LIMIT = 0xffff;
 

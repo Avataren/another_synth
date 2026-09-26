@@ -23,6 +23,8 @@ import { useTrackerStore } from 'src/stores/tracker-store';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import { currentAhxInstrumentEdits, setCurrentAhxSource } from 'src/audio/tracker/ahx-source';
 import { clearAhxNotices, reportAhxNotice } from 'src/audio/tracker/ahx-notices';
+import PatchPicker from 'src/components/PatchPicker.vue';
+import { ahxPresetsFor } from 'src/audio/tracker/ahx-presets';
 
 const karma = (): ArrayBuffer => {
   const b = readFileSync(resolve(__dirname, '../../public/demos/ahx/karma.ahx'));
@@ -177,5 +179,43 @@ describe('AhxInstrumentPage as an editor', () => {
     load();
     const w = await mountEditor(60);
     expect(w.find('[data-testid="ahx-instrument-missing"]').exists()).toBe(true);
+  });
+});
+
+describe('AhxInstrumentPage: presets', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    setCurrentAhxSource(null);
+  });
+
+  it('loads a preset into the instrument shown (one undo step, name and all) and says what it is', async () => {
+    const store = useTrackerStore();
+    store.loadSongFile(importAhxToTrackerSong(karma()));
+    setCurrentAhxSource(new Uint8Array(karma()));
+    const w = await mountEditor(2);
+    const before = JSON.parse(JSON.stringify(store.instrumentSlots.slice(0, 3).map((s) => s.ahxData))) as unknown[];
+    const picker = w.getComponent(PatchPicker);
+    // karma.ahx is a version-1 AHX file: every preset but the HVL-only ones.
+    expect(picker.props('patches')).toHaveLength(ahxPresetsFor('ahx', 1).length);
+    picker.vm.$emit('select', { id: 'bass-squelch', name: 'Squelch Bass', bankId: 'ahx-presets', bankName: 'AHX presets' });
+    await w.vm.$nextTick();
+    expect(store.instrumentSlots[1]!.ahxData!.name).toBe('Squelch Bass');
+    expect(store.instrumentSlots[1]!.instrumentName).toBe('Squelch Bass');
+    expect(w.get('[data-testid="ahx-instrument-name"]').text()).toBe('Squelch Bass');
+    expect(store.instrumentSlots[0]!.ahxData).toEqual(before[0]);
+    expect(store.instrumentSlots[2]!.ahxData).toEqual(before[2]);
+    // The engine plays it from the next note: it is a recorded edit of instrument 2.
+    expect(currentAhxInstrumentEdits().map((e) => e.instrument)).toContain(2);
+    expect(w.get('[data-testid="ahx-preset-note"]').text()).toContain('squelch');
+    store.undo();
+    expect(store.instrumentSlots.slice(0, 3).map((s) => s.ahxData)).toEqual(before);
+  });
+
+  it('offers no presets for a song it cannot edit (no doc)', async () => {
+    const store = useTrackerStore();
+    store.loadSongFile(importAhxToTrackerSong(karma()));
+    store.ahxDoc = null;
+    const w = await mountEditor(1);
+    expect(w.find('[data-testid="ahx-preset-load"]').exists()).toBe(false);
   });
 });

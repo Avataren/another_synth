@@ -1,5 +1,5 @@
 import { shallowRef, toRaw, type ShallowRef } from 'vue';
-import type { AhxSongFormat } from '@another-synth/tracker-playback';
+import { parseAhx, type AhxSongFormat } from '@another-synth/tracker-playback';
 import type { AhxPositionMap } from 'src/audio/tracker/ahx-doc';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 
@@ -315,4 +315,17 @@ export function currentAhxInstrumentEdits(): AhxInstrumentEdit[] {
 export function onAhxInstrumentEdit(listener: (edit: AhxInstrumentEdit) => void): () => void {
   editListeners.add(listener);
   return () => editListeners.delete(listener);
+}
+
+/**
+ * How many instruments the song in `bytes` has, or `Infinity` when it cannot be
+ * read (then the engine is left to judge). A worklet's song lacks an
+ * instrument added since it was loaded: an edit of that one cannot land there.
+ */
+export function ahxInstrumentCount(bytes: Uint8Array): number {
+  try {
+    return parseAhx(bytes).instrumentNr;
+  } catch {
+    return Infinity;
+  }
 }
