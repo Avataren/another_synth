@@ -6,6 +6,7 @@ import { parseXm } from '@another-synth/tracker-playback';
 import { parseS3m } from '@another-synth/tracker-playback';
 import { parseAhx } from '@another-synth/tracker-playback';
 import { importGtSong } from 'src/audio/tracker/sid-doc';
+import { parsePsid } from 'src/audio/tracker/psid';
 import { TOTAL_SLOTS } from 'src/stores/tracker-store';
 
 /**
@@ -91,7 +92,7 @@ describe('the published demo collection', () => {
     for (const collection of manifest.collections) {
       const dir = path.join(DEMOS, collection.id);
       // A collection's own files and those one directory down
-      // (goattracker/<artist>/), as the manifest builder walks it.
+      // (goattracker/<artist>/, sid/<composer>/), as the manifest builder walks it.
       const files = fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
         entry.isDirectory()
           ? fs.readdirSync(path.join(dir, entry.name)).map((f) => `${entry.name}/${f}`)
@@ -100,7 +101,7 @@ describe('the published demo collection', () => {
       for (const file of files) {
         // Only the formats the importer reads. Anything else is deliberately
         // left out of the manifest rather than published unreachable.
-        if (!/\.(mod|xm|s3m|ahx|hvl|sng)$/i.test(file)) continue;
+        if (!/\.(mod|xm|s3m|ahx|hvl|sng|sid)$/i.test(file)) continue;
         onDisk.add(`${collection.id}/${file}`);
       }
     }
@@ -148,6 +149,14 @@ describe('the published demo collection', () => {
         expect(ahx.positions.length).toBeGreaterThan(0);
         expect(ahx.channels).toBeGreaterThan(0);
         expect(ahx.instruments.length).toBeGreaterThan(1);
+      } else if (song.format === 'PSID' || song.format === 'RSID') {
+        // A C64 .sid: the header parses as the importer reads it (what it
+        // plays is the transcriber's: psid-transcribe.test.ts).
+        const sid = parsePsid(new Uint8Array(bytes));
+        if (!sid.ok) throw new Error(sid.reason);
+        expect(sid.file.type).toBe(song.format);
+        expect(song.title.startsWith(sid.file.name)).toBe(true);
+        expect(song.channels).toBe(3);
       } else if (song.format === 'GT2' || song.format === 'GT1') {
         // The manifest reads only the header; a song corrupt past it (Spock's
         // sleepwalk.sng) would be listed and then refused on click.

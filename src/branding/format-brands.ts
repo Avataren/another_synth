@@ -214,9 +214,12 @@ const DEMO_LABEL_BRANDS: Readonly<Record<string, FormatBrandId>> = {
   HVL: 'hvl',
   GT1: 'goat',
   GT2: 'goat',
+  // A C64 .sid opens as the GoatTracker song it is transcribed into.
+  PSID: 'goat',
+  RSID: 'goat',
 };
 
-/** The brand of a demo index entry, from its `format` label (MOD, XM, S3M, AHX, HVL, GT1, GT2). */
+/** The brand of a demo index entry, from its `format` label (MOD, XM, S3M, AHX, HVL, GT1, GT2, PSID, RSID). */
 export function brandIdForDemoLabel(label: string | null | undefined): FormatBrandId {
   return DEMO_LABEL_BRANDS[(label ?? '').toUpperCase()] ?? FALLBACK_BRAND_ID;
 }

@@ -37,21 +37,30 @@ function sidSlots(doc: SidDoc): InstrumentSlot[] {
 }
 
 /** `name` without its directories and extension, URL-decoded when it is encoded. */
-function fileTitle(name: string): string {
+export function fileTitle(name: string): string {
   let decoded = name;
   try {
     decoded = decodeURIComponent(name);
   } catch {
     // Not URL-encoded after all.
   }
-  return decoded.replace(/^.*[\\/]/, '').replace(/\.sng$/i, '').trim();
+  return decoded.replace(/^.*[\\/]/, '').replace(/\.(sng|sid)$/i, '').trim();
 }
 
 /** The song file of a `.sng`. Throws, with the true reason, for bytes that are not an importable one. */
 export function importGtSongToTrackerSong(buffer: ArrayBuffer, name = ''): TrackerSongFile {
   const imported = importGtSong(new Uint8Array(buffer), gtSongHintsFromName(name));
   if (!imported.ok) throw new Error(`Cannot import this GoatTracker song: ${imported.reason}.`);
-  const doc = imported.doc;
+  return sidDocToTrackerSong(imported.doc, fileTitle(name));
+}
+
+/**
+ * The song file of a SID doc from any source (a `.sng`, a transcribed `.sid`):
+ * the doc as the S3 codec writes it (`data.sidFile`, the song's authority),
+ * with the grid and slots projected from it beside. `fallbackTitle` names a
+ * song whose doc has no name.
+ */
+export function sidDocToTrackerSong(doc: SidDoc, fallbackTitle = ''): TrackerSongFile {
   const patterns = projectSidPatterns(doc);
   const sequence = patterns.map((pattern) => pattern.id);
   const timing = sidDocTiming(doc);
@@ -60,7 +69,7 @@ export function importGtSongToTrackerSong(buffer: ArrayBuffer, name = ''): Track
     data: {
       currentSong: {
         // GoatTracker 1 songs mostly leave the title empty: the file name is it then.
-        title: doc.songName.trim() || fileTitle(name) || 'Untitled SID song',
+        title: doc.songName.trim() || fallbackTitle || 'Untitled SID song',
         author: doc.author.trim() || 'Unknown',
         bpm: timing.bpm,
       },

@@ -10,6 +10,7 @@ import { looksLikeAhxModule, importAhxToTrackerSong } from 'src/audio/tracker/ah
 import { attachAhxSource, ahxSourceRecordOf, setCurrentAhxSource, type AhxSource } from 'src/audio/tracker/ahx-source';
 import { decodeAhxFile } from 'src/audio/tracker/ahx-doc';
 import { importGtSongToTrackerSong, looksLikeGtSongFile } from 'src/audio/tracker/sid-import';
+import { importPsidToTrackerSongAsync, looksLikePsidFile, psidImportSummaryOf } from 'src/audio/tracker/psid-import';
 import { recordLoadedSongHash } from 'src/composables/song-identity';
 import { usePostFxStore } from 'src/stores/post-fx-store';
 
@@ -72,6 +73,7 @@ export const SONG_FILE_EXTENSIONS = [
   '.ahx',
   '.hvl',
   '.sng',
+  '.sid',
 ] as const;
 
 /** Whether `name` looks like a song file `parseSongBuffer` might read. */
@@ -147,7 +149,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
                 'audio/x-mod': ['.mod'],
                 'audio/mod': ['.mod'],
                 'audio/x-xm': ['.xm'],
-                'application/octet-stream': ['.ahx', '.hvl', '.sng']
+                'application/octet-stream': ['.ahx', '.hvl', '.sng', '.sid']
               }
             }
           ],
@@ -161,7 +163,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     return await new Promise<ArrayBuffer | null>((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.cmod,application/json,.json,.mod,.xm,.s3m,.ahx,.hvl,.sng';
+      input.accept = '.cmod,application/json,.json,.mod,.xm,.s3m,.ahx,.hvl,.sng,.sid';
       input.onchange = () => {
         const file = input.files?.[0];
         if (!file) {
@@ -175,6 +177,16 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       };
       input.click();
     });
+  }
+
+  /** A message for the user: the host's toast, or the log without one. */
+  function tell(message: string): void {
+    if (context.notify) {
+      context.notify(message);
+    } else {
+      // eslint-disable-next-line no-console
+      console.info(message);
+    }
   }
 
   function refuseSavingAhx(): void {
@@ -313,6 +325,13 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       const text = await zipFile.async('string');
       return finishSongFile(JSON.parse(text) as TrackerSongFile);
     }
+    if (looksLikePsidFile(buffer)) {
+      // C64 .sid (PSID/RSID, plan-psid-import.md): the tune's player is run on
+      // an emulated C64 and transcribed into a GoatTracker song, in a worker
+      // (seconds for a big tune). What the user got is told when the song is
+      // applied (`applySongFile`).
+      return (await importPsidToTrackerSongAsync(data, name)).song;
+    }
     if (looksLikeMod(buffer)) {
       // Raw Amiga-style MOD module
       return importModToTrackerSong(data);
@@ -392,6 +411,9 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
    */
   async function applySongFile(songFile: TrackerSongFile): Promise<void> {
     await replaceSong(() => context.trackerStore.loadSongFile(songFile), ahxSourceRecordOf(songFile));
+    // A transcribed .sid: what the user got, and how close it sounds.
+    const summary = psidImportSummaryOf(songFile);
+    if (summary !== null) tell(summary);
   }
 
   /**
