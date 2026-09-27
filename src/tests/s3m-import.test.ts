@@ -427,3 +427,64 @@ describe('a sample number reloads the channel volume, retrigger or not', () => {
     expect(entryAt(song, 0, 0, 0)!.volume).toBe('40'); // 16/64, not 32/64
   });
 });
+
+/**
+ * ST3 keeps channel state per channel setting (st3play digread.c
+ * `getnote1`), so file channels sharing one play as one: their cells merge
+ * into the first channel's track, the way redemptions.s3m's note column and
+ * DF1 column on A9 do.
+ */
+describe('S3M import: file channels sharing a channel setting', () => {
+  const PCM = [{ frames: [0, 0.25, -0.25, 0] }];
+
+  it('merges an ST3 file\'s cells field by field into the first channel', () => {
+    const { song } = importS3m({
+      cwtv: 0x1320,
+      channelSettings: [0x00, 0x00],
+      orders: [0],
+      patterns: [
+        [
+          [{ note: 0x30, instrument: 1 }, { effect: 0x04, param: 0xf1 }],
+          [undefined, { effect: 0x04, param: 0xf1 }],
+          [{ note: 0x32, instrument: 1, volume: 20 }, { volume: 30 }],
+        ],
+      ],
+      instruments: PCM,
+    });
+    const [first, second] = song.data.patterns[0]!.tracks;
+    expect(second!.entries).toEqual([]);
+    expect(first!.entries.map((e) => [e.row, e.note, e.effectCommand, e.volume])).toEqual([
+      [0, 'C-4', 0x04, expect.any(String)],
+      [1, undefined, 0x04, undefined],
+      [2, 'D-4', undefined, Math.round((30 / 64) * 255).toString(16).toUpperCase()],
+    ]);
+  });
+
+  it('keeps a row split when a later cell delays what an earlier one keys on', () => {
+    // donewnote runs per cell: the first note plays on tick 0, then the
+    // merged cell again on the delay tick.
+    const { song } = importS3m({
+      cwtv: 0x1320,
+      channelSettings: [0x00, 0x00],
+      orders: [0],
+      patterns: [[[{ note: 0x30, instrument: 1 }, { note: 0x32, instrument: 1, effect: 0x13, param: 0xd1 }]]],
+      instruments: PCM,
+    });
+    const [first, second] = song.data.patterns[0]!.tracks;
+    expect(first!.entries.map((e) => e.note)).toEqual(['C-4']);
+    expect(second!.entries.map((e) => e.note)).toEqual(['D-4']);
+  });
+
+  it('leaves an OpenMPT-saved file\'s channels apart', () => {
+    const { song } = importS3m({
+      cwtv: 0x5131,
+      channelSettings: [0x00, 0x00],
+      orders: [0],
+      patterns: [[[{ note: 0x30, instrument: 1 }, { effect: 0x04, param: 0xf1 }]]],
+      instruments: PCM,
+    });
+    const [first, second] = song.data.patterns[0]!.tracks;
+    expect(first!.entries).toHaveLength(1);
+    expect(second!.entries).toHaveLength(1);
+  });
+});

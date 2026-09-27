@@ -389,7 +389,7 @@ const SONGS: Array<[string, string, number, string]> = [
   ['mystic', 'Mayaman/mystic reflections.s3m', 0, 'exact'],
   ['a-vision', 'Basehead/a vision.s3m', 0, 'exact'],
   ['starport', 'Purple Motion/starport bbs introtune.s3m', 0, 'exact'],
-  ['redemptions', 'Omega/redemptions.s3m', 38, 'two file channels on A9 (ST3 merges them into one state)'],
+  ['redemptions', 'Omega/redemptions.s3m', 5, 'driver: a tick\'s volume written twice'],
   ['first-adlib-attempt', 'Skaven/first adlib attempt.as3m', 1, 'a tone portamento lands one F-number short'],
   ['rotagilla', 'Manwe/rotagilla.s3m', 0, 'exact'],
   ['koakuma', 'Viraxor/koakuma.s3m', 361, 'driver: ST3.03-3.20 / OpenMPT broken AdLib tone portamento'],

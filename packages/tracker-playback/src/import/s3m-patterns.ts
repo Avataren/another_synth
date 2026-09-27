@@ -211,6 +211,72 @@ function conversionOrder(s3m: S3mSong): number[] {
   return order;
 }
 
+/**
+ * File channels ST3 plays as one channel, as `[primary, ...others]` groups.
+ *
+ * ST3 keeps its channel state per channel *setting*, not per file channel:
+ * st3play digread.c `getnote1` looks the cell up with
+ * `&song._zchn[song.header.channel[dat & 0x1F]]` and overwrites its note and
+ * instrument, its volume and its command, each only if the cell carries it,
+ * in file-channel order. So two channels set to, say, A9 are one AdLib
+ * channel whose row is the two cells merged -- redemptions.s3m writes its
+ * notes in one and a column of `DF1` fine slides in the other. Muted
+ * channels (bit 7) are skipped by getnote1 and join nothing.
+ *
+ * ST3-saved files only (cwtv 0x1xxx): a file saved by OpenMPT was written
+ * and heard in a player that keeps every channel separate.
+ */
+function mergedChannelGroups(s3m: S3mSong, channels: number[]): number[][] {
+  if (s3m.trackerVersion >> 12 !== 1) return [];
+  const bySetting = new Map<number, number[]>();
+  for (const ch of channels) {
+    const setting = s3m.channelSettings[ch] ?? 0xff;
+    if (setting >= 0x80) continue;
+    bySetting.set(setting, [...(bySetting.get(setting) ?? []), ch]);
+  }
+  return [...bySetting.values()].filter((group) => group.length > 1);
+}
+
+/**
+ * One row's cells of a channel group, merged the way `getnote1` does -- or
+ * undefined when merging would lose a note.
+ *
+ * `donewnote` runs once per *cell*, on the channel state as merged so far.
+ * Merging is the same thing in every case but one: a note in an earlier cell
+ * and an `SDx` in a later one. ST3 keys the earlier note on tick 0, before
+ * the later cell has been read, and then the merged cell again on tick x
+ * (redemptions' neighbour rance 4.1 - bird.s3m does this on its A6). Such a
+ * row stays split across the tracks, which sound on the same channel anyway.
+ */
+function mergeCells(cells: Array<S3mPatternCell | undefined>, group: number[]): S3mPatternCell | undefined | 'split' {
+  let merged: S3mPatternCell | undefined;
+  for (const ch of group) {
+    const cell = cells[ch];
+    if (
+      merged?.note !== undefined &&
+      merged.note !== S3M_NO_NOTE &&
+      cell?.effectCommand === 0x13 &&
+      cell.effectParam >> 4 === 0xd &&
+      (cell.effectParam & 0x0f) > 0
+    ) {
+      return 'split';
+    }
+    if (!cell) continue;
+    merged ??= { instrument: 0, effectCommand: 0, effectParam: 0 };
+    if (cell.note !== undefined) {
+      // The note and instrument bytes travel together (`dat & 32`).
+      merged.note = cell.note;
+      merged.instrument = cell.instrument;
+    }
+    if (cell.volume !== undefined) merged.volume = cell.volume;
+    if (cell.effectCommand !== 0 || cell.effectParam !== 0) {
+      merged.effectCommand = cell.effectCommand;
+      merged.effectParam = cell.effectParam;
+    }
+  }
+  return merged;
+}
+
 export function buildS3mTrackerPatterns(
   s3m: S3mSong,
   pitch: PitchModel,
@@ -224,6 +290,10 @@ export function buildS3mTrackerPatterns(
   // ProTracker: an instrument byte without a note selects the sample for the
   // channel's next note without switching what is sounding (D56).
   const channelInstruments = new Map<number, number>(channels.map((ch) => [ch, 0]));
+  // Channels merged into another's track stay as (empty) tracks of their own,
+  // so every track index still names its file channel.
+  const groups = mergedChannelGroups(s3m, channels);
+  const mergedAway = new Set(groups.flatMap((group) => group.slice(1)));
 
   for (const p of conversionOrder(s3m)) {
     const pattern = s3m.patterns[p]!;
@@ -242,8 +312,16 @@ export function buildS3mTrackerPatterns(
 
     for (let row = 0; row < pattern.numRows; row++) {
       const cells = pattern.rows[row] ?? [];
+      const merged = new Map<number, S3mPatternCell | undefined>();
+      const split = new Set<number>();
+      for (const group of groups) {
+        const cell = mergeCells(cells, group);
+        if (cell === 'split') group.forEach((ch) => split.add(ch));
+        else merged.set(group[0]!, cell);
+      }
       for (const ch of channels) {
-        const cell = cells[ch];
+        if (mergedAway.has(ch) && !split.has(ch)) continue;
+        const cell = merged.has(ch) ? merged.get(ch) : cells[ch];
         if (!cell) continue;
         const latched = channelInstruments.get(ch) ?? 0;
         const entry = s3mCellToTrackerEntry(
