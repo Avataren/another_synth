@@ -221,6 +221,7 @@ async function playThroughDriver(file: string, seconds: number) {
   await engine.play();
   clock.advance(seconds);
   engine.stop();
+  driver.flush();
   return { writes, rowTimes };
 }
 
@@ -393,7 +394,7 @@ const SONGS: Array<[string, string, number, string]> = [
   ['rotagilla', 'Manwe/rotagilla.s3m', 0, 'exact'],
   ['koakuma', 'Viraxor/koakuma.s3m', 361, 'driver: ST3.03-3.20 / OpenMPT broken AdLib tone portamento'],
   ['church', 'Bisqwit/some kind of church theme.s3m', 0, 'exact'],
-  ['rance-bird', '- unknown/(opl2) rance 4.1 - bird.s3m', 119, 'two file channels on A6'],
+  ['rance-bird', '- unknown/(opl2) rance 4.1 - bird.s3m', 0, 'exact'],
 ];
 
 describe('S3M AdLib register writes against ST3 (st3play traces)', () => {

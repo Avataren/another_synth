@@ -153,6 +153,13 @@ interface ChannelState {
   scaledBase: number;
   keyed: boolean;
   avol: number;
+  /**
+   * A retrigger not yet written: the time of the note that asked for it.
+   * ST3 works out a whole tick before `updateadlib` writes it, so a pitch
+   * change on the note's own tick (a fine slide, say) is in the note it keys
+   * on. The key-off/key-on pair waits here until the tick's pitch is final.
+   */
+  retriggerAt: number | undefined;
 }
 
 export interface S3mOplDriverOptions {
@@ -177,6 +184,7 @@ export class S3mOplDriver {
   private readonly tracks = new Map<number, ChannelState>();
   /** `adlibmem`: what each register was last written with. */
   private readonly cache = new Uint8Array(256);
+  private flushScheduled = false;
 
   constructor(options: S3mOplDriverOptions) {
     this.target = options.target;
@@ -215,6 +223,7 @@ export class S3mOplDriver {
     if (!data) return;
     const state = this.channel(trackIndex);
     if (!state) return;
+    this.settle(time, state);
 
     if (state.instrumentId !== instrumentId) {
       state.instrumentId = instrumentId;
@@ -227,16 +236,49 @@ export class S3mOplDriver {
     state.scaledBase = state.periodBase === 0 ? 0 : st3ScaleC2spd(state.periodBase, data.c2spd);
     const hz = st3HzForPeriod(state.scaledBase, this.limits);
     if (hz === 0) {
+      state.retriggerAt = undefined;
       this.keyOff(time, state);
     } else {
-      const note = st3AdlibNote(hz);
-      // updateadlib, addherzretrig: key-off then key-on.
-      this.outNote(time, state.oplChannel, note & ~ST3_KEY_ON);
-      this.outNote(time + RETRIGGER_GAP_SECONDS, state.oplChannel, note);
-      state.note = note;
+      state.note = st3AdlibNote(hz);
       state.keyed = true;
+      this.deferRetrigger(time, state);
     }
     this.writeVolume(time, state);
+  }
+
+  /**
+   * Write any retrigger still waiting for its tick to finish. The driver
+   * does this itself before a later event on the same channel and at the
+   * end of the current task; a host that needs the writes sooner (a test
+   * reading the target synchronously) can call it.
+   */
+  flush(): void {
+    this.flushScheduled = false;
+    for (const state of new Set(this.tracks.values())) this.flushRetrigger(state);
+  }
+
+  private deferRetrigger(time: number, state: ChannelState): void {
+    state.retriggerAt = time;
+    if (!this.flushScheduled) {
+      this.flushScheduled = true;
+      queueMicrotask(() => this.flush());
+    }
+  }
+
+  /** updateadlib, addherzretrig: key-off then key-on, with the tick's note. */
+  private flushRetrigger(state: ChannelState): void {
+    const time = state.retriggerAt;
+    if (time === undefined) return;
+    state.retriggerAt = undefined;
+    this.outNote(time, state.oplChannel, state.note & ~ST3_KEY_ON);
+    if (state.keyed) this.outNote(time + RETRIGGER_GAP_SECONDS, state.oplChannel, state.note);
+  }
+
+  /** Settles a pending retrigger unless `time` is still its tick. */
+  private settle(time: number, state: ChannelState): void {
+    if (state.retriggerAt !== undefined && Math.abs(time - state.retriggerAt) > 1e-9) {
+      this.flushRetrigger(state);
+    }
   }
 
   /**
@@ -249,6 +291,7 @@ export class S3mOplDriver {
   setPitch(time: number, trackIndex: number, frequency: number, source?: PitchSource): void {
     const state = this.tracks.get(trackIndex);
     if (!state?.data || !state.keyed) return;
+    this.settle(time, state);
     const period = st3PeriodForFrequency(frequency);
     let scaled: number;
     if (period === 0) {
@@ -264,17 +307,20 @@ export class S3mOplDriver {
     }
     const hz = st3HzForPeriod(scaled, this.limits);
     if (hz === 0) {
+      this.flushRetrigger(state);
       this.keyOff(time, state);
       return;
     }
     state.note = st3AdlibNote(hz);
-    this.outNote(time, state.oplChannel, state.note);
+    // On the note's own tick the pitch joins the pending retrigger.
+    if (state.retriggerAt === undefined) this.outNote(time, state.oplChannel, state.note);
   }
 
   /** The channel volume, 0..1 of ST3's 0..64. */
   setVolume(time: number, trackIndex: number, volume: number): void {
     const state = this.tracks.get(trackIndex);
     if (!state?.data) return;
+    this.settle(time, state);
     state.avol = Math.min(63, Math.max(0, Math.round(volume * 64)));
     this.writeVolume(time, state);
   }
@@ -282,12 +328,17 @@ export class S3mOplDriver {
   /** `^^`: key off at the current frequency. */
   noteOff(time: number, trackIndex: number): void {
     const state = this.tracks.get(trackIndex);
-    if (state) this.keyOff(time, state);
+    if (!state) return;
+    this.flushRetrigger(state);
+    this.keyOff(time, state);
   }
 
   /** Key every channel off (a stop, or S3M's key-off-all). */
   allNotesOff(time: number): void {
-    for (const state of new Set(this.tracks.values())) this.keyOff(time, state);
+    for (const state of new Set(this.tracks.values())) {
+      this.flushRetrigger(state);
+      this.keyOff(time, state);
+    }
   }
 
   private channel(trackIndex: number): ChannelState | undefined {
@@ -317,6 +368,7 @@ export class S3mOplDriver {
       scaledBase: 0,
       keyed: false,
       avol: 63,
+      retriggerAt: undefined,
     };
     this.tracks.set(trackIndex, state);
     return state;

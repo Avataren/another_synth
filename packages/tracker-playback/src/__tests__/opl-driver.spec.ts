@@ -96,6 +96,7 @@ describe('S3mOplDriver writes', () => {
     d.reset(0);
     writes.length = 0;
     d.noteOn('01', 127, 1, 0, noteHz(0x30));
+    d.flush();
     expect(hex(writes)).toEqual([
       '20=21', '23=31', '40=50', '43=45', '60=f2', '63=f3', '80=14', '83=15', 'e0=01', 'e3=02', 'c0=06',
       // outnote(note & 0xDFFF): A0 low byte, B0 with the key bit clear...
@@ -112,12 +113,14 @@ describe('S3mOplDriver writes', () => {
   it('a lower volume rewrites the carrier TL only, the modulator too when additive', () => {
     const fm = driver({ '01': FM });
     fm.d.noteOn('01', 127, 0, 0, noteHz(0x30));
+    fm.d.flush();
     fm.writes.length = 0;
     fm.d.setVolume(1, 0, 32 / 64);
     expect(hex(fm.writes)).toEqual([`43=${st3AdlibTotalLevel(0x45, 32).toString(16)}`]);
 
     const am = driver({ '01': AM });
     am.d.noteOn('01', 127, 0, 0, noteHz(0x30));
+    am.d.flush();
     am.writes.length = 0;
     am.d.setVolume(1, 0, 32 / 64);
     expect(hex(am.writes)).toEqual([
@@ -129,6 +132,7 @@ describe('S3mOplDriver writes', () => {
   it('a pitch change rewrites only the registers that change, key bit set', () => {
     const { d, writes } = driver({ '01': FM });
     d.noteOn('01', 127, 0, 0, noteHz(0x30));
+    d.flush();
     writes.length = 0;
     d.setPitch(1, 0, noteHz(0x30)); // unchanged: nothing
     expect(writes).toEqual([]);
@@ -143,6 +147,7 @@ describe('S3mOplDriver writes', () => {
   it('a key-off writes the current note with the key bit clear, and later pitch moves are ignored', () => {
     const { d, writes } = driver({ '01': FM });
     d.noteOn('01', 127, 0, 0, noteHz(0x30));
+    d.flush();
     writes.length = 0;
     d.noteOff(1, 0);
     expect(hex(writes)).toEqual(['b0=0a']);
@@ -153,16 +158,20 @@ describe('S3mOplDriver writes', () => {
   it('a repeated note on the same instrument reloads nothing and re-keys', () => {
     const { d, writes } = driver({ '01': FM });
     d.noteOn('01', 127, 0, 0, noteHz(0x30));
+    d.flush();
     writes.length = 0;
     d.noteOn('01', 127, 1, 0, noteHz(0x30));
+    d.flush();
     expect(hex(writes)).toEqual(['b0=0a', 'b0=2a']);
   });
 
   it('a non-AdLib instrument does nothing, and the note sounding keeps sounding', () => {
     const { d, writes } = driver({ '01': FM });
     d.noteOn('01', 127, 0, 0, noteHz(0x30));
+    d.flush();
     writes.length = 0;
     d.noteOn('02', 127, 1, 0, noteHz(0x40));
+    d.flush();
     expect(writes).toEqual([]);
     expect(d.handles('02')).toBe(false);
     expect(d.handles('01')).toBe(true);
@@ -171,17 +180,39 @@ describe('S3mOplDriver writes', () => {
   it('tracks use the mapped OPL channel, else the lowest free one', () => {
     const mapped = driver({ '01': FM }, (t) => (t === 3 ? 5 : undefined));
     mapped.d.noteOn('01', 127, 0, 3, noteHz(0x30));
+    mapped.d.flush();
     // Channel 5's operators sit at offset 10/13; its C0 is 0xC5.
     expect(hex(mapped.writes).slice(0, 2)).toEqual(['2a=21', '2d=31']);
     expect(hex(mapped.writes)).toContain('c5=06');
     mapped.d.noteOn('01', 127, 0, 7, noteHz(0x30));
+    mapped.d.flush();
     expect(hex(mapped.writes)).toContain('c0=06');
+  });
+
+  it('a pitch change on the note\'s own tick is in the note it keys on', () => {
+    // ST3 computes the tick before updateadlib writes it: `D-3 .. EF4` keys
+    // on at the slid pitch, with no write at the unslid one.
+    const { d, writes } = driver({ '01': FM });
+    d.noteOn('01', 127, 0, 0, noteHz(0x30));
+    d.flush();
+    writes.length = 0;
+    d.noteOn('01', 127, 1, 0, noteHz(0x40));
+    const slid = pitch.frequencyFromPeriod(s3mPeriodForNote(0x40)! + 16);
+    d.setPitch(1, 0, slid);
+    d.flush();
+    const low = writes.filter(([, r]) => r === 0xa0);
+    const high = writes.filter(([, r]) => r === 0xb0);
+    expect(low).toHaveLength(1);
+    expect(high.map(([, , v]) => v & 0x20)).toEqual([0, 0x20]);
+    expect(high[0]![2] & 0x1f).toBe(high[1]![2] & 0x1f);
   });
 
   it('all notes off keys off every channel in use', () => {
     const { d, writes } = driver({ '01': FM });
     d.noteOn('01', 127, 0, 0, noteHz(0x30));
+    d.flush();
     d.noteOn('01', 127, 0, 1, noteHz(0x40));
+    d.flush();
     writes.length = 0;
     d.allNotesOff(1);
     expect(hex(writes)).toEqual(['b0=0a', 'b1=0e']);
