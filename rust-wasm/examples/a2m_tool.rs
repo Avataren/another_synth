@@ -155,6 +155,24 @@ fn dump(song: &A2mSong, pats: &[usize]) {
     }
 }
 
+fn write_wav(path: &str, rate: u32, pcm: &[u8]) {
+    let mut out = Vec::with_capacity(44 + pcm.len());
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + pcm.len() as u32).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&rate.to_le_bytes());
+    out.extend_from_slice(&(rate * 4).to_le_bytes());
+    out.extend_from_slice(&4u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&(pcm.len() as u32).to_le_bytes());
+    out.extend_from_slice(pcm);
+    std::fs::write(path, out).unwrap();
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -445,6 +463,135 @@ fn main() {
                         .join(" ")
                 );
             }
+        }
+        Some("writes") => {
+            // writes <file> <ticks> [quirks]: the engine's register writes in
+            // trace-oracle's replay form: "T <refresh>" before each tick
+            // (the rate the tick was reached at), then "W <reg> <val>" (hex);
+            // the reset's writes come first, under "T -1".
+            let song = parse(&std::fs::read(&args[2]).unwrap()).unwrap();
+            let ticks: usize = args[3].parse().unwrap();
+            let mut e = A2Engine::new(song);
+            e.adplug_quirks = args.get(4).is_some_and(|q| q == "quirks");
+            let mut out = String::from("T -1\n");
+            let mut w: Vec<(u16, u8)> = Vec::new();
+            e.reset(&mut w);
+            for t in 0..=ticks {
+                for (r, v) in w.drain(..) {
+                    out += &format!("W {r:03x} {v:02x}\n");
+                }
+                if t == ticks {
+                    break;
+                }
+                out += &format!("T {:.6}\n", e.refresh());
+                e.update(&mut w);
+            }
+            print!("{out}");
+        }
+        Some("replaychip") => {
+            // replaychip <writes.txt> <seconds> <out.wav>: `writes` output
+            // through this crate's Chip with trace-oracle replay's loop
+            // (samples, then the tick), at the native rate: the chip alone.
+            use audio_processor::opl::chip::{Chip, NATIVE_RATE};
+            let text = std::fs::read_to_string(&args[2]).unwrap();
+            let seconds: f64 = args[3].parse().unwrap();
+            let total = (seconds * NATIVE_RATE) as usize;
+            // REPLAY_SPACING=n: each write lands n samples after the one
+            // before it (a write queue), instead of all at the tick's instant.
+            let spacing: usize = std::env::var("REPLAY_SPACING").map_or(0, |v| v.parse().unwrap());
+            let mut queue: std::collections::VecDeque<(u16, u8)> = Default::default();
+            let mut wait = 0usize;
+            let mut chip = Chip::new();
+            let mut pcm: Vec<u8> = Vec::new();
+            let (mut pending, mut done) = (0f64, 0usize);
+            for line in text.lines() {
+                if done >= total {
+                    break;
+                }
+                let mut f = line.split(' ');
+                match f.next() {
+                    Some("W") => {
+                        let r = u16::from_str_radix(f.next().unwrap(), 16).unwrap();
+                        let v = u8::from_str_radix(f.next().unwrap(), 16).unwrap();
+                        if spacing == 0 {
+                            chip.write(r, v);
+                        } else {
+                            queue.push_back((r, v));
+                        }
+                    }
+                    Some("T") => {
+                        let refresh: f64 = f.next().unwrap().parse().unwrap();
+                        if refresh < 0.0 {
+                            continue;
+                        }
+                        pending += NATIVE_RATE / refresh;
+                        let n = (pending as usize).min(total - done);
+                        pending -= pending.floor();
+                        for _ in 0..n {
+                            if spacing > 0 {
+                                if wait == 0 {
+                                    if let Some((r, v)) = queue.pop_front() {
+                                        chip.write(r, v);
+                                        wait = spacing;
+                                    }
+                                }
+                                wait = wait.saturating_sub(1);
+                            }
+                            let (l, r) = chip.clock_sample();
+                            pcm.extend_from_slice(&l.to_le_bytes());
+                            pcm.extend_from_slice(&r.to_le_bytes());
+                        }
+                        done += n;
+                    }
+                    _ => {}
+                }
+            }
+            write_wav(&args[4], 49716, &pcm);
+        }
+        Some("render") => {
+            // render <file> <seconds> <out.wav> [rate] [quirks]: A2Player's
+            // output as 16-bit stereo, for the audio A/B against
+            // trace-oracle's render of the same file.
+            use audio_processor::opl::a2::player::A2Player;
+            let bytes = std::fs::read(&args[2]).unwrap();
+            let seconds: f64 = args[3].parse().unwrap();
+            let rate: f64 = args.get(5).map_or(49716.0, |r| r.parse().unwrap());
+            let mut p = A2Player::new(&bytes, rate).unwrap();
+            p.set_adplug_quirks(args.get(6).is_some_and(|q| q == "quirks"));
+            p.play();
+            let total = (seconds * rate) as usize;
+            let (mut l, mut r) = (vec![0f32; 512], vec![0f32; 512]);
+            let mut pcm: Vec<u8> = Vec::with_capacity(total * 4);
+            let mut done = 0;
+            while done < total {
+                let n = (total - done).min(512);
+                p.render(&mut l[..n], &mut r[..n]);
+                for i in 0..n {
+                    for v in [l[i], r[i]] {
+                        let s = (v * 32768.0).round().clamp(-32768.0, 32767.0) as i16;
+                        pcm.extend_from_slice(&s.to_le_bytes());
+                    }
+                }
+                done += n;
+            }
+            let rate = rate as u32;
+            let mut out = Vec::with_capacity(44 + pcm.len());
+            out.extend_from_slice(b"RIFF");
+            out.extend_from_slice(&(36 + pcm.len() as u32).to_le_bytes());
+            out.extend_from_slice(b"WAVEfmt ");
+            for v in [16u32] {
+                out.extend_from_slice(&v.to_le_bytes());
+            }
+            out.extend_from_slice(&1u16.to_le_bytes());
+            out.extend_from_slice(&2u16.to_le_bytes());
+            out.extend_from_slice(&rate.to_le_bytes());
+            out.extend_from_slice(&(rate * 4).to_le_bytes());
+            out.extend_from_slice(&4u16.to_le_bytes());
+            out.extend_from_slice(&16u16.to_le_bytes());
+            out.extend_from_slice(b"data");
+            out.extend_from_slice(&(pcm.len() as u32).to_le_bytes());
+            out.extend_from_slice(&pcm);
+            std::fs::write(&args[4], out).unwrap();
         }
         Some("mine") => {
             // mine <file> <ticks> <reg hex>... : the engine's writes to these registers

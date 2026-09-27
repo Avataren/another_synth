@@ -55,6 +55,19 @@ pub struct A2Player {
     taps_enabled: bool,
     taps: Vec<f32>,
     tap_frames: usize,
+    /// A tick's register writes reach the chip one per native sample (about
+    /// 20 µs apart) instead of all at once. AT2 writes the ports one after
+    /// another, so a key-off followed by a key-on in the same tick is seen by
+    /// the envelope and the note restarts; applied at one instant it is not,
+    /// and the note runs on. MEASURED (.ai/plan-opl.md O7 record): against
+    /// NAB622's SB16 recording of Corridors of Time the spaced writes follow
+    /// the loudness contour better (20 ms envelope r 0.60 vs 0.51) and the
+    /// spectrum far better (third-octave shape σ 2.1 vs 3.7 dB); one and two
+    /// samples apart measure the same. AdPlug's Nuked OPL3 output agrees
+    /// (per-channel envelopes r ≈ 1.00 once spaced, 0.14 when not).
+    /// Here: the current tick's writes, and the next one to apply.
+    writes: Vec<(u16, u8)>,
+    next_write: usize,
 }
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
@@ -87,6 +100,8 @@ impl A2Player {
             taps_enabled: false,
             taps: Vec::new(),
             tap_frames: 0,
+            writes: Vec::new(),
+            next_write: 0,
         })
     }
 
@@ -123,19 +138,32 @@ impl A2Player {
             return n;
         }
         for i in 0..n {
-            let (engine, chip, until_tick, loop_order, end) = (
+            let (engine, chip, until_tick, loop_order, end, writes, next_write) = (
                 &mut self.engine,
                 &mut self.chip,
                 &mut self.until_tick,
                 self.loop_order,
                 &mut self.end_reached,
+                &mut self.writes,
+                &mut self.next_write,
             );
             let [l, r] = self.resampler.next(|| {
                 if *until_tick <= 0.0 {
-                    step(engine, chip, loop_order, end);
+                    // A tick that wrote more than its samples could carry
+                    // finishes before the next one starts.
+                    for &(reg, val) in &writes[*next_write..] {
+                        chip.write(reg, val);
+                    }
+                    writes.clear();
+                    *next_write = 0;
+                    step(engine, writes, loop_order, end);
                     *until_tick += NATIVE_RATE / engine.refresh();
                 }
                 *until_tick -= 1.0;
+                if let Some(&(reg, val)) = writes.get(*next_write) {
+                    chip.write(reg, val);
+                    *next_write += 1;
+                }
                 let (l, r) = chip.clock_sample();
                 [l as f32, r as f32]
             });
@@ -162,6 +190,8 @@ impl A2Player {
         self.engine.reset(&mut self.chip);
         self.until_tick = 0.0;
         self.end_reached = false;
+        self.writes.clear();
+        self.next_write = 0;
         if (order, row) == (0, 0) {
             return true;
         }
@@ -377,12 +407,23 @@ impl A2Player {
     pub fn engine(&self) -> &A2Engine {
         &self.engine
     }
+
+    /// Plays AdPlug's departures from AT2 too (`A2Engine::adplug_quirks`):
+    /// for the audio A/B against AdPlug renders, never in the app.
+    pub fn set_adplug_quirks(&mut self, on: bool) {
+        self.engine.adplug_quirks = on;
+    }
 }
 
 /// One timer tick, then the order loop and the end check.
-fn step(engine: &mut A2Engine, chip: &mut Chip, loop_order: Option<usize>, end: &mut bool) {
+fn step(
+    engine: &mut A2Engine,
+    out: &mut impl RegisterSink,
+    loop_order: Option<usize>,
+    end: &mut bool,
+) {
     let loops = engine.loops();
-    engine.update(chip);
+    engine.update(out);
     if let Some(o) = loop_order {
         if engine.next_position().0 != o || engine.ended() {
             engine.redirect(o, 0);
