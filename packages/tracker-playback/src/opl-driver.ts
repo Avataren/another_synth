@@ -160,6 +160,8 @@ interface ChannelState {
    * on. The key-off/key-on pair waits here until the tick's pitch is final.
    */
   retriggerAt: number | undefined;
+  /** Likewise a volume (TL) write waiting for its tick's final volume. */
+  volumeAt: number | undefined;
 }
 
 export interface S3mOplDriverOptions {
@@ -241,9 +243,10 @@ export class S3mOplDriver {
     } else {
       state.note = st3AdlibNote(hz);
       state.keyed = true;
-      this.deferRetrigger(time, state);
+      state.retriggerAt = time;
     }
-    this.writeVolume(time, state);
+    state.volumeAt = time;
+    this.scheduleFlush();
   }
 
   /**
@@ -254,31 +257,37 @@ export class S3mOplDriver {
    */
   flush(): void {
     this.flushScheduled = false;
-    for (const state of new Set(this.tracks.values())) this.flushRetrigger(state);
+    for (const state of new Set(this.tracks.values())) this.flushTick(state);
   }
 
-  private deferRetrigger(time: number, state: ChannelState): void {
-    state.retriggerAt = time;
-    if (!this.flushScheduled) {
-      this.flushScheduled = true;
-      queueMicrotask(() => this.flush());
-    }
+  private scheduleFlush(): void {
+    if (this.flushScheduled) return;
+    this.flushScheduled = true;
+    queueMicrotask(() => this.flush());
   }
 
-  /** updateadlib, addherzretrig: key-off then key-on, with the tick's note. */
-  private flushRetrigger(state: ChannelState): void {
+  /**
+   * updateadlib for one channel: the retrigger (key-off then key-on, with
+   * the tick's note), then the volume retrigger (addherzretrigvol).
+   */
+  private flushTick(state: ChannelState): void {
     const time = state.retriggerAt;
-    if (time === undefined) return;
-    state.retriggerAt = undefined;
-    this.outNote(time, state.oplChannel, state.note & ~ST3_KEY_ON);
-    if (state.keyed) this.outNote(time + RETRIGGER_GAP_SECONDS, state.oplChannel, state.note);
+    if (time !== undefined) {
+      state.retriggerAt = undefined;
+      this.outNote(time, state.oplChannel, state.note & ~ST3_KEY_ON);
+      if (state.keyed) this.outNote(time + RETRIGGER_GAP_SECONDS, state.oplChannel, state.note);
+    }
+    if (state.volumeAt !== undefined) {
+      const at = state.volumeAt;
+      state.volumeAt = undefined;
+      this.writeVolume(at, state);
+    }
   }
 
-  /** Settles a pending retrigger unless `time` is still its tick. */
+  /** Settles a channel's pending writes unless `time` is still their tick. */
   private settle(time: number, state: ChannelState): void {
-    if (state.retriggerAt !== undefined && Math.abs(time - state.retriggerAt) > 1e-9) {
-      this.flushRetrigger(state);
-    }
+    const pending = state.retriggerAt ?? state.volumeAt;
+    if (pending !== undefined && Math.abs(time - pending) > 1e-9) this.flushTick(state);
   }
 
   /**
@@ -307,7 +316,7 @@ export class S3mOplDriver {
     }
     const hz = st3HzForPeriod(scaled, this.limits);
     if (hz === 0) {
-      this.flushRetrigger(state);
+      this.flushTick(state);
       this.keyOff(time, state);
       return;
     }
@@ -322,21 +331,22 @@ export class S3mOplDriver {
     if (!state?.data) return;
     this.settle(time, state);
     state.avol = Math.min(63, Math.max(0, Math.round(volume * 64)));
-    this.writeVolume(time, state);
+    state.volumeAt = time;
+    this.scheduleFlush();
   }
 
   /** `^^`: key off at the current frequency. */
   noteOff(time: number, trackIndex: number): void {
     const state = this.tracks.get(trackIndex);
     if (!state) return;
-    this.flushRetrigger(state);
+    this.flushTick(state);
     this.keyOff(time, state);
   }
 
   /** Key every channel off (a stop, or S3M's key-off-all). */
   allNotesOff(time: number): void {
     for (const state of new Set(this.tracks.values())) {
-      this.flushRetrigger(state);
+      this.flushTick(state);
       this.keyOff(time, state);
     }
   }
@@ -369,6 +379,7 @@ export class S3mOplDriver {
       keyed: false,
       avol: 63,
       retriggerAt: undefined,
+      volumeAt: undefined,
     };
     this.tracks.set(trackIndex, state);
     return state;

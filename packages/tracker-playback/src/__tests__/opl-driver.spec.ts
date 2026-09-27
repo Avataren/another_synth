@@ -116,6 +116,7 @@ describe('S3mOplDriver writes', () => {
     fm.d.flush();
     fm.writes.length = 0;
     fm.d.setVolume(1, 0, 32 / 64);
+    fm.d.flush();
     expect(hex(fm.writes)).toEqual([`43=${st3AdlibTotalLevel(0x45, 32).toString(16)}`]);
 
     const am = driver({ '01': AM });
@@ -123,6 +124,7 @@ describe('S3mOplDriver writes', () => {
     am.d.flush();
     am.writes.length = 0;
     am.d.setVolume(1, 0, 32 / 64);
+    am.d.flush();
     expect(hex(am.writes)).toEqual([
       `40=${st3AdlibTotalLevel(0x50, 32).toString(16)}`,
       `43=${st3AdlibTotalLevel(0x45, 32).toString(16)}`,
