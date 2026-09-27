@@ -85,7 +85,12 @@ A2M:
 | `Televicious/boom.a2m` | 14 |
 | `NAB622/corridors of time.a2m` | 11. Morten's favourite; heavy use of macros; hardware reference below |
 
-## Extra file (not from modland)
+## Extra files (not from modland)
+
+`a2m/NAB622/bad apple.a2m` ("Bad Apple", by Dretz, the same author as *Corridors of
+Time*; original by Alstroemeria Records) was supplied by Morten on 2026-09-27 as
+`BadApple.A2M` (28 624 bytes, sha256 `529c719b…4347`). Version 11, 18 tracks, tempo 221,
+macro speed-up 2.
 
 `a2m/NAB622/corridors of time.a2m` comes from NAB622's own MediaFire folder, linked from
 the video "Corridors of Time - Adlib Tracker (OPL3)" (youtube.com/watch?v=DEhbdVYSVMQ):
@@ -107,8 +112,8 @@ instrument data, not whether a pattern plays them:
 | 5 | 27 | 0 | 0 | 0 | 13 |
 | 9 | 38 | 0 | 1 | 0 | 2 |
 | 10 | 1 | 0 | 0 | 0 | 1 |
-| 11 | 146 | 13 | 6 | 13 | 40 |
+| 11 | 147 | 13 | 6 | 14 | 41 |
 | 12 | 8 | 0 | 5 | 4 | 6 |
 | 13 | 17 | 1 | 0 | 1 | 12 |
 | 14 | 30 | 8 | 5 | 7 | 25 |
-| all | 278 | 22 | 17 | 25 | 99 |
+| all | 279 | 22 | 17 | 26 | 100 |

@@ -89,7 +89,7 @@ fn block_key(block: &[u8]) -> String {
     format!("{}\t{:016x}", block.len(), fnv1a64(block))
 }
 
-/// E15: every file parses, or refuses with one true line. Today all 278 parse;
+/// E15: every file parses, or refuses with one true line. Today all 279 parse;
 /// a refusal would have to be listed here with its reason to pass.
 #[test]
 fn every_corpus_file_parses_or_refuses_truthfully() {
@@ -97,7 +97,7 @@ fn every_corpus_file_parses_or_refuses_truthfully() {
     let files = corpus();
     assert_eq!(
         files.len(),
-        278,
+        279,
         "corpus size changed; update the README manifest and this test"
     );
     let mut refusals = Vec::new();
@@ -130,7 +130,7 @@ fn every_corpus_file_parses_or_refuses_truthfully() {
 #[test]
 fn every_block_unpacks_like_adplug() {
     let reference = oracle_blocks();
-    assert_eq!(reference.len(), 999);
+    assert_eq!(reference.len(), 1013);
     let mut checked = 0;
     for rel in corpus() {
         let (_, _, blocks) = unpack(&read(&rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));

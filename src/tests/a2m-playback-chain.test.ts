@@ -473,7 +473,7 @@ describe('an A2M module opens and plays through the host, the playback store and
     const a2m = manifest.collections.find((c) => c.id === 'a2m')!;
     expect(a2m.name).toBe('Adlib Tracker II');
     // Every corpus module but the instrument set the player refuses.
-    expect(a2m.songs).toHaveLength(277);
+    expect(a2m.songs).toHaveLength(278);
     for (const song of a2m.songs) {
       expect(song.format).toBe('A2M');
       expect(readFileSync(resolve(ROOT, 'public/demos', song.file)).length).toBe(song.bytes);

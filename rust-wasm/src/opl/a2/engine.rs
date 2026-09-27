@@ -129,6 +129,10 @@ struct Column {
     trem_speed: u8,
     trem_depth: u8,
     trem_pos: u8,
+    /// ZFD / ZFE in the other column: the vibrato / tremolo steps once per
+    /// row instead of every tick (AT2 `vibr_table.fine`, `trem_table.fine`).
+    vib_fine: bool,
+    trem_fine: bool,
     arp_phase: u8,
     /// Shared amount of the frequency slides (set by 01, 02, 07 and 08,
     /// used by the combined slides; MEASURED).
@@ -841,6 +845,21 @@ impl A2Engine {
                 if group(fx) != 2 {
                     col.vib_speed = 0;
                     col.vib_depth = 0;
+                }
+                // AT2 `play_line`: ZFD beside a vibrato-type effect, or ZFE
+                // beside a tremolo, makes it fine; the flag lasts while the
+                // column keeps that kind of effect and is cleared with its
+                // table otherwise (MEASURED on Bad Apple, order 70).
+                let other = cell.effects[1 - c];
+                if group(fx) != 2 {
+                    col.vib_fine = false;
+                } else if other == (fx::EXTENDED, 0xfd) {
+                    col.vib_fine = true;
+                }
+                if group(fx) != 3 {
+                    col.trem_fine = false;
+                } else if other == (fx::EXTENDED, 0xfe) {
+                    col.trem_fine = true;
                 }
                 // MEASURED: the retrigger counter restarts only when a
                 // retrigger follows a non-empty row that was not one (15 00
@@ -2255,9 +2274,17 @@ impl A2Engine {
     /// track's): fine slides and fine volume slides.
     fn note_pass_effects(&mut self, t: usize, out: &mut impl RegisterSink) {
         for c in 0..2 {
-            let Column { fx, param, .. } = self.tracks[t].cols[c];
+            let Column { fx, param, vib_fine, trem_fine, .. } = self.tracks[t].cols[c];
             let mem = self.tracks[t].cols[c].slide_mem as i32;
             match fx {
+                // AT2 `update_fine_effects`: a fine (ZFD/ZFE) vibrato or
+                // tremolo steps here, once per row, and not on the ticks.
+                fx::VIBRATO | fx::VIB_VSLIDE if vib_fine => self.vibrato(t, c, out),
+                fx::VIB_VSLIDE_FINE if vib_fine => {
+                    self.vslide(t, param, out);
+                    self.vibrato(t, c, out);
+                }
+                fx::TREMOLO if trem_fine => self.tremolo(t, c, out),
                 fx::FINE_UP => self.slide(t, param as i32, out),
                 fx::FINE_DOWN => self.slide_down(t, param, out),
                 fx::OLD_RAW_FINE => {
@@ -2305,6 +2332,7 @@ impl A2Engine {
                 (col.fx, col.param)
             };
             let first = self.row_tick == 0;
+            let (vib_fine, trem_fine) = (col.vib_fine, col.trem_fine);
 
             let mem = col.slide_mem as i32;
             let arp_param = col.arp_mem;
@@ -2344,24 +2372,28 @@ impl A2Engine {
                     _ => {}
                 },
                 fx::EXTRA_FINE_ARP if xf => self.arpeggio(t, c, param, out),
-                fx::EXTRA_FINE_VIB if xf => self.vibrato(t, c, out),
-                fx::EXTRA_FINE_TREM if xf => self.tremolo(t, c, out),
+                // A fine (ZFD/ZFE) extra-fine vibrato or tremolo never runs:
+                // AT2 skips it here and has no row case for it.
+                fx::EXTRA_FINE_VIB if xf && !vib_fine => self.vibrato(t, c, out),
+                fx::EXTRA_FINE_TREM if xf && !trem_fine => self.tremolo(t, c, out),
                 fx::GLOBAL_SLIDE_UP => self.slide(t, param as i32, out),
                 fx::GLOBAL_SLIDE_DOWN => self.slide_down(t, param, out),
                 fx::ARPEGGIO if param != 0 => self.arpeggio(t, c, param, out),
                 fx::SLIDE_UP => self.slide(t, param as i32, out),
                 fx::SLIDE_DOWN => self.slide_down(t, param, out),
                 fx::PORTA | fx::PORTA_VSLIDE_FINE => self.porta(t, c, out),
-                fx::VIBRATO | fx::VIB_VSLIDE_FINE => self.vibrato(t, c, out),
+                fx::VIBRATO | fx::VIB_VSLIDE_FINE if !vib_fine => self.vibrato(t, c, out),
                 fx::PORTA_VSLIDE => {
                     self.vslide(t, param, out);
                     self.porta(t, c, out);
                 }
                 fx::VIB_VSLIDE => {
                     self.vslide(t, param, out);
-                    self.vibrato(t, c, out);
+                    if !vib_fine {
+                        self.vibrato(t, c, out);
+                    }
                 }
-                fx::TREMOLO => self.tremolo(t, c, out),
+                fx::TREMOLO if !trem_fine => self.tremolo(t, c, out),
                 fx::RETRIG => self.retrig(t, c, param, 0, out),
                 fx::MULTI_RETRIG => self.retrig(t, c, param >> 4, param & 15, out),
                 fx::TREMOR => self.tremor(t, c, param, out),
