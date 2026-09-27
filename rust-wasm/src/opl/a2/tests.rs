@@ -636,3 +636,79 @@ fn refusals_say_why() {
         say(&v)
     );
 }
+
+/// O7 gate: the files the player refuses at load, with their reason. Every
+/// other corpus file must play.
+const REFUSED: &[(&str, &str)] = &[(
+    "OxygenStar/oxygenstar's instrument set #001.a2m",
+    "its order list holds only jump markers, no pattern to play \
+     (an instrument collection saved as a song)",
+)];
+
+/// First differing chunk of two hash lists, as a tick range.
+fn first_bad_chunk(want: &[&str], got: &[u64]) -> Option<String> {
+    let n = want.len().max(got.len());
+    (0..n)
+        .find(|&i| want.get(i).copied() != got.get(i).map(|h| format!("{h:016x}")).as_deref())
+        .map(|i| format!("ticks {}..{}", i * gate::CHUNK, (i + 1) * gate::CHUNK))
+}
+
+/// O7 gate: the register state after every tick equals AdPlug's for the
+/// whole song as AdPlug plays it (its end flag, capped at 120000 ticks), on
+/// every corpus file the player does not refuse (`oracle/gate.tsv`).
+#[test]
+fn engine_state_matches_adplug_for_whole_songs() {
+    let mut bad = Vec::new();
+    let mut played = 0;
+    for line in oracle("gate.tsv").lines().filter(|l| !l.starts_with('#')) {
+        let f: Vec<&str> = line.split('\t').collect();
+        let song = parse(&read(f[0])).unwrap();
+        let refused = REFUSED.iter().find(|(p, _)| *p == f[0]).map(|(_, r)| *r);
+        assert_eq!(
+            engine::A2Engine::refusal(&song).as_deref(),
+            refused,
+            "{}",
+            f[0]
+        );
+        if refused.is_some() {
+            continue;
+        }
+        let want: Vec<&str> = f[2].split(',').collect();
+        let got = gate::engine_hashes(song, f[1].parse().unwrap());
+        if let Some(at) = first_bad_chunk(&want, &got) {
+            bad.push(format!("{}: {at}", f[0]));
+        }
+        played += 1;
+    }
+    assert!(
+        bad.is_empty(),
+        "{} of {played} differ:\n{}",
+        bad.len(),
+        bad.join("\n")
+    );
+    assert_eq!(played, corpus().len() - REFUSED.len());
+}
+
+/// O7 gate: the synthetic probes (`oracle/probes/*.py`, one rule each; the
+/// songs stored in `gate.rs`'s sparse form) match AdPlug for 80 ticks.
+#[test]
+fn engine_state_matches_adplug_on_probes() {
+    let mut bad = Vec::new();
+    let mut n = 0;
+    for line in oracle("probes.tsv").lines().filter(|l| !l.starts_with('#')) {
+        let f: Vec<&str> = line.split('\t').collect();
+        let want: Vec<&str> = f[3].split(',').collect();
+        let got = gate::engine_hashes(gate::decode(f[2]), f[1].parse().unwrap());
+        if first_bad_chunk(&want, &got).is_some() {
+            bad.push(f[0].to_string());
+        }
+        n += 1;
+    }
+    assert!(
+        bad.is_empty(),
+        "{} of {n} probes differ: {}",
+        bad.len(),
+        bad.join(" ")
+    );
+    assert!(n >= 290);
+}

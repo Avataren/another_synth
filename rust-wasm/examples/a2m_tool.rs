@@ -231,6 +231,67 @@ fn main() {
             let state = std::env::var("A2M_STATE").is_ok();
             compare(&args[2], ticks, show, state);
         }
+        Some("gate") | Some("probegate") => {
+            // gate <file> <cap>: AdPlug's state hashes until its end flag
+            // (or <cap> ticks); probegate <file> <ticks>: a fixed length,
+            // with the song's sparse form. Lines for oracle/*.tsv.
+            let file = &args[2];
+            let cap: usize = args[3].parse().unwrap();
+            let probe = args[1] == "probegate";
+            let song = parse(&std::fs::read(file).unwrap()).unwrap();
+            let bin = std::env::var("A2M_ORACLE").unwrap_or_else(|_| "trace-oracle".into());
+            let out = std::process::Command::new(bin)
+                .args(["trace", file, &(cap + 1).to_string()])
+                .env("A2M_PLAYER", "v2")
+                .output()
+                .expect("run trace-oracle");
+            let mut h = audio_processor::opl::a2::gate::StateHasher::default();
+            let mut ticks = 0usize;
+            let mut started = false;
+            for line in String::from_utf8_lossy(&out.stdout).lines() {
+                let f: Vec<&str> = line.split_whitespace().collect();
+                match f[0] {
+                    "T" => {
+                        if started {
+                            h.end_tick();
+                        }
+                        let tick: i64 = f[1].parse().unwrap();
+                        let ended = f[7] == "1";
+                        if tick >= 0 && ((!probe && ended) || tick as usize >= cap) {
+                            break;
+                        }
+                        if tick >= 0 {
+                            ticks = tick as usize + 1;
+                        }
+                        started = true;
+                    }
+                    "W" if f.len() == 4 => {
+                        let chip: u16 = f[1].parse().unwrap();
+                        h.write(
+                            u16::from_str_radix(f[2], 16).unwrap() | chip << 8,
+                            u8::from_str_radix(f[3], 16).unwrap(),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            let hashes: Vec<String> = h.finish().iter().map(|x| format!("{x:016x}")).collect();
+            if probe {
+                let enc = audio_processor::opl::a2::gate::encode(&song);
+                let mut back = audio_processor::opl::a2::gate::decode(&enc);
+                let mut want = song.clone();
+                for s in [&mut back, &mut want] {
+                    s.name.clear();
+                    s.composer.clear();
+                    s.pattern_names.clear();
+                    s.instruments.iter_mut().for_each(|i| i.name.clear());
+                }
+                assert!(back == want, "sparse form does not round-trip");
+                println!("{ticks}\t{enc}\t{}", hashes.join(","));
+            } else {
+                println!("{ticks}\t{}", hashes.join(","));
+            }
+        }
         Some("macros") => {
             let song = parse(&std::fs::read(&args[2]).unwrap()).unwrap();
             for (i, m) in song.fm_macros.iter().enumerate() {

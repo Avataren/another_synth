@@ -5,13 +5,16 @@
 //! `techinfo.htm` (adlibtracker.net/files), and is checked against every
 //! module in `src/tests/fixtures/opl/a2m`. Where the files disagree with that
 //! document, the files win and the difference is noted where it is handled.
-//! Adlib Tracker II's source is GPL 3+ and was not read (plan decision D1).
+//! The parser was written without reading Adlib Tracker II's source (GPL 3+,
+//! plan decision D1); the O7 engine's debugging later relaxed that (see
+//! `engine.rs`).
 //!
 //! E15 discipline: `parse` either returns the whole song or refuses with one
 //! true sentence. Nothing is skipped, clamped or guessed silently.
 
 pub mod aplib;
 pub mod engine;
+pub mod gate;
 pub mod lzh;
 pub mod model;
 pub mod sixpack;

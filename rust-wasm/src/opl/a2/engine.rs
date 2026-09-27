@@ -359,15 +359,6 @@ impl A2Engine {
                  (an instrument collection saved as a song)"
                     .into(),
             ),
-            Some(i)
-                if song.order[i] as usize >= song.patterns.len() + song.spare_patterns.len() =>
-            {
-                Some(format!(
-                    "order {i} names pattern {}, and the file holds {}",
-                    song.order[i],
-                    song.patterns.len() + song.spare_patterns.len()
-                ))
-            }
             // A jump chain from order 0 that never reaches a pattern.
             _ if Self::new(song.clone()).ended => {
                 Some("its order list loops through jump markers without reaching a pattern".into())
@@ -379,6 +370,25 @@ impl A2Engine {
     pub fn new(mut song: A2mSong) -> A2Engine {
         let spare = std::mem::take(&mut song.spare_patterns);
         song.patterns.extend(spare);
+        // An order past the file's patterns plays empty rows (MEASURED; AT2
+        // keeps zeroed memory for every pattern).
+        let top = song
+            .order
+            .iter()
+            .filter(|&&o| o < 0x80)
+            .max()
+            .copied()
+            .unwrap_or(0) as usize;
+        if let Some(p) = song.patterns.first() {
+            let empty = super::model::Pattern {
+                rows: p.rows,
+                channels: p.channels,
+                cells: vec![Cell::default(); p.cells.len()],
+            };
+            while song.patterns.len() <= top {
+                song.patterns.push(empty.clone());
+            }
+        }
         // A "fixed" note (0x90 + note, v9+) plays as the note; the flag only
         // stops the editor from transposing it (AT2 `play_line`).
         for cell in song.patterns.iter_mut().flat_map(|p| p.cells.iter_mut()) {
@@ -675,7 +685,9 @@ impl A2Engine {
         for t in 0..self.tracks_in_use() {
             self.run_macros(t, out);
         }
-        self.macro_tick = (self.macro_tick + 1) % every;
+        // A tempo set on this tick already counts (MEASURED: tempo 9 set
+        // at tempo 19 waits two ticks for the next row tick).
+        self.macro_tick = (self.macro_tick + 1) % self.row_tick_every();
     }
 
     fn start_row(&mut self, out: &mut impl RegisterSink) {
@@ -1711,11 +1723,14 @@ impl A2Engine {
                 }
                 self.write_connection_group(t, out);
             }
-            // A tremor entered from another effect remembers the levels as
-            // they are now (after this row's instrument, before column 2).
+            // A tremor remembers the levels as they are now (after this
+            // row's instrument, before column 2) unless the column's last
+            // effect (AT2 `last_effect`, across empty rows) was a tremor:
+            // then it keeps the old ones (MEASURED; its count restarts on
+            // the previous-row rule all the same).
             fx::TREMOR if param >> 4 != 0 && param & 15 != 0 => {
                 let tr = &mut self.tracks[t];
-                if tr.cols[c].last_fx != fx::TREMOR {
+                if tr.cols[c].table_fx != fx::TREMOR {
                     tr.cols[c].tremor_saved = (tr.vol_mod, tr.vol_car);
                 }
             }
@@ -2273,6 +2288,9 @@ impl A2Engine {
                     self.tracks[t].key_on = false;
                     self.tracks[t].keyed_off = true;
                     self.write_freq(t, f, out);
+                    // AT2's tables watch the key bit: a cut releases them
+                    // like a note off (MEASURED).
+                    self.release_macros(t);
                 }
             }
             match fx {
