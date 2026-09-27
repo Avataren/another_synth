@@ -1,4 +1,35 @@
-# O7 progress (A2M player) — handoff, 2026-09-27 (session 2)
+# O7 progress (A2M player) — handoff, 2026-09-27 (session 3)
+
+**Session 3 status (supersedes "Where things stand" and open items 1-3 below):**
+batches 7-9 committed (`8d43d113`, `b3f84da2`, `ce533e0f`). The engine's register state
+equals AdPlug's for every tick of every corpus song as AdPlug plays it (end flag, cap 120000)
+on 277/278 files; the instrument set is refused at load (`A2Engine::refusal`). The gate is a
+Rust test (`tests.rs`: `engine_state_matches_adplug_for_whole_songs`, `..._on_probes`) over
+`oracle/gate.tsv` + `oracle/probes.tsv` (298 probes, songs in `gate.rs` sparse form), made by
+`oracle/regen-gate.sh`. Dev: `oracle/dev/{both.sh,sweep.sh,full.py}` (need $A2M_SCRATCH).
+Batch 10 (`e665fa40`): `A2Player` (`opl/a2/player.rs`: load/refuse, play/pause, seek by silent
+replay, set_loop_order, song_end_reached, mute/solo over tracks -> channel mask, taps +
+track_channel, info getters) and the song mode of `opl-audio-processor` (`opl-core.ts`:
+load-a2m/unload-song/play/pause/seek/set-loop-order/set-mute-solo/set-stop-at-end; events
+song-loaded(info)/position(order,pattern,row)/song-end/error{id}); tests in
+`src/tests/opl-worklet-core.test.ts`.
+Next: O7 step 4 (tracker hookup), then step 5 (audio A/B + landing record). Step 4 design notes:
+- ModuleFormat has no 'a2m' yet (`packages/tracker-playback/src/types.ts` + MODULE_FORMATS;
+  ~33 format branches in 11 app files, see `grep -rn "=== 'sid'"`), plus a format brand.
+- The wasm is only instantiated in worklets, and the grid needs the song's cells: plan is an
+  A2Player method returning a pattern's packed cells, sent with `song-loaded` for the patterns
+  the order list uses; the import is then async (load in the worklet, build the display
+  TrackerSongFile from `info`), playback-only like AHX (`ahx-import.ts`, `AhxSongTransport`
+  in `tracker-playback-store.ts`); file detection in `useTrackerFileIO.parseSongBuffer`
+  (magic `_A2module_`). Sequence = order positions; tracks = info.tracks; per-track scopes
+  from tap output 1 + info.trackChannels[t].
+AdPlug-vs-AT2 choices found this session (for the landing record): &4x without a note is not
+skipped under porta/note delay; combined effect with 00 and nothing to reuse still runs (AT2
+drops it); global slide only on later tracks whose column is free (AT2: all later tracks); v1
+FFy all ZF0 and FA-FD always modulator (AT2 maps FF1-9 to locks/modes/carrier toggle); tremor
+count restarts on previous-row rule while saved level follows last_effect; retrigger count
+from 1 follows last_effect.
+
 
 Read with `.ai/plan-opl.md` (§3, §4, §6 incl. the D1 relaxation note, O6 record) and
 `.ai/opl-next-session-prompt.md`. Commits: `14f3f8d5`, `701d87fe`, `66e2fad3`, `398df56d`
