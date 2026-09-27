@@ -11,6 +11,7 @@
 //! true sentence. Nothing is skipped, clamped or guessed silently.
 
 pub mod aplib;
+pub mod engine;
 pub mod lzh;
 pub mod model;
 pub mod sixpack;
