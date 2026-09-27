@@ -48,9 +48,9 @@ export function importS3mToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
   if (counts.adlibInstruments > 0 || counts.adlibNotes > 0) {
     // eslint-disable-next-line no-console
     console.warn(
-      `${counts.adlibInstruments} AdLib instruments ignored -- FM not supported yet ` +
-        `(${counts.adlibNotes} notes on ${counts.adlibChannels} AdLib channels were not imported). ` +
-        'Their OPL register data is preserved on the instrument slots for the future OPL task.',
+      `${counts.adlibInstruments} AdLib instruments, ${counts.adlibNotes} notes on ` +
+        `${counts.adlibChannels} AdLib channels: imported, but the app does not play OPL yet ` +
+        '(.ai/plan-opl.md O5), so those channels are silent.',
     );
   }
   if (counts.stereoSamples > 0) {

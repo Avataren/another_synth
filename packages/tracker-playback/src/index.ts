@@ -48,6 +48,9 @@ export * from './pitch-model';
 export * from './song-constants';
 export * from './tracker-sample';
 
+// S3M AdLib channels as OPL register writes, for a host with an OPL chip.
+export * from './opl-driver';
+
 // The row model the importers emit and the pattern editor edits, and the
 // parsing of a row's note, volume and effect text into decoded commands.
 export * from './tracker-types';

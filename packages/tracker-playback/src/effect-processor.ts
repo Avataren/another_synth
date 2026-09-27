@@ -4,7 +4,7 @@
  */
 
 import type { EffectCommand, VolumeColumnCommand } from './types';
-import type { ProcessorCommand, TrackEffectState } from './effect-state';
+import type { PitchSource, ProcessorCommand, TrackEffectState } from './effect-state';
 import {
   TREMOLO_DEPTH_DIVISOR,
   VIBRATO_TABLE_PEAK,
@@ -13,7 +13,7 @@ import {
   vibratoFrequency,
 } from './waveforms';
 
-export type { ProcessorCommand, TrackEffectState } from './effect-state';
+export type { PitchSource, ProcessorCommand, TrackEffectState } from './effect-state';
 export {
   createTrackEffectState,
   resetEffectStateForNote,
@@ -483,12 +483,14 @@ function pushPitch(
   commands: ProcessorCommand[],
   voiceIndex: number | undefined,
   frequency: number,
+  source?: PitchSource,
 ): void {
   const cmd: Extract<ProcessorCommand, { kind: 'pitch' }> = {
     kind: 'pitch',
     frequency,
   };
   if (voiceIndex !== undefined) cmd.voiceIndex = voiceIndex;
+  if (source !== undefined) cmd.source = source;
   commands.push(cmd);
 }
 
@@ -1464,10 +1466,11 @@ export function processEffectTickN(
     ) {
       const beforeFreq = state.currentFrequency;
       const freq = applyTonePortaStep(state);
+      const arrived = state.targetFrequency === state.currentFrequency;
       if (Math.abs(freq - beforeFreq) > 1e-9) {
-        pushPitch(commands, voiceIndex, freq);
+        pushPitch(commands, voiceIndex, freq, arrived ? 'target' : undefined);
       }
-      if (state.targetFrequency === state.currentFrequency) {
+      if (arrived) {
         state.tonePortaActive = false;
       }
     }
@@ -1492,10 +1495,11 @@ export function processEffectTickN(
       const beforeFreq = state.currentFrequency;
       const freq = applyTonePortaStep(state);
       const moved = Math.abs(freq - beforeFreq) > 1e-9;
+      const arrived = state.targetFrequency === state.currentFrequency;
       if (moved) {
-        pushPitch(commands, voiceIndex, freq);
+        pushPitch(commands, voiceIndex, freq, arrived ? 'target' : undefined);
       }
-      if (state.targetFrequency === state.currentFrequency) {
+      if (arrived) {
         state.tonePortaActive = false;
       }
 
@@ -1571,11 +1575,12 @@ export function processEffectTickN(
           commands,
           voiceIndex,
           period === 0 ? 0 : state.profile.pitch.frequencyFromPeriod(period),
+          'table',
         );
       } else {
         let arpeggioNote = state.currentMidi;
         arpeggioNote += offset;
-        pushPitch(commands, voiceIndex, midiToFrequency(arpeggioNote));
+        pushPitch(commands, voiceIndex, midiToFrequency(arpeggioNote), 'table');
       }
       break;
     }

@@ -140,15 +140,19 @@ describe('S3M corpus: measured categories', () => {
     const song = importS3mToTrackerSong(readModule('sun.s3m'));
     const warnings = warnSpy.mock.calls.map((args) => args.join(' '));
     warnSpy.mockRestore();
-    const warning = warnings.find((w) => w.includes('25 AdLib instruments ignored'));
+    const warning = warnings.find((w) => w.includes('25 AdLib instruments'));
     expect(warning).toBeDefined();
     expect(warning).toContain('1764 notes on 7 AdLib channels');
 
-    // FM-only module: 25 inactive OPL slots, zero playable patches -- and
-    // nothing is silently muted (the AdLib channel tracks exist, empty).
-    expect(song.data.instrumentSlots.filter((s) => s.oplData)).toHaveLength(25);
+    // FM-only module: 25 OPL slots and zero sampler patches; since plan-opl
+    // O3 the AdLib notes import onto their tracks, addressed to OPL slots.
+    const oplSlots = song.data.instrumentSlots.filter((s) => s.oplData);
+    expect(oplSlots).toHaveLength(25);
     expect(song.data.instrumentSlots.filter((s) => s.patchId)).toHaveLength(0);
-    expect(song.data.patterns[0]!.tracks.length).toBeGreaterThan(0);
+    const oplIds = new Set(oplSlots.map((s) => String(s.slot).padStart(2, '0')));
+    const noteEntries = song.data.patterns.flatMap((p) => p.tracks.flatMap((t) => t.entries)).filter((e) => e.instrument);
+    expect(noteEntries.length).toBeGreaterThan(0);
+    expect(noteEntries.every((e) => oplIds.has(e.instrument!))).toBe(true);
   });
 
   it('anguish.s3m / 2nd_reality.s3m: type-0 slots are empty, never AdLib', () => {

@@ -43,6 +43,7 @@ export interface ScheduleRowHost {
   ): void;
   isTickBasedEffect(type: string): boolean;
   canUseAutomationRamp(type: string): boolean;
+  usesSteppedTicks(instrumentId: string | undefined, trackIndex: number): boolean;
   getTrackEffectState(trackIndex: number): TrackEffectState;
   getMsPerTick(): number;
   getMsPerRow(): number;
@@ -519,7 +520,8 @@ export function scheduleRow(
             !!step.effect &&
             hasTickEffect &&
             !hasTickVolumeCommand &&
-            this.canUseAutomationRamp(step.effect.type);
+            this.canUseAutomationRamp(step.effect.type) &&
+            !this.usesSteppedTicks(instrumentId, step.trackIndex);
 
           if (canUseRamp && step.effect) {
             // Optimization: Process all ticks to maintain correct state, but use a single

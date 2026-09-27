@@ -85,8 +85,9 @@ function rootNoteForSample(sample: S3mInstrument): number {
  * `slotForInstrument` carries that mapping to the pattern half.
  *
  * AdLib instruments consume a slot like any other -- they are part of the
- * song's instrument numbering -- but only PCM ones can be played, so only
- * those go into `slotForInstrument`.
+ * song's instrument numbering -- and go into `slotForInstrument` too, so
+ * AdLib cells reach the engine addressed to them; a host plays them through
+ * `S3mOplDriver` (opl-driver.ts), not a sampler.
  */
 export function buildS3mTrackerSamples(s3m: S3mSong): TrackerSampleSet {
   const referenced = new Set<number>();
@@ -114,9 +115,9 @@ export function buildS3mTrackerSamples(s3m: S3mSong): TrackerSampleSet {
     const instrument = s3m.instruments[instrumentNumber - 1];
     if (!instrument) continue;
 
-    // AdLib/OPL: preserve the parsed register data, marked inactive by having
-    // no sample data. Morten, 2026-09-03: the future OPL instrument type
-    // consumes these bytes, so that phase never needs a re-parse.
+    // AdLib/OPL: the parsed register data, with no sample data. The host's
+    // OPL driver consumes these bytes (Morten, 2026-09-03: parsed once, at
+    // import, for the OPL instrument type).
     if (instrument.kind === 'adlib') {
       samples.push({
         slot: nextSlot,
@@ -138,6 +139,7 @@ export function buildS3mTrackerSamples(s3m: S3mSong): TrackerSampleSet {
           c2spd: instrument.c2spd,
         },
       });
+      slotForInstrument.set(instrumentNumber, nextSlot);
       nextSlot++;
       continue;
     }
@@ -154,7 +156,6 @@ export function buildS3mTrackerSamples(s3m: S3mSong): TrackerSampleSet {
         channelsPerInstrument.get(instrumentNumber)?.size ?? 1,
       ),
     );
-    // Only PCM instruments map into the playable slot space.
     slotForInstrument.set(instrumentNumber, nextSlot);
     nextSlot++;
   }

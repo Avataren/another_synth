@@ -153,6 +153,9 @@ export class PlaybackEngine {
     | ScheduledRetriggerHandler
     | undefined;
   private readonly positionCommandHandler: PositionCommandHandler | undefined;
+  private readonly steppedTickAutomation:
+    | ((instrumentId: string | undefined, trackIndex: number) => boolean)
+    | undefined;
   private readonly audioContext: AudioContext | undefined;
   private stepIndex: Map<number, PlaybackPatternStep[]> = new Map();
   /**
@@ -333,6 +336,7 @@ export class PlaybackEngine {
     this.scheduledFilterHandler = options.scheduledFilterHandler;
     this.scheduledRetriggerHandler = options.scheduledRetriggerHandler;
     this.positionCommandHandler = options.positionCommandHandler;
+    this.steppedTickAutomation = options.steppedTickAutomation;
 
     const lookahead =
       options.lookaheadSeconds !== undefined &&
@@ -1340,6 +1344,7 @@ export class PlaybackEngine {
             context.time,
             context.trackIndex,
             cmd.glide,
+            cmd.source,
           );
           break;
 
@@ -1422,6 +1427,11 @@ export class PlaybackEngine {
    */
   private canUseAutomationRamp(type: string): boolean {
     return RAMPABLE_EFFECTS.has(type);
+  }
+
+  /** Whether this track's slides must arrive tick by tick (`steppedTickAutomation`). */
+  private usesSteppedTicks(instrumentId: string | undefined, trackIndex: number): boolean {
+    return this.steppedTickAutomation?.(instrumentId, trackIndex) ?? false;
   }
 
   /** Note when a scheduled row will actually be heard, for the display. */

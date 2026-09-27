@@ -75,6 +75,21 @@ function isAdlibChannel(s3m: S3mSong, ch: number): boolean {
 }
 
 /**
+ * The OPL channel each track owns, by track index: tracks are the file's
+ * enabled channels in order (`enabledChannels`), and an AdLib melody channel
+ * A1..A9 (setting types 16..24) is OPL channel 0..8. Drum channels (types
+ * 25..29) map to nothing: ST3 never plays AdLib percussion (st3play's
+ * digadl.c, "never handled"). For `S3mOplDriver`'s `channelForTrack`.
+ */
+export function s3mAdlibChannelForTrack(s3m: S3mSong): Array<number | undefined> {
+  return enabledChannels(s3m).map((ch) => {
+    if (!isAdlibChannel(s3m, ch)) return undefined;
+    const ctype = (s3m.channelSettings[ch] ?? 0xff) & 0x7f;
+    return ctype <= 24 ? ctype - 16 : undefined;
+  });
+}
+
+/**
  * Default panning for a channel, normalized 0..1 (0.5 = centre), or
  * undefined for the engine's centre default.
  *
@@ -391,9 +406,13 @@ function s3mCellToTrackerEntry(
     // where withholding it let the volume slides walk the channel to zero and
     // silence the rest of the pattern) and xm-import already keys off
     // `hasInstrument` too. Fourth time this rule has had to be re-derived.
+    // An AdLib instrument's default volume is its own header byte
+    // (`doadlib`: `ch->avol = ins->vol`).
     const sample = s3m.instruments[cell.instrument - 1];
-    if (sample && sample.kind === 'pcm') {
-      entry.volume = Math.round((sample.volume / 64) * 255)
+    const defaultVolume =
+      sample?.kind === 'pcm' ? sample.volume : sample?.kind === 'adlib' ? sample.adlibVolume : undefined;
+    if (defaultVolume !== undefined) {
+      entry.volume = Math.round((defaultVolume / 64) * 255)
         .toString(16)
         .toUpperCase()
         .padStart(2, '0');
@@ -407,11 +426,6 @@ function s3mCellToTrackerEntry(
     entry.effectParam = cell.effectParam;
     entry.macro = s3mEffectToMacro(cell.effectCommand, cell.effectParam);
   }
-
-  // AdLib channels' cells are dropped after counting (the warning machinery
-  // owns the numbers); their tracks stay so track indexing remains 1:1 with
-  // the file's enabled channels.
-  if (isAdlibChannel(s3m, channel)) return undefined;
 
   return entry;
 }

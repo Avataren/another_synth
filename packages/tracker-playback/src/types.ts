@@ -1,3 +1,5 @@
+import type { PitchSource } from './effect-state';
+
 export type TransportState = 'stopped' | 'playing' | 'paused';
 
 /**
@@ -404,6 +406,15 @@ export interface PlaybackOptions {
   scheduledRetriggerHandler?: ScheduledRetriggerHandler;
   /** Handler for position commands (Bxx jump, Dxx break) */
   positionCommandHandler?: PositionCommandHandler;
+  /**
+   * Whether a track playing `instrumentId` wants its slides as one value per
+   * tick rather than one ramp per row. The scheduler normally collapses a
+   * row of portamento or volume slide into a single audio-rate ramp to its
+   * final value, which is smoother for a sampler; a sound source that the
+   * original tracker updated in tick steps -- an OPL chip, which ST3 writes
+   * once per tick -- has to receive the steps. Default: never.
+   */
+  steppedTickAutomation?: (instrumentId: string | undefined, trackIndex: number) => boolean;
   /** Audio context for getting current time */
   audioContext?: AudioContext;
   /** Ticks per row (FT2 style, default 6) */
@@ -524,7 +535,13 @@ export type ScheduledPitchHandler = (
   /** Track index for routing (tracker effects) */
   trackIndex: number,
   /** Ramp mode for smooth transitions (exponential recommended for frequency) */
-  rampMode?: 'linear' | 'exponential'
+  rampMode?: 'linear' | 'exponential',
+  /**
+   * Set when the pitch came off the note table (an arpeggio step, a tone
+   * portamento arriving) rather than moving from the last one; see the
+   * `pitch` ProcessorCommand. Hosts that do not scale per instrument ignore it.
+   */
+  source?: PitchSource,
 ) => void;
 
 /**

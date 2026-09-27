@@ -5,8 +5,9 @@
  * referenced-only slots (D76 guard), the root-note/c2spd derivation (D96's
  * c2spd finetune), the note anchors, the instrument-stamp exclusions
  * (D29/D55 class), the BCD pattern break, and the AdLib policy: parsed,
- * counted, warned, OPL register data preserved on inactive slots (Morten,
- * 2026-09-03), never played, never silently muted.
+ * counted, warned, OPL register data on the instrument slots (Morten,
+ * 2026-09-03), and since plan-opl O3 the AdLib cells imported like any
+ * other, addressed to their slot, for the OPL driver to play.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -70,7 +71,7 @@ describe('S3M import: slots and instruments', () => {
     expect(voices).toContain(1);
   });
 
-  it('never maps an AdLib instrument into a playable slot', () => {
+  it('gives an AdLib instrument an OPL slot with no sampler patch', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { song } = importS3m({
       channelSettings: FOUR_PCM_CHANNELS,
@@ -93,8 +94,8 @@ describe('S3M import: slots and instruments', () => {
     const used = song.data.instrumentSlots.filter((s) => s.patchId);
     expect(used).toHaveLength(1);
     expect(used[0]!.patchName).toBe('PCM');
-    // The AdLib slot is inactive (no patch), but its OPL data is preserved
-    // for the future OPL instrument type (Morten, 2026-09-03).
+    // The AdLib slot has no sampler patch; its OPL data is what the OPL
+    // driver plays (Morten, 2026-09-03; plan-opl O3).
     const adlibSlot = song.data.instrumentSlots.find((s) => s.oplData);
     expect(adlibSlot).toBeDefined();
     expect(adlibSlot!.patchId).toBeUndefined();
@@ -321,21 +322,34 @@ describe('S3M import: the AdLib policy', () => {
     // 1. The warning carries the instrument count and note count.
     const warnings = warnSpy.mock.calls.map((args) => args.join(' '));
     warnSpy.mockRestore();
-    const adlibWarning = warnings.find((w) => w.includes('AdLib instruments ignored'));
+    const adlibWarning = warnings.find((w) => w.includes('AdLib instruments'));
     expect(adlibWarning).toBeDefined();
-    expect(adlibWarning).toContain('1 AdLib instruments ignored');
-    expect(adlibWarning).toContain('1 notes on 1 AdLib channels');
+    expect(adlibWarning).toContain('1 AdLib instruments, 1 notes on 1 AdLib channels');
 
-    // 2. The rest of the module still imports: the PCM notes survive.
-    const pcmEntries = song.data.patterns[0]!.tracks
-      .flatMap((t) => t.entries);
-    expect(pcmEntries).toHaveLength(3); // the FM cell is dropped after counting
+    // 2. The rest of the module imports untouched: the PCM notes survive.
+    expect(entryAt(song, 0, 0, 0)!.instrument).toBeDefined();
     expect(entryAt(song, 0, 3, 0)!.instrument).toBeDefined();
 
-    // 4. Not silently muted: the AdLib channel's track is EMPTY (no
-    //    volume-0 rows, no entries at all).
-    const adlibTrack = song.data.patterns[0]!.tracks[2]!;
-    expect(adlibTrack.entries).toHaveLength(0);
+    // 3. The FM note imports on its own track, addressed to the AdLib
+    //    instrument's slot (which carries the OPL data), at the AdLib
+    //    header's volume column value -- no PCM-style muting or dropping.
+    const fm = entryAt(song, 0, 2, 0)!;
+    expect(fm.note).toBeDefined();
+    expect(fm.volume).toBe(Math.round((40 / 64) * 255).toString(16).toUpperCase());
+    const slot = song.data.instrumentSlots.find((s) => s.oplData);
+    expect(slot).toBeDefined();
+    expect(fm.instrument).toBe(String(slot!.slot).padStart(2, '0'));
+    expect(fm.instrument).not.toBe(entryAt(song, 0, 0, 0)!.instrument);
+  });
+
+  it('an AdLib note without a volume byte takes the AdLib header volume', () => {
+    const { song } = importS3m({
+      channelSettings: [0x10],
+      orders: [0],
+      patterns: [[[{ note: 0x30, instrument: 1 }]]],
+      instruments: [{ name: 'FM', registers: [0x20, 0x11], volume: 33, type: 2 }],
+    });
+    expect(entryAt(song, 0, 0, 0)!.volume).toBe(Math.round((33 / 64) * 255).toString(16).toUpperCase());
   });
 });
 

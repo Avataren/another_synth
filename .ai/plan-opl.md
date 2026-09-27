@@ -1,7 +1,7 @@
 # Plan: OPL tracking (one OPL2/OPL3 chip in Rust + S3M AdLib playback + Adlib Tracker II)
 
 Status: **IN PROGRESS. D0–D5 accepted as recommended (Morten, 2026-09-27). Corpus fetched
-(§4.1). O0, O1 and O2 landed 2026-09-27 (landing records at the end).**
+(§4.1). O0–O3 landed 2026-09-27 (landing records at the end).**
 Morten's brief 2026-09-27 (verbatim intent): *"I'm considering adding adlibtracker and opl
 support to s3m, do you think they could share the same virtual opl chip in rust? would be
 nice if it could also support opl2/3"*. Answer: yes. The shared surface is the **register
@@ -324,3 +324,78 @@ a smaller surface.
   files, 4909 tests) on a clean run. An earlier run lost 3 tests to an OOM incident on the
   machine; they pass on their own and on the re-run.
 - **Not in O2:** per-channel scope taps, and wiring into the app's mixer and song bank (O5).
+
+### O3 — S3M AdLib driver, against ST3's own register writes (2026-09-27)
+
+- **Reference:** st3play (8bitbubsy's C port of ST3.21, BSD-3). `digadl.c` is ST3's AdLib code.
+  `src/tests/fixtures/opl/st3-traces/` holds an oracle (`st3-adlib-trace.c`: st3play's
+  replayer with the OPL2 emulator replaced by a logger, built by `regen.sh` from a pinned
+  commit) and its traces for the ten tier-1 songs: every `outaw`, stamped with its tick.
+- **Design change from §2.1:** the driver is **sink-side**, not an optional
+  `TrackerSink.oplWrite`. `S3mOplDriver` (`packages/tracker-playback/src/opl-driver.ts`)
+  consumes a sink's note-on/off, pitch and volume events for tracks playing an AdLib
+  instrument and emits `(time, reg, val)` to an `OplRegisterTarget`. The engine is not
+  OPL-aware, and a host (song bank, standalone sink) routes by instrument (`handles`).
+- **ST3 rules transcribed:**
+  - pitch: `hz = 14317056 / scalec2spd(period)` → `updateadlib`'s block/F-number;
+  - key: key-off + key-on on a new note, the key-on stamped **one chip sample later**, or the
+    chip would see no edge and the retrigger would be lost;
+  - volume: TL `63 − ((63 − TL)·(vol+1)) >> 6`, modulator too when additive, KSL kept;
+  - timbre: reloaded only when the instrument changes;
+  - registers: an `outaw`-style cache drops redundant writes;
+  - channel state: kept per AdLib channel *setting*, as ST3's `_zchn` is.
+- **Engine changes (generic, not OPL-specific):**
+  - `PlaybackOptions.steppedTickAutomation(instrumentId, track)`: when true, the row scheduler
+    skips its "one ramp per row" shortcut and emits slides tick by tick, as ST3 writes the
+    chip.
+  - Pitch commands carry an optional `source: 'table' | 'target'` (arpeggio steps; tone
+    portamento arriving), passed as the optional 7th `ScheduledPitchHandler` argument. The
+    driver scales these afresh (`scalec2spd`) and adds slides and vibrato to the scaled
+    period, as ST3 does. Without this, an instrument with c2spd 33200 (koakuma) turned an
+    arpeggio into a negative period, i.e. a key-off.
+- **Importer:** AdLib instruments now get slots in `slotForInstrument`, AdLib cells are kept
+  (with the AdLib header volume as the default), and `s3mAdlibChannelForTrack` gives each
+  track's OPL channel. The app warning now says the notes are imported but silent until O5.
+  The `sun.s3m` event-stream golden was regenerated: 0 → 1224 events (the cells used to be
+  dropped).
+- **Gate** (`src/tests/s3m-adlib-st3-trace.test.ts`): real importer + engine + driver,
+  compared tick by tick (aligned per row) with ST3's writes. Inaudible, documented
+  differences are classified rather than failed: tick 0's idle key-on at F-number 0,
+  writes on a channel still holding the empty timbre (AR 0), and pitch within 2 F-number
+  steps. **starport2, mystic and a-vision match ST3 on every one of 2000–3000 ticks.** The
+  other seven are pinned as regression baselines; each residue is the *engine's* S3M state
+  disagreeing with ST3's (below), not the driver. There are 14 driver unit tests with
+  hand-worked values (C-4 = hz 4181 → B0/A0 `2A`/`AC`).
+- **Pitch:** a note on an AdLib channel sounds an octave below the "musical Hz" our engine
+  uses for PCM (f_OPL ≈ hz / 32.2; C-4 ≈ 130 Hz). This is ST3's own arithmetic, confirmed by
+  the exact traces.
+- **Loudness:** renders of the ten songs (listening aid: `OPL_WAV_DIR=… npm run test:run --
+  src/tests/s3m-adlib-st3-trace.test.ts`; copies in `.ai/opl-ref/o3/`) sit at −8 to −21 dBFS
+  RMS and clip the chip's own 16-bit output on ≤ 0.26 % of samples, as a real YMF262 would.
+  O5 decides mixer headroom.
+- **Known driver-level differences:** SCx and tremolo reach AdLib channels (ST3 ignores
+  both there: TL is re-sent only on instrument / volume column / D·K·L), and ST3.03–3.20's
+  broken AdLib tone portamento is not modelled.
+- **Not done:** `npm run check:tracker-playback-dist` fails on clean HEAD too (exit 127, the
+  build tool is missing in this environment); nothing in CI builds `dist`.
+
+### Proposed O3b — S3M engine fidelity (found by the ST3 traces; affects PCM too)
+
+Each is a deviation of the playback engine's S3M channel state from ST3's. The trace gate
+measures it, and lowering a song's pinned baseline in the test proves a fix.
+1. **SEx / EEx pattern delay re-triggers the row's notes** on every repeat
+   (`engine.ts` re-runs `scheduleRow`). PT, FT2 and ST3 hold the notes. Affects every
+   format. (church: 430 ticks.)
+2. **`J00` does not continue the last arpeggio** (ST3's `GET_LAST_NFO` memory).
+   (rotagilla, koakuma.)
+3. **S3M vibrato timing and values** differ from `s_vibrato` by 1–2 ticks. (starport,
+   rance-bird, first-adlib-attempt.)
+4. **A volume on a key-off (`^^`) row is dropped**, so ST3's TL cut on the release is lost.
+   (first-adlib-attempt.)
+5. **Note delay (SDx) applies the row's volume on tick 0.** ST3 defers the whole cell.
+   (koakuma.)
+6. **Two file channels on one channel setting** are two engine tracks, where ST3 merges them
+   into one channel state (`getnote1`). (redemptions, rance-bird.)
+7. **c2spd for PCM samples:** the sampler folds c2spd into its root note, so slides move the
+   unscaled period (ST3 slides the scaled one). The OPL driver now corrects this for itself
+   via `source`; PCM does not.

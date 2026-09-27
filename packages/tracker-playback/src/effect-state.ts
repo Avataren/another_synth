@@ -334,6 +334,9 @@ export function createTrackEffectState(
   };
 }
 
+/** Where a pitch command's frequency came from; see the `pitch` command. */
+export type PitchSource = 'table' | 'target';
+
 export type ProcessorCommand =
   | {
       kind: 'noteOn';
@@ -372,6 +375,15 @@ export type ProcessorCommand =
       frequency: number;
       voiceIndex?: number;
       glide?: 'linear' | 'exponential';
+      /**
+       * Set when the pitch was read off the note table rather than moved from
+       * the last one: `'table'` for an arpeggio step, `'target'` for a tone
+       * portamento arriving on its note (which becomes the channel's new
+       * base). A sound source that scales pitches per instrument the way ST3
+       * does (`scalec2spd` on table notes, plain addition for slides) needs
+       * the difference; see opl-driver.ts. Absent means relative.
+       */
+      source?: PitchSource;
     }
   | {
       kind: 'volume';
