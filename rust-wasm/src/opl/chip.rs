@@ -114,6 +114,9 @@ pub struct Chip {
     noise_lfsr: u32,
     /// Bit per channel: 1 plays, 0 mutes (the chip still runs).
     channel_mask: u32,
+    /// Each channel's output in the last `clock_sample`, after the mask:
+    /// what it added to the mix (0 when silent or muted). For scopes.
+    taps: [i32; CHANNELS],
 }
 
 impl Default for Chip {
@@ -138,6 +141,7 @@ impl Chip {
             lfo_am: 0,
             noise_lfsr: 1,
             channel_mask: (1 << CHANNELS) - 1,
+            taps: [0; CHANNELS],
         }
     }
 
@@ -391,6 +395,7 @@ impl Chip {
             0
         };
         let (mut l, mut r) = (0i32, 0i32);
+        self.taps = [0; CHANNELS];
         for ch in 0..CHANNELS {
             if !self.chans[ch].active {
                 continue;
@@ -408,6 +413,7 @@ impl Chip {
             if self.channel_mask & (1 << ch) == 0 {
                 continue;
             }
+            self.taps[ch] = v;
             let (to_l, to_r) = self.routing(self.regs[0xc0 + channel_offset(ch)]).unwrap_or((false, false));
             if to_l {
                 l += v;
@@ -417,6 +423,12 @@ impl Chip {
             }
         }
         (l.clamp(-32768, 32767) as i16, r.clamp(-32768, 32767) as i16)
+    }
+
+    /// Channel `ch`'s output in the last native sample (signed, one
+    /// operator's full swing is ±8191), after the mask. For scopes.
+    pub fn channel_output(&self, ch: usize) -> i32 {
+        self.taps[ch]
     }
 
     /// Envelope state of operator `op`, for tests and scopes.

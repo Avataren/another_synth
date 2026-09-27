@@ -20,7 +20,7 @@
  */
 import { S3mOplDriver } from '@another-synth/tracker-playback';
 import type { OplInstrumentData, PitchSource } from '@another-synth/tracker-playback';
-import type { OplCommand, OplEvent } from 'src/audio/worklets/opl-core';
+import { OPL_TAP_OUTPUTS, type OplCommand, type OplEvent } from 'src/audio/worklets/opl-core';
 import { debugLog } from 'src/diagnostics/debug-log';
 
 /**
@@ -63,6 +63,9 @@ export class OplOutput {
   private trackAudible: (trackIndex: number) => boolean = () => true;
   private trackCount = 0;
   private songGain = OPL_DEFAULT_MIX_GAIN;
+  /** Scope wiring: channel output -> the track taps it feeds now. */
+  private tapEdges = new Map<number, Set<AudioNode>>();
+  private tapForTrack: ((trackIndex: number) => AudioNode | null) | null = null;
   private userVolume = 1;
 
   constructor(
@@ -106,6 +109,9 @@ export class OplOutput {
     this.applyGain();
     this.driver = this.makeDriver(info.amigaLimits);
     this.pending = [];
+    // The old song's scope wiring goes; the host asks again for this one's.
+    this.tapForTrack = null;
+    this.syncTaps();
     if (this.instruments.size) {
       void this.ready();
       this.restart();
@@ -122,10 +128,11 @@ export class OplOutput {
             node.port.postMessage({ type: 'dispose' } satisfies OplCommand);
             return null;
           }
-          node.connect(this.output);
+          node.connect(this.output, 0);
           node.port.onmessage = (event: MessageEvent) => this.onEvent(event.data as OplEvent);
           this.node = node;
           this.postCommand({ type: 'set-channel-mask', mask: this.mask });
+          this.syncTaps();
           this.post();
           return node;
         },
@@ -190,6 +197,53 @@ export class OplOutput {
     this.trackAudible = audible;
     this.trackCount = Math.max(this.trackCount, trackCount);
     this.updateMask();
+  }
+
+  /**
+   * Feed each OPL channel's scope tap into the taps of the tracks playing on
+   * it (`tapForTrack`: the song bank's per-track monitors; null for none), as
+   * a SID voice feeds its track's. Reconnects only what changed; the worklet
+   * records taps only while something is connected.
+   */
+  connectTaps(tapForTrack: ((trackIndex: number) => AudioNode | null) | null): void {
+    this.tapForTrack = tapForTrack;
+    this.syncTaps();
+  }
+
+  private syncTaps(): void {
+    const node = this.node;
+    if (!node) return;
+    const wanted = new Map<number, Set<AudioNode>>();
+    if (this.tapForTrack && this.instruments.size) {
+      for (let track = 0; track < this.trackCount; track++) {
+        const ch = this.driver.oplChannelForTrack(track);
+        if (ch === undefined || ch < 0 || ch >= OPL_TAP_OUTPUTS) continue;
+        const tap = this.tapForTrack(track);
+        if (!tap) continue;
+        let set = wanted.get(ch);
+        if (!set) wanted.set(ch, (set = new Set()));
+        set.add(tap);
+      }
+    }
+    for (const [ch, taps] of this.tapEdges) {
+      for (const tap of taps) {
+        if (wanted.get(ch)?.has(tap)) continue;
+        try {
+          node.disconnect(tap, 1 + ch);
+        } catch {
+          // Already gone (a monitor the bank dropped).
+        }
+      }
+    }
+    for (const [ch, taps] of wanted) {
+      for (const tap of taps) {
+        if (!this.tapEdges.get(ch)?.has(tap)) node.connect(tap, 1 + ch);
+      }
+    }
+    const wasOn = [...this.tapEdges.values()].some((s) => s.size > 0);
+    const isOn = [...wanted.values()].some((s) => s.size > 0);
+    this.tapEdges = wanted;
+    if (wasOn !== isOn) this.postCommand({ type: 'set-taps', enabled: isOn });
   }
 
   dispose(): void {
@@ -274,8 +328,8 @@ export async function createOplNode(audioContext: BaseAudioContext): Promise<Aud
   await audioContext.audioWorklet.addModule(`${import.meta.env.BASE_URL}worklets/opl-worklet.js`);
   const node = new AudioWorkletNode(audioContext, 'opl-audio-processor', {
     numberOfInputs: 0,
-    numberOfOutputs: 1,
-    outputChannelCount: [2],
+    numberOfOutputs: 1 + OPL_TAP_OUTPUTS,
+    outputChannelCount: [2, ...Array<number>(OPL_TAP_OUTPUTS).fill(1)],
   });
   await new Promise<void>((resolve, reject) => {
     const fail = (error: Error) => {

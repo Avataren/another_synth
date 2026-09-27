@@ -40,7 +40,7 @@ async function makeOutput(channels: Array<number | null> = [null, 2, 5]) {
   out.setSong({ instruments: new Map([['02', TIMBRE]]), channels, amigaLimits: false, gain: 0.8 });
   await out.ready();
   await Promise.resolve();
-  return { out, posted, factory };
+  return { out, posted, factory, node };
 }
 
 const batches = (posted: OplCommand[]) =>
@@ -105,6 +105,33 @@ describe('OplOutput', () => {
     // Track 2 muted, but track 3 on the same channel 5 is heard.
     out.setTrackAudibility((t) => t !== 2, 4);
     expect(posted.at(-1)).toEqual({ type: 'set-channel-mask', mask: (1 << 18) - 1 });
+  });
+
+  it('feeds each channel’s scope tap into the taps of its tracks, and only then records them', async () => {
+    const { out, posted, node } = await makeOutput([null, 2, 5, 5]);
+    const connect = node.connect as unknown as ReturnType<typeof vi.fn>;
+    const disconnect = node.disconnect as unknown as ReturnType<typeof vi.fn>;
+    connect.mockClear();
+    const taps = [{}, {}, {}, {}] as AudioNode[];
+    out.connectTaps((t) => taps[t]!);
+    // Output 1 + ch: channel 2 to track 1's tap, channel 5 to tracks 2 and 3.
+    expect(connect.mock.calls).toEqual([
+      [taps[1], 3],
+      [taps[2], 6],
+      [taps[3], 6],
+    ]);
+    expect(posted.at(-1)).toEqual({ type: 'set-taps', enabled: true });
+    // Asking again changes nothing.
+    connect.mockClear();
+    out.connectTaps((t) => taps[t]!);
+    expect(connect).not.toHaveBeenCalled();
+    out.connectTaps(null);
+    expect(disconnect.mock.calls).toEqual([
+      [taps[1], 3],
+      [taps[2], 6],
+      [taps[3], 6],
+    ]);
+    expect(posted.at(-1)).toEqual({ type: 'set-taps', enabled: false });
   });
 
   it('panics and re-inits on restart, dropping unsent writes', async () => {

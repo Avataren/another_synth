@@ -2499,6 +2499,14 @@ export class OplRenderer {
         return ret;
     }
     /**
+     * How many channels `read_tap` covers (18: every OPL3 channel).
+     * @returns {number}
+     */
+    tap_channels() {
+        const ret = wasm.oplrenderer_tap_channels(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * @returns {number}
      */
     queued_writes() {
@@ -2519,6 +2527,14 @@ export class OplRenderer {
      */
     set_channel_mask(mask) {
         wasm.oplrenderer_set_channel_mask(this.__wbg_ptr, mask);
+    }
+    /**
+     * Record per-channel scope taps during `render` (off by default: it is
+     * work nobody needs without a scope on screen).
+     * @param {boolean} enabled
+     */
+    set_taps_enabled(enabled) {
+        wasm.oplrenderer_set_taps_enabled(this.__wbg_ptr, enabled);
     }
     /**
      * @param {number} sample_rate
@@ -2558,6 +2574,17 @@ export class OplRenderer {
         var len1 = WASM_VECTOR_LEN;
         const ret = wasm.oplrenderer_render(this.__wbg_ptr, ptr0, len0, left, ptr1, len1, right);
         return ret >>> 0;
+    }
+    /**
+     * Copy channel `ch`'s tap from the last `render` into `out` (its
+     * frames; ±1 is one operator's full swing). Zeros when taps are off.
+     * @param {number} ch
+     * @param {Float32Array} out
+     */
+    read_tap(ch, out) {
+        var ptr0 = passArrayF32ToWasm0(out, wasm.__wbindgen_malloc);
+        var len0 = WASM_VECTOR_LEN;
+        wasm.oplrenderer_read_tap(this.__wbg_ptr, ch, ptr0, len0, out);
     }
     /**
      * @param {number} gain

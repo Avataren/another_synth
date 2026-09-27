@@ -14,7 +14,7 @@
 //! The wasm-bindgen attributes are `cfg_attr`-gated as in `sid/wasm.rs`, so
 //! the class also compiles and is tested natively.
 
-use super::chip::{Chip, NATIVE_RATE};
+use super::chip::{Chip, CHANNELS, NATIVE_RATE};
 use super::resample::Resampler;
 use std::collections::VecDeque;
 #[cfg(feature = "wasm")]
@@ -40,7 +40,16 @@ pub struct OplRenderer {
     queue: VecDeque<Write>,
     late: u32,
     gain: f32,
+    /// Per-channel scope taps of the last `render`, channel-major
+    /// (`TAP_CHANNELS` × frames), when enabled.
+    taps_enabled: bool,
+    taps: Vec<f32>,
+    tap_frames: usize,
 }
+
+/// One operator's full swing (the chip's signed 14-bit operator output):
+/// a tap reads ±1 for a full-level carrier.
+const TAP_SCALE: f32 = 1.0 / 8192.0;
 
 /// Full scale of the chip's 16-bit output.
 const FULL_SCALE: f32 = 1.0 / 32768.0;
@@ -58,6 +67,9 @@ impl OplRenderer {
             queue: VecDeque::new(),
             late: 0,
             gain: 1.0,
+            taps_enabled: false,
+            taps: Vec::new(),
+            tap_frames: 0,
         }
     }
 
@@ -90,6 +102,12 @@ impl OplRenderer {
     /// Render `left.len()` frames (and the same into `right`). Returns frames.
     pub fn render(&mut self, left: &mut [f32], right: &mut [f32]) -> usize {
         let n = left.len().min(right.len());
+        let taps_on = self.taps_enabled;
+        if taps_on {
+            self.taps.clear();
+            self.taps.resize(CHANNELS * n, 0.0);
+        }
+        self.tap_frames = if taps_on { n } else { 0 };
         let (chip, queue, native_pos, late) = (&mut self.chip, &mut self.queue, &mut self.native_pos, &mut self.late);
         for i in 0..n {
             let [l, r] = self.resampler.next(|| {
@@ -109,6 +127,13 @@ impl OplRenderer {
             });
             left[i] = l * FULL_SCALE * self.gain;
             right[i] = r * FULL_SCALE * self.gain;
+            // Scopes: the latest native sample per output frame. No
+            // anti-aliasing: a picture, not audio.
+            if taps_on {
+                for ch in 0..CHANNELS {
+                    self.taps[ch * n + i] = chip.channel_output(ch) as f32 * TAP_SCALE;
+                }
+            }
         }
         self.frames += n as u64;
         n
@@ -157,6 +182,33 @@ impl OplRenderer {
         self.chip.write(0xbd, self.chip.written(0xbd) & !0x3f);
     }
 
+    /// Record per-channel scope taps during `render` (off by default: it is
+    /// work nobody needs without a scope on screen).
+    pub fn set_taps_enabled(&mut self, enabled: bool) {
+        self.taps_enabled = enabled;
+        if !enabled {
+            self.taps = Vec::new();
+            self.tap_frames = 0;
+        }
+    }
+
+    /// How many channels `read_tap` covers (18: every OPL3 channel).
+    pub fn tap_channels(&self) -> u32 {
+        CHANNELS as u32
+    }
+
+    /// Copy channel `ch`'s tap from the last `render` into `out` (its
+    /// frames; ±1 is one operator's full swing). Zeros when taps are off.
+    pub fn read_tap(&self, ch: usize, out: &mut [f32]) {
+        let n = out.len().min(self.tap_frames);
+        if ch >= CHANNELS || n == 0 {
+            out.fill(0.0);
+            return;
+        }
+        out[..n].copy_from_slice(&self.taps[ch * self.tap_frames..ch * self.tap_frames + n]);
+        out[n..].fill(0.0);
+    }
+
     /// The chip's native rate, for callers converting tick timing.
     pub fn native_rate(&self) -> f64 {
         NATIVE_RATE
@@ -185,6 +237,36 @@ mod tests {
 
     fn first_sound(x: &[f32]) -> Option<usize> {
         x.iter().position(|s| s.abs() > 1e-3)
+    }
+
+    #[test]
+    fn taps_carry_each_channel_alone_and_follow_the_mask() {
+        let mut r = OplRenderer::new(48_000.0);
+        program_sine(&mut r);
+        r.write(0xb0, 0x31); // key on, channel 0
+        let (mut l, mut rr) = (vec![0f32; 128], vec![0f32; 128]);
+        let mut tap = vec![0f32; 128];
+
+        // Off by default: nothing recorded.
+        r.render(&mut l, &mut rr);
+        r.read_tap(0, &mut tap);
+        assert!(tap.iter().all(|&v| v == 0.0));
+
+        r.set_taps_enabled(true);
+        r.render(&mut l, &mut rr);
+        r.read_tap(0, &mut tap);
+        let peak = tap.iter().fold(0f32, |m, v| m.max(v.abs()));
+        // A full-level sine carrier swings to about ±1 of one operator.
+        assert!(peak > 0.9 && peak <= 1.0, "peak {peak}");
+        r.read_tap(1, &mut tap);
+        assert!(tap.iter().all(|&v| v == 0.0), "channel 1 is silent");
+
+        // Muted: the tap goes flat with the audio.
+        r.set_channel_mask(!1);
+        r.render(&mut l, &mut rr);
+        r.read_tap(0, &mut tap);
+        assert!(tap.iter().skip(1).all(|&v| v == 0.0));
+        assert_eq!(r.tap_channels(), 18);
     }
 
     #[test]

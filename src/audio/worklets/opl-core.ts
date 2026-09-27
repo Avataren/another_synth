@@ -25,6 +25,10 @@ export interface OplWasmRenderer {
   queued_writes(): number;
   set_gain(gain: number): void;
   set_channel_mask(mask: number): void;
+  /** Record per-channel scope taps during `render` (off by default). */
+  set_taps_enabled(enabled: boolean): void;
+  /** Channel `ch`'s tap from the last `render` (±1: one operator's full swing). */
+  read_tap(ch: number, out: Float32Array): void;
   /** Drop queued writes and key everything off at the fastest release. */
   panic(): void;
   free(): void;
@@ -43,6 +47,8 @@ export type OplCommand =
   | { type: 'set-gain'; gain: number }
   /** Bit per channel (0..17): 1 plays, 0 mutes. The chip keeps running. */
   | { type: 'set-channel-mask'; mask: number }
+  /** Per-channel scope outputs (`OPL_TAP_OUTPUTS`) on or off; off is flat. */
+  | { type: 'set-taps'; enabled: boolean }
   /** Stop: drop queued writes, key everything off (transport stop, seek). */
   | { type: 'panic' }
   | { type: 'dispose' };
@@ -52,6 +58,12 @@ export type OplEvent =
   /** Writes applied after their time since the worklet started (a late batch). */
   | { type: 'late-writes'; total: number }
   | { type: 'error'; message: string };
+
+/**
+ * Per-channel scope outputs after the stereo mix (output 0): output `1 + ch`
+ * is OPL channel `ch`, mono, ±1 for one operator's full swing.
+ */
+export const OPL_TAP_OUTPUTS = 18;
 
 /** How often a changed late-write count is reported, at most. */
 const LATE_REPORT_SECONDS = 0.5;
@@ -63,6 +75,7 @@ export class OplProcessorCore {
   private lateReported = 0;
   private framesSinceReport = 0;
   private disposedFlag = false;
+  private tapsEnabled = false;
 
   /**
    * `contextFrame` is the AudioContext frame at construction (the worklet's
@@ -101,6 +114,10 @@ export class OplProcessorCore {
       case 'set-channel-mask':
         renderer?.set_channel_mask(command.mask >>> 0);
         break;
+      case 'set-taps':
+        this.tapsEnabled = command.enabled;
+        renderer?.set_taps_enabled(command.enabled);
+        break;
       case 'panic':
         renderer?.panic();
         break;
@@ -114,8 +131,15 @@ export class OplProcessorCore {
   /**
    * Fills one render quantum starting at AudioContext frame `contextFrame`
    * (the worklet's `currentFrame`). `right` may be absent on a mono output.
+   * `taps[ch]`, when given, receives channel `ch`'s scope tap (flat while
+   * taps are off).
    */
-  process(left: Float32Array, right: Float32Array | undefined, contextFrame: number): void {
+  process(
+    left: Float32Array,
+    right: Float32Array | undefined,
+    contextFrame: number,
+    taps?: ReadonlyArray<Float32Array | undefined>,
+  ): void {
     const renderer = this.renderer;
     if (!renderer) {
       left.fill(0);
@@ -129,6 +153,13 @@ export class OplProcessorCore {
       } else {
         const scratch = new Float32Array(left.length);
         renderer.render(left, scratch);
+      }
+      // Outputs are zeroed by the browser each quantum: off, nothing to do.
+      if (taps && this.tapsEnabled) {
+        for (let ch = 0; ch < taps.length; ch++) {
+          const out = taps[ch];
+          if (out) renderer.read_tap(ch, out);
+        }
       }
       this.reportLate(renderer, left.length);
     } catch (error) {

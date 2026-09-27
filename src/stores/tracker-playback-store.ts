@@ -495,6 +495,14 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     return sid.voiceFullScale();
   }
 
+  /**
+   * An OPL channel tap's full scale, for the per-track scopes: the tap reads
+   * ±1 for one operator's full swing (`OplRenderer.read_tap`).
+   */
+  function getOplVoiceFullScale(): number {
+    return 1;
+  }
+
   /** The SID keyboard preview voice's full scale, for the instrument page's scope (`null`: not known yet). */
   function getSidPreviewFullScale(): number | null {
     return sid.previewFullScale();
@@ -1054,6 +1062,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     onSidPreviewOutput,
     connectSidVoiceTaps,
     getSidVoiceFullScale,
+    getOplVoiceFullScale,
     getSidPreviewFullScale,
     sidTransport,
     setSidRevision,

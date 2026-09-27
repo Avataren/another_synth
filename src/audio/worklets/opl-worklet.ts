@@ -10,7 +10,8 @@
  * `wasm-ready`. Everything after that is an `OplCommand` / `OplEvent` (see
  * `opl-core.ts`).
  *
- * Output 0: stereo.
+ * Output 0: stereo. Outputs 1..18: one mono scope tap per OPL channel
+ * (`OPL_TAP_OUTPUTS`), flat until `set-taps` turns them on.
  */
 // First, and it must stay first: the wasm glue builds a TextDecoder at module
 // load, and an AudioWorkletGlobalScope has none until this polyfills it.
@@ -69,6 +70,16 @@ class OplAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
+  private readonly taps: (Float32Array | undefined)[] = [];
+
+  /** Output `1 + ch`'s channel for each OPL channel (none when not wired). */
+  private tapBuffers(outputs: Float32Array[][]): (Float32Array | undefined)[] | undefined {
+    if (outputs.length < 2) return undefined;
+    this.taps.length = 0;
+    for (let i = 1; i < outputs.length; i++) this.taps.push(outputs[i]?.[0]);
+    return this.taps;
+  }
+
   process(_inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
     // Returning false lets the browser collect the node once the client has
     // disposed it; an input-less processor that returns true is never freed.
@@ -77,7 +88,7 @@ class OplAudioProcessor extends AudioWorkletProcessor {
     const left = main?.[0];
     if (!left) return true;
     if (this.core) {
-      this.core.process(left, main[1], currentFrame);
+      this.core.process(left, main[1], currentFrame, this.tapBuffers(outputs));
     } else {
       left.fill(0);
       main[1]?.fill(0);

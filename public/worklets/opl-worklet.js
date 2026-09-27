@@ -2519,6 +2519,14 @@ var OplRenderer = class {
     return ret;
   }
   /**
+   * How many channels `read_tap` covers (18: every OPL3 channel).
+   * @returns {number}
+   */
+  tap_channels() {
+    const ret = wasm.oplrenderer_tap_channels(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
    * @returns {number}
    */
   queued_writes() {
@@ -2539,6 +2547,14 @@ var OplRenderer = class {
    */
   set_channel_mask(mask) {
     wasm.oplrenderer_set_channel_mask(this.__wbg_ptr, mask);
+  }
+  /**
+   * Record per-channel scope taps during `render` (off by default: it is
+   * work nobody needs without a scope on screen).
+   * @param {boolean} enabled
+   */
+  set_taps_enabled(enabled) {
+    wasm.oplrenderer_set_taps_enabled(this.__wbg_ptr, enabled);
   }
   /**
    * @param {number} sample_rate
@@ -2578,6 +2594,17 @@ var OplRenderer = class {
     var len1 = WASM_VECTOR_LEN;
     const ret = wasm.oplrenderer_render(this.__wbg_ptr, ptr0, len0, left, ptr1, len1, right);
     return ret >>> 0;
+  }
+  /**
+   * Copy channel `ch`'s tap from the last `render` into `out` (its
+   * frames; ±1 is one operator's full swing). Zeros when taps are off.
+   * @param {number} ch
+   * @param {Float32Array} out
+   */
+  read_tap(ch, out) {
+    var ptr0 = passArrayF32ToWasm0(out, wasm.__wbindgen_malloc);
+    var len0 = WASM_VECTOR_LEN;
+    wasm.oplrenderer_read_tap(this.__wbg_ptr, ch, ptr0, len0, out);
   }
   /**
    * @param {number} gain
@@ -3494,6 +3521,7 @@ var OplProcessorCore = class {
     __publicField(this, "lateReported", 0);
     __publicField(this, "framesSinceReport", 0);
     __publicField(this, "disposedFlag", false);
+    __publicField(this, "tapsEnabled", false);
     this.renderer = new RendererCtor(sampleRate2);
     this.frameOffset = contextFrame;
   }
@@ -3519,6 +3547,10 @@ var OplProcessorCore = class {
       case "set-channel-mask":
         renderer?.set_channel_mask(command.mask >>> 0);
         break;
+      case "set-taps":
+        this.tapsEnabled = command.enabled;
+        renderer?.set_taps_enabled(command.enabled);
+        break;
       case "panic":
         renderer?.panic();
         break;
@@ -3531,8 +3563,10 @@ var OplProcessorCore = class {
   /**
    * Fills one render quantum starting at AudioContext frame `contextFrame`
    * (the worklet's `currentFrame`). `right` may be absent on a mono output.
+   * `taps[ch]`, when given, receives channel `ch`'s scope tap (flat while
+   * taps are off).
    */
-  process(left, right, contextFrame) {
+  process(left, right, contextFrame, taps) {
     const renderer = this.renderer;
     if (!renderer) {
       left.fill(0);
@@ -3546,6 +3580,12 @@ var OplProcessorCore = class {
       } else {
         const scratch = new Float32Array(left.length);
         renderer.render(left, scratch);
+      }
+      if (taps && this.tapsEnabled) {
+        for (let ch = 0; ch < taps.length; ch++) {
+          const out = taps[ch];
+          if (out) renderer.read_tap(ch, out);
+        }
       }
       this.reportLate(renderer, left.length);
     } catch (error) {
@@ -3580,6 +3620,7 @@ var OplAudioProcessor = class extends AudioWorkletProcessor {
     super();
     __publicField(this, "core", null);
     __publicField(this, "wasmReady", false);
+    __publicField(this, "taps", []);
     this.port.onmessage = (event) => {
       const data = event.data;
       if (data.type === "wasm-binary" && data.wasmBytes) {
@@ -3610,13 +3651,20 @@ var OplAudioProcessor = class extends AudioWorkletProcessor {
       this.port.postMessage({ type: "error", message: `OPL wasm init failed: ${String(error)}` });
     }
   }
+  /** Output `1 + ch`'s channel for each OPL channel (none when not wired). */
+  tapBuffers(outputs) {
+    if (outputs.length < 2) return void 0;
+    this.taps.length = 0;
+    for (let i = 1; i < outputs.length; i++) this.taps.push(outputs[i]?.[0]);
+    return this.taps;
+  }
   process(_inputs, outputs) {
     if (this.core?.disposed) return false;
     const main = outputs[0];
     const left = main?.[0];
     if (!left) return true;
     if (this.core) {
-      this.core.process(left, main[1], currentFrame);
+      this.core.process(left, main[1], currentFrame, this.tapBuffers(outputs));
     } else {
       left.fill(0);
       main[1]?.fill(0);

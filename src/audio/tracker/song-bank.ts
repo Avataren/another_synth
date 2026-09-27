@@ -316,6 +316,7 @@ export class TrackerSongBank implements TrackerSink {
     if (this.trackMonitoringEnabled === enabled) return;
     this.trackMonitoringEnabled = enabled;
     if (enabled) return;
+    this.opl.connectTaps(null);
     // Voices already sounding keep their connection until they end; what is
     // dropped here is the taps themselves, so nothing new connects and the
     // sink has nothing left to keep awake.
@@ -373,6 +374,12 @@ export class TrackerSongBank implements TrackerSink {
     // Nothing to visualise with, and asking would build the tap this mode
     // exists to avoid.
     if (!this.trackMonitoringEnabled) return null;
+    // An OPL track: the chip's own channel output feeds the track's tap, as
+    // a SID voice does, so it is drawn as that channel alone.
+    if (this.opl.handles(instrumentId)) {
+      this.opl.connectTaps((track) => this.maybeTrackMonitor(track));
+      return this.getTrackMonitor(trackIndex);
+    }
     const active = instrumentId ? this.instruments.get(instrumentId) : undefined;
     if (active?.instrument instanceof ModInstrument) {
       return this.getTrackMonitor(trackIndex);

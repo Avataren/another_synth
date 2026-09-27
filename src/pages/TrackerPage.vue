@@ -848,7 +848,7 @@
               :audio-node="trackAudioNodes[index] ?? null"
               :audio-context="audioContext"
               :scope-source="isAhxSong ? playbackStore.getAhxChannelWaveform : null"
-              :analyser-full-scale="isSidSong ? playbackStore.getSidVoiceFullScale : null"
+              :analyser-full-scale="isSidSong ? playbackStore.getSidVoiceFullScale : trackerStore.oplChannels[index] != null ? playbackStore.getOplVoiceFullScale : null"
               :scope-channel="index"
               :scope-gain="userSettings.ahxScopeGain"
             />

@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 // Relative on purpose: the `app/public/wasm/audio_processor.js` alias is
 // mocked for every other test, and this one is about the real bytes.
 import { OplRenderer, initSync } from '../../public/wasm/audio_processor.js';
-import { OplProcessorCore, type OplEvent, type OplWasmRendererCtor } from 'src/audio/worklets/opl-core';
+import { OPL_TAP_OUTPUTS, OplProcessorCore, type OplEvent, type OplWasmRendererCtor } from 'src/audio/worklets/opl-core';
 
 /**
  * .ai/plan-opl.md O2: the OPL worklet's render-thread core over the REAL wasm
@@ -172,5 +172,27 @@ describe('OplProcessorCore over the real wasm', () => {
     c.core.handle({ type: 'set-channel-mask', mask: 0x3fffe });
     c.core.handle({ type: 'writes', writes: setup });
     expect(peak(render(c.core, 0, 4096).left)).toBe(0);
+  });
+
+  it('fills per-channel scope taps only while they are on, one channel each', () => {
+    const [fnum, block] = [0x244, 4];
+    const setup = writes(...sinePatch(fnum, block).map((w) => [0, w] as [number, number[]]), [0, keyOn(fnum, block)]);
+    const peak = (x: Float32Array) => x.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+    const { core } = newCore();
+    core.handle({ type: 'writes', writes: setup });
+    const quantum = (from: number) => {
+      const [l, r] = [new Float32Array(QUANTUM), new Float32Array(QUANTUM)];
+      const taps = Array.from({ length: OPL_TAP_OUTPUTS }, () => new Float32Array(QUANTUM));
+      core.process(l, r, from, taps);
+      return taps;
+    };
+    // Off: the outputs stay as the browser handed them (zeroed).
+    expect(peak(quantum(0)[0]!)).toBe(0);
+    core.handle({ type: 'set-taps', enabled: true });
+    let taps = quantum(QUANTUM);
+    for (let i = 2; i < 8; i++) taps = quantum(i * QUANTUM);
+    expect(peak(taps[0]!)).toBeGreaterThan(0.9);
+    expect(peak(taps[0]!)).toBeLessThanOrEqual(1);
+    expect(taps.slice(1).every((t) => peak(t) === 0)).toBe(true);
   });
 });
