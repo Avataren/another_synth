@@ -2,7 +2,9 @@
 """Builds synthetic .a2m modules for probing AdPlug's A2M player as a black box
 (plan-opl.md, O7). Offsets are techinfo.htm's, as corrected by the O6 parser.
 
-Versions 4 and 8 are stored (no packer). Version 11 is written as an aPLib
+Versions 1 and 5 are SixPack (Gage's adaptive Huffman, AT2's MAXCOPY 255),
+written as literals only; versions 4 and 8 are stored, though AdPlug's AT2
+player mis-reads stored modules (none exist in the corpus). Version 11 is written as an aPLib
 stream of literals only, which any aPLib depacker reads; versions 12-14 as
 AT2's LZH (ar002 with wider fields, see lzh.rs) using literals only: each
 block declares a one-symbol code-length code, all 256 literals at length 8
@@ -15,7 +17,7 @@ block declares a one-symbol code-length code, all 256 literals at length 8
 import struct
 import sys
 
-SONGDATA_LEN = {4: 0x2dc4, 8: 0x2dc5, 11: 0x115a1e, 12: 0x115e9f, 13: 0x115e9f, 14: 0x115ea2}
+SONGDATA_LEN = {1: 0x2dc4, 4: 0x2dc4, 5: 0x2dc5, 8: 0x2dc5, 11: 0x115a1e, 12: 0x115e9f, 13: 0x115e9f, 14: 0x115ea2}
 
 
 def aplib_literals(data: bytes) -> bytes:
@@ -43,6 +45,93 @@ def aplib_literals(data: bytes) -> bytes:
     bit(1)
     bit(0)
     out.append(0)
+    return bytes(out)
+
+
+def sixpack_literals(data: bytes) -> bytes:
+    """SixPack stream of literals then the terminate code: the encoder keeps
+    the decoder's adaptive tree (see sixpack.rs) and emits each leaf's path."""
+    MAXFREQ, MAXCOPY, MINCOPY, COPYRANGES = 2000, 255, 3, 6
+    FIRSTCODE = 257
+    MAXCHAR = FIRSTCODE + COPYRANGES * (MAXCOPY - MINCOPY + 1) - 1
+    SUCCMAX, TWICEMAX, ROOT = MAXCHAR + 1, 2 * MAXCHAR + 1, 1
+    dad = [0] * (TWICEMAX + 1)
+    left = [0] * (MAXCHAR + 1)
+    right = [0] * (MAXCHAR + 1)
+    freq = [1] * (TWICEMAX + 1)
+    for i in range(2, TWICEMAX + 1):
+        dad[i] = i // 2
+    for i in range(1, MAXCHAR + 1):
+        left[i], right[i] = 2 * i, 2 * i + 1
+
+    def sibling(n):
+        p = dad[n]
+        return right[p] if left[p] == n else left[p]
+
+    def update_freq(a, b):
+        while True:
+            p = dad[a]
+            freq[p] = freq[a] + freq[b]
+            a = p
+            if a == ROOT:
+                break
+            b = sibling(a)
+        if freq[ROOT] == MAXFREQ:
+            for i in range(1, len(freq)):
+                freq[i] >>= 1
+
+    def update_model(code):
+        a = code + SUCCMAX
+        freq[a] += 1
+        if dad[a] == ROOT:
+            return
+        ua = dad[a]
+        update_freq(a, sibling(a))
+        while True:
+            uua = dad[ua]
+            b = right[uua] if left[uua] == ua else left[uua]
+            if freq[a] > freq[b]:
+                if left[uua] == ua:
+                    right[uua] = a
+                else:
+                    left[uua] = a
+                if left[ua] == a:
+                    left[ua] = b
+                    c = right[ua]
+                else:
+                    right[ua] = b
+                    c = left[ua]
+                dad[b] = ua
+                dad[a] = uua
+                update_freq(b, c)
+                a = b
+            a = dad[a]
+            ua = dad[a]
+            if ua == ROOT:
+                break
+
+    bits = []
+
+    def emit(code):
+        node, path = code + SUCCMAX, []
+        while node != ROOT:
+            p = dad[node]
+            path.append(1 if right[p] == node else 0)
+            node = p
+        bits.extend(reversed(path))
+        update_model(code)
+
+    for b in data:
+        emit(b)
+    emit(256)
+    while len(bits) % 16:
+        bits.append(0)
+    out = bytearray()
+    for i in range(0, len(bits), 16):
+        w = 0
+        for b in bits[i:i + 16]:
+            w = w << 1 | b
+        out += w.to_bytes(2, 'little')
     return bytes(out)
 
 
@@ -178,9 +267,10 @@ def build(spec: dict) -> bytes:
                 at = base + (row * chans + ch) * cb
             blk[at:at + cb] = bytes(vals[:cb])
 
-    if v in (4, 8):
-        packed = [bytes(songdata)] + [bytes(b) for b in blocks]
-        nfields = 5 if v == 4 else 9
+    if v in (1, 4, 5, 8):
+        pack = sixpack_literals if v in (1, 5) else bytes
+        packed = [pack(bytes(songdata))] + [pack(bytes(b)) for b in blocks]
+        nfields = 5 if v < 5 else 9
         hdr = b'_A2module_' + bytes(4) + bytes([v, npat])
         lens = [len(b) for b in packed] + [0] * (nfields - len(packed))
         hdr += struct.pack('<%dH' % nfields, *lens)

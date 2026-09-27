@@ -1,3 +1,6 @@
+**Resume O7 from `.ai/opl-o7-progress.md` (handoff, 2026-09-27) — read it first; it supersedes
+the task list below where they differ.**
+
 Continue the OPL work in `.ai/plan-opl.md`: next is **O7 (the A2M player)**, the second half of
 the Adlib Tracker II track. Read the plan first, especially §3 (Adlib Tracker II), §4 (oracles
 and licensing), §6 (D0–D6, all settled; do not re-ask them) and the O2, O5 and **O6** landing

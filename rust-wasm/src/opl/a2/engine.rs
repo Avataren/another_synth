@@ -515,8 +515,16 @@ impl A2Engine {
 
     fn play_row(&mut self, out: &mut impl RegisterSink) {
         let tracks = self.tracks_in_use();
+        // Versions 1-4 store 9 tracks and 5-8 store 18; the rest are empty.
+        let pat = &self.song.patterns[self.pattern];
         let cells: Vec<Cell> = (0..tracks)
-            .map(|t| *self.song.patterns[self.pattern].cell(self.row, t))
+            .map(|t| {
+                if t < pat.channels {
+                    *pat.cell(self.row, t)
+                } else {
+                    Cell::default()
+                }
+            })
             .collect();
         for (t, cell) in cells.iter().enumerate() {
             for (c, &(fx, param)) in cell.effects.iter().enumerate() {
