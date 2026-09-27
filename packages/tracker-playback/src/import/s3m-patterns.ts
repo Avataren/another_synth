@@ -90,6 +90,47 @@ export function s3mAdlibChannelForTrack(s3m: S3mSong): Array<number | undefined>
 }
 
 /**
+ * The file's sample pre-amplification (OpenMPT Load_s3m.cpp, BSD-3):
+ * the header master volume, with ST3's quirks. 16..127; 48 is ST3's
+ * default.
+ *
+ *   if(formatVersion == oldVersion && masterVolume < 8)
+ *       m_nSamplePreAmp = min((masterVolume + 1) * 0x10, 0x7F);
+ *   else if(masterVolume == 2 || masterVolume == (2 | 0x10))
+ *       m_nSamplePreAmp = 0x20;
+ *   else if(!(masterVolume & 0x7F))
+ *       m_nSamplePreAmp = 48;
+ *   else
+ *       m_nSamplePreAmp = max(masterVolume & 0x7F, 0x10);
+ */
+export function s3mSamplePreamp(s3m: S3mSong): number {
+  const mv = s3m.masterVolume & 0xff;
+  if (s3m.formatVersion === 1 && mv < 8) return Math.min((mv + 1) * 0x10, 0x7f);
+  if (mv === 2 || mv === (2 | 0x10)) return 0x20;
+  if (!(mv & 0x7f)) return 48;
+  return Math.max(mv & 0x7f, 0x10);
+}
+
+/**
+ * The OPL chip's level against `TrackerSamplerInstrument`'s PCM, as OpenMPT
+ * balances them ("approximately as loud as in DOSBox and a real SoundBlaster
+ * 16"). Multiply the chip's output (16-bit full scale = 1.0) by this.
+ *
+ * OpenMPT, Compatible mix levels (Sndmix.cpp, OPL.cpp): a full-volume,
+ * centred PCM channel reaches `preamp / 128` of full scale per side (the
+ * S3M header's master volume, above); the chip reaches
+ * `32768 * 6169 * (36 / 48) / 2^27` ~ 1.13 (`m_nVSTiVolume = 36`). A mono
+ * file scales both by 8/11, so the ratio holds. Here the same PCM channel
+ * reaches cos(pi/4) per side (Web Audio's equal-power panner), and the
+ * header master volume is not applied, so the chip gets that ratio:
+ * `cos(pi/4) * 1.13 * 128 / preamp`, 2.13 at ST3's default 48.
+ */
+export function s3mOplMixGain(s3m: S3mSong): number {
+  const openmptOpl = (32768 * 6169 * (36 / 48)) / 2 ** 27;
+  return (Math.SQRT1_2 * openmptOpl * 128) / s3mSamplePreamp(s3m);
+}
+
+/**
  * Default panning for a channel, normalized 0..1 (0.5 = centre), or
  * undefined for the engine's centre default.
  *

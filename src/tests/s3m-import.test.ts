@@ -345,6 +345,9 @@ describe('S3M import: the AdLib policy', () => {
 
     // 4. The track's OPL channel travels with the song (O5): A1 is channel 0.
     expect(song.data.oplChannels).toEqual([null, null, 0, null]);
+    // ...and its level against the samples, from the header master volume
+    // (the builder's default, 48): OpenMPT's balance, s3mOplMixGain.
+    expect(song.data.oplGain).toBeCloseTo(2.13, 2);
   });
 
   it('keeps the OPL channel map through a save and load', () => {

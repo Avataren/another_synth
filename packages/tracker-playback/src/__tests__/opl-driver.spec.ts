@@ -8,6 +8,8 @@ import {
 } from '../opl-driver';
 import { createS3mPitchModel, s3mPeriodForNote } from '../pitch-model';
 import type { OplInstrumentData } from '../tracker-sample';
+import type { S3mSong } from '../formats/s3m';
+import { s3mOplMixGain, s3mSamplePreamp } from '../import/s3m-patterns';
 
 /**
  * .ai/plan-opl.md O3: the S3M AdLib driver emits exactly the register writes
@@ -218,5 +220,29 @@ describe('S3mOplDriver writes', () => {
     writes.length = 0;
     d.allNotesOff(1);
     expect(hex(writes)).toEqual(['b0=0a', 'b1=0e']);
+  });
+});
+
+describe('the OPL mix level against the samples (OpenMPT’s balance)', () => {
+  const song = (masterVolume: number, formatVersion = 2) => ({ masterVolume, formatVersion }) as S3mSong;
+
+  it('reads the sample pre-amp as OpenMPT’s Load_s3m does', () => {
+    expect(s3mSamplePreamp(song(48))).toBe(48);
+    expect(s3mSamplePreamp(song(0xb0))).toBe(48); // stereo bit: 0x30
+    expect(s3mSamplePreamp(song(0xff))).toBe(127);
+    expect(s3mSamplePreamp(song(0x80))).toBe(48); // 0 means the default
+    expect(s3mSamplePreamp(song(0x05))).toBe(16); // clamped up
+    expect(s3mSamplePreamp(song(0x12))).toBe(32); // ST3's 2 | 0x10 quirk
+    expect(s3mSamplePreamp(song(3, 1))).toBe(64); // old format: (3 + 1) * 16
+  });
+
+  it('keeps the chip at OpenMPT’s ratio to a centred full-volume sample', () => {
+    // OpenMPT: chip ~1.1297, sample preamp / 128; here the sample is cos(pi/4).
+    const openmpt = (32768 * 6169 * 0.75) / 2 ** 27;
+    for (const mv of [32, 48, 64, 127]) {
+      const ratioHere = s3mOplMixGain(song(mv)) / Math.SQRT1_2;
+      expect(ratioHere).toBeCloseTo(openmpt / (mv / 128), 9);
+    }
+    expect(s3mOplMixGain(song(48))).toBeCloseTo(2.13, 2);
   });
 });

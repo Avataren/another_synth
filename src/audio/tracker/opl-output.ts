@@ -24,12 +24,11 @@ import type { OplCommand, OplEvent } from 'src/audio/worklets/opl-core';
 import { debugLog } from 'src/diagnostics/debug-log';
 
 /**
- * The chip's level in the mix. Renders of the ten tier-1 AdLib S3Ms sit at
- * −8 to −21 dBFS RMS at unity (O3 landing record); −6 dB puts the loudest
- * near the level a busy PCM module reaches here, with room above it for the
- * PCM channels of a mixed song.
+ * The chip's level in the mix when the song does not say
+ * (`s3mOplMixGain` at ST3's default master volume, 48): OpenMPT's balance
+ * against the samples. A song's own value comes from its header.
  */
-export const OPL_MIX_GAIN = 0.5;
+export const OPL_DEFAULT_MIX_GAIN = (Math.SQRT1_2 * ((32768 * 6169 * 0.75) / 2 ** 27) * 128) / 48;
 
 /** OPL2 melodic channels: all nine sound alike, so the mask covers 0..8. */
 const OPL_CHANNELS = 9;
@@ -42,6 +41,8 @@ export interface OplSongInfo {
   /** The OPL channel per track (`s3mAdlibChannelForTrack`); null for none. */
   channels: ReadonlyArray<number | null>;
   amigaLimits: boolean;
+  /** The chip's mix level (`s3mOplMixGain`); null for the default. */
+  gain?: number | null;
 }
 
 /** Builds the worklet node, past its wasm handshake. Injectable for tests. */
@@ -61,6 +62,8 @@ export class OplOutput {
   private mask = ALL_CHANNELS_MASK;
   private trackAudible: (trackIndex: number) => boolean = () => true;
   private trackCount = 0;
+  private songGain = OPL_DEFAULT_MIX_GAIN;
+  private userVolume = 1;
 
   constructor(
     private readonly audioContext: BaseAudioContext,
@@ -68,16 +71,21 @@ export class OplOutput {
     private readonly createNode: OplNodeFactory = createOplNode,
   ) {
     this.output = audioContext.createGain();
-    this.output.gain.value = OPL_MIX_GAIN;
+    this.output.gain.value = OPL_DEFAULT_MIX_GAIN;
     this.output.connect(destination);
     this.driver = this.makeDriver(false);
   }
 
   /** The user's master volume (the song's global volume does not reach the chip). */
   setUserVolume(volume: number): void {
+    this.userVolume = volume;
+    this.applyGain();
+  }
+
+  private applyGain(): void {
     const now = this.audioContext.currentTime;
     this.output.gain.cancelScheduledValues(now);
-    this.output.gain.setValueAtTime(OPL_MIX_GAIN * volume, now);
+    this.output.gain.setValueAtTime(this.songGain * this.userVolume, now);
   }
 
   /** Whether `instrumentId` is an AdLib instrument of the loaded song. */
@@ -94,6 +102,8 @@ export class OplOutput {
     this.instruments = info.instruments;
     this.channels = info.channels;
     this.trackCount = info.channels.length;
+    this.songGain = info.gain ?? OPL_DEFAULT_MIX_GAIN;
+    this.applyGain();
     this.driver = this.makeDriver(info.amigaLimits);
     this.pending = [];
     if (this.instruments.size) {

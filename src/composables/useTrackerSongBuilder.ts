@@ -46,6 +46,8 @@ export interface TrackerSongBuilderContext {
   vblankTiming?: Ref<boolean>;
   /** S3M only: the OPL channel per track (null: none); see the tracker store. */
   oplChannels?: Ref<Array<number | null>>;
+  /** S3M only: the OPL chip's mix level (null: ST3's default). */
+  oplGain?: Ref<number | null>;
   /**
    * Which tracker's semantics the song follows. Optional so existing tests
    * and callers keep working; omitted means DEFAULT_MODULE_FORMAT.
@@ -172,6 +174,7 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       instruments: oplInstruments,
       channels: context.oplChannels?.value ?? [],
       amigaLimits: context.amigaLimits?.value ?? false,
+      gain: context.oplGain?.value ?? null,
     });
 
     await context.songBank.syncSlots(slots);

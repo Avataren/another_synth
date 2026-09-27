@@ -11,6 +11,7 @@ import {
   buildS3mTrackerSamples,
   measureS3m,
   s3mAdlibChannelForTrack,
+  s3mOplMixGain,
   formatInstrumentId,
   UNMAPPED_COMMAND_BYTES,
 } from '@another-synth/tracker-playback';
@@ -151,7 +152,7 @@ export function importS3mToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
       ...(s3m.amigaLimits ? { amigaLimits: true } : {}),
       ...(fastVolumeSlides ? { fastVolumeSlides: true } : {}),
       ...(initialGlobalVolume !== 1 ? { initialGlobalVolume } : {}),
-      ...(oplChannels.some((c) => c !== null) ? { oplChannels } : {}),
+      ...(oplChannels.some((c) => c !== null) ? { oplChannels, oplGain: s3mOplMixGain(s3m) } : {}),
       patternRows: clampPatternRows(patterns[0]?.rows),
       stepSize: DEFAULT_STEP_SIZE,
       patterns,

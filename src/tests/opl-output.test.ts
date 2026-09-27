@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import type { OplInstrumentData } from '@another-synth/tracker-playback';
-import { OplOutput, OPL_MIX_GAIN } from 'src/audio/tracker/opl-output';
+import { OplOutput, OPL_DEFAULT_MIX_GAIN } from 'src/audio/tracker/opl-output';
 import type { OplCommand } from 'src/audio/worklets/opl-core';
 
 const TIMBRE: OplInstrumentData = {
@@ -37,7 +37,7 @@ async function makeOutput(channels: Array<number | null> = [null, 2, 5]) {
   } as unknown as AudioWorkletNode;
   const factory = vi.fn(() => Promise.resolve(node));
   const out = new OplOutput(makeContext(), {} as AudioNode, factory);
-  out.setSong({ instruments: new Map([['02', TIMBRE]]), channels, amigaLimits: false });
+  out.setSong({ instruments: new Map([['02', TIMBRE]]), channels, amigaLimits: false, gain: 0.8 });
   await out.ready();
   await Promise.resolve();
   return { out, posted, factory };
@@ -66,10 +66,15 @@ describe('OplOutput', () => {
     expect(out.handles('02')).toBe(false);
   });
 
-  it('sits at the mix headroom and sends initadlib once the node is up', async () => {
+  it('takes the song’s mix level, times the user volume, and sends initadlib once the node is up', async () => {
     const { out, posted, factory } = await makeOutput();
     expect(factory).toHaveBeenCalledTimes(1);
-    expect(out.output.gain.value).toBe(OPL_MIX_GAIN);
+    const setValue = out.output.gain.setValueAtTime as unknown as ReturnType<typeof vi.fn>;
+    expect(setValue).toHaveBeenLastCalledWith(0.8, 5);
+    out.setUserVolume(0.5);
+    expect(setValue).toHaveBeenLastCalledWith(0.4, 5);
+    out.setSong({ instruments: new Map([['02', TIMBRE]]), channels: [], amigaLimits: false });
+    expect(setValue).toHaveBeenLastCalledWith(OPL_DEFAULT_MIX_GAIN * 0.5, 5);
     expect(out.handles('02')).toBe(true);
     expect(writesOf(posted).some(([, r, v]) => r === 0x01 && v === 0x20)).toBe(true);
   });

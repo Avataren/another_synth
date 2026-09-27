@@ -223,6 +223,12 @@ interface TrackerSnapshot {
    * Empty for every other song.
    */
   oplChannels: Array<number | null>;
+  /**
+   * S3M only: the OPL chip's level against the samples (`s3mOplMixGain`,
+   * from the header master volume); null when the song has no AdLib
+   * channels or predates the field (`OplOutput` then uses ST3's default).
+   */
+  oplGain: number | null;
   modOrigin: ModOrigin | null;
   defaultPatternRows: number;
   stepSize: number;
@@ -301,6 +307,12 @@ interface TrackerStoreState {
    * Empty for every other song.
    */
   oplChannels: Array<number | null>;
+  /**
+   * S3M only: the OPL chip's level against the samples (`s3mOplMixGain`,
+   * from the header master volume); null when the song has no AdLib
+   * channels or predates the field (`OplOutput` then uses ST3's default).
+   */
+  oplGain: number | null;
   /** MOD only: where the file came from (`ModOrigin`); null for every other song. */
   modOrigin: ModOrigin | null;
   /**
@@ -502,6 +514,8 @@ export interface TrackerSongFile {
     vblankTiming?: boolean;
     /** S3M with AdLib channels only; see the store field. */
     oplChannels?: Array<number | null>;
+    /** S3M with AdLib channels only; see the store field. */
+    oplGain?: number;
     /**
      * MOD only: the tracker flavor and signature the import found, for the
      * format badge's sub-label (`modVariantLabel`). Display only; absent in
@@ -614,6 +628,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       initialGlobalVolume: 1.0,
       vblankTiming: false,
       oplChannels: [],
+      oplGain: null,
       modOrigin: null,
       baseOctave: 4,
       defaultPatternRows: DEFAULT_PATTERN_ROWS,
@@ -770,6 +785,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         initialGlobalVolume: this.initialGlobalVolume,
         vblankTiming: this.vblankTiming,
         oplChannels: [...this.oplChannels],
+        oplGain: this.oplGain,
         modOrigin: this.modOrigin,
         defaultPatternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
@@ -806,6 +822,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.initialGlobalVolume = snapshot.initialGlobalVolume ?? 1.0;
       this.vblankTiming = snapshot.vblankTiming ?? false;
       this.oplChannels = [...(snapshot.oplChannels ?? [])];
+      this.oplGain = snapshot.oplGain ?? null;
       this.modOrigin = snapshot.modOrigin ?? null;
       this.defaultPatternRows = clampPatternRows(snapshot.defaultPatternRows);
       this.stepSize = snapshot.stepSize;
@@ -897,6 +914,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.initialGlobalVolume = 1.0;
       this.vblankTiming = false;
       this.oplChannels = [];
+      this.oplGain = null;
       this.modOrigin = null;
       this.baseOctave = 4;
       this.defaultPatternRows = DEFAULT_PATTERN_ROWS;
@@ -1438,6 +1456,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         ...(this.moduleFormat === 's3m' && this.oplChannels.some((c) => c !== null)
           ? { oplChannels: [...this.oplChannels] }
           : {}),
+        ...(this.moduleFormat === 's3m' && this.oplGain !== null ? { oplGain: this.oplGain } : {}),
         ...(this.moduleFormat === 'protracker' && this.modOrigin ? { modOrigin: { ...this.modOrigin } } : {}),
         patternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
@@ -1532,6 +1551,10 @@ export const useTrackerStore = defineStore('trackerStore', {
         this.moduleFormat === 's3m' && Array.isArray(data.oplChannels)
           ? data.oplChannels.map((c) => (Number.isInteger(c) && (c as number) >= 0 && (c as number) <= 8 ? (c as number) : null))
           : [];
+      this.oplGain =
+        this.moduleFormat === 's3m' && Number.isFinite(data.oplGain) && (data.oplGain as number) > 0
+          ? (data.oplGain as number)
+          : null;
       this.modOrigin = this.moduleFormat === 'protracker' ? readModOrigin(data.modOrigin) : null;
       const legacySongRows = clampPatternRows(data.patternRows);
       this.defaultPatternRows = legacySongRows;
