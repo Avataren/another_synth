@@ -43,6 +43,7 @@
 //! Tests replay the register scripts in `golden/` and require every sample to
 //! equal ymfm's own render of them (`golden/regen.sh`).
 
+pub mod a2;
 pub mod chip;
 pub mod operator;
 pub mod resample;
