@@ -240,6 +240,13 @@ export function buildPlaybackStepsForTrack(
     const hasTempoOrSpeed =
       tempoCommand !== undefined || speedCommand !== undefined;
     const hasEffect = explicitEffectCmd?.type === 'effect';
+    // The raw bytes ride along where the profile's parameter memory is
+    // shared across commands (S3M); a `J00` decodes to nothing on its own
+    // but still plays the channel's last parameter.
+    const rawEffect =
+      profile.sharedEffectInfoCommands && entry?.effectCommand !== undefined
+        ? { command: entry.effectCommand, param: entry.effectParam ?? 0 }
+        : undefined;
     const hasNoteData = isNoteOff || midi !== undefined;
     const hasVolumeData = volumeValue !== undefined;
     const hasVolumeCommand = volumeCmd !== undefined;
@@ -270,6 +277,7 @@ export function buildPlaybackStepsForTrack(
       !hasMacro &&
       !hasTempoOrSpeed &&
       !hasEffect &&
+      !rawEffect &&
       !hasVolumeCommand
     )
       continue;
@@ -280,6 +288,7 @@ export function buildPlaybackStepsForTrack(
       !hasMacro &&
       !hasTempoOrSpeed &&
       !hasEffect &&
+      !rawEffect &&
       !hasVolumeCommand
     )
       continue;
@@ -379,6 +388,10 @@ export function buildPlaybackStepsForTrack(
     // Handle FastTracker-style effect commands (non-macro)
     if (explicitEffectCmd && explicitEffectCmd.type === 'effect') {
       step.effect = explicitEffectCmd.effect;
+    }
+
+    if (rawEffect) {
+      step.rawEffect = rawEffect;
     }
 
     if (volumeCmd) {

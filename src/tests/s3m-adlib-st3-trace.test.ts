@@ -389,10 +389,10 @@ const SONGS: Array<[string, string, number, string]> = [
   ['starport', 'Purple Motion/starport bbs introtune.s3m', 38, 'engine: S3M vibrato timing'],
   ['redemptions', 'Omega/redemptions.s3m', 38, 'two file channels on A9 (ST3 merges them into one state)'],
   ['first-adlib-attempt', 'Skaven/first adlib attempt.as3m', 56, 'engine: volume on a key-off row; vibrato'],
-  ['rotagilla', 'Manwe/rotagilla.s3m', 350, 'engine: J00 arpeggio memory'],
+  ['rotagilla', 'Manwe/rotagilla.s3m', 22, 'engine: note-delay volume on tick 0'],
   ['koakuma', 'Viraxor/koakuma.s3m', 407, 'engine: J00 memory; note-delay volume on tick 0'],
   ['church', 'Bisqwit/some kind of church theme.s3m', 0, 'exact'],
-  ['rance-bird', '- unknown/(opl2) rance 4.1 - bird.s3m', 1249, 'engine: vibrato; two file channels on A6'],
+  ['rance-bird', '- unknown/(opl2) rance 4.1 - bird.s3m', 1184, 'engine: vibrato; two file channels on A6'],
 ];
 
 describe('S3M AdLib register writes against ST3 (st3play traces)', () => {

@@ -4,6 +4,7 @@
  * the engine members it reads and writes.
  */
 import {
+  type EffectCommand,
   type MacroHandler,
   type ModuleFormat,
   type Pattern,
@@ -27,6 +28,7 @@ import {
   resetEffectStateForNote,
   type ProcessorCommand,
 } from './effect-processor';
+import { decodeRawEffect } from './note-utils';
 import type { TimingSystem } from './timing-system';
 import type { FormatProfile } from './format-profile';
 
@@ -321,6 +323,7 @@ export function scheduleRow(
       for (const step of steps) {
         const trackIndex = step.trackIndex;
         const effectState = this.getTrackEffectState(trackIndex);
+        const effect = effectWithSharedInfo(step, effectState);
 
         // Resolve instrumentId: use explicit step.instrumentId, or fall back to
         // the instrument currently playing on this track (for "naked" effects)
@@ -379,7 +382,7 @@ export function scheduleRow(
 
         // Check if we have an effect that needs per-tick processing
         const hasTickEffect =
-          step.effect && this.isTickBasedEffect(step.effect.type);
+          effect && this.isTickBasedEffect(effect.type);
 
         if (repeat) {
           const ticksPerRow = this.timingSystem.getTicksPerRow();
@@ -388,7 +391,7 @@ export function scheduleRow(
             this.dispatchCommands(
               processEffectTick0(
                 effectState,
-                step.effect,
+                effect,
                 undefined,
                 undefined,
                 undefined,
@@ -397,9 +400,9 @@ export function scheduleRow(
               context,
             );
           } else {
-            if (hasTickEffect && step.effect) {
+            if (hasTickEffect && effect) {
               this.dispatchCommands(
-                processEffectTickN(effectState, step.effect, 0, ticksPerRow)
+                processEffectTickN(effectState, effect, 0, ticksPerRow)
                   .commands,
                 context,
               );
@@ -465,8 +468,8 @@ export function scheduleRow(
           const volumeColumnTonePorta = step.volumeCommand?.type === 'tonePorta';
           if (
             newNote !== undefined &&
-            step.effect?.type !== 'tonePorta' &&
-            step.effect?.type !== 'tonePortaVol' &&
+            effect?.type !== 'tonePorta' &&
+            effect?.type !== 'tonePortaVol' &&
             !volumeColumnTonePorta
           ) {
             resetEffectStateForNote(effectState);
@@ -475,7 +478,7 @@ export function scheduleRow(
           // Process tick 0 (pass step.frequency for ProTracker MODs)
           const tick0Batch = processEffectTick0(
             effectState,
-            step.effect,
+            effect,
             newNote,
             newVelocity,
             step.frequency,
@@ -500,7 +503,7 @@ export function scheduleRow(
           //   const pitchCmd = tick0Batch.commands.find((cmd) => cmd.kind === 'pitch');
           //   console.log(
           //     `[PitchState] row=${row} track=${step.trackIndex} note=${newNote ?? '—'} ` +
-          //       `effect=${step.effect?.type ?? 'none'} speed=${effectState.tonePortaSpeed} ` +
+          //       `effect=${effect?.type ?? 'none'} speed=${effectState.tonePortaSpeed} ` +
           //       `curr=${effectState.currentFrequency.toFixed(4)}Hz ` +
           //       `target=${effectState.targetFrequency.toFixed(4)}Hz ` +
           //       `period=${effectState.currentPeriod ?? '—'} ` +
@@ -555,19 +558,19 @@ export function scheduleRow(
         const hasTickVolumeCommand = volumeCommandIsTickBased(
           step.volumeCommand,
         );
-        if ((hasTickEffect && step.effect) || hasTickVolumeCommand) {
+        if ((hasTickEffect && effect) || hasTickVolumeCommand) {
           // The ramp shortcut below collapses the whole row into one
           // automation ramp, so it can only be taken when the effect column is
           // the only thing with per-tick work. A volume-column slide running
           // at the same time needs its own commands at their own times.
           const canUseRamp =
-            !!step.effect &&
+            !!effect &&
             hasTickEffect &&
             !hasTickVolumeCommand &&
-            this.canUseAutomationRamp(step.effect.type) &&
+            this.canUseAutomationRamp(effect.type) &&
             !this.usesSteppedTicks(instrumentId, step.trackIndex);
 
-          if (canUseRamp && step.effect) {
+          if (canUseRamp && effect) {
             // Optimization: Process all ticks to maintain correct state, but use a single
             // ramp to the final value instead of scheduling each tick discretely.
             // This reduces scheduling calls from 5 per row to 1 per row (83% reduction)
@@ -580,7 +583,7 @@ export function scheduleRow(
             for (let tick = 1; tick < ticksPerRow; tick++) {
               const tickBatch = processEffectTickN(
                 effectState,
-                step.effect,
+                effect,
                 tick,
                 ticksPerRow,
               );
@@ -626,10 +629,10 @@ export function scheduleRow(
             tickContext.time = time;
             for (let tick = 1; tick < ticksPerRow; tick++) {
               tickContext.time = time + tick * secPerTick;
-              if (hasTickEffect && step.effect) {
+              if (hasTickEffect && effect) {
                 const tickBatch = processEffectTickN(
                   effectState,
-                  step.effect,
+                  effect,
                   tick,
                   ticksPerRow,
                 );
@@ -740,6 +743,36 @@ export function scheduleRow(
 
     // Note: Position commands (Bxx, Dxx) are now handled in scheduleAhead()
     // after this row is scheduled, so the scheduling loop can react immediately
+}
+
+/**
+ * The row's effect, with ST3's shared parameter memory applied.
+ *
+ * ST3 keeps one "last info" byte per channel for every command, not one per
+ * effect. st3play digcmd.c: `docmd1` stores any non-zero parameter
+ * (`if (ch->info > 0) ch->alastnfo = ch->info;`), and D, E, F, I, J, K, L, Q,
+ * R and S open with `GET_LAST_NFO` (`if (ch->info == 0) ch->info =
+ * ch->alastnfo;`). So `J00` repeats the last arpeggio -- and a `J00` after
+ * a `D04` plays `J04`. The cell is re-decoded from its
+ * raw bytes with the remembered parameter; formats without the memory, and
+ * rows without raw bytes, keep `step.effect`.
+ */
+function effectWithSharedInfo(
+  step: PlaybackPatternStep,
+  state: TrackEffectState,
+): EffectCommand | undefined {
+  const raw = step.rawEffect;
+  const commands = state.profile.sharedEffectInfoCommands;
+  if (!raw || !commands) return step.effect;
+  if (raw.param > 0) {
+    state.lastEffectInfo = raw.param;
+    return step.effect;
+  }
+  if (state.lastEffectInfo === 0 || !commands.includes(raw.command)) {
+    return step.effect;
+  }
+  const decoded = decodeRawEffect(raw.command, state.lastEffectInfo, state.profile);
+  return decoded?.type === 'effect' ? decoded.effect : step.effect;
 }
 
 /** Whether a command batch carries a volume command, without building one. */

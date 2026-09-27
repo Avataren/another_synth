@@ -448,6 +448,22 @@ export interface FormatProfile {
    * called on tick 0 while `pattDelTime2` is non-zero). Absent = that.
    */
   readonly patternDelayRepeatsTickZero?: boolean;
+
+  /**
+   * Command bytes whose zero parameter reuses the channel's last non-zero
+   * parameter of *any* command, where the format keeps one shared memory
+   * rather than one per effect. Absent = no shared memory (each effect's
+   * own memory flags apply).
+   *
+   * ST3: st3play digcmd.c `docmd1` stores every non-zero parameter,
+   * `if (ch->info > 0) ch->alastnfo = ch->info;`, and these routines open
+   * with `GET_LAST_NFO` (`if (ch->info == 0) ch->info = ch->alastnfo;`):
+   * s_volslide (D, and K/L through it), s_slidedown (E), s_slideup (F),
+   * s_tremor (I), s_arp (J), s_retrig (Q), s_tremolo (R), s_scommand1/2 (S).
+   * The song builder carries a step's raw bytes (`Step.rawEffect`) when this
+   * is set, and the row scheduler re-decodes the cell with the memory.
+   */
+  readonly sharedEffectInfoCommands?: readonly number[];
 }
 
 /**
@@ -739,6 +755,10 @@ export const S3M_PROFILE: FormatProfile = {
   pitchResetsAfterEffectlessRow: true,
   // A pattern-delay repeat re-runs docmd1 (tick-0 commands), not docmd2.
   patternDelayRepeatsTickZero: true,
+  // GET_LAST_NFO: D E F I J K L Q R S (see the field's docs).
+  sharedEffectInfoCommands: [
+    0x04, 0x05, 0x06, 0x09, 0x0a, 0x0b, 0x0c, 0x11, 0x12, 0x13,
+  ],
   arpeggioCommandByte: 0x0a, // 'J'
   speedTempoCommandByte: 0x01, // 'A' -- set speed (manual: "Set speed to xx")
   tempoCommandByte: 0x14, // 'T' -- tempo = xx (manual: "valid values 20 to FF")

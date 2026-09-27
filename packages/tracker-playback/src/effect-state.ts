@@ -179,6 +179,11 @@ export interface TrackEffectState {
   lastTremolo: number;
   lastVolSlide: number;
   lastArpeggio: number;
+  /**
+   * ST3's `alastnfo`: the last non-zero parameter of any command on the
+   * channel (see `FormatProfile.sharedEffectInfoCommands`).
+   */
+  lastEffectInfo: number;
   /** 9xx offset memory (ProTracker reuses the last value for a bare 900). */
   lastSampleOffset: number;
 
@@ -321,6 +326,7 @@ export function createTrackEffectState(
     lastTremolo: 0,
     lastVolSlide: 0,
     lastArpeggio: 0,
+    lastEffectInfo: 0,
     lastSampleOffset: 0,
     lastFinePortaUp: 0,
     lastFinePortaDown: 0,

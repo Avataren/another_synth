@@ -338,6 +338,14 @@ export interface Step {
    */
   effect?: EffectCommand;
   /**
+   * The cell's format-native command and parameter bytes, carried only for
+   * formats whose parameter memory is shared across commands
+   * (`FormatProfile.sharedEffectInfoCommands`, S3M): the engine re-decodes
+   * a zero-parameter cell from the channel's last parameter. Present even
+   * when the bytes alone decode to nothing, as `J00` does.
+   */
+  rawEffect?: { command: number; param: number };
+  /**
    * FastTracker 2 volume-column command (XM volume column 0x60-0xFF).
    *
    * Independent of `effect`: FT2 runs the volume column and the effect column
