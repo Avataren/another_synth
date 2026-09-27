@@ -202,6 +202,15 @@ export class S3mOplDriver {
   }
 
   /**
+   * The OPL channel (0..8) a track plays on: the one it was given at its
+   * first note, else the channel map's, else undefined. For a host that
+   * mutes tracks through the chip's channel mask.
+   */
+  oplChannelForTrack(trackIndex: number): number | undefined {
+    return this.tracks.get(trackIndex)?.oplChannel ?? this.channelForTrack?.(trackIndex);
+  }
+
+  /**
    * `initadlib`: waveform select on, CSM/NTS and rhythm off, every channel
    * silent at note 0. Call at song start; forgets every channel's state.
    */

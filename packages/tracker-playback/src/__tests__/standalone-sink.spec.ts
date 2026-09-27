@@ -263,4 +263,55 @@ describe('StandaloneTrackerSink', () => {
     expect(sink.needsResume).toBe(true);
     await expect(sink.ensureAudioContextRunning()).resolves.toBe(false);
   });
+
+  describe('with an injected OPL target', () => {
+    const adlib = (slot: number) =>
+      sample(slot, {
+        data: new Float32Array(0),
+        opl: {
+          kind: 'melody',
+          registers: [0x01, 0x01, 0x10, 0x00, 0xf0, 0xf0, 0x77, 0x77, 0, 0, 0],
+          volume: 63,
+          c2spd: 8363,
+        },
+      });
+
+    async function makeOplSink() {
+      const recorded: Recorded = { gainNodes: [] };
+      const audioContext = makeAudioContext(recorded);
+      const writes: Array<[number, number, number]> = [];
+      const panic = vi.fn();
+      const sink = new StandaloneTrackerSink({
+        audioContext,
+        opl: { target: { write: (t, r, v) => writes.push([t, r, v]) }, channelForTrack: (t) => (t === 1 ? 4 : undefined), panic },
+      });
+      await sink.loadSamples([sample(1), adlib(2)]);
+      return { sink, writes, panic };
+    }
+
+    it('plays an AdLib instrument on the chip, on its track channel', async () => {
+      const { sink, writes } = await makeOplSink();
+      expect(sink.handlesOpl('02')).toBe(true);
+      expect(sink.handlesOpl('01')).toBe(false);
+      writes.length = 0;
+      // C-4 on track 1 (OPL channel 4): hz 4181 -> A0/B0 0xAC/0x2A (opl-driver.spec).
+      sink.noteOnAtTime('02', 60, 127, 11, 1);
+      await Promise.resolve();
+      const keyOn = writes.find(([, r, v]) => r === 0xb4 && v & 0x20);
+      expect(keyOn).toBeDefined();
+      // The timbre loads into channel 4's operators (adlibiadd[4] = 9).
+      expect(writes.some(([, r, v]) => r === 0x29 && v === 0x01)).toBe(true);
+    });
+
+    it('panics the chip and starts over from initadlib on cancelAllScheduled', async () => {
+      const { sink, writes, panic } = await makeOplSink();
+      sink.noteOnAtTime('02', 60, 127, 11, 1);
+      await Promise.resolve();
+      writes.length = 0;
+      sink.cancelAllScheduled();
+      expect(panic).toHaveBeenCalledTimes(1);
+      // initadlib re-sends its setup (the register cache was dropped).
+      expect(writes.some(([, r, v]) => r === 0x01 && v === 0x20)).toBe(true);
+    });
+  });
 });

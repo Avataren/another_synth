@@ -28,6 +28,7 @@
  * what actually addresses a voice -- `voiceIndex` alone is not enough when two
  * channels play the same instrument.
  */
+import type { PitchSource } from './effect-state';
 import type { InstrumentResolver } from './types';
 
 /** How a value moves to its target when a command schedules a change. */
@@ -141,6 +142,12 @@ export interface TrackerSink {
     time: number,
     trackIndex: number,
     rampMode?: TrackerRampMode,
+    /**
+     * Where the pitch came from, when it was read off the note table rather
+     * than moved by a slide (see `ScheduledPitchHandler`). A sampler can
+     * ignore it; an OPL channel needs it (`S3mOplDriver.setPitch`).
+     */
+    source?: PitchSource,
   ): void;
 
   setVoiceVolumeAtTime(

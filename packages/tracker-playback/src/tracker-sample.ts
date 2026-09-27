@@ -81,8 +81,8 @@ export interface TrackerAutoVibrato {
 /**
  * The S3M AdLib header's own timbre block, byte-for-byte as the file stores
  * it (see formats/s3m.ts and the ST3.01b format doc's "adlib instrument
- * format"). This IS the patch format for the future dedicated WASM OPL core
- * (Morten, 2026-09-03) -- raw, unmapped, inactive until then.
+ * format"). This IS the patch format for an OPL chip: `S3mOplDriver` loads
+ * it into the operator registers as ST3's `adlibloadins` does.
  */
 export interface OplInstrumentData {
   /** 'melody' (type 2) or 'drum' (type 3+). */

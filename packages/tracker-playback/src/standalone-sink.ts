@@ -23,7 +23,9 @@ import type {
   TrackerSink,
   TrackerVolumeRampMode,
 } from './sink';
-import type { TrackerSample } from './tracker-sample';
+import type { OplInstrumentData, TrackerSample } from './tracker-sample';
+import type { PitchSource } from './effect-state';
+import { S3mOplDriver, type OplRegisterTarget } from './opl-driver';
 import type { PitchModel } from './pitch-model';
 import { TrackerSamplerInstrument } from './sampler-instrument';
 import { formatInstrumentId } from './instrument-ids';
@@ -45,6 +47,27 @@ export interface StandaloneTrackerSinkOptions {
    * `profileForFormat(moduleFormat).pitch`.
    */
   pitchModel?: PitchModel;
+  /**
+   * An OPL chip for S3M AdLib instruments. Without one they stay silent, as
+   * the package ships no chip: the host brings its own (the app's OPL
+   * worklet, say) and gets ST3's register writes, stamped with AudioContext
+   * times, through `target`.
+   */
+  opl?: StandaloneOplOptions;
+}
+
+export interface StandaloneOplOptions {
+  target: OplRegisterTarget;
+  /** The OPL channel per track: `s3mAdlibChannelForTrack(s3m)`. */
+  channelForTrack?: (trackIndex: number) => number | undefined;
+  /** The file's amiga-limits flag (`S3mSong.amigaLimits`). */
+  amigaLimits?: boolean;
+  /**
+   * Drop whatever the chip has queued for the future and key it silent.
+   * Called by `cancelAllScheduled` (a stop): writes already sent for times
+   * ahead would otherwise still play.
+   */
+  panic?: () => void;
 }
 
 /** What the sink remembers per instrument. */
@@ -69,6 +92,9 @@ export class StandaloneTrackerSink implements TrackerSink {
   private readonly instruments = new Map<string, LoadedInstrument>();
   private pitchModel: PitchModel | undefined;
   private songVolume = 1;
+  private readonly oplInstruments = new Map<string, OplInstrumentData>();
+  private readonly opl: S3mOplDriver | undefined;
+  private readonly oplPanic: (() => void) | undefined;
 
   constructor(options: StandaloneTrackerSinkOptions) {
     this.audioContext = options.audioContext;
@@ -76,6 +102,25 @@ export class StandaloneTrackerSink implements TrackerSink {
     this.masterGain.gain.value = 1;
     this.masterGain.connect(options.destination ?? this.audioContext.destination);
     this.pitchModel = options.pitchModel;
+    if (options.opl) {
+      const { target, channelForTrack, amigaLimits, panic } = options.opl;
+      this.opl = new S3mOplDriver({
+        target,
+        instrument: (id) => this.oplInstruments.get(id),
+        ...(channelForTrack ? { channelForTrack } : {}),
+        ...(amigaLimits !== undefined ? { amigaLimits } : {}),
+      });
+      this.oplPanic = panic;
+    }
+  }
+
+  /**
+   * Whether `instrumentId` plays on the OPL chip. Pass it to the engine as
+   * both `steppedTickAutomation` and `oplInstrument`, as ST3 runs AdLib
+   * slides tick by tick and keeps their vibrato phase across notes.
+   */
+  handlesOpl(instrumentId: string | undefined): boolean {
+    return this.opl?.handles(instrumentId) ?? false;
   }
 
   /** The node every instrument feeds, for recording or further processing. */
@@ -93,10 +138,14 @@ export class StandaloneTrackerSink implements TrackerSink {
    */
   async loadSamples(samples: readonly TrackerSample[]): Promise<void> {
     this.disposeInstruments();
+    for (const sample of samples) {
+      if (sample.opl) this.oplInstruments.set(formatInstrumentId(sample.slot), sample.opl);
+    }
+    // initadlib, as ST3 does at song load.
+    if (this.oplInstruments.size) this.opl?.reset(this.audioContext.currentTime);
     await Promise.all(
       samples.map(async (sample) => {
-        // An OPL instrument has no PCM; it occupies a slot and plays nothing
-        // until something can sound it.
+        // An OPL instrument has no PCM: the driver plays it, if there is one.
         if (sample.opl) return;
 
         const instrument = new TrackerSamplerInstrument(
@@ -135,6 +184,7 @@ export class StandaloneTrackerSink implements TrackerSink {
       instrument.dispose();
     }
     this.instruments.clear();
+    this.oplInstruments.clear();
   }
 
   // --- lookup -----------------------------------------------------------
@@ -205,6 +255,12 @@ export class StandaloneTrackerSink implements TrackerSink {
     sampleOffsetFrames?: number,
     tickSeconds?: number,
   ): void {
+    if (this.opl?.handles(instrumentId)) {
+      if (trackIndex === undefined) return;
+      const hz = frequency ?? 440 * 2 ** ((midi - 69) / 12);
+      this.opl.noteOn(instrumentId, velocity, this.at(time), trackIndex, hz);
+      return;
+    }
     const loaded = this.get(instrumentId);
     if (!loaded) return;
 
@@ -232,6 +288,10 @@ export class StandaloneTrackerSink implements TrackerSink {
     time: number,
     trackIndex?: number,
   ): void {
+    if (this.opl?.handles(instrumentId)) {
+      if (trackIndex !== undefined) this.opl.noteOff(this.at(time), trackIndex);
+      return;
+    }
     const loaded = this.get(instrumentId);
     if (!loaded || midi === undefined) return;
     loaded.instrument.noteOffAtTime(midi, this.at(time), trackIndex);
@@ -245,6 +305,11 @@ export class StandaloneTrackerSink implements TrackerSink {
     trackIndex?: number,
     frequency?: number,
   ): void {
+    // An OPL note-on is already a retrigger: key-off, then key-on.
+    if (this.opl?.handles(instrumentId)) {
+      this.noteOnAtTime(instrumentId, midi, velocity, time, trackIndex, frequency);
+      return;
+    }
     const loaded = this.get(instrumentId);
     if (!loaded) return;
     const at = this.at(time);
@@ -303,7 +368,12 @@ export class StandaloneTrackerSink implements TrackerSink {
     time: number,
     trackIndex: number,
     rampMode?: TrackerRampMode,
+    source?: PitchSource,
   ): void {
+    if (this.opl?.handles(instrumentId)) {
+      this.opl.setPitch(this.at(time), trackIndex, frequency, source);
+      return;
+    }
     const loaded = this.get(instrumentId);
     if (!loaded) return;
     loaded.instrument.setVoiceFrequencyAtTime(
@@ -322,6 +392,10 @@ export class StandaloneTrackerSink implements TrackerSink {
     trackIndex: number,
     rampMode?: TrackerVolumeRampMode,
   ): void {
+    if (this.opl?.handles(instrumentId)) {
+      this.opl.setVolume(this.at(time), trackIndex, volume);
+      return;
+    }
     const loaded = this.get(instrumentId);
     if (!loaded) return;
     loaded.instrument.setVoiceGainAtTime(
@@ -419,6 +493,7 @@ export class StandaloneTrackerSink implements TrackerSink {
 
   notesOffForTrack(trackIndex: number): void {
     const now = this.audioContext.currentTime;
+    this.opl?.noteOff(now, trackIndex);
     for (const loaded of this.instruments.values()) {
       const voiceIndex = loaded.voiceForTrack.get(trackIndex);
       if (voiceIndex === undefined) continue;
@@ -428,6 +503,7 @@ export class StandaloneTrackerSink implements TrackerSink {
   }
 
   allNotesOff(): void {
+    this.opl?.allNotesOff(this.audioContext.currentTime);
     for (const loaded of this.instruments.values()) {
       loaded.instrument.allNotesOff();
       loaded.voiceForTrack.clear();
@@ -436,6 +512,7 @@ export class StandaloneTrackerSink implements TrackerSink {
 
   cutAllVoicesAtTime(time: number): void {
     const at = this.at(time);
+    this.opl?.allNotesOff(at);
     for (const loaded of this.instruments.values()) {
       for (const voiceIndex of loaded.voiceForTrack.values()) {
         loaded.instrument.cutVoiceAtTime(voiceIndex, at);
@@ -445,6 +522,12 @@ export class StandaloneTrackerSink implements TrackerSink {
   }
 
   cancelAllScheduled(): void {
+    if (this.opl) {
+      // The chip's queue goes, so the driver's picture of its registers does
+      // too: start over from initadlib.
+      this.oplPanic?.();
+      this.opl.reset(this.audioContext.currentTime);
+    }
     for (const loaded of this.instruments.values()) {
       loaded.instrument.cancelScheduledNotes();
     }
