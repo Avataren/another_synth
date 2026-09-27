@@ -45,6 +45,7 @@
 
 pub mod chip;
 pub mod operator;
+pub mod resample;
 pub mod tables;
 
 pub use chip::{Chip, NATIVE_RATE};

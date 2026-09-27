@@ -116,3 +116,40 @@ fn the_goldens_are_not_trivial() {
     let chord = read_i16(&golden_dir().join("05-nine-voice-chord.i16"));
     assert!(chord.iter().any(|&s| s == i16::MAX || s == i16::MIN), "chord golden never clamps");
 }
+
+/// Throughput, not a gate: 18 sounding 2-op channels plus the 48 kHz
+/// resampler, in multiples of real time.
+///
+///   cargo test --release --lib opl::tests::throughput -- --ignored --nocapture
+#[test]
+#[ignore]
+fn throughput() {
+    use super::resample::Resampler;
+    let mut chip = Chip::new();
+    chip.write(0x105, 1);
+    for ch in 0..18u16 {
+        let (bank, c) = (0x100 * (ch / 9), ch % 9);
+        let op = bank + c + 3 * (c / 3);
+        for (base, v) in [(0x20, 0x21), (0x40, 0x10), (0x60, 0xf2), (0x80, 0x24), (0xe0, 0x02)] {
+            chip.write(base + op, v);
+            chip.write(base + op + 3, v);
+        }
+        chip.write(0xc0 + bank + c, 0x3e);
+        chip.write(0xa0 + bank + c, 0x40 + (ch as u8) * 9);
+        chip.write(0xb0 + bank + c, 0x31);
+    }
+    chip.write(0xbd, 0xc0);
+    let mut rs = Resampler::new(super::NATIVE_RATE, 48_000.0);
+    let seconds = 20;
+    let start = std::time::Instant::now();
+    let mut acc = 0f32;
+    for _ in 0..48_000 * seconds {
+        let [l, r] = rs.next(|| {
+            let (l, r) = chip.clock_sample();
+            [l as f32, r as f32]
+        });
+        acc += l + r;
+    }
+    let elapsed = start.elapsed().as_secs_f64();
+    println!("{seconds} s of audio in {elapsed:.3} s: {:.0}x real time ({acc})", seconds as f64 / elapsed);
+}

@@ -1,7 +1,7 @@
 # Plan: OPL tracking (one OPL2/OPL3 chip in Rust + S3M AdLib playback + Adlib Tracker II)
 
 Status: **IN PROGRESS. D0–D5 accepted as recommended (Morten, 2026-09-27). Corpus fetched
-(§4.1). O0 landed 2026-09-27 (landing record at the end).**
+(§4.1). O0 and O1 landed 2026-09-27 (landing records at the end).**
 Morten's brief 2026-09-27 (verbatim intent): *"I'm considering adding adlibtracker and opl
 support to s3m, do you think they could share the same virtual opl chip in rust? would be
 nice if it could also support opl2/3"*. Answer: yes. The shared surface is the **register
@@ -264,3 +264,32 @@ a smaller surface.
   `opl::tests::render_script_to_wav`.
 - Full Rust suite: green except `ahx_render_golden::manifest_covers_every_fixture`, which
   was already failing and is unrelated.
+
+### O1 — full chip + resampler (2026-09-27)
+
+- **4-op:** a dynamic operator map from `0x104` (ymfm `operator_map`), rebuilt at every
+  prepare step. Key-ons route through the map *as of the last prepare*, so enabling 4-op
+  and keying on in the same sample keys only the old 2-op pair. The mask is read whatever
+  NEW says, as ymfm does. The four connections come from C0 bit 0 of the primary and
+  partner channels, and `opout` wraps as int16.
+- **Rhythm:** `0xBD` key-ons are a second key source ORed with the normal one (ymfm
+  `KEYON_RHYTHM`). BD/HH/SD/TT/TC use the noise LFSR and the op13/op17 phase-select bits,
+  outputs are doubled, and the bass drum's feedback runs even when its C0 output bits are
+  clear.
+- **Gate:** four new scripts (09 all four 4-op connections + a bank-1 pair; 10 mask edge
+  cases incl. the same-sample key-on and clearing NEW; 11 OPL2 rhythm: each drum, both BD
+  connections, re-triggers; 12 rhythm + 4-op + 2-op under NEW=1 with panning and LFO bits,
+  then rhythm off mid-note). **All 12 scripts match ymfm on every sample.** Mutations (a
+  wrong 4-op connection, snare without noise, BD keying one operator) each fail the right
+  scripts. One mutation found dead code: ymfm's pair sums `opout[5..7]` serve only the OPN
+  algorithms, so they were dropped.
+- **Resampler** (`resample.rs`): polyphase windowed sinc, Kaiser β 8.6, cutoff at 0.9 × the
+  lower Nyquist. Taps scale with the ratio (66 at 48 kHz, 72 at 44.1, 144 at 22.05) so the
+  transition band stays proportional to the output rate. Tests: passband within 0.1 dB up
+  to 0.8 × the output Nyquist at 48/44.1/22.05 kHz, content above the output Nyquist
+  folds back below −70 dB, and the frame count tracks the ratio.
+- **Throughput:** 18 sounding channels + resampling to 48 kHz run at 78× real time (native
+  release build). Measure the WASM build in O2.
+- **Deferred:** the SB16 *Corridors of Time* A/B, planned as part of the O1 gate, needs the
+  A2M player, so it moves wholly to O7. A strict YM3812 model (WSE, DAC, modulator delay)
+  stays unbuilt until a file needs it.
