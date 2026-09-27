@@ -399,3 +399,71 @@ measures it, and lowering a song's pinned baseline in the test proves a fix.
 7. **c2spd for PCM samples:** the sampler folds c2spd into its root note, so slides move the
    unscaled period (ST3 slides the scaled one). The OPL driver now corrects this for itself
    via `source`; PCM does not.
+
+### O3b — S3M engine fidelity (2026-09-27)
+
+Reference: st3play 216b1651 (`digread.c`, `digcmd.c`, `digadl.c`, `digamg.c`); pt2-clone and
+ft2-clone for pattern delay. Unexplained-tick baselines in `s3m-adlib-st3-trace.test.ts`,
+before → after each step (all ten songs now exact except koakuma and first-adlib-attempt):
+
+| Song | Start | Steps | Now |
+|---|---|---|---|
+| church | 430 | item 1 → 0 | **0** |
+| rotagilla | 350 | item 2 → 22, item 5 → 1, item 4 → 0 | **0** |
+| starport | 38 | item 3 → 0 | **0** |
+| redemptions | 38 | item 6 → 5, driver TL batching → 0 | **0** |
+| rance-bird | 1249 | item 2 → 1184, item 3 → 119, driver retrigger batching → 0 | **0** |
+| first-adlib-attempt | 56 | item 4 → 52, item 3 → 40, item 3 (hold/bake) → 1 | 1 |
+| koakuma | 407 | item 5 (+ arpeggio snap-back) → 361 | 361 |
+| starport2, mystic, a-vision | 0 | — | 0 |
+
+1. **Pattern delay** (`4397b20d`): a repeat holds the notes and runs only effects — ST3
+   re-runs tick 0 (`docmd1`), PT/FT2 run tick-N handlers on it
+   (`FormatProfile.patternDelayRepeatsTickZero`). Also fixed D71: EEx plays the row x + 1
+   times, and a break on the delayed row waits for the repeats. The trace reader folds
+   dorow's one-tick `np_row--` flick back into the repeat. No golden changed.
+2. **Shared parameter memory** (`08aae3c8`): ST3's `alastnfo` is one byte per channel for
+   every command; D E F I J K L Q R S reuse it via `GET_LAST_NFO`. S3M steps carry
+   `rawEffect`; the scheduler re-decodes zero-parameter cells
+   (`sharedEffectInfoCommands`). J00 used to be dropped outright. 6 goldens regenerated.
+3. **Vibrato** (`03fede15`, `69311632`): ST3's tables, arithmetic-shift depth, H/U nibble
+   memory (`Hx0` = depth 0), restart rules (bit 7 on non-H/U/K/R/D commands; PCM note
+   resets, AdLib note does not → new `PlaybackOptions.oplInstrument`), and the offset is
+   held on non-empty/non-D cells and folded into the note by E/F (`st3Vibrato`).
+   14 goldens regenerated (vibrato in the 30 s window; E/F right after vibrato).
+4. **Key-off row** (`0722d2a6`): a `^^` cell still runs its volume and effect
+   (`noteOffRowRunsCell`, S3M only; FT2 does too but its key-off volume rules differ, so
+   XM is untouched). 2 goldens (funtro S8x pans, bubblez D slides).
+5. **Note delay** (`2ea0ba44`): SDx defers the whole cell, volume included
+   (`noteDelayDefersCell`). Also: an arpeggio snaps back on a row the pattern leaves empty
+   for that channel (docmd1's `aspd = aorgspd`). 6 goldens (SDx cells with a volume).
+6. **Shared channel setting** (`7e647118`) — **done, worth it**: 5 of the 42 AdLib files
+   (redemptions + four "(opl2)" rips) put two file channels on one setting, and
+   redemptions uses the second as an effect column that otherwise did nothing. The PCM demos
+   that share settings have nothing in the extra channels. Import-time field merge
+   (`getnote1` order), ST3-saved files only; the one per-cell case a merge gets wrong (note
+   in an earlier cell, SDx in a later one) stays split. No golden changed.
+7. **PCM c2spd — evaluated, left out.** Confirmed from the code: ST3 slides, vibrato and
+   portamento move the c2spd-*scaled* period (`scalec2spd`: `spd * 8363 / c2spd`), while
+   the engine moves the unscaled one and the sampler folds c2spd into the root note. In
+   the unscaled domain ST3's step is `d · r` (r = c2spd / 8363), so every slide, vibrato
+   depth and porta speed on such a sample is off by r. Scale: 23 of the 40 S3M demos use
+   pitch effects on samples > 2 % off 8363, r from 0.44 to 5.36 (kraaap 5.36, distant_lullaby
+   3.99, 2nd_reality 3.31). It is audible and widespread, but a correct fix needs (a) the
+   engine to know each instrument's c2spd (Song-level data, store plumbing) and work in the
+   scaled domain incl. porta targets and ST3's clamp on the scaled period, and (b) a gate:
+   there is no PCM oracle yet. Proposed as its own batch: extend `st3-adlib-trace.c` to log
+   each PCM channel's `aspd` per tick and compare pitch *ratios* to the note's start —
+   `(P/r + D)/(P/r)` = `(P + D·r)/P`, so the gate needs no c2spd — then move S3M pitch state
+   into the scaled domain.
+
+Driver fixes found on the way (`44574705`, `2a1d835d`): the retrigger and the TL write now
+wait for their tick to settle (next event on the channel at a later time, a microtask, or
+`S3mOplDriver.flush()`), as `updateadlib` writes once per tick. The retrigger one was
+audible: a fine slide on a note's row keyed on with stale block bits.
+
+Still open: koakuma's 361 are ST3.03–3.20 / OpenMPT's broken AdLib tone portamento
+(`digadl.c` `brokenPortamentos`: a G note sets `aorgspd` to the target at once, so nothing
+slides until the next empty/D row); first-adlib-attempt's 1 is a porta landing one F-number
+short. Not modelled: `st2Vibrato` (parsed, not plumbed; `>> 4`), R sharing `avibcnt` with
+vibrato, vibrato waveform 3's randomness, PCM `^^` zeroing `avol`.
