@@ -57,6 +57,7 @@ export interface ScheduleRowHost {
   patternLoopStart: number;
   patternLoopPending: boolean;
   patternDelayCount: number;
+  readonly patternDelayRepeating: boolean;
   pendingSongStop: boolean;
   lastTrackNote: Map<number, { midi: number; velocity: number }>;
   tracksWithStepsScratch: Set<number>;
@@ -142,12 +143,18 @@ export function scheduleRow(
   row: number,
   time: number,
 ) {
+    // A pattern-delay (EEx / SEx) repeat of `row`. Trackers hold the row's
+    // notes through the repeats and run only its effects again (see
+    // `FormatProfile.patternDelayRepeatsTickZero`), so nothing here triggers,
+    // releases or re-levels a note. The row's speed, jump and flow commands
+    // already took effect on its first play and are not re-read.
+    const repeat = this.patternDelayRepeating;
     if (!this.scheduledNoteHandler) return;
 
     const steps = this.stepIndex.get(row);
 
     // First pass: Apply speed/tempo commands (F commands) and position commands
-    if (steps) {
+    if (steps && !repeat) {
       let rowHasPatDelay = false;
       for (const step of steps) {
         if (step.speedCommand !== undefined) {
@@ -331,7 +338,11 @@ export function scheduleRow(
         }
 
         // Handle macros
-        if (step.macroIndex !== undefined && step.macroValue !== undefined) {
+        if (
+          !repeat &&
+          step.macroIndex !== undefined &&
+          step.macroValue !== undefined
+        ) {
           if (this.scheduledMacroHandler) {
             const ramp =
               step.macroRamp && step.macroRamp.targetRow > row
@@ -366,145 +377,178 @@ export function scheduleRow(
         context.voiceIndex = effectState.voiceIndex;
         context.time = time;
 
-        // Handle note-off
-        if (step.isNoteOff) {
-          const event: ScheduledNoteEvent = {
-            type: 'noteOff',
-            instrumentId,
-            row,
-            trackIndex: step.trackIndex,
-            time,
-          };
-          if (step.midi !== undefined) {
-            event.midi = step.midi;
-          }
-          this.scheduledNoteHandler(event);
-          effectState.hasActiveVoice = false;
-          continue;
-        }
-
         // Check if we have an effect that needs per-tick processing
         const hasTickEffect =
           step.effect && this.isTickBasedEffect(step.effect.type);
 
-        // Handle note-on with effect processing
-        let newNote = step.midi;
-        let newVelocity = step.velocity;
-
-        // If an instrument is specified but no note/effect/velocity is provided, retrigger the last
-        // note played on this track (if any). Skip when velocity is set so volume-only rows
-        // don’t restart the sample.
-        if (
-          shouldRetriggerLastNote(newNote, step, this.moduleFormat === 'native')
-        ) {
-          const last = this.lastTrackNote.get(step.trackIndex);
-          if (last) {
-            newNote = last.midi;
-            if (newVelocity === undefined) {
-              newVelocity = last.velocity;
-            }
+        if (repeat) {
+          const ticksPerRow = this.timingSystem.getTicksPerRow();
+          if (effectState.profile.patternDelayRepeatsTickZero === true) {
+            // ST3's docmd1 over the cell as it stands: no note, no volume.
+            this.dispatchCommands(
+              processEffectTick0(
+                effectState,
+                step.effect,
+                undefined,
+                undefined,
+                undefined,
+                ticksPerRow,
+              ).commands,
+              context,
+            );
           } else {
-            // Fallback to the track effect state's current note/volume if we
-            // don't have an explicit last note recorded yet.
-            newNote = Math.round(effectState.currentMidi);
-            if (newVelocity === undefined) {
-              newVelocity = Math.round(
-                Math.max(0, Math.min(1, effectState.currentVolume)) * 255,
+            if (hasTickEffect && step.effect) {
+              this.dispatchCommands(
+                processEffectTickN(effectState, step.effect, 0, ticksPerRow)
+                  .commands,
+                context,
+              );
+            }
+            if (volumeCommandIsTickBased(step.volumeCommand)) {
+              this.dispatchCommands(
+                processVolumeColumnTickN(effectState, step.volumeCommand)
+                  .commands,
+                context,
               );
             }
           }
-        }
-
-        // Reset effect state on new note (unless tone portamento). The
-        // volume column's Mx is one too: resetting here would clear
-        // hasActiveVoice and so retrigger the sample the note is meant to
-        // bend towards.
-        const volumeColumnTonePorta = step.volumeCommand?.type === 'tonePorta';
-        if (
-          newNote !== undefined &&
-          step.effect?.type !== 'tonePorta' &&
-          step.effect?.type !== 'tonePortaVol' &&
-          !volumeColumnTonePorta
-        ) {
-          resetEffectStateForNote(effectState);
-        }
-
-        // Process tick 0 (pass step.frequency for ProTracker MODs)
-        const tick0Batch = processEffectTick0(
-          effectState,
-          step.effect,
-          newNote,
-          newVelocity,
-          step.frequency,
-          this.timingSystem.getTicksPerRow(),
-          step.pan,
-          step.volumeColumnVolume,
-          volumeColumnTonePorta,
-        );
-
-        // FT2's volume column runs alongside the effect column, after the
-        // row's own volume has been established: its fine slides and pan
-        // commands adjust the note's volume rather than being overwritten by
-        // it, and its tone portamento needs the target the note above just
-        // resolved.
-        const volume0Batch = processVolumeColumnTick0(
-          effectState,
-          step.volumeCommand,
-        );
-
-        // // Debug the tone porta state for track 3 (fourth track) to investigate 3xx slides.
-        // if (step.trackIndex === 3) {
-        //   const pitchCmd = tick0Batch.commands.find((cmd) => cmd.kind === 'pitch');
-        //   console.log(
-        //     `[PitchState] row=${row} track=${step.trackIndex} note=${newNote ?? '—'} ` +
-        //       `effect=${step.effect?.type ?? 'none'} speed=${effectState.tonePortaSpeed} ` +
-        //       `curr=${effectState.currentFrequency.toFixed(4)}Hz ` +
-        //       `target=${effectState.targetFrequency.toFixed(4)}Hz ` +
-        //       `period=${effectState.currentPeriod ?? '—'} ` +
-        //       `pitchCmd=${pitchCmd && 'frequency' in pitchCmd ? pitchCmd.frequency.toFixed(4) : 'none'} ` +
-        //       `voice=${effectState.voiceIndex}`,
-        //   );
-        // }
-
-        this.dispatchCommands(tick0Batch.commands, context);
-        this.dispatchCommands(volume0Batch.commands, context);
-
-        // Handle volume automation (Cxx or step velocity)
-        // NOTE: Effects like EA1 (fine volume slide) emit volume commands
-        // above, and so do the volume column's own 0x8x/0x9x fine slides --
-        // both have already folded step.velocity into their result, so
-        // applying it again here would undo them.
-        const tick0HasVolumeCommand =
-          hasVolumeCommand(tick0Batch.commands) ||
-          hasVolumeCommand(volume0Batch.commands);
-        if (step.velocity !== undefined && !tick0HasVolumeCommand) {
-          const gain = clamp(step.velocity / 255);
-          if (this.scheduledVolumeHandler) {
-            // Per-track velocity should drive per-voice gain, not global instrument gain.
-            this.scheduledVolumeHandler(
+        } else {
+          // Handle note-off
+          if (step.isNoteOff) {
+            const event: ScheduledNoteEvent = {
+              type: 'noteOff',
               instrumentId,
-              -1, // resolve via track voice history
-              gain,
+              row,
+              trackIndex: step.trackIndex,
               time,
-              step.trackIndex,
-              // Instantaneous, because that is what a set-volume is. A row's
-              // velocity is a Cxx, an XM volume-column set-volume or a sample
-              // number's default -- never a slide, which arrives as a command
-              // from the batches above and keeps its own ramp.
-              //
-              // Left unqualified it ramped linearly from the *previous*
-              // automation event, i.e. across the whole preceding row. The
-              // staccato lead in jaguar_xj220_title.mod (order 6, channel 2)
-              // is the case that exposed it: every note is silenced by a bare
-              // "C00" a row or two later, and each of those faded the note out
-              // over a full row instead of cutting it, turning a clipped
-              // melody into a legato one.
-              'step',
-            );
-          } else if (this.scheduledAutomationHandler) {
-            // Fallback: legacy global gain path
-            this.scheduledAutomationHandler(instrumentId, gain, time);
+            };
+            if (step.midi !== undefined) {
+              event.midi = step.midi;
+            }
+            this.scheduledNoteHandler(event);
+            effectState.hasActiveVoice = false;
+            continue;
           }
+
+          // Handle note-on with effect processing
+          let newNote = step.midi;
+          let newVelocity = step.velocity;
+
+          // If an instrument is specified but no note/effect/velocity is provided, retrigger the last
+          // note played on this track (if any). Skip when velocity is set so volume-only rows
+          // don’t restart the sample.
+          if (
+            shouldRetriggerLastNote(newNote, step, this.moduleFormat === 'native')
+          ) {
+            const last = this.lastTrackNote.get(step.trackIndex);
+            if (last) {
+              newNote = last.midi;
+              if (newVelocity === undefined) {
+                newVelocity = last.velocity;
+              }
+            } else {
+              // Fallback to the track effect state's current note/volume if we
+              // don't have an explicit last note recorded yet.
+              newNote = Math.round(effectState.currentMidi);
+              if (newVelocity === undefined) {
+                newVelocity = Math.round(
+                  Math.max(0, Math.min(1, effectState.currentVolume)) * 255,
+                );
+              }
+            }
+          }
+
+          // Reset effect state on new note (unless tone portamento). The
+          // volume column's Mx is one too: resetting here would clear
+          // hasActiveVoice and so retrigger the sample the note is meant to
+          // bend towards.
+          const volumeColumnTonePorta = step.volumeCommand?.type === 'tonePorta';
+          if (
+            newNote !== undefined &&
+            step.effect?.type !== 'tonePorta' &&
+            step.effect?.type !== 'tonePortaVol' &&
+            !volumeColumnTonePorta
+          ) {
+            resetEffectStateForNote(effectState);
+          }
+
+          // Process tick 0 (pass step.frequency for ProTracker MODs)
+          const tick0Batch = processEffectTick0(
+            effectState,
+            step.effect,
+            newNote,
+            newVelocity,
+            step.frequency,
+            this.timingSystem.getTicksPerRow(),
+            step.pan,
+            step.volumeColumnVolume,
+            volumeColumnTonePorta,
+          );
+
+          // FT2's volume column runs alongside the effect column, after the
+          // row's own volume has been established: its fine slides and pan
+          // commands adjust the note's volume rather than being overwritten by
+          // it, and its tone portamento needs the target the note above just
+          // resolved.
+          const volume0Batch = processVolumeColumnTick0(
+            effectState,
+            step.volumeCommand,
+          );
+
+          // // Debug the tone porta state for track 3 (fourth track) to investigate 3xx slides.
+          // if (step.trackIndex === 3) {
+          //   const pitchCmd = tick0Batch.commands.find((cmd) => cmd.kind === 'pitch');
+          //   console.log(
+          //     `[PitchState] row=${row} track=${step.trackIndex} note=${newNote ?? '—'} ` +
+          //       `effect=${step.effect?.type ?? 'none'} speed=${effectState.tonePortaSpeed} ` +
+          //       `curr=${effectState.currentFrequency.toFixed(4)}Hz ` +
+          //       `target=${effectState.targetFrequency.toFixed(4)}Hz ` +
+          //       `period=${effectState.currentPeriod ?? '—'} ` +
+          //       `pitchCmd=${pitchCmd && 'frequency' in pitchCmd ? pitchCmd.frequency.toFixed(4) : 'none'} ` +
+          //       `voice=${effectState.voiceIndex}`,
+          //   );
+          // }
+
+          this.dispatchCommands(tick0Batch.commands, context);
+          this.dispatchCommands(volume0Batch.commands, context);
+
+          // Handle volume automation (Cxx or step velocity)
+          // NOTE: Effects like EA1 (fine volume slide) emit volume commands
+          // above, and so do the volume column's own 0x8x/0x9x fine slides --
+          // both have already folded step.velocity into their result, so
+          // applying it again here would undo them.
+          const tick0HasVolumeCommand =
+            hasVolumeCommand(tick0Batch.commands) ||
+            hasVolumeCommand(volume0Batch.commands);
+          if (step.velocity !== undefined && !tick0HasVolumeCommand) {
+            const gain = clamp(step.velocity / 255);
+            if (this.scheduledVolumeHandler) {
+              // Per-track velocity should drive per-voice gain, not global instrument gain.
+              this.scheduledVolumeHandler(
+                instrumentId,
+                -1, // resolve via track voice history
+                gain,
+                time,
+                step.trackIndex,
+                // Instantaneous, because that is what a set-volume is. A row's
+                // velocity is a Cxx, an XM volume-column set-volume or a sample
+                // number's default -- never a slide, which arrives as a command
+                // from the batches above and keeps its own ramp.
+                //
+                // Left unqualified it ramped linearly from the *previous*
+                // automation event, i.e. across the whole preceding row. The
+                // staccato lead in jaguar_xj220_title.mod (order 6, channel 2)
+                // is the case that exposed it: every note is silenced by a bare
+                // "C00" a row or two later, and each of those faded the note out
+                // over a full row instead of cutting it, turning a clipped
+                // melody into a legato one.
+                'step',
+              );
+            } else if (this.scheduledAutomationHandler) {
+              // Fallback: legacy global gain path
+              this.scheduledAutomationHandler(instrumentId, gain, time);
+            }
+        }
         }
 
         // Schedule per-tick effects for ticks 1 to ticksPerRow-1

@@ -432,6 +432,22 @@ export interface FormatProfile {
    * than a change to the shared `continuesVibrato` path.
    */
   readonly pitchResetsAfterEffectlessRow?: boolean;
+
+  /**
+   * What tick 0 of a pattern-delay repeat runs. Every format holds the row's
+   * notes on a repeat (nothing is re-read from the pattern) and runs the
+   * row's effects again; they differ only on tick 0.
+   *
+   * ST3 re-runs its tick-0 command pass. st3play digread.c `dorow`:
+   *
+   *   if (song.patterndelay > 0) { song.np_row--; docmd1(); song.patterndelay--; }
+   *   else { donotes(); docmd1(); }
+   *
+   * ProTracker and FT2 run their tick-N effect handlers on it instead
+   * (pt2-clone `checkEffects`, ft2-clone `handleEffects_TickNonZero`, both
+   * called on tick 0 while `pattDelTime2` is non-zero). Absent = that.
+   */
+  readonly patternDelayRepeatsTickZero?: boolean;
 }
 
 /**
@@ -721,6 +737,8 @@ export const S3M_PROFILE: FormatProfile = {
   // so a stopped vibrato returns to the note on the next effectless row (see
   // the field's docs). ProTracker/FT2 hold the offset instead (D75).
   pitchResetsAfterEffectlessRow: true,
+  // A pattern-delay repeat re-runs docmd1 (tick-0 commands), not docmd2.
+  patternDelayRepeatsTickZero: true,
   arpeggioCommandByte: 0x0a, // 'J'
   speedTempoCommandByte: 0x01, // 'A' -- set speed (manual: "Set speed to xx")
   tempoCommandByte: 0x14, // 'T' -- tempo = xx (manual: "valid values 20 to FF")

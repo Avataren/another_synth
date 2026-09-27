@@ -85,7 +85,8 @@ function readTrace(name: string): St3Trace {
   const rowTicks: number[] = [];
   /** [tick, bpm] from each T line: the tempo from that tick on. */
   const tempos: Array<[number, number]> = [];
-  let last: { ord: number; row: number } | null = null;
+  let last: { ord: number; row: number; tick: number } | null = null;
+  let beforeLast: { ord: number; row: number } | null = null;
   let ticks = 0;
   for (const line of fs.readFileSync(path.join(FIXTURES, 'st3-traces', `${name}.trace`), 'utf8').split('\n')) {
     const parts = line.trim().split(/\s+/);
@@ -94,8 +95,19 @@ function readTrace(name: string): St3Trace {
       // ST3 advances its next-row pointer on a row's last tick, so the row
       // that pointer names starts on the tick after (row 0 on tick 0).
       if (!last) rowTicks.push(0);
-      else if (last.ord !== ord || last.row !== row) rowTicks.push(tick + 1);
-      last = { ord, row };
+      else if (last.ord !== ord || last.row !== row) {
+        // A pattern-delay repeat: `dorow` steps np_row back on the tick
+        // after the row's last, so the pointer flicks back for one tick.
+        // That tick starts a repeat, not the next row; the engine does not
+        // report repeats as rows either.
+        if (beforeLast && beforeLast.ord === ord && beforeLast.row === row && tick === last.tick + 1) {
+          rowTicks.pop();
+        } else {
+          rowTicks.push(tick + 1);
+        }
+        beforeLast = { ord: last.ord, row: last.row };
+      }
+      if (!last || last.ord !== ord || last.row !== row) last = { ord, row, tick };
       tempos.push([tick, bpm]);
       ticks = tick + 1;
     } else if (parts.length === 3) {
@@ -193,10 +205,14 @@ async function playThroughDriver(file: string, seconds: number) {
     scheduledAllNotesOffHandler: (time) => driver.allNotesOff(time),
   });
   const rowTimes: number[] = [];
-  const internals = engine as unknown as { scheduleRow: (row: number, time: number) => void };
+  const internals = engine as unknown as {
+    scheduleRow: (row: number, time: number) => void;
+    patternDelayRepeating: boolean;
+  };
   const scheduleRow = internals.scheduleRow.bind(engine);
+  // A pattern-delay repeat is not a new row in ST3's trace either.
   internals.scheduleRow = (row, time) => {
-    rowTimes.push(time);
+    if (!internals.patternDelayRepeating) rowTimes.push(time);
     scheduleRow(row, time);
   };
   engine.loadSong(song, 0);
@@ -375,7 +391,7 @@ const SONGS: Array<[string, string, number, string]> = [
   ['first-adlib-attempt', 'Skaven/first adlib attempt.as3m', 56, 'engine: volume on a key-off row; vibrato'],
   ['rotagilla', 'Manwe/rotagilla.s3m', 350, 'engine: J00 arpeggio memory'],
   ['koakuma', 'Viraxor/koakuma.s3m', 407, 'engine: J00 memory; note-delay volume on tick 0'],
-  ['church', 'Bisqwit/some kind of church theme.s3m', 430, 'engine: SEx pattern delay re-triggers notes'],
+  ['church', 'Bisqwit/some kind of church theme.s3m', 0, 'exact'],
   ['rance-bird', '- unknown/(opl2) rance 4.1 - bird.s3m', 1249, 'engine: vibrato; two file channels on A6'],
 ];
 

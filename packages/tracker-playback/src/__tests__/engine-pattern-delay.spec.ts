@@ -112,12 +112,37 @@ describe('PlaybackEngine pattern delay (EEx)', () => {
     // Before the fix this never got past row 0. Row 1 is held, and then
     // playback carries on through the rest of the pattern and wraps.
     //
-    // Note the repeat count: EE2 gives two plays of row 1 here, where
-    // ProTracker plays the row param+1 times. That off-by-one is not what this
-    // test is about -- it is recorded as an open item in
-    // PLAN-module-format-support.md -- but it is pinned so a change to it is a
-    // deliberate one rather than a surprise.
-    expect(scheduled.slice(0, 6)).toEqual([0, 1, 1, 2, 3, 0]);
+    // EE2 plays row 1 three times: ProTracker, FT2 and ST3 all play a
+    // delayed row param + 1 times.
+    expect(scheduled.slice(0, 7)).toEqual([0, 1, 1, 1, 2, 3, 0]);
+  });
+
+  it('takes a pattern break on the delayed row only after its repeats', () => {
+    const song = buildPatternDelaySong(2);
+    song.patterns[0]!.tracks.push({
+      id: 't1',
+      steps: [{ row: 1, instrumentId: '01', effect: { type: 'patBreak', paramX: 0, paramY: 2 } }],
+    });
+    let fakeNow = 0;
+    const audioContext = { get currentTime() { return fakeNow; }, set currentTime(v: number) { fakeNow = v; } };
+    const engine = new PlaybackEngine({
+      audioContext: audioContext as unknown as AudioContext,
+      scheduledNoteHandler: () => {},
+      scheduledVolumeHandler: () => {},
+      scheduledPitchHandler: () => {},
+    });
+    engine.loadSong(song, 0);
+    const scheduled: number[] = [];
+    const scheduleRow = Reflect.get(engine, 'scheduleRow') as (row: number, time: number) => void;
+    Reflect.set(engine, 'scheduleRow', (row: number, time: number) => {
+      scheduled.push(row);
+      scheduleRow.call(engine, row, time);
+    });
+    driveScheduling(engine, 30, 0.4);
+    // All three plays of row 1 happen before the break is taken. (It lands
+    // on row 3, not 2: row-scheduler.ts adds one to a break target when the
+    // row's pattern delay comes first, its `rowHasPatDelay`.)
+    expect(scheduled.slice(0, 5)).toEqual([0, 1, 1, 1, 3]);
   });
 
   it('holds the delayed row for exactly the requested number of extra repeats', () => {
@@ -144,5 +169,80 @@ describe('PlaybackEngine pattern delay (EEx)', () => {
 
     const lastScheduledRow = Reflect.get(engine, 'lastScheduledRow') as number;
     expect(lastScheduledRow).toBeGreaterThanOrEqual(2);
+  });
+});
+
+/**
+ * What a repeat does. Every tracker holds a delayed row's notes: the repeats
+ * re-read nothing from the pattern and only run the row's effects again. On
+ * tick 0 of a repeat ProTracker and FT2 run their tick-N handlers
+ * (`checkEffects`, `handleEffects_TickNonZero`); ST3 re-runs its tick-0
+ * pass (`docmd1`), where an ordinary Dxy does nothing.
+ */
+describe('PlaybackEngine pattern delay repeats', () => {
+  function play(moduleFormat: 'mod' | 's3m', slide: EffectCommand) {
+    const song: Song = {
+      title: 'pattern delay repeats',
+      author: '',
+      bpm: 125,
+      moduleFormat,
+      sequence: ['p0'],
+      patterns: [
+        {
+          id: 'p0',
+          length: 4,
+          tracks: [
+            {
+              id: 't0',
+              steps: [
+                { row: 0, instrumentId: '01', midi: 60, effect: { type: 'patDelay', paramX: 0, paramY: 2 } },
+              ],
+            },
+            {
+              id: 't1',
+              steps: [{ row: 0, instrumentId: '01', midi: 64, velocity: 255, effect: slide }],
+            },
+          ],
+        },
+      ],
+    };
+    let fakeNow = 0;
+    const audioContext = { get currentTime() { return fakeNow; }, set currentTime(v: number) { fakeNow = v; } };
+    const noteOns: number[] = [];
+    const volumes: Array<[number, number]> = [];
+    const engine = new PlaybackEngine({
+      audioContext: audioContext as unknown as AudioContext,
+      scheduledNoteHandler: (e) => {
+        if (e.type === 'noteOn') noteOns.push(e.trackIndex);
+      },
+      scheduledVolumeHandler: (_id, _voice, volume, time, trackIndex) => {
+        if (trackIndex === 1) volumes.push([time, volume]);
+      },
+      scheduledPitchHandler: () => {},
+      steppedTickAutomation: () => true,
+    });
+    engine.loadSong(song, 0);
+    engine.setLoopSong(false);
+    driveScheduling(engine, 4, 0.4);
+    // Everything scheduled before row 1 (the row after the delayed one).
+    const rowSeconds = (6 * 2.5) / 125;
+    const held = volumes.filter(([t]) => t < 3 * rowSeconds - 1e-6);
+    const slides = held.filter(([, v], i) => i > 0 && v < held[i - 1]![1]).length;
+    return { noteOns, lastVolume: held[held.length - 1]![1], slides };
+  }
+
+  it('ProTracker: notes play once; the slide runs on every tick of each repeat', () => {
+    const { noteOns, slides, lastVolume } = play('mod', { type: 'volSlide', paramX: 0, paramY: 1 });
+    expect(noteOns).toEqual([0, 1]);
+    // Ticks 1..5 of the first play, then ticks 0..5 of both repeats.
+    expect(slides).toBe(5 + 6 + 6);
+    expect(lastVolume).toBeCloseTo((64 - 17) / 64, 5);
+  });
+
+  it('ST3: notes play once; a repeat re-runs tick 0, where D01 does nothing', () => {
+    const { noteOns, slides, lastVolume } = play('s3m', { type: 'volSlide', paramX: 0, paramY: 1 });
+    expect(noteOns).toEqual([0, 1]);
+    expect(slides).toBe(5 * 3);
+    expect(lastVolume).toBeCloseTo((64 - 15) / 64, 5);
   });
 });

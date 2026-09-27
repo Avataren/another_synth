@@ -265,7 +265,8 @@ export class PlaybackEngine {
   private patternLoopPending = false; // The row just scheduled owes a jump back
 
   /** Pattern delay state (EEx) - delays current row by x ticks */
-  private patternDelayCount = 0; // Number of times to repeat current row
+  private patternDelayCount = 0; // Repeats of the current row still to play
+  private patternDelayRepeating = false; // The next play of the row is a repeat
 
   /** Global volume state (Gxx/Hxy), normalized 0-1 */
   private globalVolume = 1.0;
@@ -917,8 +918,10 @@ export class PlaybackEngine {
       const currentRow = this.lastScheduledRow + 1;
       const actualRow = currentRow % this.length;
 
-      // Apply pending position commands ASAP (before auto pattern advance)
-      if (this.pendingPosCommand) {
+      // Apply pending position commands ASAP (before auto pattern advance),
+      // but only once a pattern delay on the jumping row has played out: the
+      // jump is taken where the next row would have started.
+      if (this.pendingPosCommand && !this.patternDelayRepeating) {
         const cmd = this.pendingPosCommand;
         this.pendingPosCommand = null;
 
@@ -1063,28 +1066,22 @@ export class PlaybackEngine {
         this.recordScheduledPosition(actualRow, scheduledRowTime);
       }
 
-      // Handle pattern delay (EEx) - repeat current row x times
+      // Pattern delay (EEx / SEx): the row plays x more times, x + 1 in all,
+      // as in ProTracker (`pattDelTime = x + 1`, one play counted off per
+      // row), FT2 (the same) and ST3 (`patterndelay = x`, one repeat per
+      // row). scheduleRow() armed the count on the first play and does not
+      // re-arm it while it runs down; each repeat is scheduled as one, so it
+      // holds the row's notes rather than triggering them again.
       if (this.patternDelayCount > 0) {
-        // Decrement delay counter
         this.patternDelayCount--;
+        this.patternDelayRepeating = true;
         const msPerRow = this.getMsPerRow();
         const secPerRow = msPerRow / 1000;
         this.nextRowTime += secPerRow;
-        if (this.patternDelayCount > 0) {
-          // Still repeating -- schedule the same row again next iteration
-          // (don't advance lastScheduledRow yet).
-          continue;
-        }
-        // This was the last repeat: fall through to advance lastScheduledRow
-        // normally below. Without this, the row where the counter first
-        // reaches 0 would *also* `continue`, leaving lastScheduledRow
-        // stuck -- the next iteration re-runs scheduleRow() for the same
-        // row, which sees patternDelayCount === 0 and re-arms it right
-        // back to the full delay count, looping forever and never
-        // advancing past this row (audibly: playback hangs on this row
-        // indefinitely instead of just holding it for the requested
-        // number of extra rows).
+        // Same row again next iteration: lastScheduledRow stays put.
+        continue;
       }
+      this.patternDelayRepeating = false;
 
       // Handle pattern loop (E6x) - jump back to loop start. scheduleRow()
       // decided whether this row owes a jump; all that is left is to take it.
@@ -1252,6 +1249,7 @@ export class PlaybackEngine {
     this.patternLoopCount = 0;
     this.patternLoopPending = false;
     this.patternDelayCount = 0;
+    this.patternDelayRepeating = false;
     // Gxx/Hxy are effect state too. Leaving this behind meant a song stopped
     // partway through a fade started the next time at whatever volume the fade
     // had reached, with nothing to restore it until the next Gxx. The restore

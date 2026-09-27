@@ -2302,6 +2302,11 @@ have been its last repeat. Not fixed here — it is unrelated to the two reporte
 touches timing on every module that uses `EEx` — but pinned in the test so changing it is
 deliberate.
 
+**Resolved 2026-09-27 (`.ai/plan-opl.md` O3b item 1):** a delayed row now plays `x + 1`
+times, as in ProTracker, FT2 and ST3, and the repeats hold its notes and run only its effects
+(the engine used to re-trigger every note on each repeat). See
+`FormatProfile.patternDelayRepeatsTickZero`.
+
 ---
 
 **D5 — Resolved by D31.**
