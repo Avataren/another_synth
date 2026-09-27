@@ -1,70 +1,86 @@
-Continue the OPL work in `.ai/plan-opl.md`: next is **O6 (A2M parse)**, the first half of the
-Adlib Tracker II track. Read the plan first, especially §3 (Adlib Tracker II), §4 (oracles and
-licensing), §4.1 (corpus) and the O2 and O5 landing records. D0–D5 are settled; do not re-ask
-them. The S3M engine issues still open are in `.ai/task-s3m-open-issues.md`. They are **not**
+Continue the OPL work in `.ai/plan-opl.md`: next is **O7 (the A2M player)**, the second half of
+the Adlib Tracker II track. Read the plan first, especially §3 (Adlib Tracker II), §4 (oracles
+and licensing), §6 (D0–D6, all settled; do not re-ask them) and the O2, O5 and **O6** landing
+records. The S3M engine issues still open are in `.ai/task-s3m-open-issues.md`. They are **not**
 this session's work.
 
-## Where things stand (main, all pushed; live as v0.4.25)
+## Where things stand (main; O6 committed, not pushed)
 
 - `rust-wasm/src/opl/` is an OPL3 chip that matches ymfm sample for sample (OPL2 mode = NEW=0,
-  4-op, rhythm, 18 channels, per-channel L/R). `OplRenderer` (wasm) plays register writes
-  stamped by frame. It has per-channel scope taps (`set_taps_enabled`, `read_tap`, ±1 = one
-  operator's full swing).
-- The worklet is `opl-audio-processor` (`src/audio/worklets/opl-core.ts` + `opl-worklet.ts`).
-  Output 0 is stereo; outputs 1..18 are the channel taps. Commands: `writes`, `set-gain`,
-  `set-channel-mask`, `set-taps`, `panic`, `dispose`.
-- S3M AdLib playback is complete in the app (O5). `S3mOplDriver` is in the library.
-  `OplOutput` (`src/audio/tracker/opl-output.ts`) owns the node, batching, mute mask, scope
-  wiring and the per-file mix gain (`s3mOplMixGain`, OpenMPT's balance). There is a
-  "Scream Tracker 3 AdLib" demo collection (`public/demos/s3m-adlib/`).
-- None of that is A2M-specific. A2M is a different shape: a **Rust player** next to the chip
-  that ticks and writes registers itself, like `rust-wasm/src/ahx/` and `rust-wasm/src/sid/`
-  (§3). It is not the TS engine plus a driver.
+  4-op, rhythm, 18 channels, per-channel L/R, per-channel scope taps). `OplRenderer` (wasm)
+  plays register writes stamped by frame. The worklet is `opl-audio-processor`
+  (`src/audio/worklets/opl-core.ts` + `opl-worklet.ts`); S3M AdLib playback uses it through
+  `OplOutput` (`src/audio/tracker/opl-output.ts`).
+- **O6:** `rust-wasm/src/opl/a2/` parses all 278 corpus `.a2m` files (versions 1, 5, 9–14)
+  into `A2mSong` (`model.rs`): instruments (11 FM bytes, panning, finetune, voice type), v9+
+  FM/arpeggio/vibrato macros, order (128 **raw** bytes), tempo, speed, flags, pattern length,
+  tracks, macro speed-up, 4-op and lock flags, v14 rows-per-beat and tempo finetune, and
+  patterns as row-major cells (note, instrument, two effects). Effect numbers are stored as
+  the file has them. v1–4 (0–15) and v5–8 (0–35) must be mapped to the v9+ set. Nothing is
+  exported to wasm yet.
+- **Oracle:** AdPlug + libbinio, built static under `.ai/adplug-oracle/prefix` (gitignored;
+  rebuild from github.com/adplug/{libbinio,adplug} with cmake if it is gone).
+  `rust-wasm/src/opl/a2/oracle/` has the black-box harnesses and `regen.sh`. AdPlug is LGPL:
+  **run it, never read its player source** (`a2m-v2.cpp` is adapted from AT2's GPL code). D6
+  allowed reading `unlzh.c` only, and that is done.
+- **Format reference:** the AT2 authors' `techinfo.htm`, saved at `.ai/a2m-ref/` (text in
+  `techinfo.txt`). It has the effect table (89 effects + extended commands), the vibrato and
+  tremolo tables and the file layouts. It says nothing about playback timing, order-list markers
+  or macro semantics. Those are what O7 has to pin, against the oracle.
+- Real hardware: *Corridors of Time* recorded from an SB16 CT2290 (OPL3) at
+  `.ai/opl-ref/corridors-of-time-sb16-ct2290.flac`. The corpus README lists tier-1 files.
 
-## Task: O6 — parse every A2M in the corpus, or refuse it truthfully
+## Task: O7 — play A2M in Rust and in the app
 
-- Corpus: `src/tests/fixtures/opl/a2m/` (277 `.a2m` files; its README is the manifest). All are
-  `_A2module_`, version byte at offset 14; versions 1, 5, 9, 10, 11 (145 files), 12, 13, 14.
-  There are no `.a2t` files. The README names a tier-1 list covering every version.
-- **Licensing first (D1, §4 is UNVERIFIED here).** Before reading any Adlib Tracker II source,
-  confirm its license. Port or study only permissive sources. AdPlug (LGPL) is a **render
-  oracle only**: build and run it, never copy from it, the same rule as gt2reloc and
-  Nuked OPL3. If no permissive description of the format or its packers exists, stop and
-  tell Morten what you found before going on.
-- Pin the format per version against the real files: header, song data, patterns, instruments
-  and macro tables, and **which versions are compressed with which packer**. Several packers
-  are used across versions. Record what you measure in the plan with the
-  MEASURED/INFERRED/UNVERIFIED labels.
-- Where it lives: `rust-wasm/src/opl/a2/` (parser + decompressors), producing a song model the
-  O7 player will consume. Parse in Rust (D3: playback only, no TS parser or editor grid).
-- Gate: a Rust corpus test in which every file either parses or refuses with a one-line,
-  true reason (E15 discipline: never a silent partial parse). Also: per-version tier-1 spot
-  checks of decoded fields (song name, order list, instrument count, a pattern cell or two)
-  against an independent reading. Make one mutation per decompressor (flip a bit) to
-  show the gate has teeth.
-- End with an O6 landing record in the plan. Commit per batch; do not push unless asked.
+Shape (§3): a **Rust player next to the chip** that ticks and writes registers itself, like
+`rust-wasm/src/ahx/player.rs` (`AhxPlayer`, `#[cfg_attr(feature = "wasm", wasm_bindgen)]`) and
+`rust-wasm/src/sid/`. Not the TS engine plus a driver.
 
-After O6, **stop and report**. Do not start O7 (the player, worklet class and tracker hookup)
-unless asked.
+1. **Oracle first.** Before writing effect code, build a register-write trace oracle: a small
+   `Copl` subclass (public `opl.h` interface: `write(reg, val)`, `setchip`) that logs every
+   write AdPlug's player makes, per tick (`update()`), for a tier-1 file. Pin semantics from
+   traces, the way O3 pinned ST3 against its own register writes. Do this at least for timing
+   (tempo/speed/macro speed-up → tick rate), the order list (what values ≥ 0x80 mean; AdPlug
+   reports 0 orders, so trace it), note → F-number/block (finetune), volume → TL, panning, 4-op
+   and percussion. Render WAVs from the same harness (AdPlug ships a Nuked OPL3 wrapper) for
+   audio A/B.
+2. **Player** in `rust-wasm/src/opl/a2/player.rs`: song position, rows, ticks, effects
+   (both columns), FM/arpeggio/vibrato macros, 4-op pairs, percussion mode, OPL3 panning, and
+   the flag bits (volume scaling, locks, depths). It writes registers into a `Chip` and renders
+   through the existing resampler. Map v1–8 effect numbers explicitly, from traces, not guesses.
+3. **Wasm class** `A2Player` and a worklet (or an `opl-audio-processor` mode) with the same API
+   as SID/AHX: load, play/pause, seek to order/row, loop, mute/solo per channel, scope taps.
+4. **Tracker hookup** like AHX/SID (see `src/audio/tracker/ahx-player.ts`, `ahx-import.ts`,
+   `ahx-song-transport.ts`): open an `.a2m`, show position, play song, mute/solo, scopes.
+   Playback only (D3): no A2M pattern editing.
+5. **Refuse truthfully** at load when a song uses something the player cannot do yet. Never
+   play a silent partial song.
+
+Gate: register-trace equality against AdPlug per tier-1 file for the ticks you claim, with
+any divergence explained in the landing record (AdPlug is a port and may itself differ from
+AT2, so say which you follow and why). Also audio A/B against AdPlug renders; *Corridors of
+Time* against the SB16 recording (level and character, not bit-exact); `npm run test:run`
+green; and Morten's ears. Commit per batch, do not push unless asked, and end with an O7
+landing record in the plan.
 
 ## Environment notes
 
 - Rust needs nightly on PATH:
   `export PATH="$HOME/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin:$PATH"`.
-  Run the OPL tests with `cd rust-wasm && cargo test --lib opl::`.
-- Any change under `rust-wasm/src` needs `npm run build:wasm`, then `npm run build:worklets`.
-  Commit `public/wasm` and **all** `public/worklets/*.js`, then verify with
-  `npm run check:artifacts`. Every file under `rust-wasm/src` is hashed, test fixtures
-  included, so even a test-only Rust change needs the rebuild.
+  Run the OPL tests with `cd rust-wasm && cargo test --lib opl::` (the a2 corpus tests take
+  about 7 s in debug).
+- Any change under `rust-wasm/src` (test files and TSVs included, since every file is hashed)
+  needs `npm run build:wasm`, then `npm run build:worklets`. Commit `public/wasm` and **all**
+  changed `public/worklets/*.js`, and verify with `npm run check:artifacts`.
 - `npm run test:run` is the one-shot suite; `npm run test` is watch mode and never exits.
-  Worklet tests can time out under memory pressure (a dev server plus Chromium running); re-run
-  the failing files alone before believing a failure.
+  Worklet tests can time out under memory pressure; re-run failing files alone first.
 - Type-check: two known errors in `packages/tracker-playback/src/__tests__/engine-pattern-delay.spec.ts`
   and `engine-s3m-note-delay.spec.ts`, plus about 95 Vue component-prop errors in
   `src/tests/ahx-*`. Only new errors matter.
+- `rustfmt` the files you touch (the crate as a whole is not fmt-clean; don't reformat others).
 - `.ai/` is gitignored; add plan files with `git add -f`.
 - The shell's `ls` is aliased (icons, leading spaces); use `printf '%s\n' *` or `find` in
-  scripts.
+  scripts. Don't `pkill -f` with a pattern that matches your own command line.
 - To drive the app: `npm run dev` serves `http://localhost:9000/synth/`. Claude in Chrome may be
   disconnected; a cached Playwright works headless
   (`/home/avataren/.npm/_npx/e41f203b7505f1fb/node_modules/playwright-core`, Chromium 1234).
