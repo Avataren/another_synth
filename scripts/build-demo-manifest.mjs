@@ -26,6 +26,7 @@ const COLLECTION_LABELS = {
   amiga: 'Amiga / ProTracker',
   ft2: 'FastTracker 2',
   s3m: 'Scream Tracker 3',
+  's3m-adlib': 'Scream Tracker 3 AdLib',
   ahx: 'AHX / HivelyTracker',
   goattracker: 'GoatTracker',
   sid: 'C64 SID',

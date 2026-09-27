@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-26T21:43:32.598Z",
+  "generated": "2026-09-27T12:34:00.736Z",
   "collections": [
     {
       "id": "ahx",
@@ -2658,6 +2658,120 @@
           "instruments": 26,
           "file": "s3m/when_the_heavens_fall.s3m",
           "bytes": 846302
+        }
+      ]
+    },
+    {
+      "id": "s3m-adlib",
+      "name": "Scream Tracker 3 AdLib",
+      "songs": [
+        {
+          "title": "a vision",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 26,
+          "instruments": 40,
+          "file": "s3m-adlib/Basehead/a vision.s3m",
+          "bytes": 12306
+        },
+        {
+          "title": "Some kind of church theme.",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 20,
+          "instruments": 31,
+          "file": "s3m-adlib/Bisqwit/some kind of church theme.s3m",
+          "bytes": 11340
+        },
+        {
+          "title": "and this is UltrSound",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 17,
+          "instruments": 75,
+          "file": "s3m-adlib/Manwe/and this is ultrasound.s3m",
+          "bytes": 989083
+        },
+        {
+          "title": "Rotagilla by Manwe_SandS",
+          "format": "S3M",
+          "channels": 15,
+          "patterns": 17,
+          "instruments": 74,
+          "file": "s3m-adlib/Manwe/rotagilla.s3m",
+          "bytes": 936618
+        },
+        {
+          "title": "Serious Rocking-Horse",
+          "format": "S3M",
+          "channels": 17,
+          "patterns": 19,
+          "instruments": 53,
+          "file": "s3m-adlib/Manwe/serious rocking-horse.s3m",
+          "bytes": 1051828
+        },
+        {
+          "title": "Mystic Reflections",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 10,
+          "instruments": 45,
+          "file": "s3m-adlib/Mayaman/mystic reflections.s3m",
+          "bytes": 6130
+        },
+        {
+          "title": "Redemptions",
+          "format": "S3M",
+          "channels": 13,
+          "patterns": 12,
+          "instruments": 61,
+          "file": "s3m-adlib/Omega/redemptions.s3m",
+          "bytes": 13013
+        },
+        {
+          "title": "StarPort BBS Introtune",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 5,
+          "instruments": 16,
+          "file": "s3m-adlib/Purple Motion/starport bbs introtune.s3m",
+          "bytes": 4130
+        },
+        {
+          "title": "First Adlib Attempt",
+          "format": "S3M",
+          "channels": 13,
+          "patterns": 16,
+          "instruments": 45,
+          "file": "s3m-adlib/Skaven/first adlib attempt.s3m",
+          "bytes": 10242
+        },
+        {
+          "title": "starport bbs introtune 2 v2",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 5,
+          "instruments": 6,
+          "file": "s3m-adlib/Skaven/starport bbs introtune 2 v2.s3m",
+          "bytes": 3010
+        },
+        {
+          "title": "koakuma",
+          "format": "S3M",
+          "channels": 6,
+          "patterns": 10,
+          "instruments": 17,
+          "file": "s3m-adlib/Viraxor/koakuma.s3m",
+          "bytes": 7424
+        },
+        {
+          "title": "(OPL2) Rance 4.1 - Bird",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 12,
+          "instruments": 59,
+          "file": "s3m-adlib/unknown/(opl2) rance 4.1 - bird.s3m",
+          "bytes": 14707
         }
       ]
     },
