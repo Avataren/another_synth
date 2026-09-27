@@ -1,71 +1,73 @@
-Continue the OPL work in `.ai/plan-opl.md`: next is **O5 (app wiring)**. Read the plan first,
-especially the O2, O3 and O3b landing records. D0–D5 are settled; do not re-ask them. The
-S3M engine issues still open after O3b are tracked separately in
-`.ai/task-s3m-open-issues.md`. They are **not** this session's work unless O5 runs into one.
+Continue the OPL work in `.ai/plan-opl.md`: next is **O6 (A2M parse)**, the first half of the
+Adlib Tracker II track. Read the plan first, especially §3 (Adlib Tracker II), §4 (oracles and
+licensing), §4.1 (corpus) and the O2 and O5 landing records. D0–D5 are settled; do not re-ask
+them. The S3M engine issues still open are in `.ai/task-s3m-open-issues.md`. They are **not**
+this session's work.
 
-## Where things stand (main, all committed, not pushed)
+## Where things stand (main, all pushed; live as v0.4.25)
 
-- `rust-wasm/src/opl/` is an OPL3 chip that is sample-exact against ymfm. `OplRenderer`
-  (wasm) plays register writes stamped by frame. The worklet is `opl-audio-processor`
-  (`src/audio/worklets/opl-core.ts` + `opl-worklet.ts`). Its commands are `writes` (a
-  Float64Array of (AudioContext seconds, reg, val) triples), `set-gain`,
-  `set-channel-mask`, `panic` and `dispose`; it reports `late-writes` and `error`.
-- `S3mOplDriver` (`packages/tracker-playback/src/opl-driver.ts`) is sink-side. It turns a
-  sink's note-on/off, pitch and volume events for AdLib instruments into ST3-exact register
-  writes on an `OplRegisterTarget`. Since O3b it holds a tick's retrigger and TL write until
-  that tick settles. It flushes on the next event on the channel at a later time, at the end
-  of the current task (`queueMicrotask`), or on an explicit `driver.flush()`. A host that
-  batches writes to the worklet should call `flush()` before posting a batch.
-- The engine options an OPL host must pass:
-  - `steppedTickAutomation: (id) => driver.handles(id)` (slides tick by tick);
-  - `oplInstrument: (id) => driver.handles(id)` (new in O3b: ST3 keeps the vibrato phase
-    across an AdLib note).
+- `rust-wasm/src/opl/` is an OPL3 chip that matches ymfm sample for sample (OPL2 mode = NEW=0,
+  4-op, rhythm, 18 channels, per-channel L/R). `OplRenderer` (wasm) plays register writes
+  stamped by frame. It has per-channel scope taps (`set_taps_enabled`, `read_tap`, ±1 = one
+  operator's full swing).
+- The worklet is `opl-audio-processor` (`src/audio/worklets/opl-core.ts` + `opl-worklet.ts`).
+  Output 0 is stereo; outputs 1..18 are the channel taps. Commands: `writes`, `set-gain`,
+  `set-channel-mask`, `set-taps`, `panic`, `dispose`.
+- S3M AdLib playback is complete in the app (O5). `S3mOplDriver` is in the library.
+  `OplOutput` (`src/audio/tracker/opl-output.ts`) owns the node, batching, mute mask, scope
+  wiring and the per-file mix gain (`s3mOplMixGain`, OpenMPT's balance). There is a
+  "Scream Tracker 3 AdLib" demo collection (`public/demos/s3m-adlib/`).
+- None of that is A2M-specific. A2M is a different shape: a **Rust player** next to the chip
+  that ticks and writes registers itself, like `rust-wasm/src/ahx/` and `rust-wasm/src/sid/`
+  (§3). It is not the TS engine plus a driver.
 
-  The pitch handler's optional 7th argument is the pitch `source`; pass it to
-  `driver.setPitch`.
-- The reference wiring is the test harness `playThroughDriver` in
-  `src/tests/s3m-adlib-st3-trace.test.ts`: every engine callback, mapped onto the driver.
-- The gate is `src/tests/s3m-adlib-st3-trace.test.ts`. 8 of 10 tier-1 songs match ST3's
-  register writes on every tick; koakuma (361) and first-adlib-attempt (1) are pinned. Render
-  WAVs with `OPL_WAV_DIR=<dir>`. Renders sit at −8 to −21 dBFS RMS and clip the chip's
-  16-bit output on ≤ 0.26 % of samples.
+## Task: O6 — parse every A2M in the corpus, or refuse it truthfully
 
-## Task: O5
+- Corpus: `src/tests/fixtures/opl/a2m/` (277 `.a2m` files; its README is the manifest). All are
+  `_A2module_`, version byte at offset 14; versions 1, 5, 9, 10, 11 (145 files), 12, 13, 14.
+  There are no `.a2t` files. The README names a tier-1 list covering every version.
+- **Licensing first (D1, §4 is UNVERIFIED here).** Before reading any Adlib Tracker II source,
+  confirm its license. Port or study only permissive sources. AdPlug (LGPL) is a **render
+  oracle only**: build and run it, never copy from it, the same rule as gt2reloc and
+  Nuked OPL3. If no permissive description of the format or its packers exists, stop and
+  tell Morten what you found before going on.
+- Pin the format per version against the real files: header, song data, patterns, instruments
+  and macro tables, and **which versions are compressed with which packer**. Several packers
+  are used across versions. Record what you measure in the plan with the
+  MEASURED/INFERRED/UNVERIFIED labels.
+- Where it lives: `rust-wasm/src/opl/a2/` (parser + decompressors), producing a song model the
+  O7 player will consume. Parse in Rust (D3: playback only, no TS parser or editor grid).
+- Gate: a Rust corpus test in which every file either parses or refuses with a one-line,
+  true reason (E15 discipline: never a silent partial parse). Also: per-version tier-1 spot
+  checks of decoded fields (song name, order list, instrument count, a pattern cell or two)
+  against an independent reading. Make one mutation per decompressor (flip a bit) to
+  show the gate has teeth.
+- End with an O6 landing record in the plan. Commit per batch; do not push unless asked.
 
-- `song-bank.ts` / its `TrackerSink` routes events for OPL instruments (`driver.handles(id)`)
-  to an `S3mOplDriver`. The driver's target batches writes to the OPL worklet (flush the
-  driver first). Channel map: `s3mAdlibChannelForTrack`. The file's amiga-limits flag goes
-  to the driver.
-- A mixer channel for the OPL worklet with sensible headroom (see the loudness figures
-  above).
-- Pass `steppedTickAutomation` **and** `oplInstrument` in `tracker-playback-store.ts`.
-- Mute/solo through the worklet's channel mask (`set-channel-mask`).
-- `driver.reset` at song start; `panic` + `allNotesOff` on stop/seek.
-- Update the instrument panel, and the `InstrumentSlot` / import-warning text that still
-  says OPL is inactive ("imported, but the app does not play OPL yet").
-- An optional injected OPL target for `StandaloneTrackerSink`.
-- Gate: a mixed PCM+AdLib song (`src/tests/fixtures/opl/s3m-adlib/Manwe/`) plays in the
-  app, and `npm run test:run` is green (one shot, not watch mode).
-- Check it in the browser with the run skill or Claude in Chrome. The user's ears are the
-  final accept: ask them to listen to starport (Purple Motion) and a Manwe song.
-- End with an O5 landing record in the plan. Commit per batch; do not push.
-
-After O5, **stop and report**. Do not continue to O6/O7 (Adlib Tracker II) unless asked.
+After O6, **stop and report**. Do not start O7 (the player, worklet class and tracker hookup)
+unless asked.
 
 ## Environment notes
 
 - Rust needs nightly on PATH:
   `export PATH="$HOME/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin:$PATH"`.
-- Any change under `rust-wasm/src` needs `npm run build:wasm`, then
-  `npm run build:worklets`. Commit `public/wasm` and **all** `public/worklets/*.js`, then
-  verify with `npm run check:artifacts`. A change to `opl-core.ts`/`opl-worklet.ts` alone
-  needs `build:worklets`.
-- `npm run check:tracker-playback-dist` fails on clean HEAD here (a build tool is missing,
-  exit 127). That is pre-existing; nothing in CI builds `dist`.
-- Import the library by package name (`@another-synth/tracker-playback`). New modules go in
-  its `index.ts` (`export *`), so names must stay unique across the package.
-- Type-check: about 95 pre-existing Vue component-prop errors in `src/tests/ahx-*`; only new
-  errors matter.
+  Run the OPL tests with `cd rust-wasm && cargo test --lib opl::`.
+- Any change under `rust-wasm/src` needs `npm run build:wasm`, then `npm run build:worklets`.
+  Commit `public/wasm` and **all** `public/worklets/*.js`, then verify with
+  `npm run check:artifacts`. Every file under `rust-wasm/src` is hashed, test fixtures
+  included, so even a test-only Rust change needs the rebuild.
+- `npm run test:run` is the one-shot suite; `npm run test` is watch mode and never exits.
+  Worklet tests can time out under memory pressure (a dev server plus Chromium running); re-run
+  the failing files alone before believing a failure.
+- Type-check: two known errors in `packages/tracker-playback/src/__tests__/engine-pattern-delay.spec.ts`
+  and `engine-s3m-note-delay.spec.ts`, plus about 95 Vue component-prop errors in
+  `src/tests/ahx-*`. Only new errors matter.
 - `.ai/` is gitignored; add plan files with `git add -f`.
 - The shell's `ls` is aliased (icons, leading spaces); use `printf '%s\n' *` or `find` in
   scripts.
+- To drive the app: `npm run dev` serves `http://localhost:9000/synth/`. Claude in Chrome may be
+  disconnected; a cached Playwright works headless
+  (`/home/avataren/.npm/_npx/e41f203b7505f1fb/node_modules/playwright-core`, Chromium 1234).
+  In the tracker, Space is **Play Pattern**; use the "Play Song" button.
+- Deploy flow when Morten asks for it: commit, `git push`, `./deploy-local.sh` (bumps and tags
+  a release; it deploys to the public Pi), then `git push --follow-tags`.
