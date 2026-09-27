@@ -18,6 +18,7 @@ import {
 } from 'src/audio/worklets/opl-core';
 import { a2mEffectText, looksLikeA2m } from 'src/audio/tracker/a2m-import';
 import { decodeA2mFile } from 'src/audio/tracker/a2m-file-codec';
+import { demoSongUrl, type DemoCollection } from 'src/composables/useDemoManifest';
 
 /**
  * .ai/plan-opl.md O7 step 4: an Adlib Tracker II module opens and PLAYS
@@ -464,5 +465,45 @@ describe('an A2M module opens and plays through the host, the playback store and
     expect(h2.trackerStore.a2mFile).toBe(saved.data.a2mFile);
     const node = await startPlaying({ ...h2, file });
     expect(peak(node.pump(SAMPLE_RATE).left)).toBeGreaterThan(0.01);
+  }, 60000);
+
+  it('the corpus is in the demo browser, and a demo loads by its URL and plays', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const manifest = JSON.parse(readFileSync(resolve(ROOT, 'public/demos/index.json'), 'utf8')) as { collections: DemoCollection[] };
+    const a2m = manifest.collections.find((c) => c.id === 'a2m')!;
+    expect(a2m.name).toBe('Adlib Tracker II');
+    // Every corpus module but the instrument set the player refuses.
+    expect(a2m.songs).toHaveLength(277);
+    for (const song of a2m.songs) {
+      expect(song.format).toBe('A2M');
+      expect(readFileSync(resolve(ROOT, 'public/demos', song.file)).length).toBe(song.bytes);
+    }
+    // Renamed from the corpus's "paradox #3.a2m": Vite's dev server does not serve a `%23`.
+    expect(a2m.songs.some((s) => s.file.includes('#'))).toBe(false);
+    const song = a2m.songs.find((s) => s.file === 'a2m/Kvee/paradox 3.a2m')!;
+    const player = new A2Player(new Uint8Array(corpus('Kvee/paradox #3.a2m')), SAMPLE_RATE);
+    expect(song.channels).toBe(player.track_count());
+    expect(song.title).toBe(`${player.song_name().trim()} · Kvee`);
+    player.free();
+
+    const h = await makeHost();
+    const url = demoSongUrl(song);
+    expect(url).toBe('demos/a2m/Kvee/paradox%203.a2m');
+    const wasmFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (u: string, init?: RequestInit) => {
+        if (String(u).startsWith('demos/')) {
+          const b = readFileSync(resolve(ROOT, 'public', decodeURIComponent(String(u))));
+          const ab = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+          return { ok: true, status: 200, statusText: 'OK', arrayBuffer: async () => ab };
+        }
+        return wasmFetch(u, init);
+      }),
+    );
+    await h.host.loadSongFromUrl(url);
+    expect(h.trackerStore.moduleFormat).toBe('a2m');
+    const node = await startPlaying({ ...h, file: null as never });
+    expect(peak(node.pump(SAMPLE_RATE * 2).left)).toBeGreaterThan(0.01);
   }, 60000);
 });

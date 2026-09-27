@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseMod } from '@another-synth/tracker-playback';
@@ -8,6 +8,14 @@ import { parseAhx } from '@another-synth/tracker-playback';
 import { importGtSong } from 'src/audio/tracker/sid-doc';
 import { parsePsid } from 'src/audio/tracker/psid';
 import { TOTAL_SLOTS } from 'src/stores/tracker-store';
+// Relative on purpose: the `app/public/wasm/audio_processor.js` alias is
+// mocked for every other test. An A2M is read by the Rust player, as the app
+// reads it (in the OPL worklet).
+import { A2Player, initSync } from '../../public/wasm/audio_processor.js';
+
+beforeAll(() => {
+  initSync({ module: new Uint8Array(fs.readFileSync(path.resolve(__dirname, '../../public/wasm/audio_processor_bg.wasm'))) });
+});
 
 /**
  * The demo modules are committed and served as-is, so nothing between the
@@ -101,7 +109,7 @@ describe('the published demo collection', () => {
       for (const file of files) {
         // Only the formats the importer reads. Anything else is deliberately
         // left out of the manifest rather than published unreachable.
-        if (!/\.(mod|xm|s3m|ahx|hvl|sng|sid)$/i.test(file)) continue;
+        if (!/\.(mod|xm|s3m|ahx|hvl|sng|sid|a2m)$/i.test(file)) continue;
         onDisk.add(`${collection.id}/${file}`);
       }
     }
@@ -157,6 +165,16 @@ describe('the published demo collection', () => {
         expect(sid.file.type).toBe(song.format);
         expect(song.title.startsWith(sid.file.name)).toBe(true);
         expect(song.channels).toBe(3);
+      } else if (song.format === 'A2M') {
+        // The player takes it (its constructor throws the refusal), and the
+        // browser's track count is the player's.
+        const player = new A2Player(new Uint8Array(bytes), 48000);
+        try {
+          expect(player.track_count()).toBe(song.channels);
+          expect(player.order_count()).toBeGreaterThan(0);
+        } finally {
+          player.free();
+        }
       } else if (song.format === 'GT2' || song.format === 'GT1') {
         // The manifest reads only the header; a song corrupt past it (Spock's
         // sleepwalk.sng) would be listed and then refused on click.

@@ -30,9 +30,10 @@ const COLLECTION_LABELS = {
   ahx: 'AHX / HivelyTracker',
   goattracker: 'GoatTracker',
   sid: 'C64 SID',
+  a2m: 'Adlib Tracker II',
 };
 
-const EXTENSIONS = new Set(['.mod', '.xm', '.s3m', '.ahx', '.hvl', '.sng', '.sid']);
+const EXTENSIONS = new Set(['.mod', '.xm', '.s3m', '.ahx', '.hvl', '.sng', '.sid', '.a2m']);
 
 /** Read a fixed-length, NUL-terminated ASCII string. */
 function readAscii(buf, offset, length) {
@@ -137,9 +138,31 @@ function describeSid(buf) {
   };
 }
 
-function describeModule(buf, file) {
+/**
+ * An Adlib Tracker II module (`_A2module_`). Its song data is packed, so what
+ * the browser lists comes from `meta.json` beside the modules, written by the
+ * Rust parser (`a2m_tool demometa`, which also leaves out the modules the
+ * player refuses): the song's own title (else the file name), the modland
+ * artist directory, and the tracks it plays. A module missing from it is
+ * skipped rather than listed with a made-up track count.
+ */
+function describeA2m(buf, file, meta) {
+  if (readAscii(buf, 0, 10) !== '_A2module_') return null;
+  const info = meta?.[file];
+  if (!info) return null;
+  const artist = file.includes('/') ? file.split('/')[0] : '';
+  const title = info.title || path.basename(file, path.extname(file));
+  return {
+    title: artist && !artist.startsWith('-') ? `${title} · ${artist}` : title,
+    format: 'A2M',
+    channels: info.tracks,
+  };
+}
+
+function describeModule(buf, file, meta) {
   const ext = path.extname(file).toLowerCase();
 
+  if (ext === '.a2m') return describeA2m(buf, file, meta);
   if (ext === '.ahx') return describeAhx(buf, 'AHX');
   if (ext === '.hvl') return describeAhx(buf, 'HVL');
   if (ext === '.sng') return describeSng(buf);
@@ -228,14 +251,17 @@ function main() {
     if (!fs.statSync(dirPath).isDirectory()) continue;
 
     const songs = [];
+    const metaPath = path.join(dirPath, 'meta.json');
+    const meta = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, 'utf8')) : null;
     const targetDir = path.join(outputDir, dir);
     fs.mkdirSync(targetDir, { recursive: true });
+    if (meta && !inPlace) fs.copyFileSync(metaPath, path.join(targetDir, 'meta.json'));
 
     for (const file of listSongFiles(dirPath)) {
       const buf = fs.readFileSync(path.join(dirPath, file));
       let described;
       try {
-        described = describeModule(buf, file);
+        described = describeModule(buf, file, meta);
       } catch (error) {
         described = null;
         console.warn(`  ! ${file}: ${error.message}`);

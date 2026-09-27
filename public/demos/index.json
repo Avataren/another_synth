@@ -1,7 +1,1952 @@
 {
   "version": 1,
-  "generated": "2026-09-27T13:00:51.088Z",
+  "generated": "2026-09-27T20:34:40.186Z",
   "collections": [
+    {
+      "id": "a2m",
+      "name": "Adlib Tracker II",
+      "songs": [
+        {
+          "title": "ballad · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/ballad.a2m",
+          "bytes": 1363
+        },
+        {
+          "title": "boss8 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/boss8.a2m",
+          "bytes": 1182
+        },
+        {
+          "title": "Down the waterfalls · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/down the waterfalls.a2m",
+          "bytes": 1811
+        },
+        {
+          "title": "Far from home · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/far from home.a2m",
+          "bytes": 1550
+        },
+        {
+          "title": "(UPDATED) Date:Lun 13/11/95 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/fdance06.a2m",
+          "bytes": 1674
+        },
+        {
+          "title": "fdance27 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/fdance27.a2m",
+          "bytes": 2661
+        },
+        {
+          "title": "fmaven94 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/fmaven94.a2m",
+          "bytes": 948
+        },
+        {
+          "title": "fmaven95 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/fmaven95.a2m",
+          "bytes": 1071
+        },
+        {
+          "title": "fmaven96 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/fmaven96.a2m",
+          "bytes": 4126
+        },
+        {
+          "title": "fmaven97 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/fmaven97.a2m",
+          "bytes": 1040
+        },
+        {
+          "title": "fmaven98 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/fmaven98.a2m",
+          "bytes": 662
+        },
+        {
+          "title": "fmavn63b · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/fmavn63b.a2m",
+          "bytes": 2648
+        },
+        {
+          "title": "Gates of the Northlands · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/gates of the northlands.a2m",
+          "bytes": 1439
+        },
+        {
+          "title": "Global Alternative Trance · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/global alternative trance.a2m",
+          "bytes": 3789
+        },
+        {
+          "title": "High Tech Environment II · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/high tech environment ii.a2m",
+          "bytes": 2878
+        },
+        {
+          "title": "High Tech Environment III · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/high tech environment iii (final).a2m",
+          "bytes": 2838
+        },
+        {
+          "title": "High Tech Environment III · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/high tech environment iii.a2m",
+          "bytes": 3070
+        },
+        {
+          "title": "La boite speciale daubes · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/la boite speciale daubes.a2m",
+          "bytes": 1580
+        },
+        {
+          "title": "NeuroPhobiaN · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/neurophobian.a2m",
+          "bytes": 4843
+        },
+        {
+          "title": "Now that you're gone · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/now that you're gone.a2m",
+          "bytes": 2858
+        },
+        {
+          "title": "Recherche de sons???? · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/recherche de sons.a2m",
+          "bytes": 1502
+        },
+        {
+          "title": "Running after the clouds · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/running after the clouds.a2m",
+          "bytes": 2536
+        },
+        {
+          "title": "song100 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/song100.a2m",
+          "bytes": 1708
+        },
+        {
+          "title": "song102 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/song102.a2m",
+          "bytes": 1284
+        },
+        {
+          "title": "song103 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/song103.a2m",
+          "bytes": 582
+        },
+        {
+          "title": "song105 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/song105.a2m",
+          "bytes": 1125
+        },
+        {
+          "title": "song108 · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/song108.a2m",
+          "bytes": 1025
+        },
+        {
+          "title": "sonic · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/sonic.a2m",
+          "bytes": 1446
+        },
+        {
+          "title": "Storm Riders (Fm version) · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/storm riders (fm version).a2m",
+          "bytes": 1062
+        },
+        {
+          "title": "Tanioll's musik ! · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/tanioll's musik.a2m",
+          "bytes": 1289
+        },
+        {
+          "title": "The World is gonna fall... · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/the world is gonna fall.a2m",
+          "bytes": 1398
+        },
+        {
+          "title": "This is New Jack Daniel's! · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/this is new jack daniel's!.a2m",
+          "bytes": 2172
+        },
+        {
+          "title": "Trance avec filtres · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/trance avec filtres.a2m",
+          "bytes": 2181
+        },
+        {
+          "title": "Troubleshit Drugs · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/troubleshit drugs.a2m",
+          "bytes": 2174
+        },
+        {
+          "title": "Ultra debil oup trop fort · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/ultra debil oup trop fort.a2m",
+          "bytes": 720
+        },
+        {
+          "title": "Wood village (UPDATED) · Benjamin Gerardin",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Benjamin Gerardin/wood village.a2m",
+          "bytes": 2944
+        },
+        {
+          "title": "15 Minute Compo Trial · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/15 minute compo trial.a2m",
+          "bytes": 1023
+        },
+        {
+          "title": "A Different Kind of Hero · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/a different kind of hero.a2m",
+          "bytes": 1714
+        },
+        {
+          "title": "Ambush of Angels (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/ambush of angels.a2m",
+          "bytes": 1077
+        },
+        {
+          "title": "\"An Awkward Invasion\" (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/an awkward invasion.a2m",
+          "bytes": 1752
+        },
+        {
+          "title": "Banzai Erdogo · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/banzai erdogo.a2m",
+          "bytes": 2284
+        },
+        {
+          "title": "Battletoads briefing theme · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/battletoads briefing theme.a2m",
+          "bytes": 467
+        },
+        {
+          "title": "\"Birdstone\" (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/birdstone.a2m",
+          "bytes": 994
+        },
+        {
+          "title": "Blades of Glory (revised version) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/blades of glory (revised version).a2m",
+          "bytes": 1301
+        },
+        {
+          "title": "Blades of Glory (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/blades of glory.a2m",
+          "bytes": 957
+        },
+        {
+          "title": "***Bonus round theme*** · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/bonus round theme.a2m",
+          "bytes": 620
+        },
+        {
+          "title": "Call To Duty · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/call to duty.a2m",
+          "bytes": 8869
+        },
+        {
+          "title": "\"Chivalry Honor\"  (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/chivalry honor.a2m",
+          "bytes": 2017
+        },
+        {
+          "title": "Conspiracy (Please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/conspiracy.a2m",
+          "bytes": 1174
+        },
+        {
+          "title": "Cool Cat (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/cool cat.a2m",
+          "bytes": 1141
+        },
+        {
+          "title": "Cool Down Time · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/cool down time.a2m",
+          "bytes": 978
+        },
+        {
+          "title": "Deception (Revised edition) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/deception (revised edition).a2m",
+          "bytes": 3757
+        },
+        {
+          "title": "Deep Down Low (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/deep down low.a2m",
+          "bytes": 1190
+        },
+        {
+          "title": "Dream 7 Max Slot Machine Bonus Theme · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/dream 7 max slot machine bonus theme.a2m",
+          "bytes": 1188
+        },
+        {
+          "title": "Dream 7 MAX (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/dream 7 max.a2m",
+          "bytes": 1347
+        },
+        {
+          "title": "\"Dream Among the Clouds Forever\" · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/dream among the clouds forever.a2m",
+          "bytes": 1162
+        },
+        {
+          "title": "\"Electronic Skiing\" (Please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/electronic skiing.a2m",
+          "bytes": 955
+        },
+        {
+          "title": "Enchanting Loop · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/enchanting loop.a2m",
+          "bytes": 471
+        },
+        {
+          "title": "\"Entertainment Warehouse\" · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/entertainment warehouse.a2m",
+          "bytes": 1080
+        },
+        {
+          "title": "Evil sounding loop · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/evil sounding loop.a2m",
+          "bytes": 600
+        },
+        {
+          "title": "Fifths Echo Rock · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/fifths echo rock.a2m",
+          "bytes": 1599
+        },
+        {
+          "title": "FRENZY!!! · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/frenzy!!!.a2m",
+          "bytes": 2486
+        },
+        {
+          "title": "Friendship · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/friendship.a2m",
+          "bytes": 1708
+        },
+        {
+          "title": "Frozen Over Heck (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/frozen over heck.a2m",
+          "bytes": 1900
+        },
+        {
+          "title": "Full Throttle (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/full throttle.a2m",
+          "bytes": 1180
+        },
+        {
+          "title": "Fun Land · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/fun land.a2m",
+          "bytes": 2007
+        },
+        {
+          "title": "Game Tutorial Theme · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/game tutorial theme.a2m",
+          "bytes": 913
+        },
+        {
+          "title": "Golden Bell Slot Machine bonus theme · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/golden bell slot machine bonus theme.a2m",
+          "bytes": 731
+        },
+        {
+          "title": "Here come the Teamsters! · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/here come the teamsters.a2m",
+          "bytes": 2163
+        },
+        {
+          "title": "HOV Lane · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/hov lane.a2m",
+          "bytes": 3185
+        },
+        {
+          "title": "In a Perfect World · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/in a perfect world.a2m",
+          "bytes": 5086
+        },
+        {
+          "title": "Inevitable Serenity · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/inevitable serenety.a2m",
+          "bytes": 1925
+        },
+        {
+          "title": "Lemmings level 4 (?) theme · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/lemmings level 4 theme.a2m",
+          "bytes": 1001
+        },
+        {
+          "title": "\"Look to the Horizon\" (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/look to the horizon.a2m",
+          "bytes": 1113
+        },
+        {
+          "title": "Lost Cause · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/lost cause.a2m",
+          "bytes": 1759
+        },
+        {
+          "title": "\"Lucky Sevens\" (please credit me!) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/lucky sevens.a2m",
+          "bytes": 1312
+        },
+        {
+          "title": "Manifest Destiny · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/manifest destiny.a2m",
+          "bytes": 2333
+        },
+        {
+          "title": "Marble City · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/marble city.a2m",
+          "bytes": 3589
+        },
+        {
+          "title": "Mario Star theme · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/mario star theme.a2m",
+          "bytes": 494
+        },
+        {
+          "title": "Mechanical Age (Please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/mechanical age.a2m",
+          "bytes": 1686
+        },
+        {
+          "title": "\"Mechanized Warfare\" (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/mechanized warfare.a2m",
+          "bytes": 1816
+        },
+        {
+          "title": "\"Metro in Transit\" (Please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/metro in transit.a2m",
+          "bytes": 1158
+        },
+        {
+          "title": "\"Moderately Speaking\" · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/moderately speaking.a2m",
+          "bytes": 2258
+        },
+        {
+          "title": "Never Say Never · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/never say never.a2m",
+          "bytes": 1576
+        },
+        {
+          "title": "\"No Choice but to Follow Them\" · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/no choice but to follow them.a2m",
+          "bytes": 1152
+        },
+        {
+          "title": "\"No Good Gofers\"  (Please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/no good gofers.a2m",
+          "bytes": 938
+        },
+        {
+          "title": "Oblivion Blast · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/oblivion blast.a2m",
+          "bytes": 1771
+        },
+        {
+          "title": "Obstacles of a Determined Mind · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/obstacles of a determinded mind.a2m",
+          "bytes": 1584
+        },
+        {
+          "title": "Oh the Irony! (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/oh the irony!.a2m",
+          "bytes": 855
+        },
+        {
+          "title": "One Heck Of An Adventure! · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/one heck of an adventure!.a2m",
+          "bytes": 2184
+        },
+        {
+          "title": "\"Race Through Cyberspace\" (original ed.) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/race through cyberspace (original ed.).a2m",
+          "bytes": 1820
+        },
+        {
+          "title": "\"Race Through Cyberspace\" revised edition · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/race through cyberspace (revised edition).a2m",
+          "bytes": 5329
+        },
+        {
+          "title": "\"Sinister Deception\" (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/sinister deception.a2m",
+          "bytes": 1616
+        },
+        {
+          "title": "Sitcom/game menu theme · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/sitcom - game menu theme.a2m",
+          "bytes": 1161
+        },
+        {
+          "title": "\"Skylight Central\" (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/skylight central.a2m",
+          "bytes": 1395
+        },
+        {
+          "title": "Sleep, Work, and Play (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/sleep, work, and play.a2m",
+          "bytes": 1506
+        },
+        {
+          "title": "SpacePlex · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/spaceplex.a2m",
+          "bytes": 2407
+        },
+        {
+          "title": "Spark Plug · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/spark plug.a2m",
+          "bytes": 2136
+        },
+        {
+          "title": "Stormy Weather · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/stormy weather.a2m",
+          "bytes": 1473
+        },
+        {
+          "title": "Suspicion · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/suspicion.a2m",
+          "bytes": 920
+        },
+        {
+          "title": "The 30 Blade Razor Commercial Theme · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the 30 blade razor commercial theme.a2m",
+          "bytes": 1286
+        },
+        {
+          "title": "\"The Apocalypse Starts at Sun Down\" · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the apocalypse starts at sun down.a2m",
+          "bytes": 1362
+        },
+        {
+          "title": "\"The Big Guns\"  (Please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the big guns.a2m",
+          "bytes": 1518
+        },
+        {
+          "title": "The Blizzard · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the blizzard.a2m",
+          "bytes": 3149
+        },
+        {
+          "title": "\"The Contrasts Between Good and Evil: · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the contrasts between good and evil - what we learn.a2m",
+          "bytes": 1911
+        },
+        {
+          "title": "The Day has Come · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the day has come.a2m",
+          "bytes": 1881
+        },
+        {
+          "title": "The Great Depression · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the great depression.a2m",
+          "bytes": 1584
+        },
+        {
+          "title": "The Happy Robin Theme · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the happy robin theme.a2m",
+          "bytes": 1628
+        },
+        {
+          "title": "The Hunter and the Hunted · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the hunter and the hunted.a2m",
+          "bytes": 2538
+        },
+        {
+          "title": "\"The Kelsey Song\" · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the kelsey song.a2m",
+          "bytes": 772
+        },
+        {
+          "title": "\"The Paparazzi\" (Please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the paparazzi.a2m",
+          "bytes": 2257
+        },
+        {
+          "title": "The Popcorn Song · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the popcorn song.a2m",
+          "bytes": 1215
+        },
+        {
+          "title": "\"The Sky is Sharp\"  (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/the sky is sharp.a2m",
+          "bytes": 1391
+        },
+        {
+          "title": "THEE Chiptune · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/thee chiptune.a2m",
+          "bytes": 1023
+        },
+        {
+          "title": "These Are The Days Of Our Lives · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/these are the days of our lives.a2m",
+          "bytes": 2208
+        },
+        {
+          "title": "Think Fast (please credit Me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/think fast.a2m",
+          "bytes": 1598
+        },
+        {
+          "title": "\"Time Will Tell\"  (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/time will tell.a2m",
+          "bytes": 1558
+        },
+        {
+          "title": "Torpedo Alley · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/torpedo alley.a2m",
+          "bytes": 1503
+        },
+        {
+          "title": "Treachery (Please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/treachery.a2m",
+          "bytes": 2158
+        },
+        {
+          "title": "Twisted Paradise (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/twisted paradise.a2m",
+          "bytes": 1649
+        },
+        {
+          "title": "\"Ultrviolet Sky\" · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/ultraviolet sky.a2m",
+          "bytes": 1588
+        },
+        {
+          "title": "\"Very Nice\" Pachislo Slot machine theme(s) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/very nice pachislo slot machine theme(s) (cover).a2m",
+          "bytes": 1378
+        },
+        {
+          "title": "\"Waves of Marine Life\" (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/waves of marine life.a2m",
+          "bytes": 1474
+        },
+        {
+          "title": "West Bound Engine (please credit me) · Brendan Bailey",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Brendan Bailey/west bound engine.a2m",
+          "bytes": 1516
+        },
+        {
+          "title": "newtune · Corona688",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Corona688/newtune.a2m",
+          "bytes": 1952
+        },
+        {
+          "title": "Adventure in jungle · DJ Speedstar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/DJ Speedstar/adventure in jungle.a2m",
+          "bytes": 2178
+        },
+        {
+          "title": "Come to dance · DJ Speedstar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/DJ Speedstar/come to dance.a2m",
+          "bytes": 1920
+        },
+        {
+          "title": "Move to the beat · DJ Speedstar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/DJ Speedstar/move to the beat.a2m",
+          "bytes": 2052
+        },
+        {
+          "title": "Music explosion · DJ Speedstar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/DJ Speedstar/music explosion.a2m",
+          "bytes": 2092
+        },
+        {
+          "title": "Remembrance · DJ Speedstar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/DJ Speedstar/remembrance.a2m",
+          "bytes": 2290
+        },
+        {
+          "title": "World of fantasy · DJ Speedstar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/DJ Speedstar/world of fantasy.a2m",
+          "bytes": 2228
+        },
+        {
+          "title": "new · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/1856 step.a2m",
+          "bytes": 15135
+        },
+        {
+          "title": "A L T A I R · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/a l t a i r.a2m",
+          "bytes": 17231
+        },
+        {
+          "title": "ACID TRACKER · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/acid tracker.a2m",
+          "bytes": 9172
+        },
+        {
+          "title": "ADR1FT · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/adr1ft.a2m",
+          "bytes": 2278
+        },
+        {
+          "title": "AQUARIUS · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/aquarius.a2m",
+          "bytes": 9974
+        },
+        {
+          "title": "cat people / show your lol · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/cat people-show your lol.a2m",
+          "bytes": 14275
+        },
+        {
+          "title": "new · Diode Milliampere",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Diode Milliampere/endless scroll.a2m",
+          "bytes": 23005
+        },
+        {
+          "title": "Greets Fly! · Diode Milliampere",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Diode Milliampere/greets fly!.a2m",
+          "bytes": 13129
+        },
+        {
+          "title": "new · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/keys.a2m",
+          "bytes": 26215
+        },
+        {
+          "title": "Milinda · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/milinda.a2m",
+          "bytes": 15028
+        },
+        {
+          "title": "MUTABLE SIGNS · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/mutable signs.a2m",
+          "bytes": 9432
+        },
+        {
+          "title": "no72 · Diode Milliampere",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Diode Milliampere/no72.a2m",
+          "bytes": 17033
+        },
+        {
+          "title": "NULL · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/null.a2m",
+          "bytes": 1133
+        },
+        {
+          "title": "oo9 · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/odd time.a2m",
+          "bytes": 4005
+        },
+        {
+          "title": "ON PLANET ZAXXON · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/on planet zaxxon.a2m",
+          "bytes": 5711
+        },
+        {
+          "title": "TORTEANDO · Diode Milliampere",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Diode Milliampere/phone.a2m",
+          "bytes": 2210
+        },
+        {
+          "title": "psg · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/psg.a2m",
+          "bytes": 9737
+        },
+        {
+          "title": "new · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/rip.a2m",
+          "bytes": 10315
+        },
+        {
+          "title": "Samsara · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/samsara.a2m",
+          "bytes": 17297
+        },
+        {
+          "title": "TORTEANDO · Diode Milliampere",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Diode Milliampere/squanchy.a2m",
+          "bytes": 19653
+        },
+        {
+          "title": "XMISSION · Diode Milliampere",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Diode Milliampere/xmission.a2m",
+          "bytes": 3790
+        },
+        {
+          "title": "Schwert und Skelett Mix · Drx",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Drx/schwert und skelett mix.a2m",
+          "bytes": 4512
+        },
+        {
+          "title": "Crazy Little Techno Beat · Encore",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Encore/crazy little techno beat.a2m",
+          "bytes": 3515
+        },
+        {
+          "title": "Eric Prydz vs Retarded Funk - Call On Me · Encore",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Encore/eric prydz vs retarded funk - call on me.a2m",
+          "bytes": 822
+        },
+        {
+          "title": "FM House (version II) · Encore",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Encore/fm house (version ii).a2m",
+          "bytes": 5022
+        },
+        {
+          "title": "FM House · Encore",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Encore/fm house.a2m",
+          "bytes": 3028
+        },
+        {
+          "title": "FM Tekno! · Encore",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Encore/fm tekno!.a2m",
+          "bytes": 3084
+        },
+        {
+          "title": "Forest · Encore",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Encore/forest.a2m",
+          "bytes": 2890
+        },
+        {
+          "title": "Howard Jones - What Is Love? · Encore",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Encore/howard jones - what is love.a2m",
+          "bytes": 11631
+        },
+        {
+          "title": "Karsten Obarski - AMEGAS · Encore",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Encore/karsten obarski - amegas.a2m",
+          "bytes": 2786
+        },
+        {
+          "title": "Kraftwerk - Computer World · Encore",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Encore/kraftwerk - computer world.a2m",
+          "bytes": 1324
+        },
+        {
+          "title": "The absence of Julia · Encore",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Encore/the absence of julia.a2m",
+          "bytes": 3806
+        },
+        {
+          "title": "lardossian synthesis · Ikuma",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Ikuma/lardossian synthesis.a2m",
+          "bytes": 1272
+        },
+        {
+          "title": "DRGWRRTT · Konakonaa",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Konakonaa/DRGWRRTT.A2M",
+          "bytes": 4211
+        },
+        {
+          "title": "DWRRCSLO · Konakonaa",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Konakonaa/DWRRCSLO.A2M",
+          "bytes": 2113
+        },
+        {
+          "title": "DWRRFILD · Konakonaa",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Konakonaa/DWRRFILD.A2M",
+          "bytes": 3194
+        },
+        {
+          "title": "Tales of the Eastern Sands · Konakonaa",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Konakonaa/EASTDSRT.A2M",
+          "bytes": 7071
+        },
+        {
+          "title": "The Eternal Warrior Awakes · Konakonaa",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Konakonaa/ETWARAWK.A2M",
+          "bytes": 37885
+        },
+        {
+          "title": "Kona-chan's laying with me at home :3 · Konakonaa",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Konakonaa/KONAHOME.A2M",
+          "bytes": 4211
+        },
+        {
+          "title": "Limit Break · Konakonaa",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Konakonaa/LIMITBRK.A2M",
+          "bytes": 10430
+        },
+        {
+          "title": "Lost in Space · Konakonaa",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Konakonaa/LOSTSPC.A2M",
+          "bytes": 5516
+        },
+        {
+          "title": "F-Zero - Mute City · Konakonaa",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Konakonaa/MUTECITY.A2M",
+          "bytes": 3467
+        },
+        {
+          "title": "SALTYGRV · Konakonaa",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Konakonaa/SALTYGRV.A2M",
+          "bytes": 6847
+        },
+        {
+          "title": "Las Vegas · Konakonaa",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Konakonaa/TG_VEGAS.A2M",
+          "bytes": 11019
+        },
+        {
+          "title": "Witching Dream (TH04: Lotus Land Story) · Konakonaa",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Konakonaa/TH04WDRM.A2M",
+          "bytes": 10427
+        },
+        {
+          "title": "Tales of Phantasia - The Second Act · Konakonaa",
+          "format": "A2M",
+          "channels": 20,
+          "file": "a2m/Konakonaa/TOP-2ACT.A2M",
+          "bytes": 11336
+        },
+        {
+          "title": "battletoads-surfcity-new1 · Konakonaa",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Konakonaa/battletoads-surfcity-new1.a2m",
+          "bytes": 3503
+        },
+        {
+          "title": "ff2-rebel-orch-pann · Konakonaa",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Konakonaa/ff2-rebel-orch-pann.a2m",
+          "bytes": 4823
+        },
+        {
+          "title": "kenseiden-stage1 · Konakonaa",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Konakonaa/kenseiden-stage1.a2m",
+          "bytes": 2063
+        },
+        {
+          "title": "pkmn-gsc-newbark · Konakonaa",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Konakonaa/pkmn-gsc-newbark.a2m",
+          "bytes": 3208
+        },
+        {
+          "title": "reflections · Konakonaa",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Konakonaa/reflections.a2m",
+          "bytes": 1904
+        },
+        {
+          "title": "Mega Man 3 Title · Kvee",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Kvee/mega man 3 title.a2m",
+          "bytes": 3086
+        },
+        {
+          "title": "Paradox #3 · Kvee",
+          "format": "A2M",
+          "channels": 10,
+          "file": "a2m/Kvee/paradox 3.a2m",
+          "bytes": 9904
+        },
+        {
+          "title": "The Sweetest Sin · Kvee",
+          "format": "A2M",
+          "channels": 15,
+          "file": "a2m/Kvee/the sweetest sin.a2m",
+          "bytes": 6855
+        },
+        {
+          "title": "where are you? · Kvee",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Kvee/where are you.a2m",
+          "bytes": 5451
+        },
+        {
+          "title": "ym3812 funk · Kvee",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Kvee/ym3812 funk.a2m",
+          "bytes": 3809
+        },
+        {
+          "title": "Grab Bag · MadBrain",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/MadBrain/grab bag.a2m",
+          "bytes": 8879
+        },
+        {
+          "title": "International crisis · MadBrain",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/MadBrain/international crisis.a2m",
+          "bytes": 5875
+        },
+        {
+          "title": "Oskari Leads the Investigation: Intro · MadBrain",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/MadBrain/oskari leads the investigation - intro.a2m",
+          "bytes": 9993
+        },
+        {
+          "title": "Oskari the Heimfanker · MadBrain",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/MadBrain/oskari the heimfanker.a2m",
+          "bytes": 21096
+        },
+        {
+          "title": "Oskari travels to a new galaxy · MadBrain",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/MadBrain/oskari travels to a new galaxy.a2m",
+          "bytes": 6860
+        },
+        {
+          "title": "Oskari wins the game! · MadBrain",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/MadBrain/oskari wins the game!.a2m",
+          "bytes": 6981
+        },
+        {
+          "title": "Oskari's returns to Soundblasterland · MadBrain",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/MadBrain/oskari's returns to soundblasterland.a2m",
+          "bytes": 17792
+        },
+        {
+          "title": "sinner · MadBrain",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/MadBrain/sinner.a2m",
+          "bytes": 2671
+        },
+        {
+          "title": "super mario bros level 1-2 · MadBrain",
+          "format": "A2M",
+          "channels": 4,
+          "file": "a2m/MadBrain/super mario bros level 1-2.a2m",
+          "bytes": 1036
+        },
+        {
+          "title": "weird sounding · MadBrain",
+          "format": "A2M",
+          "channels": 16,
+          "file": "a2m/MadBrain/weird sounding.a2m",
+          "bytes": 4470
+        },
+        {
+          "title": "` · MadBrain",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/MadBrain/whak.a2m",
+          "bytes": 2939
+        },
+        {
+          "title": "Analog Trip - River Wash 2008 Chip Compo · Malfunction",
+          "format": "A2M",
+          "channels": 8,
+          "file": "a2m/Malfunction/analog trip.a2m",
+          "bytes": 2632
+        },
+        {
+          "title": "Dancing on the glass (Riverwash 2015 Chip) · Malfunction",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Malfunction/dancing on the glass.a2m",
+          "bytes": 15739
+        },
+        {
+          "title": "FM-Tronikk (aka Altair Street Dancer) · Malfunction",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Malfunction/fm-tronikk (aka altair street dancer).a2m",
+          "bytes": 13363
+        },
+        {
+          "title": "Khaos? (4KB Intro Tune) · Malfunction",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Malfunction/khaos (4kb intro tune).a2m",
+          "bytes": 2488
+        },
+        {
+          "title": "KhAOS 2 (4KB Intro Zak) · Malfunction",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Malfunction/khaos 2 (4kb intro zak).a2m",
+          "bytes": 3208
+        },
+        {
+          "title": "Little Boring Trance · Malfunction",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Malfunction/little boring trance.a2m",
+          "bytes": 3588
+        },
+        {
+          "title": "Oldsk00l Songs - Chapter 001 · Malfunction",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Malfunction/oldsk00l songs - chapter 001.a2m",
+          "bytes": 2700
+        },
+        {
+          "title": "Oldsk00l Songs - Chapter 002 · Malfunction",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Malfunction/oldsk00l songs - chapter 002.a2m",
+          "bytes": 2570
+        },
+        {
+          "title": "OPL303 · Malfunction",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Malfunction/opl303.a2m",
+          "bytes": 18065
+        },
+        {
+          "title": "Pink chiptune · Malfunction",
+          "format": "A2M",
+          "channels": 4,
+          "file": "a2m/Malfunction/pink chiptune.a2m",
+          "bytes": 1561
+        },
+        {
+          "title": "Space Dive - Riverwash 2014 Chip Compo · Malfunction",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Malfunction/space dive.a2m",
+          "bytes": 7337
+        },
+        {
+          "title": "ceydip5ll-6 · Meritaehti",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Meritaehti/ceydip5ll-6.a2m",
+          "bytes": 9047
+        },
+        {
+          "title": "Corridors of Time · NAB622",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/NAB622/corridors of time.a2m",
+          "bytes": 6897
+        },
+        {
+          "title": "Rainbow Factory · NAB622",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/NAB622/rainbow factory.a2m",
+          "bytes": 20539
+        },
+        {
+          "title": "cracker · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/cracker.a2m",
+          "bytes": 2230
+        },
+        {
+          "title": "fresh · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/fresh.a2m",
+          "bytes": 4250
+        },
+        {
+          "title": "gummi björnarna · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/gummi bjornarna.a2m",
+          "bytes": 1970
+        },
+        {
+          "title": "imadick · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/imadick.a2m",
+          "bytes": 1436
+        },
+        {
+          "title": "kulje · Nula",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Nula/kulje.a2m",
+          "bytes": 2708
+        },
+        {
+          "title": "matkamies · Nula",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Nula/matkamies.a2m",
+          "bytes": 2422
+        },
+        {
+          "title": "menuloader · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/menuloader.a2m",
+          "bytes": 1936
+        },
+        {
+          "title": "onward · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/onward.a2m",
+          "bytes": 4933
+        },
+        {
+          "title": "\"POGROMA\" game loader · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/pogroma game loader.a2m",
+          "bytes": 2810
+        },
+        {
+          "title": "prehistorik · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/prehistorik (2nd version).a2m",
+          "bytes": 5916
+        },
+        {
+          "title": "prehistorik · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/prehistorik.a2m",
+          "bytes": 5920
+        },
+        {
+          "title": "psycho3x · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/psycho3x.a2m",
+          "bytes": 1754
+        },
+        {
+          "title": "psycho5 · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/psycho5.a2m",
+          "bytes": 1950
+        },
+        {
+          "title": "sparapaaczci · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/sparapaaczci.a2m",
+          "bytes": 1476
+        },
+        {
+          "title": "super mario · Nula",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Nula/super mario.a2m",
+          "bytes": 3398
+        },
+        {
+          "title": "unreal · Nula",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Nula/unreal.a2m",
+          "bytes": 1946
+        },
+        {
+          "title": "unreal2 · Nula",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Nula/unreal2.a2m",
+          "bytes": 2516
+        },
+        {
+          "title": "worms · Nula",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Nula/worms.a2m",
+          "bytes": 1270
+        },
+        {
+          "title": "zalza (gote gar pa tivoli) · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/zalza (gote gar pa tivoli).a2m",
+          "bytes": 1462
+        },
+        {
+          "title": "zandax · Nula",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Nula/zandax.a2m",
+          "bytes": 1810
+        },
+        {
+          "title": "zen-bowling · Nula",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Nula/zen-bowling.a2m",
+          "bytes": 1804
+        },
+        {
+          "title": "Bagel Bite Beats · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/bagel bite beats.a2m",
+          "bytes": 1578
+        },
+        {
+          "title": "Big Trouble in Little China · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/big trouble in little china.a2m",
+          "bytes": 7125
+        },
+        {
+          "title": "Bring the Pain · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/bring the pain.a2m",
+          "bytes": 3521
+        },
+        {
+          "title": "C3 COMP ENTRY · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/c3 comp entry.a2m",
+          "bytes": 1252
+        },
+        {
+          "title": "Enjoy the Violence · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/enjoy the violence.a2m",
+          "bytes": 4493
+        },
+        {
+          "title": "Enjoy this gift !! :) · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/enjoy this gift !!.a2m",
+          "bytes": 1541
+        },
+        {
+          "title": "Enjoy this gift! :) · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/enjoy this gift !.a2m",
+          "bytes": 1761
+        },
+        {
+          "title": "From \"Deaf Compo\" · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/from ''deaf compo''.a2m",
+          "bytes": 1466
+        },
+        {
+          "title": "Ghosts N Stuff (DEADMAU5 COVER) · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/ghosts n stuff (deadmau5 cover).a2m",
+          "bytes": 4820
+        },
+        {
+          "title": "I used to love her · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/i used to love her.a2m",
+          "bytes": 2601
+        },
+        {
+          "title": "Involuntary Surgery · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/involuntary surgery.a2m",
+          "bytes": 5790
+        },
+        {
+          "title": "Left Out · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/left out.a2m",
+          "bytes": 4877
+        },
+        {
+          "title": "The Complete Devastation of Planet Earth · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/the complete devastation of planet earth.a2m",
+          "bytes": 4192
+        },
+        {
+          "title": "The Lazy Gnome · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/the lazy gnome.a2m",
+          "bytes": 1769
+        },
+        {
+          "title": "Universal Health Scare · OxygenStar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/OxygenStar/universal health scare.a2m",
+          "bytes": 4313
+        },
+        {
+          "title": "Peter Gantar / Andromeda · Peter Gantar",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Peter Gantar/andromeda.a2m",
+          "bytes": 2396
+        },
+        {
+          "title": "1942 · Subz3ro",
+          "format": "A2M",
+          "channels": 16,
+          "file": "a2m/Subz3ro/1942.a2m",
+          "bytes": 1519
+        },
+        {
+          "title": "ALLOYRUN (REMASTERED VERSiON) · Subz3ro",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Subz3ro/alloyrun (remastered version).a2m",
+          "bytes": 3362
+        },
+        {
+          "title": "Class05 · Subz3ro",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Subz3ro/class05.a2m",
+          "bytes": 3980
+        },
+        {
+          "title": "Crack it · Subz3ro",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Subz3ro/crack it.a2m",
+          "bytes": 2586
+        },
+        {
+          "title": "D3LTA R3MiX · Subz3ro",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Subz3ro/d3lta r3mix.a2m",
+          "bytes": 2260
+        },
+        {
+          "title": "(* Remastered Version *) · Subz3ro",
+          "format": "A2M",
+          "channels": 16,
+          "file": "a2m/Subz3ro/fm63b-rv (remastered version).a2m",
+          "bytes": 4175
+        },
+        {
+          "title": "Intro-Tune Coop · Subz3ro",
+          "format": "A2M",
+          "channels": 9,
+          "file": "a2m/Subz3ro/intro-tune coop.a2m",
+          "bytes": 5032
+        },
+        {
+          "title": "PSYCHEDELiC SOUND SYNTHESiS · Subz3ro",
+          "format": "A2M",
+          "channels": 4,
+          "file": "a2m/Subz3ro/psychedelic sound synthesis.a2m",
+          "bytes": 621
+        },
+        {
+          "title": "ASYNTH · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/asynth.a2m",
+          "bytes": 7730
+        },
+        {
+          "title": "Aye yay yay · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/ayeyayay.a2m",
+          "bytes": 7236
+        },
+        {
+          "title": "Badlib · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/badlibdi.a2m",
+          "bytes": 7255
+        },
+        {
+          "title": "Boom · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/boom.a2m",
+          "bytes": 9274
+        },
+        {
+          "title": "Clear · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/clear.a2m",
+          "bytes": 4795
+        },
+        {
+          "title": "Cwakas · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/cwakas.a2m",
+          "bytes": 6105
+        },
+        {
+          "title": "Dead Leaves · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/deadleav.a2m",
+          "bytes": 4179
+        },
+        {
+          "title": "DiM · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/dim.a2m",
+          "bytes": 8933
+        },
+        {
+          "title": "Discworld · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/discwrld.a2m",
+          "bytes": 4694
+        },
+        {
+          "title": "FM Nexus 69 · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/fmnexus6.a2m",
+          "bytes": 7959
+        },
+        {
+          "title": "Gate Array · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/gatearry.a2m",
+          "bytes": 7559
+        },
+        {
+          "title": "Phased · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/phased.a2m",
+          "bytes": 4282
+        },
+        {
+          "title": "Rodent's Revenge · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/revenge.a2m",
+          "bytes": 9781
+        },
+        {
+          "title": "Rockin' Norm · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/rockin.a2m",
+          "bytes": 4806
+        },
+        {
+          "title": "Shop Hard · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/shophard.a2m",
+          "bytes": 8585
+        },
+        {
+          "title": "Suffer · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/suffer.a2m",
+          "bytes": 6000
+        },
+        {
+          "title": "Top Gear 2 · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/topgear2.a2m",
+          "bytes": 5708
+        },
+        {
+          "title": "Water Crystals · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/watercry.a2m",
+          "bytes": 5405
+        },
+        {
+          "title": "Yell at the Floor · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/yellatfl.a2m",
+          "bytes": 3994
+        },
+        {
+          "title": "Yellow Wednesday · Televicious",
+          "format": "A2M",
+          "channels": 18,
+          "file": "a2m/Televicious/yellowwe.a2m",
+          "bytes": 4165
+        }
+      ]
+    },
     {
       "id": "ahx",
       "name": "AHX / HivelyTracker",

@@ -55,7 +55,9 @@ let loaded = false;
 
 /** Absolute-from-the-app URL a manifest entry is served from. */
 export function demoSongUrl(song: DemoSong, base = DEMO_BASE_URL): string {
-  return `${base}/${song.file}`;
+  // Each segment encoded: a name may hold `#` (Kvee's "paradox #3.a2m"),
+  // which a raw URL would read as the start of a fragment.
+  return `${base}/${song.file.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 async function fetchManifest(base: string): Promise<DemoCollection[]> {

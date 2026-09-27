@@ -13,8 +13,10 @@
 # delete unwanted modules from public/demos/ by hand so the removal is a
 # reviewable part of the commit.
 #
-# .mod, .xm, .s3m, .ahx, .hvl, .sng and .sid are recognised, in a collection
+# .mod, .xm, .s3m, .ahx, .hvl, .sng, .sid and .a2m are recognised, in a collection
 # directory or one subdirectory below it (goattracker/<artist>/, sid/<composer>/).
+# An .a2m is listed only when a2m/meta.json names it: its song data is packed,
+# so that file (rust-wasm `a2m_tool demometa`) carries its title and tracks.
 # Anything else in the directory is left alone and stays out of the manifest.
 #
 #   scripts/refresh-demos.sh [source-root]

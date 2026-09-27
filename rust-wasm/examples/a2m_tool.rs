@@ -464,6 +464,44 @@ fn main() {
                 );
             }
         }
+        Some("demometa") => {
+            // demometa <root> <rel>...: what the demo browser lists for each
+            // module the player takes (title, composer, tracks, version), as
+            // JSON keyed by path; refused ones are left out and named on stderr.
+            // Read by scripts/build-demo-manifest.mjs (public/demos/a2m/meta.json).
+            use audio_processor::opl::a2::model::cp437;
+            let root = std::path::Path::new(&args[2]);
+            let json = |t: &str| {
+                let mut o = String::from("\"");
+                for ch in t.trim().chars() {
+                    match ch {
+                        '"' => o += "\\\"",
+                        '\\' => o += "\\\\",
+                        c if (c as u32) < 0x20 => o += &format!("\\u{:04x}", c as u32),
+                        c => o.push(c),
+                    }
+                }
+                o + "\""
+            };
+            let mut rows = Vec::new();
+            for rel in &args[3..] {
+                let song = parse(&std::fs::read(root.join(rel)).unwrap()).unwrap();
+                if let Some(why) = A2Engine::refusal(&song) {
+                    eprintln!("skip {rel}: {why}");
+                    continue;
+                }
+                let e = A2Engine::new(song.clone());
+                rows.push(format!(
+                    "  {}: {{ \"title\": {}, \"composer\": {}, \"tracks\": {}, \"version\": {} }}",
+                    json(rel),
+                    json(&cp437(&song.name)),
+                    json(&cp437(&song.composer)),
+                    e.track_count(),
+                    song.version
+                ));
+            }
+            println!("{{\n{}\n}}", rows.join(",\n"));
+        }
         Some("writes") => {
             // writes <file> <ticks> [quirks]: the engine's register writes in
             // trace-oracle's replay form: "T <refresh>" before each tick
