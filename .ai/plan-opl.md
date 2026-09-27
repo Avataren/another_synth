@@ -1,7 +1,7 @@
 # Plan: OPL tracking (one OPL2/OPL3 chip in Rust + S3M AdLib playback + Adlib Tracker II)
 
-Status: **IN PROGRESS. D0–D5 accepted as recommended (Morten, 2026-09-27). Corpus fetched
-(§4.1). O0–O3, O3b and O5 landed 2026-09-27 (landing records at the end).**
+Status: **IN PROGRESS. D0–D5 accepted as recommended, D6 decided (Morten, 2026-09-27). Corpus
+fetched (§4.1). O0–O3, O3b, O5 and O6 landed 2026-09-27 (landing records at the end).**
 Morten's brief 2026-09-27 (verbatim intent): *"I'm considering adding adlibtracker and opl
 support to s3m, do you think they could share the same virtual opl chip in rust? would be
 nice if it could also support opl2/3"*. Answer: yes. The shared surface is the **register
@@ -133,8 +133,8 @@ and warning about drums as the importer does now. (D2)
 
 - OPL3-native: 18 channels, 4-op, per-channel panning, percussion mode, plus its own
   instrument macros (FM register tables, arpeggio/vibrato tables) and an extended effect set.
-  **UNVERIFIED:** format versions and which of them are compressed (several packers across
-  versions). Pin both against real files and the reference source before O6.
+  Format versions and packers: pinned in O6 (landing record), against the authors'
+  `techinfo.htm` and every corpus file.
 - Where it lives: a Rust player next to the chip (`rust-wasm/src/opl/a2/`), with the same
   shape as `ahx/player.rs` and `sid/player.rs`. The macro and effect machinery ticks per
   frame and writes registers directly, so there is nothing to gain by routing it through the
@@ -155,7 +155,7 @@ and warning about drums as the importer does now. (D2)
 | Opal (Reality AdLib Tracker; used by OpenMPT for S3M OPL) | lightweight core reference | UNVERIFIED — reportedly public domain |
 | Nuked OPL3 | the cycle-accurate gold standard, **render-only oracle** | LGPL 2.1 — do not copy code |
 | DOSBox dbopl | — | GPL — out |
-| AdPlug (`adplay` to WAV) | render oracle for A2M and AdLib-only S3M | LGPL — run, do not copy |
+| AdPlug (`adplay` to WAV) | render oracle for A2M and AdLib-only S3M; in O6 also a black-box **unpacking and field oracle** (`rust-wasm/src/opl/a2/oracle/`) | LGPL — run, do not copy. `unlzh.c` was read under D6; only its five constants and the meaning of the flag byte were used |
 | OpenMPT | render oracle for mixed PCM+AdLib S3M | BSD-3 |
 | Adlib Tracker II source | A2M semantics | **GPL 3+ (MEASURED, 2026-09-27: `COPYING` in ivan-tat/at2, ijsf/at2) — out; not read** |
 | AT2 `techinfo.htm` (adlibtracker.net/files, the authors' own format document) | A2M/A2T layout per version, effect table | documentation, no license text; read (a description, not code) |
@@ -220,6 +220,13 @@ a smaller surface.
 - **D3 — A2M in the pattern editor, or playback only?** Recommend playback only first (Rust
   parser); editor support means a TS parser and a row model for 4-op/macros and is its own plan.
 - **D4 — OPL2 DAC quantisation.** Recommend skip; revisit only if an A/B shows it matters.
+- **D6 — the AT2 LZH packer (v12–14), which has no permissive description.** Morten chose
+  (c) relax D1, isolating the GPL/LGPL code in its own wasm module. **Outcome: no isolation
+  was needed.** AdPlug's `unlzh.c` states that it is Okumura's public-domain ar002 with five
+  constants changed. The file was read in full (allowed by D6), but only those numbers and the
+  meaning of its flag byte were used. The decoder is a port of a Python ar002 reader that had
+  been written from scratch before the file was opened. Everything in `opl/a2/` is MIT-side
+  code. If Morten prefers, the LZH module can still move to a separate wasm with no API change.
 - **D5 — default output rate path.** Recommend always running the chip at its native
   49 716 Hz and resampling, not clocking it at the output rate. This keeps envelope and LFO
   timing exact at 22.05/44.1/48 kHz.
@@ -555,7 +562,64 @@ report. That is the case for one of the three packers the corpus needs.
   of the stream: no valid parse). The next big-endian u16 looks like an lh5-style block symbol
   count (961 for a 245 760-byte near-empty pattern block ≈ 245760/256), so it is probably a
   relative of lh5 with a different table encoding (INFERRED).
-- **Decision needed (D6):** (a) refuse v12–14 (55 of 278 files) with a true one-liner; (b)
-  black-box clean-room: dump AdPlug's decoded blocks as an oracle and infer the packer from
-  input/output pairs, never reading its source; (c) relax D1 for this one decoder. Also confirm
-  that sixpack-kotlin (MIT port of an unlicensed original) is acceptable as the SixPack source.
+- **Decision (D6, Morten):** (c), with the GPL/LGPL part isolated. See §6 D6 and the O6 record
+  for how it turned out. The table above is superseded by the O6 record where they differ.
+
+### O6 — A2M parse (2026-09-27)
+
+- **Where:** `rust-wasm/src/opl/a2/`: `sixpack.rs`, `aplib.rs`, `lzh.rs` (decompressors),
+  `model.rs` (`parse`, `unpack`, `A2mSong`), `tests.rs`, and `oracle/` (the black-box
+  harnesses, `regen.sh`, and their outputs `blocks.tsv` and `song-info.tsv`). Not yet exported to
+  wasm, so the wasm binary only changed in its hash inputs.
+- **Result:** all **278/278** corpus files parse. There are no refusals, because every version in
+  the corpus (1, 5, 9–14) is supported. Refused truthfully in synthetic tests: A2T, versions 2/6
+  (LZW) and 3/7 (LZSS), which no file uses, versions > 14, zero or excess pattern counts, a
+  needed block with length 0, a block past EOF, trailing bytes, a packed stream that ends early,
+  or bytes left over in a block, a wrong unpacked size, and an overlong Pascal string. Versions
+  4 and 8 (stored) are accepted, but no file tests them.
+- **Packers, MEASURED** (each is byte-exact to AdPlug's depacker on every block, 999 blocks):
+  | Versions | Packer | How it differs from the textbook version |
+  |---|---|---|
+  | 1, 5 | Gage's SIXPACK | MAXCOPY 255 (Gage: 64); bits MSB-first from 16-bit LE words. Both from AdPlug's installed `sixdepack.h` enum and signature, then measured |
+  | 9–11 | aPLib | **The high-offset subtractor is always 3.** Current aPLib uses 2 right after a match. Found by diffing against the oracle: the file decodes correctly up to the first match that follows a match |
+  | 12–14 | ar002 (lh5 family) | DICBIT 14, THRESHOLD 2, CBIT 16, PBIT 14, TBIT 15. Container: flag byte (bit 0 "ultra", never set; refused), u32 LE unpacked size, stream. The stream's last code ends in the block's last byte |
+- **Where `techinfo.htm` is wrong (MEASURED):** v12 is the LZH container, not aPLib. v9
+  songdata uses v10's 42-character instrument names and offsets, and ends at `0x1128a5`, not
+  `0x111eaf`. Also MEASURED, where the document is silent: v1 headers carry leftover lengths
+  beyond the blocks the pattern count needs, which are ignored. Every pattern block unpacks to a
+  full set of 8 (or 16) patterns. Block lengths sum exactly to the file size in every file.
+- **Header check value (0x0a):** UNVERIFIED. It is not CRC-32 (standard, or without init or
+  final xor) of the packed blocks, the unpacked blocks, or the file after the header. So a
+  corrupt stream that stays well-formed parses (the mutation test shows 7 of 24 flips do,
+  caught only by the oracle hash). In the app that means a damaged file plays wrong instead of
+  being refused. Worth another try if a file ever needs it.
+- **Model** (`A2mSong`): names as raw bytes (`cp437()` for display); 250/255 instruments (11
+  FM bytes, panning, finetune, voice type); v9+ FM macros (255 × 255 steps), arpeggio and
+  vibrato macros; order as 128 raw bytes, since jump/end markers are the player's call;
+  tempo, speed, flags, pattern length, tracks, macro speed-up; v10 4-op track flags and lock
+  flags; v11 pattern names and disabled-FM-column table; v12 4-op instrument pairs; v14
+  rows-per-beat and tempo finetune. Patterns are normalised to row-major cells (note,
+  instrument, two effects). Effect numbers are stored as the file has them: v1–4 use 0–15 and
+  v5–8 use 0–35, which O7 has to map.
+- **Gate (`cargo test --lib opl::a2`, 6 tests, ≈ 7 s debug):**
+  1. every file parses (or would have to be listed with its one-line reason);
+  2. every unpacked block equals AdPlug's (size + FNV-1a-64, `blocks.tsv`);
+  3. title and author equal AdPlug's player API for all 278 files. Instrument names match
+     too, except 52 names in two exactly-shaped AdPlug display artifacts. A name whose length
+     byte is 32 comes back as 41 characters (32 plus stale slot bytes), and a name with
+     embedded NULs comes back cut at the NUL. AdPlug's instrument count is 250 before v9 and
+     the last instrument with FM data after, both confirmed;
+  4. tier-1 spot checks (every version plus *Corridors of Time*: name, composer, first 12
+     orders, tempo, speed, pattern length, tracks, and the first non-empty cell of the first
+     and last pattern). They are compared with a Python reading of AdPlug-unpacked blocks at
+     the doc's offsets, which is not this parser;
+  5. one flipped bit per packer at 8 bit positions: all 24 are caught (17 refusals, 7 by the
+     oracle hash);
+  6. refusal messages for the synthetic cases.
+- **Declared features** (header and instrument data, not pattern use): 4-op in 22 files,
+  percussion flag in 17, percussion instruments in 25, panning in 99. Per-version table in the
+  fixtures README.
+- **Oracle build:** AdPlug + libbinio from GitHub, static, under `.ai/adplug-oracle/prefix`
+  (gitignored); `ADPLUG_PREFIX=… rust-wasm/src/opl/a2/oracle/regen.sh` rebuilds both TSVs.
+  O7 will reuse the same build as its render oracle.
+- **Not in O6:** the player (O7), wasm exports, A2T, and LZW/LZSS (versions 2/3/6/7).

@@ -98,5 +98,17 @@ Blaster 16 CT2290** (an OPL3). It is too big to vendor (24 MB). A local copy is 
 real-hardware render in the corpus, so it is the A/B reference for the chip core and the
 A2M player.
 
-Which A2M files use 4-op, percussion mode or OPL3 stereo is not yet known. The O6 parser
-should record that and extend this table.
+What the A2M files declare (O6 parser, 2026-09-27). This counts header flags and
+instrument data, not whether a pattern plays them:
+
+| Version | Files | 4-op (tracks or instrument pairs) | Percussion flag | Percussion instruments | Panning (instrument, lock or macro) |
+|---|---|---|---|---|---|
+| 1 | 11 | 0 | 0 | 0 | 0 |
+| 5 | 27 | 0 | 0 | 0 | 13 |
+| 9 | 38 | 0 | 1 | 0 | 2 |
+| 10 | 1 | 0 | 0 | 0 | 1 |
+| 11 | 146 | 13 | 6 | 13 | 40 |
+| 12 | 8 | 0 | 5 | 4 | 6 |
+| 13 | 17 | 1 | 0 | 1 | 12 |
+| 14 | 30 | 8 | 5 | 7 | 25 |
+| all | 278 | 22 | 17 | 25 | 99 |
