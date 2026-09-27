@@ -135,8 +135,6 @@ struct Column {
     slide_mem: u8,
     /// The last plain arpeggio's parameter, for 18 and 19.
     arp_mem: u8,
-    /// The last non-empty effect and parameter in this column.
-    last_used: (u8, u8),
     /// Retrigger (15, 1A) tick counter.
     retrig_count: u8,
     /// Tremor (17): ticks into the current on or off stretch, and whether
@@ -165,6 +163,9 @@ struct Column {
     /// an empty row it carries on, after any other effect, a one-shot
     /// included, it does nothing and ignores its parameter).
     porta_on: bool,
+    /// A global slide (2E/2F) from an earlier track's same column, which
+    /// runs here on this row because this column is empty (MEASURED).
+    glide: (u8, u8),
     /// Tone portamento target (AT2 `porta_table.freq`): set only by a note
     /// with 03 in this column; 05 and 10 slide to the last one.
     porta_target: u16,
@@ -238,6 +239,10 @@ struct Track {
     /// Arpeggio and vibrato macro tables in use (1-based, 0 none).
     arp_table: u8,
     vib_table: u8,
+    /// 63 minus the level last written by a volume change, modulator and
+    /// carrier (AT2 `modulator_vol`/`carrier_vol`; an instrument load or
+    /// ZF0 does not count). Both 0: the global volume passes it by.
+    loud: [u8; 2],
 }
 
 /// A running instrument macro (FM register, arpeggio or vibrato table).
@@ -344,7 +349,36 @@ pub struct A2Engine {
 }
 
 impl A2Engine {
+    /// Why this song cannot be played, checked at load: the player refuses
+    /// rather than play silence (plan O7, step 5).
+    pub fn refusal(song: &A2mSong) -> Option<String> {
+        let first = song.order.iter().position(|&o| o < 0x80);
+        match first {
+            None => Some(
+                "its order list holds only jump markers, no pattern to play \
+                 (an instrument collection saved as a song)"
+                    .into(),
+            ),
+            Some(i)
+                if song.order[i] as usize >= song.patterns.len() + song.spare_patterns.len() =>
+            {
+                Some(format!(
+                    "order {i} names pattern {}, and the file holds {}",
+                    song.order[i],
+                    song.patterns.len() + song.spare_patterns.len()
+                ))
+            }
+            // A jump chain from order 0 that never reaches a pattern.
+            _ if Self::new(song.clone()).ended => {
+                Some("its order list loops through jump markers without reaching a pattern".into())
+            }
+            _ => None,
+        }
+    }
+
     pub fn new(mut song: A2mSong) -> A2Engine {
+        let spare = std::mem::take(&mut song.spare_patterns);
+        song.patterns.extend(spare);
         // A "fixed" note (0x90 + note, v9+) plays as the note; the flag only
         // stops the editor from transposing it (AT2 `play_line`).
         for cell in song.patterns.iter_mut().flat_map(|p| p.cells.iter_mut()) {
@@ -561,7 +595,7 @@ impl A2Engine {
             l
         };
         let v = (self.tracks[u].fm[2 + op] & 0xc0) | self.scaled(rel);
-        out.write(0x40 + r, v);
+        self.put_level(u, op, r, v, out);
     }
 
     /// 0xBD: tremolo depth (flag bit 3), vibrato depth (bit 4) and rhythm
@@ -769,17 +803,15 @@ impl A2Engine {
                 if !matches!(fx, fx::RETRIG | fx::MULTI_RETRIG) {
                     col.retrig_count = 0;
                 }
-                // Only effects that keep running count as the column's last
-                // effect; one-shot ones (0C, 0F, Z..., MEASURED for 0C) leave
-                // it (AT2 `last_effect` is taken from `effect_table`).
-                if (fx, param) != (0, 0) && !one_shot(fx, param) {
-                    let retrig = |(f, p): (u8, u8)| {
-                        (f == fx::RETRIG && p != 0) || (f == fx::MULTI_RETRIG && p >> 4 != 0)
-                    };
-                    if retrig((fx, param)) && !retrig(col.last_used) {
-                        col.retrig_count = 1;
-                    }
-                    col.last_used = (fx, param);
+                // MEASURED: a retrigger counts from 1 when the column's last
+                // effect (AT2 `last_effect`, as the row starts) was not one:
+                // after a one-shot that followed a running effect, yes; after
+                // a one-shot that followed empty rows, no (psycho3x).
+                let retrig = |(f, p): (u8, u8)| {
+                    (f == fx::RETRIG && p != 0) || (f == fx::MULTI_RETRIG && p >> 4 != 0)
+                };
+                if retrig((fx, param)) && !retrig((col.table_fx, col.table_param)) {
+                    col.retrig_count = 1;
                 }
                 match fx {
                     fx::SLIDE_UP | fx::SLIDE_DOWN | fx::FINE_UP | fx::FINE_DOWN => {
@@ -820,6 +852,24 @@ impl A2Engine {
         for c in 0..2 {
             for (t, cell) in cells.iter().enumerate() {
                 self.row_effect(t, c, cell, out);
+            }
+        }
+        // MEASURED: a global slide also runs, for its row, on every later
+        // track whose same column is free: empty, an extended command (23,
+        // 24, 29) or a 03 that does not run. Current AT2 gives it to every
+        // later track; play follows AdPlug.
+        for c in 0..2 {
+            let mut glide = (0, 0);
+            for (t, cell) in cells.iter().enumerate() {
+                let e = cell.effects[c];
+                if matches!(e.0, fx::GLOBAL_SLIDE_UP | fx::GLOBAL_SLIDE_DOWN) {
+                    glide = e;
+                }
+                let col = &mut self.tracks[t].cols[c];
+                let free = e == (0, 0)
+                    || matches!(e.0, fx::EXTENDED | fx::EXTENDED2 | fx::EXTENDED3)
+                    || (e.0 == fx::PORTA && !col.porta_on);
+                col.glide = if free { glide } else { (0, 0) };
             }
         }
         for (t, cell) in cells.iter().enumerate() {
@@ -1049,8 +1099,8 @@ impl A2Engine {
         let f = self.tracks[t].freq;
         out.write(0xa0 + ch, f as u8);
         out.write(0xb0 + ch, (f >> 8) as u8);
-        self.share_pitch(t);
         self.tracks[t].key_on = false;
+        self.share_pitch(t);
         self.tracks[t].keyed_off = true;
         self.tracks[t].forced_reload = true;
     }
@@ -1081,7 +1131,9 @@ impl A2Engine {
 
     fn write_global_levels(&mut self, out: &mut impl RegisterSink) {
         for u in 0..self.tracks_in_use() {
-            if self.tracks[u].instrument != 0 {
+            // AT2 `set_global_volume` passes by a track whose last levels
+            // were both silent (MEASURED at a song restart).
+            if self.tracks[u].loud != [0, 0] {
                 if self.additive(u) {
                     self.write_mod_level(u, out);
                 }
@@ -1175,6 +1227,13 @@ impl A2Engine {
         scale_level(tl, self.global_volume)
     }
 
+    /// A volume write to operator `op` (0 modulator, 1 carrier) of track
+    /// `t` at register offset `r`.
+    fn put_level(&mut self, t: usize, op: usize, r: u16, v: u8, out: &mut impl RegisterSink) {
+        self.tracks[t].loud[op] = 63 - (v & 0x3f);
+        out.write(0x40 + r, v);
+    }
+
     fn write_volume(&mut self, t: usize, out: &mut impl RegisterSink) {
         let tr = self.tracks[t];
         self.write_levels(t, tr.vol_mod, tr.vol_car, out);
@@ -1238,8 +1297,12 @@ impl A2Engine {
     fn write_levels(&mut self, t: usize, tl_mod: u8, tl_car: u8, out: &mut impl RegisterSink) {
         let (m, c) = self.ops(t);
         let tr = self.tracks[t];
-        out.write(0x40 + m, (tr.fm[2] & 0xc0) | self.mod_out(t, tl_mod));
-        out.write(0x40 + c, (tr.fm[3] & 0xc0) | self.car_out(t, tl_car));
+        let (vm, vc) = (
+            (tr.fm[2] & 0xc0) | self.mod_out(t, tl_mod),
+            (tr.fm[3] & 0xc0) | self.car_out(t, tl_car),
+        );
+        self.put_level(t, 0, m, vm, out);
+        self.put_level(t, 1, c, vc, out);
     }
 
     /// Writes the levels that follow the global volume: the carrier, then
@@ -1254,13 +1317,15 @@ impl A2Engine {
     fn write_mod_level(&mut self, t: usize, out: &mut impl RegisterSink) {
         let (m, _) = self.ops(t);
         let tr = self.tracks[t];
-        out.write(0x40 + m, (tr.fm[2] & 0xc0) | self.mod_out(t, tr.vol_mod));
+        let v = (tr.fm[2] & 0xc0) | self.mod_out(t, tr.vol_mod);
+        self.put_level(t, 0, m, v, out);
     }
 
     fn write_car_level(&mut self, t: usize, out: &mut impl RegisterSink) {
         let (_, c) = self.ops(t);
         let tr = self.tracks[t];
-        out.write(0x40 + c, (tr.fm[3] & 0xc0) | self.car_out(t, tr.vol_car));
+        let v = (tr.fm[3] & 0xc0) | self.car_out(t, tr.vol_car);
+        self.put_level(t, 1, c, v, out);
     }
 
     /// AT2 `nFreq(note - 1) + finetune`: the finetune is added to block and
@@ -1285,14 +1350,21 @@ impl A2Engine {
             let f = self.tracks[t].freq;
             out.write(0xa0 + ch, f as u8);
             out.write(0xb0 + ch, (f >> 8) as u8);
-            self.share_pitch(t);
             self.tracks[t].key_on = false;
+            self.share_pitch(t);
             self.tracks[t].keyed_off = true;
-            // MEASURED: a note off also restarts the retrigger count and an
-            // arpeggio.
+            // MEASURED: a note off restarts an arpeggio on its own row (AT2
+            // reads a key-off as the last note with the key-off flag; rows
+            // without an arpeggio keep its step). A retrigger keeps counting.
             for col in self.tracks[t].cols.iter_mut() {
-                col.retrig_count = 0;
-                col.arp_phase = 0;
+                if (col.fx == fx::ARPEGGIO && col.param != 0)
+                    || matches!(
+                        col.fx,
+                        fx::EXTRA_FINE_ARP | fx::ARP_VSLIDE | fx::ARP_VSLIDE_FINE
+                    )
+                {
+                    col.arp_phase = 0;
+                }
             }
             self.release_macros(t);
             return;
@@ -1340,6 +1412,14 @@ impl A2Engine {
             && cols
                 .iter()
                 .any(|c| matches!(c.fx, fx::SWAP_ARP | fx::SWAP_VIB));
+        // AT2 `output_note` also gives the note to track t-1 when t is in a
+        // 4-op pair: its partner for the second track, but for the first
+        // the previous track, whose key-off it forgets (MEASURED).
+        if t > 0 && self.pair(t).is_some() {
+            let n = self.tracks[t].note;
+            self.tracks[t - 1].note = n;
+            self.tracks[t - 1].keyed_off = false;
+        }
         let tr = &mut self.tracks[t];
         tr.keyed_off = false;
         tr.freq = freq;
@@ -1363,6 +1443,9 @@ impl A2Engine {
         out.write(0xa0 + ch, freq as u8);
         out.write(0xb0 + ch, 0x20 | (freq >> 8) as u8);
         self.share_pitch(t);
+        // AT2 `output_note` ends in `change_frequency`: the vibrato table
+        // restarts around the new pitch (MEASURED for a porta key-on).
+        self.tracks[t].pitch_touched = true;
         if restart && !keep {
             self.start_macros(t);
         } else if keep {
@@ -1379,7 +1462,10 @@ impl A2Engine {
         tr.vib_macro = MacroState::default();
         tr.arp_note = tr.note;
         // MEASURED: AdPlug keeps macros only up to the last instrument
-        // with FM data (its instrument count); later ones never run.
+        // with FM data (its instrument count); later ones never run, and
+        // like an instrument without tables they stop the track's tables.
+        tr.arp_table = 0;
+        tr.vib_table = 0;
         if ins > self.last_fm_instrument {
             return;
         }
@@ -1462,12 +1548,24 @@ impl A2Engine {
         }
     }
 
+    /// A pitch set by an effect or the arpeggio table (AT2
+    /// `change_frequency`): the vibrato table restarts around it, in a 4-op
+    /// pair on both tracks (MEASURED).
     fn write_freq(&mut self, t: usize, freq: u16, out: &mut impl RegisterSink) {
+        self.tracks[t].pitch_touched = true;
+        if let Some((a, b)) = self.pair(t) {
+            self.tracks[if t == a { b } else { a }].pitch_touched = true;
+        }
+        self.put_freq(t, freq, out);
+    }
+
+    /// A pitch write that leaves the vibrato table alone (AT2 `change_freq`,
+    /// used by the vibrato table itself).
+    fn put_freq(&mut self, t: usize, freq: u16, out: &mut impl RegisterSink) {
         let freq = freq & 0x1fff;
         let ch = self.key_reg(t);
         let key = if self.tracks[t].key_on { 0x20 } else { 0 };
         self.tracks[t].out_freq = freq;
-        self.tracks[t].pitch_touched = true;
         out.write(0xa0 + ch, freq as u8);
         out.write(0xb0 + ch, key | (freq >> 8) as u8);
         self.share_pitch(t);
@@ -1514,7 +1612,7 @@ impl A2Engine {
                 self.tracks[t].vol_car = tl;
                 let (m, _) = self.ops(t);
                 let v = (self.tracks[t].fm[2] & 0xc0) | self.mod_out(t, tl);
-                out.write(0x40 + m, v);
+                self.put_level(t, 0, m, v, out);
             }
             fx::SET_INS_VOL if self.locked_pair(t).is_some() => {
                 // MEASURED: each output operator keeps 63 - v as its level
@@ -1698,7 +1796,6 @@ impl A2Engine {
         // `change_frequency` resets the vibrato table).
         let touched = std::mem::take(&mut self.tracks[t].pitch_touched);
         self.run_vib_macro(t, touched, out);
-        self.tracks[t].pitch_touched = false;
     }
 
     fn run_fm_macro(&mut self, t: usize, out: &mut impl RegisterSink) {
@@ -1915,7 +2012,7 @@ impl A2Engine {
         };
         let note = self.tracks[t].arp_note & 0x7f;
         let f = if v & 0x80 != 0 {
-            self.note_freq(t, (v & 0x7f).clamp(1, 96))
+            self.note_freq(t, (v & 0x7f).clamp(1, 97))
         } else if v == 0 || add == 0 {
             // MEASURED: before any note (a delayed note's instrument starts
             // the table) the base is note 0, which AdPlug plays as the top
@@ -1926,7 +2023,7 @@ impl A2Engine {
                 self.note_freq(t, note)
             }
         } else {
-            self.note_freq(t, (note + (add & 0x7f)).clamp(1, 96))
+            self.note_freq(t, (note + (add & 0x7f)).clamp(1, 97))
         };
         self.tracks[t].freq = f;
         self.write_freq(t, f, out);
@@ -1995,7 +2092,7 @@ impl A2Engine {
             d => shift_down(base, (-(d as i16)) as u16).max(FREQ_MIN),
         } & 0x1fff;
         tr.freq = f;
-        self.write_freq(t, f, out);
+        self.put_freq(t, f, out);
     }
 
     /// The Z (0x23) commands.
@@ -2070,8 +2167,8 @@ impl A2Engine {
                     out.write(0xb0 + ch, 0);
                     out.write(0xa0 + ch, f as u8);
                     out.write(0xb0 + ch, 0x20 | (f >> 8) as u8);
-                    self.share_pitch(t);
                     self.tracks[t].key_on = true;
+                    self.share_pitch(t);
                 }
             }
             _ => match v {
@@ -2151,7 +2248,11 @@ impl A2Engine {
     fn tick_effects(&mut self, t: usize, xf: bool, out: &mut impl RegisterSink) {
         for c in 0..2 {
             let col = self.tracks[t].cols[c];
-            let (fx, param) = (col.fx, col.param);
+            let (fx, param) = if col.glide != (0, 0) {
+                col.glide
+            } else {
+                (col.fx, col.param)
+            };
             let first = self.row_tick == 0;
 
             let mem = col.slide_mem as i32;
@@ -2191,18 +2292,8 @@ impl A2Engine {
                 fx::EXTRA_FINE_ARP if xf => self.arpeggio(t, c, param, out),
                 fx::EXTRA_FINE_VIB if xf => self.vibrato(t, c, out),
                 fx::EXTRA_FINE_TREM if xf => self.tremolo(t, c, out),
-                fx::GLOBAL_SLIDE_UP | fx::GLOBAL_SLIDE_DOWN => {
-                    let by = if fx == fx::GLOBAL_SLIDE_UP {
-                        param as i32
-                    } else {
-                        -(param as i32)
-                    };
-                    for u in 0..self.tracks_in_use() {
-                        if self.tracks[u].freq != 0 {
-                            self.slide(u, by, out);
-                        }
-                    }
-                }
+                fx::GLOBAL_SLIDE_UP => self.slide(t, param as i32, out),
+                fx::GLOBAL_SLIDE_DOWN => self.slide_down(t, param, out),
                 fx::ARPEGGIO if param != 0 => self.arpeggio(t, c, param, out),
                 fx::SLIDE_UP => self.slide(t, param as i32, out),
                 fx::SLIDE_DOWN => self.slide_down(t, param, out),
@@ -2279,6 +2370,13 @@ impl A2Engine {
             }
             self.write_scaled_levels(t, out);
         }
+        // After a key-off AT2 passes the note with its key-off flag, out of
+        // range: the pitch is only rewritten (MEASURED).
+        if self.tracks[t].keyed_off {
+            let f = self.tracks[t].freq;
+            self.write_freq(t, f, out);
+            return;
+        }
         // MEASURED: it strikes the row note again, at the note's own pitch.
         let note = self.tracks[t].note;
         let f = if note != 0 {
@@ -2292,8 +2390,8 @@ impl A2Engine {
         out.write(0xb0 + ch, 0);
         out.write(0xa0 + ch, f as u8);
         out.write(0xb0 + ch, 0x20 | (f >> 8) as u8);
-        self.share_pitch(t);
         self.tracks[t].key_on = true;
+        self.share_pitch(t);
         // AT2 `output_note` with restart_macro: the instrument's tables start
         // again, unless ZFF is on the row (MEASURED).
         if note != 0 {
@@ -2327,10 +2425,11 @@ impl A2Engine {
             let (m, car) = self.ops(t);
             let tr = &mut self.tracks[t];
             tr.vol_car = 63;
-            out.write(0x40 + car, (tr.fm[3] & 0xc0) | 0x3f);
+            let (vc, vm) = ((tr.fm[3] & 0xc0) | 0x3f, (tr.fm[2] & 0xc0) | 0x3f);
+            self.put_level(t, 1, car, vc, out);
             if additive {
-                tr.vol_mod = 63;
-                out.write(0x40 + m, (tr.fm[2] & 0xc0) | 0x3f);
+                self.tracks[t].vol_mod = 63;
+                self.put_level(t, 0, m, vm, out);
             }
         } else if col.tremor_off && col.tremor_count > off {
             col.tremor_off = false;
@@ -2364,7 +2463,7 @@ impl A2Engine {
             return tr.freq;
         }
         let n = (tr.note & 0x7f) + add;
-        self.note_freq(t, n.min(96))
+        self.note_freq(t, n.min(97))
     }
 
     fn slide(&mut self, t: usize, by: i32, out: &mut impl RegisterSink) {
@@ -2437,6 +2536,12 @@ impl A2Engine {
         };
         if let Some(f) = f {
             self.write_freq(t, f, out);
+            // AT2 puts back only this track's base pitch: in a 4-op pair
+            // the other track's base keeps the vibrato's pitch (MEASURED).
+            if let Some((a, b)) = self.pair(t) {
+                let o = if t == a { b } else { a };
+                self.tracks[o].freq = f;
+            }
         }
     }
 
@@ -2457,9 +2562,11 @@ impl A2Engine {
         let m = (tr.vol_mod as i32 + by).clamp(0, 63) as u8;
         let car = (tr.vol_car as i32 + by).clamp(0, 63) as u8;
         let (mr, cr) = self.ops(t);
-        out.write(0x40 + cr, (tr.fm[3] & 0xc0) | self.car_out(t, car));
+        let v = (tr.fm[3] & 0xc0) | self.car_out(t, car);
+        self.put_level(t, 1, cr, v, out);
         if self.additive(t) || self.single_op(t).is_some() {
-            out.write(0x40 + mr, (tr.fm[2] & 0xc0) | self.mod_out(t, m));
+            let v = (tr.fm[2] & 0xc0) | self.mod_out(t, m);
+            self.put_level(t, 0, mr, v, out);
         }
     }
 

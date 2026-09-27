@@ -327,6 +327,10 @@ pub struct A2mSong {
     pub tempo_finetune: Option<i16>,
     /// `patterns.len()` is the header's pattern count.
     pub patterns: Vec<Pattern>,
+    /// The rest of the last pattern block, past the header's count. An order
+    /// may name one, and AdPlug plays it from the block (MEASURED, Nula's
+    /// `cracker.a2m`).
+    pub spare_patterns: Vec<Pattern>,
 }
 
 /// Reads a Pascal string: a length byte then `max` bytes of room.
@@ -356,7 +360,12 @@ pub fn parse(file: &[u8]) -> Result<A2mSong, A2mError> {
     let (version, npat, blocks) = unpack(file)?;
     let lay = layout(version)?;
     let mut song = songdata(version, &blocks[0])?;
-    song.patterns = patterns(&lay, npat, &blocks[1..]);
+    song.patterns = patterns(
+        &lay,
+        npat.div_ceil(lay.patterns_per_block) * lay.patterns_per_block,
+        &blocks[1..],
+    );
+    song.spare_patterns = song.patterns.split_off(npat);
     Ok(song)
 }
 
@@ -501,6 +510,7 @@ fn songdata(version: u8, d: &[u8]) -> Result<A2mSong, A2mError> {
         rows_per_beat: None,
         tempo_finetune: None,
         patterns: Vec::new(),
+        spare_patterns: Vec::new(),
     };
 
     if version <= 8 {
