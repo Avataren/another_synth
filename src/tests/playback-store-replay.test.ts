@@ -178,6 +178,8 @@ const fakeSongBank = {
     songBankCalls.push('allNotesOff');
   },
   notesOffForTrack: () => undefined,
+  isOplInstrument: () => false,
+  setOplTrackAudibility: () => undefined,
   cutAllVoicesAtTime: () => undefined,
   setUserMasterVolume: () => undefined,
   setMasterVolume: () => undefined,

@@ -206,8 +206,8 @@ describe('the other formats list as before', () => {
     expect(name(slot({ patchId: 'p', patchName: 'Instrument 07', instrumentType: 'sampler', instrumentFormat: 'protracker' }))).toBe('Instrument 07');
     expect(listsSongInstrument(slot({ patchId: 'p', instrumentType: 'sampler', instrumentFormat: 'protracker' }))).toBe(false);
     expect(name(slot({ patchId: 'p', patchName: 'Lead' }))).toBe('Lead');
-    // An OPL instrument has no patch and stays dimmed, as before.
-    expect(listsSongInstrument(slot({ instrumentType: 'opl', instrumentFormat: 's3m', oplData: {} as NonNullable<InstrumentSlot['oplData']> }))).toBe(false);
+    // An OPL instrument has no patch, but the OPL chip plays it (O5): filled, not dimmed.
+    expect(listsSongInstrument(slot({ instrumentType: 'opl', instrumentFormat: 's3m', oplData: {} as NonNullable<InstrumentSlot['oplData']> }))).toBe(true);
     // A SID slot: its name, else its number.
     expect(name(slot({ instrumentFormat: 'sid', instrumentName: 'Bass' }))).toBe('Bass');
     expect(name(slot({ instrumentFormat: 'sid' }))).toBe('Instrument 03');

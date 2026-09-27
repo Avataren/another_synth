@@ -652,7 +652,7 @@
                   empty: !slot.patchId && !listsSongInstrument(slot),
                   'mod-instrument': !!instrumentBadgeLabel(slot),
                 }"
-                :title="slot.patchId || isAhxSlot(slot) ? `Bank: ${slot.bankName}` : ''"
+                :title="slot.patchId || isAhxSlot(slot) || isOplSlot(slot) ? `Bank: ${slot.bankName}` : ''"
                 @click="setActiveInstrument(slot.slot)"
               >
                 <div class="slot-number">
@@ -747,7 +747,7 @@
                     :decimals="2"
                     scale="mini"
                     :unitFunc="formatGainAsDb"
-                    :disable="isAhxSlot(slot) || isSidSong"
+                    :disable="isAhxSlot(slot) || isOplSlot(slot) || isSidSong"
                     @update:model-value="onSlotVolumeChange(slot.slot, $event)"
                   />
                 </div>
@@ -1127,6 +1127,7 @@ import {
   canEditSlot,
   instrumentBadgeLabel,
   isAhxSlot,
+  isOplSlot,
   listsSongInstrument,
 } from 'src/audio/tracker/instrument-types';
 

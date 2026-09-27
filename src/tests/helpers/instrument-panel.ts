@@ -6,7 +6,7 @@ import { compile } from '@vue/compiler-dom';
 import { mount } from '@vue/test-utils';
 import { expect } from 'vitest';
 import { formatInstrumentId } from '@another-synth/tracker-playback';
-import { canEditSlot, instrumentBadgeLabel, isAhxSlot, listsSongInstrument } from 'src/audio/tracker/instrument-types';
+import { canEditSlot, instrumentBadgeLabel, isAhxSlot, isOplSlot, listsSongInstrument } from 'src/audio/tracker/instrument-types';
 import { useTrackerInstruments, type TrackerInstrumentsContext } from 'src/composables/useTrackerInstruments';
 import { useMobileLayout } from 'src/composables/useMobileLayout';
 import { TOTAL_PAGES, useTrackerStore } from 'src/stores/tracker-store';
@@ -81,6 +81,7 @@ export function mountInstrumentPanel(mobilePanel: 'instruments' | 'song' | null,
         // The page's real display logic.
         formatInstrumentId,
         isAhxSlot,
+        isOplSlot,
         instrumentBadgeLabel,
         canEditSlot,
         listsSongInstrument,

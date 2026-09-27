@@ -8,7 +8,7 @@ import {
   type FormatProfile,
 } from '@another-synth/tracker-playback';
 import type { PitchModel } from '@another-synth/tracker-playback';
-import type { TrackerSink } from '@another-synth/tracker-playback';
+import type { PitchSource, TrackerSink } from '@another-synth/tracker-playback';
 import InstrumentV2 from 'src/audio/instrument-v2';
 import ModInstrument from 'src/audio/mod-instrument';
 import { WorkletPool } from 'src/audio/worklet-pool';
@@ -30,6 +30,7 @@ import {
 import { TrackVoiceRegistry } from './track-voice-registry';
 import type { BankInstrument } from './bank-instrument';
 import { debugLog } from 'src/diagnostics/debug-log';
+import { OplOutput, type OplSongInfo } from './opl-output';
 
 export interface SongBankSlot {
   instrumentId: string;
@@ -169,12 +170,18 @@ export class TrackerSongBank implements TrackerSink {
    * user says how loud the app is. What reaches masterGain is the product.
    */
   private songGlobalVolume = 1.0;
+  /**
+   * The OPL chip for S3M AdLib instruments (O5). Built with the bank; its
+   * worklet only once a song with AdLib instruments is loaded.
+   */
+  private readonly opl: OplOutput;
 
   constructor(audioSystem?: AudioSystem) {
     this.audioSystem = audioSystem ?? getSharedAudioSystem();
     this.masterGain = this.audioSystem.audioContext.createGain();
     this.masterGain.gain.value = 1.0;
     this.masterGain.connect(this.audioSystem.destinationNode);
+    this.opl = new OplOutput(this.audioSystem.audioContext, this.audioSystem.destinationNode);
 
     // Initialize WorkletPool for shared worklet management
     if (this.useWorkletPooling) {
@@ -493,6 +500,7 @@ export class TrackerSongBank implements TrackerSink {
   setUserMasterVolume(volume: number): void {
     const clamped = Math.max(0, Math.min(1, volume));
     this.userMasterVolume = clamped;
+    this.opl.setUserVolume(clamped);
     const now = this.audioSystem.audioContext.currentTime;
     this.masterGain.gain.cancelScheduledValues(now);
     this.masterGain.gain.setValueAtTime(clamped * this.songGlobalVolume, now);
@@ -713,6 +721,10 @@ export class TrackerSongBank implements TrackerSink {
 
   async prepareInstrument(instrumentId?: string): Promise<void> {
     if (!instrumentId) return;
+    if (this.opl.handles(instrumentId)) {
+      await this.opl.ready();
+      return;
+    }
     const patch = this.desired.get(instrumentId);
     if (!patch) return;
     await this.lifecycle.ensureInstrument(instrumentId, patch);
@@ -720,6 +732,7 @@ export class TrackerSongBank implements TrackerSink {
 
   dispose() {
     this.disposeInstruments();
+    this.opl.dispose();
     this.masterGain.disconnect();
     this.recorder.dispose();
 
@@ -741,6 +754,8 @@ export class TrackerSongBank implements TrackerSink {
   }
 
   allNotesOff() {
+    // Stop and start both come through here: the chip goes back to initadlib.
+    this.opl.restart();
     for (const [instrumentId, active] of this.instruments.entries()) {
       const byTrack = this.activeNotes.get(instrumentId);
       if (byTrack) {
@@ -782,6 +797,27 @@ export class TrackerSongBank implements TrackerSink {
       // Clear the last voice tracking for this track
       this.voices.clearLastVoiceForTrack(instrumentId, trackIndex);
     }
+  }
+
+  /**
+   * The loaded song's S3M AdLib instruments and channel map (O5). Events for
+   * those instruments go to the OPL chip instead of a sampler.
+   */
+  setOplSong(info: OplSongInfo): void {
+    this.opl.setSong(info);
+  }
+
+  /** Whether `instrumentId` plays on the OPL chip (engine options, routing). */
+  isOplInstrument(instrumentId: string | undefined): boolean {
+    return this.opl.handles(instrumentId);
+  }
+
+  /**
+   * Mute/solo for OPL tracks: through the chip's channel mask, so a muted
+   * channel's ST3 state keeps running and unmutes mid-note correctly.
+   */
+  setOplTrackAudibility(audible: (trackIndex: number) => boolean, trackCount: number): void {
+    this.opl.setTrackAudibility(audible, trackCount);
   }
 
   /**
@@ -857,6 +893,7 @@ export class TrackerSongBank implements TrackerSink {
    */
   cutAllVoicesAtTime(time: number) {
     const at = Math.max(time, this.audioContext.currentTime);
+    this.opl.allNotesOffAt(at);
     for (const active of this.instruments.values()) {
       const limit = active.instrument.getVoiceLimit();
       for (let voiceIndex = 0; voiceIndex < limit; voiceIndex++) {
@@ -1158,6 +1195,12 @@ export class TrackerSongBank implements TrackerSink {
       console.warn('[SongBank] noteOnAtTime: instrumentId is undefined');
       return;
     }
+    if (this.opl.handles(instrumentId)) {
+      if (trackIndex === undefined) return;
+      const hz = frequency ?? 440 * 2 ** ((midi - 69) / 12);
+      this.opl.noteOn(instrumentId, velocity, time, trackIndex, hz);
+      return;
+    }
 
     const scheduledTime = Math.max(time, this.audioContext.currentTime);
     const contextRunning = this.audioContext.state === 'running';
@@ -1212,6 +1255,10 @@ export class TrackerSongBank implements TrackerSink {
     trackIndex?: number,
   ) {
     if (instrumentId === undefined) return;
+    if (this.opl.handles(instrumentId)) {
+      if (trackIndex !== undefined) this.opl.noteOff(time, trackIndex);
+      return;
+    }
 
     const scheduledTime = Math.max(time, this.audioContext.currentTime);
     const contextRunning = this.audioContext.state === 'running';
@@ -1245,6 +1292,7 @@ export class TrackerSongBank implements TrackerSink {
    * Cancel all scheduled notes and stop all sound immediately.
    */
   cancelAllScheduled() {
+    this.opl.restart();
     for (const active of this.instruments.values()) {
       active.instrument.cancelScheduledNotes();
     }
@@ -1557,8 +1605,13 @@ export class TrackerSongBank implements TrackerSink {
     time: number,
     trackIndex: number,
     rampMode?: 'linear' | 'exponential',
+    source?: PitchSource,
   ) {
     if (!instrumentId) return;
+    if (this.opl.handles(instrumentId)) {
+      this.opl.setPitch(time, trackIndex, frequency, source);
+      return;
+    }
     const target = this.voices.resolveCommandVoice(
       instrumentId,
       voiceIndex,
@@ -1586,6 +1639,10 @@ export class TrackerSongBank implements TrackerSink {
     rampMode?: 'linear' | 'exponential' | 'step',
   ) {
     if (!instrumentId) return;
+    if (this.opl.handles(instrumentId)) {
+      this.opl.setVolume(time, trackIndex, volume);
+      return;
+    }
     // No fallback to voice 0 when nothing resolves.
     //
     // Instruments are per-sample, so two tracks playing the same sample share
@@ -1735,6 +1792,11 @@ export class TrackerSongBank implements TrackerSink {
     frequency?: number,
   ) {
     if (!instrumentId) return;
+    // An OPL note-on is a retrigger already: key-off, then key-on.
+    if (this.opl.handles(instrumentId)) {
+      this.noteOnAtTime(instrumentId, midi, velocity, time, trackIndex, frequency);
+      return;
+    }
 
     // A retrigger restarts *what the channel is sounding*, so it addresses the
     // channel's voice, not the instrument written on the row -- the same rule

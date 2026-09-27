@@ -106,6 +106,8 @@ vi.mock('src/stores/tracker-audio-store', () => {
     ensureAudioContextRunning: async () => true,
     prepareInstrument: async () => undefined,
     notesOffForTrack: () => {},
+    isOplInstrument: () => false,
+    setOplTrackAudibility: () => {},
   };
   return { useTrackerAudioStore: () => ({ songBank, setPlaybackState: () => {} }) };
 });

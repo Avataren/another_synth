@@ -149,8 +149,8 @@ export interface InstrumentSlot {
   volume?: number;
   /**
    * Rendering path: synth = full WASM engine, sampler = lightweight Web Audio
-   * sample playback, ahx = the AHX/HVL engine, opl = OPL FM (inactive: no
-   * playback path yet). Playback keys on this. Absent on an empty slot.
+   * sample playback, ahx = the AHX/HVL engine, opl = the OPL chip (S3M AdLib
+   * instruments, played through `OplOutput`). Playback keys on this. Absent on an empty slot.
    */
   instrumentType?: InstrumentType | undefined;
   /**
@@ -161,13 +161,10 @@ export interface InstrumentSlot {
   instrumentFormat?: InstrumentFormat | undefined;
   /**
    * Raw OPL2/FM instrument data parsed from an S3M AdLib instrument header,
-   * preserved for the future OPL playback task (Morten, 2026-09-03):
-   * parse and keep, marked inactive -- the slot carries no patchId, so
-   * nothing plays it. The future consumer is a DEDICATED WASM OPL core (a
-   * small standalone OPL emulator with its own worklet/voice path, not the
-   * main WASM synth), and these bytes are kept exactly as the file stores
-   * them -- the natural patch format for that core. No mapping layer toward
-   * the existing synth's FM primitives is designed here or wanted.
+   * kept exactly as the file stores them. The slot carries no patchId: the
+   * dedicated WASM OPL chip (`rust-wasm/src/opl`, its own worklet) plays
+   * these bytes through `S3mOplDriver`, fed by the song bank's `OplOutput`.
+   * No mapping toward the main synth's FM primitives is designed or wanted.
    */
   oplData?: OplInstrumentData;
   /**
@@ -220,6 +217,12 @@ interface TrackerSnapshot {
   fastVolumeSlides: boolean;
   initialGlobalVolume: number;
   vblankTiming: boolean;
+  /**
+   * S3M only: the OPL channel (0..8) each track's AdLib notes play on, by
+   * track index (`s3mAdlibChannelForTrack`); null for a PCM or drum channel.
+   * Empty for every other song.
+   */
+  oplChannels: Array<number | null>;
   modOrigin: ModOrigin | null;
   defaultPatternRows: number;
   stepSize: number;
@@ -292,6 +295,12 @@ interface TrackerStoreState {
    * detected on import (`usesVBlankTiming`) and carried with the song.
    */
   vblankTiming: boolean;
+  /**
+   * S3M only: the OPL channel (0..8) each track's AdLib notes play on, by
+   * track index (`s3mAdlibChannelForTrack`); null for a PCM or drum channel.
+   * Empty for every other song.
+   */
+  oplChannels: Array<number | null>;
   /** MOD only: where the file came from (`ModOrigin`); null for every other song. */
   modOrigin: ModOrigin | null;
   /**
@@ -491,6 +500,8 @@ export interface TrackerSongFile {
     initialGlobalVolume?: number;
     /** ProTracker only; absent means the usual CIA speed/tempo split. */
     vblankTiming?: boolean;
+    /** S3M with AdLib channels only; see the store field. */
+    oplChannels?: Array<number | null>;
     /**
      * MOD only: the tracker flavor and signature the import found, for the
      * format badge's sub-label (`modVariantLabel`). Display only; absent in
@@ -602,6 +613,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       fastVolumeSlides: false,
       initialGlobalVolume: 1.0,
       vblankTiming: false,
+      oplChannels: [],
       modOrigin: null,
       baseOctave: 4,
       defaultPatternRows: DEFAULT_PATTERN_ROWS,
@@ -757,6 +769,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         fastVolumeSlides: this.fastVolumeSlides,
         initialGlobalVolume: this.initialGlobalVolume,
         vblankTiming: this.vblankTiming,
+        oplChannels: [...this.oplChannels],
         modOrigin: this.modOrigin,
         defaultPatternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
@@ -792,6 +805,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.fastVolumeSlides = snapshot.fastVolumeSlides ?? false;
       this.initialGlobalVolume = snapshot.initialGlobalVolume ?? 1.0;
       this.vblankTiming = snapshot.vblankTiming ?? false;
+      this.oplChannels = [...(snapshot.oplChannels ?? [])];
       this.modOrigin = snapshot.modOrigin ?? null;
       this.defaultPatternRows = clampPatternRows(snapshot.defaultPatternRows);
       this.stepSize = snapshot.stepSize;
@@ -882,6 +896,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.fastVolumeSlides = false;
       this.initialGlobalVolume = 1.0;
       this.vblankTiming = false;
+      this.oplChannels = [];
       this.modOrigin = null;
       this.baseOctave = 4;
       this.defaultPatternRows = DEFAULT_PATTERN_ROWS;
@@ -1420,6 +1435,9 @@ export const useTrackerStore = defineStore('trackerStore', {
           ? { initialGlobalVolume: this.initialGlobalVolume }
           : {}),
         ...(this.vblankTiming ? { vblankTiming: true } : {}),
+        ...(this.moduleFormat === 's3m' && this.oplChannels.some((c) => c !== null)
+          ? { oplChannels: [...this.oplChannels] }
+          : {}),
         ...(this.moduleFormat === 'protracker' && this.modOrigin ? { modOrigin: { ...this.modOrigin } } : {}),
         patternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
@@ -1510,6 +1528,10 @@ export const useTrackerStore = defineStore('trackerStore', {
         ? Math.max(0, Math.min(1, data.initialGlobalVolume as number))
         : 1.0;
       this.vblankTiming = data.vblankTiming === true;
+      this.oplChannels =
+        this.moduleFormat === 's3m' && Array.isArray(data.oplChannels)
+          ? data.oplChannels.map((c) => (Number.isInteger(c) && (c as number) >= 0 && (c as number) <= 8 ? (c as number) : null))
+          : [];
       this.modOrigin = this.moduleFormat === 'protracker' ? readModOrigin(data.modOrigin) : null;
       const legacySongRows = clampPatternRows(data.patternRows);
       this.defaultPatternRows = legacySongRows;

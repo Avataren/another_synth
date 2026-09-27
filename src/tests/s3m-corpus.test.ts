@@ -136,7 +136,7 @@ describe('S3M corpus: measured categories', () => {
     ]);
     expect(raw.instruments.filter((i) => i.kind === 'none')).toHaveLength(0);
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const song = importS3mToTrackerSong(readModule('sun.s3m'));
     const warnings = warnSpy.mock.calls.map((args) => args.join(' '));
     warnSpy.mockRestore();

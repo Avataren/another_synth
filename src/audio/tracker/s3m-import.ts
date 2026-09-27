@@ -10,6 +10,7 @@ import {
   buildS3mTrackerPatterns,
   buildS3mTrackerSamples,
   measureS3m,
+  s3mAdlibChannelForTrack,
   formatInstrumentId,
   UNMAPPED_COMMAND_BYTES,
 } from '@another-synth/tracker-playback';
@@ -47,10 +48,10 @@ export function importS3mToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
 
   if (counts.adlibInstruments > 0 || counts.adlibNotes > 0) {
     // eslint-disable-next-line no-console
-    console.warn(
+    console.log(
       `${counts.adlibInstruments} AdLib instruments, ${counts.adlibNotes} notes on ` +
-        `${counts.adlibChannels} AdLib channels: imported, but the app does not play OPL yet ` +
-        '(.ai/plan-opl.md O5), so those channels are silent.',
+        `${counts.adlibChannels} AdLib channels: played on the OPL chip (melodic only; ` +
+        'ST3 never plays AdLib drums either).',
     );
   }
   if (counts.stereoSamples > 0) {
@@ -99,10 +100,12 @@ export function importS3mToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
     bankName: 'S3M Import',
     category: 'Imported/S3M',
     format: 's3m',
-    oplBankName: 'S3M Import (FM inactive)',
+    oplBankName: 'S3M Import (OPL)',
   });
 
   const patterns = buildS3mTrackerPatterns(s3m, pitch, slotForInstrument);
+  // The OPL channel each track's AdLib notes play on (O5).
+  const oplChannels = s3mAdlibChannelForTrack(s3m).map((c) => c ?? null);
 
   // Walk the order table in play order: 255 terminates the song, 254 is a
   // skipped separator (st3play digread.c neworder). The importer -- not the
@@ -148,6 +151,7 @@ export function importS3mToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
       ...(s3m.amigaLimits ? { amigaLimits: true } : {}),
       ...(fastVolumeSlides ? { fastVolumeSlides: true } : {}),
       ...(initialGlobalVolume !== 1 ? { initialGlobalVolume } : {}),
+      ...(oplChannels.some((c) => c !== null) ? { oplChannels } : {}),
       patternRows: clampPatternRows(patterns[0]?.rows),
       stepSize: DEFAULT_STEP_SIZE,
       patterns,

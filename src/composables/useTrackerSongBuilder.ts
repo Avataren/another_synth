@@ -4,7 +4,7 @@ import type { TrackerPattern, InstrumentSlot } from 'src/stores/tracker-store';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type { SongBankSlot } from 'src/audio/tracker/song-bank';
 import type { Patch } from 'src/audio/types/preset-types';
-import type { ModuleFormat } from '@another-synth/tracker-playback';
+import type { ModuleFormat, OplInstrumentData } from '@another-synth/tracker-playback';
 import {
   buildPlaybackSong as buildSong,
   buildPlaybackPatterns as buildPatterns,
@@ -44,6 +44,8 @@ export interface TrackerSongBuilderContext {
    * Detected on import; see `usesVBlankTiming`.
    */
   vblankTiming?: Ref<boolean>;
+  /** S3M only: the OPL channel per track (null: none); see the tracker store. */
+  oplChannels?: Ref<Array<number | null>>;
   /**
    * Which tracker's semantics the song follows. Optional so existing tests
    * and callers keep working; omitted means DEFAULT_MODULE_FORMAT.
@@ -158,6 +160,19 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         } satisfies SongBankSlot;
       })
       .filter(Boolean) as SongBankSlot[];
+
+    // S3M AdLib instruments have no patch: they go to the bank's OPL chip.
+    const oplInstruments = new Map<string, OplInstrumentData>();
+    for (const slot of context.instrumentSlots.value) {
+      if (slot.oplData && !slot.patchId) {
+        oplInstruments.set(context.formatInstrumentId(slot.slot), slot.oplData);
+      }
+    }
+    context.songBank.setOplSong({
+      instruments: oplInstruments,
+      channels: context.oplChannels?.value ?? [],
+      amigaLimits: context.amigaLimits?.value ?? false,
+    });
 
     await context.songBank.syncSlots(slots);
   }

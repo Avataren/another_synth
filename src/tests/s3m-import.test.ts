@@ -13,6 +13,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { importS3mToTrackerSong } from '../audio/tracker/s3m-import';
 import { buildS3m } from './helpers/s3m-builder';
+import { createPinia, setActivePinia } from 'pinia';
+import { useTrackerStore } from 'src/stores/tracker-store';
 
 function importS3m(spec: Parameters<typeof buildS3m>[0]) {
   const built = buildS3m(spec);
@@ -298,8 +300,8 @@ describe('S3M import: song shape', () => {
 });
 
 describe('S3M import: the AdLib policy', () => {
-  it('warns with the counts, keeps the rest intact, never mutes silently', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('reports the counts, keeps the rest intact, never mutes silently', () => {
+    const warnSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const { song } = importS3m({
       // Channels 0/1 PCM, channel 2 = AdLib melody (type 16), channel 3 PCM.
       channelSettings: [0x00, 0x01, 0x10, 0x09],
@@ -340,6 +342,26 @@ describe('S3M import: the AdLib policy', () => {
     expect(slot).toBeDefined();
     expect(fm.instrument).toBe(String(slot!.slot).padStart(2, '0'));
     expect(fm.instrument).not.toBe(entryAt(song, 0, 0, 0)!.instrument);
+
+    // 4. The track's OPL channel travels with the song (O5): A1 is channel 0.
+    expect(song.data.oplChannels).toEqual([null, null, 0, null]);
+  });
+
+  it('keeps the OPL channel map through a save and load', () => {
+    const { song } = importS3m({
+      channelSettings: [0x00, 0x13, 0x10],
+      orders: [0],
+      patterns: [[[{ note: 0x30, instrument: 1 }]]],
+      instruments: [{ name: 'FM', registers: [0x20, 0x11], volume: 33, type: 2 }],
+    });
+    setActivePinia(createPinia());
+    const store = useTrackerStore();
+    store.loadSongFile(song);
+    expect(store.oplChannels).toEqual([null, 3, 0]);
+    const saved = store.serializeSong();
+    expect(saved.data.oplChannels).toEqual([null, 3, 0]);
+    store.loadSongFile(JSON.parse(JSON.stringify(saved)));
+    expect(store.oplChannels).toEqual([null, 3, 0]);
   });
 
   it('an AdLib note without a volume byte takes the AdLib header volume', () => {

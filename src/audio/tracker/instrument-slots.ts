@@ -70,8 +70,8 @@ export function buildSlotsAndPatches(
     const fallbackName = `Instrument ${formatInstrumentId(sample.sourceIndex)}`;
 
     // An OPL instrument takes its slot and carries its register bytes, but
-    // gets no patchId -- nothing can play it until the dedicated OPL core
-    // exists, and a slot without a patch is exactly how that is expressed.
+    // gets no patchId: the song bank's OPL chip plays it from those bytes
+    // (`OplOutput`), not a sampler or synth patch.
     if (sample.opl) {
       slot.bankName = options.oplBankName ?? options.bankName;
       slot.patchName = sample.name || fallbackName;

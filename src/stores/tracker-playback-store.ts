@@ -222,6 +222,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    */
   function muteInaudibleTracks(previouslyAudible: boolean[], newlyAudible: boolean[]) {
     const songBank = getSongBank();
+    songBank.setOplTrackAudibility(isTrackAudible, newlyAudible.length);
     for (let i = 0; i < previouslyAudible.length; i++) {
       if (previouslyAudible[i] && !newlyAudible[i]) {
         songBank.notesOffForTrack(i);
@@ -247,6 +248,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       // window has to cover the longest task that can land between two of
       // its wake-ups -- which is a good deal longer on a phone.
       lookaheadSeconds: defaultLookaheadSeconds(),
+      // S3M AdLib instruments play on the OPL chip, which ST3 writes once per
+      // tick: slides step tick by tick, and an AdLib note keeps the vibrato
+      // phase (O3/O3b; the reference wiring is s3m-adlib-st3-trace.test.ts).
+      steppedTickAutomation: (instrumentId) => songBank.isOplInstrument(instrumentId),
+      oplInstrument: (instrumentId) => songBank.isOplInstrument(instrumentId),
 
       // Automation handlers
       scheduledAutomationHandler: (instrumentId, gain, time) => {
@@ -265,8 +271,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       },
 
       // Effect handlers
-      scheduledPitchHandler: (instrumentId, voiceIndex, frequency, time, trackIndex, rampMode) => {
-        songBank.setVoicePitchAtTime(instrumentId, voiceIndex, frequency, time, trackIndex, rampMode);
+      scheduledPitchHandler: (instrumentId, voiceIndex, frequency, time, trackIndex, rampMode, source) => {
+        songBank.setVoicePitchAtTime(instrumentId, voiceIndex, frequency, time, trackIndex, rampMode, source);
       },
       scheduledVolumeHandler: (instrumentId, voiceIndex, volume, time, trackIndex, rampMode) => {
         songBank.setVoiceVolumeAtTime(instrumentId, voiceIndex, volume, time, trackIndex, rampMode);
@@ -306,8 +312,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
       // Note handlers
       scheduledNoteHandler: (event: ScheduledNoteEvent) => {
-        // Check mute/solo state
-        if (!isTrackAudible(event.trackIndex)) return;
+        // Check mute/solo state. An OPL track is muted by the chip's channel
+        // mask instead: its ST3 channel state has to keep running.
+        const opl = songBank.isOplInstrument(event.instrumentId);
+        if (!opl && !isTrackAudible(event.trackIndex)) return;
 
         // Notify visualization
         if (trackAudioNodeSetter) {
@@ -627,6 +635,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       song.amigaLimits,
     );
     engine.loadSong(song, sequenceIndex);
+    // Mute/solo carries over from the last song; OPL tracks take it by mask.
+    getSongBank().setOplTrackAudibility(
+      isTrackAudible,
+      Math.max(0, ...song.patterns.map((p) => p.tracks.length)),
+    );
     debugLog('[PlaybackStore] Preparing instruments...');
     await engine.prepareInstruments();
     hasSongLoaded.value = true;

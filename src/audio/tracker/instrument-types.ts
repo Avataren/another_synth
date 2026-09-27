@@ -176,9 +176,9 @@ export const INSTRUMENT_EDITOR_ROUTE: Readonly<Record<InstrumentEditorId, string
  * The editor that opens for a slot, or null when there is none.
  *
  * Keyed on `instrumentFormat`, with one refinement: `instrumentType: 'opl'`
- * has no editor at all (inactive, no playback path), even though its format
- * (s3m) otherwise routes to the sampler editor. An untagged slot with a patch
- * is a plain synth patch.
+ * has no editor yet (it plays on the OPL chip; an OPL editor is later
+ * work), even though its format (s3m) otherwise routes to the sampler
+ * editor. An untagged slot with a patch is a plain synth patch.
  */
 export function resolveInstrumentEditor(slot: TaggableSlot): InstrumentEditorId | null {
   if (normalizeInstrumentType(slot.instrumentType) === 'opl') return null;
@@ -205,13 +205,19 @@ export function isAhxSlot(slot: TaggableSlot): boolean {
   return normalizeInstrumentType(slot.instrumentType) === 'ahx';
 }
 
+/** True for an S3M AdLib slot: it plays on the OPL chip, with no patch. */
+export function isOplSlot(slot: TaggableSlot): boolean {
+  return normalizeInstrumentType(slot.instrumentType) === 'opl';
+}
+
 /**
  * True for a slot that lists one of the song's own instruments with no patch
- * behind it: an AHX/HVL one, or a SID one (tagged only for an instrument the
- * song's doc holds, `showSidDoc`). It is filled, though it has no `patchId`.
+ * behind it: an AHX/HVL one, an S3M AdLib one (played by the OPL chip), or a
+ * SID one (tagged only for an instrument the song's doc holds, `showSidDoc`).
+ * It is filled, though it has no `patchId`.
  */
 export function listsSongInstrument(slot: TaggableSlot): boolean {
-  return isAhxSlot(slot) || normalizeInstrumentFormat(slot.instrumentFormat) === 'sid';
+  return isAhxSlot(slot) || isOplSlot(slot) || normalizeInstrumentFormat(slot.instrumentFormat) === 'sid';
 }
 
 /** Router route name for a slot's editor, or null. */
