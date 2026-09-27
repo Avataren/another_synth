@@ -32,9 +32,9 @@ pub const FNUM: [u16; 12] = [
 ];
 
 /// Slide range within a block, and the lowest and highest frequency
-/// (MEASURED: a slide below 0x156 moves down a block adding 0x158, above
-/// 0x2AE up a block subtracting it, and stops at block 0 0x157 and block 7
-/// 0x2AE). The document gives 156h and 2AEh as "octave frequency start/end".
+/// (MEASURED: a move down to 0x156 or below goes down a block adding 0x158,
+/// a move up to 0x2AE or above goes up a block subtracting it, and moves
+/// stop at block 0 0x157 and block 7 0x2AE). The document gives 156h and 2AEh as "octave frequency start/end".
 const FREQ_LO: u16 = 0x156;
 const FREQ_HI: u16 = 0x2ae;
 const FREQ_MIN: u16 = 0x157;
@@ -127,6 +127,16 @@ struct Column {
     slide_mem: u8,
     /// The last plain arpeggio's parameter, for 18 and 19.
     arp_mem: u8,
+    /// The last non-empty effect and parameter in this column.
+    last_used: (u8, u8),
+    /// Retrigger (15, 1A) tick counter.
+    retrig_count: u8,
+    /// Tremor (17): ticks into the current on or off stretch, and whether
+    /// the note is silenced now.
+    tremor_count: u8,
+    tremor_off: bool,
+    /// Write the arpeggio's base pitch on this row's first tick.
+    arp_restore: bool,
     /// The previous row's effect and parameter.
     last_fx: u8,
     last_param: u8,
@@ -157,12 +167,16 @@ struct Track {
     fm_macro: MacroState,
     arp_macro: MacroState,
     vib_macro: MacroState,
+    /// ZE1/ZE0: macros hold at, and loop back to, their key-off position.
+    koff_loop: bool,
     /// A note off or ZF0 happened since the last key-on.
     keyed_off: bool,
     /// ZF2/ZF3: an instrument does not reset the volume.
     vol_lock: bool,
     /// ZF9/ZFA: an instrument does not set the panning.
     pan_lock: bool,
+    /// ZF4/ZF5: a volume slide up stops at the instrument's own level.
+    peak_lock: bool,
     /// Volume slides act on: 0 the default (carrier, both when additive),
     /// 1 the carrier, 2 the modulator, 3 both (lock flags bits 2-3; ZF6-8).
     vslide_mode: u8,
@@ -178,9 +192,10 @@ struct Track {
     /// ZC/ZD pattern loop: start row and remaining count.
     loop_row: usize,
     loop_count: u8,
-    /// Pitch the vibrato table's offsets apply to: the note's, and after a
-    /// key-off the pitch at that moment (MEASURED).
-    vib_base: u16,
+    /// The vibrato table's offset now in the pitch.
+    vib_offset: i8,
+    /// An effect wrote the pitch during this tick.
+    pitch_touched: bool,
     /// Arpeggio and vibrato macro tables in use (1-based, 0 none).
     arp_table: u8,
     vib_table: u8,
@@ -202,33 +217,55 @@ struct MacroState {
     jump: u8,
 }
 
-/// Next step of a macro with this length, loop and key-off position, or
-/// None when it stops (MEASURED on FM, arpeggio and vibrato tables alike):
-/// the loop wraps at `loop_begin + loop_length - 1`; before a key-off,
-/// reaching the key-off position stops the macro; past the length stops it.
+/// Next step of a macro with this length, loop and key-off position
+/// (MEASURED on FM, arpeggio and vibrato tables alike): the loop wraps at
+/// `loop_begin + loop_length - 1`; before a key-off, reaching the key-off
+/// position stops the macro, or holds it there under ZE1 ("key-off loop");
+/// past the length it stops, or under ZE1 after a key-off goes back to the
+/// key-off position.
 fn macro_next(
     m: &MacroState,
     length: u8,
     loop_begin: u8,
     loop_length: u8,
     keyoff: u8,
-) -> Option<u8> {
+    koff_loop: bool,
+) -> Next {
     if m.jump != 0 {
-        return (m.jump <= length || m.released).then_some(m.jump);
+        return if m.jump <= length || m.released {
+            Next::Step(m.jump)
+        } else {
+            Next::Stop
+        };
     }
     let loop_end = (loop_begin as u16 + loop_length as u16).saturating_sub(1);
     let next = if loop_length > 0 && loop_begin > 0 && m.pos as u16 == loop_end {
         loop_begin
     } else {
-        m.pos.checked_add(1)?
+        match m.pos.checked_add(1) {
+            Some(n) => n,
+            None => return Next::Stop,
+        }
     };
     if !m.released && keyoff > 0 && next >= keyoff {
-        return None;
+        return if koff_loop { Next::Hold } else { Next::Stop };
     }
     if next > length {
-        return None;
+        // ZE1: after a key-off, the part from the key-off position loops.
+        return if m.released && koff_loop && keyoff > 0 {
+            Next::Step(keyoff)
+        } else {
+            Next::Stop
+        };
     }
-    Some(next)
+    Next::Step(next)
+}
+
+enum Next {
+    Step(u8),
+    /// ZE1: wait at the key-off position for the key-off.
+    Hold,
+    Stop,
 }
 
 pub struct A2Engine {
@@ -243,7 +280,7 @@ pub struct A2Engine {
     speed: u8,
     tempo: u8,
     tick: u8,
-    macro_tick: u16,
+    macro_tick: u32,
     global_volume: u8,
     /// Set by a position jump or pattern break on this row.
     jump: Option<(usize, usize)>,
@@ -285,6 +322,21 @@ impl A2Engine {
             next_pos: (0, 0, 0),
             loops: 0,
         };
+        // MEASURED: each track's lock byte gives its volume slide type
+        // (bits 2-3) always, its panning (bits 0-1) under song flag bit 5,
+        // its volume lock (bit 4) under bit 1 and its peak lock (bit 5)
+        // under bit 2.
+        let flags = e.song.flags;
+        for (t, tr) in e.tracks.iter_mut().enumerate() {
+            let lock = e.song.lock_flags.get(t).copied().unwrap_or(0);
+            tr.vslide_mode = (lock >> 2) & 3;
+            if flags & 0x20 != 0 {
+                tr.pan_lock = true;
+                tr.panning = (lock & 3).min(2);
+            }
+            tr.vol_lock = flags & 0x02 != 0 && lock & 0x10 != 0;
+            tr.peak_lock = flags & 0x04 != 0 && lock & 0x20 != 0;
+        }
         match e.resolve_order(0) {
             Some((order, pattern, _)) => e.next_pos = (order, pattern, 0),
             None => e.ended = true,
@@ -296,16 +348,30 @@ impl A2Engine {
         &self.song
     }
 
-    /// Timer rate in Hz: tempo × macro speed-up (MEASURED against AdPlug's
-    /// `getrefresh` over the corpus; tempo 18 means the PIT's slowest rate,
-    /// 18.2 Hz).
+    /// Timer rate in Hz: tempo × macro speed-up, where tempos of 18 and
+    /// below run the PC timer at its slowest rate, 18.2 Hz (AdPlug's
+    /// `getrefresh` agrees for 18 and above; below 18 it reports tempo ×
+    /// speed-up while counting ticks as AT2 does at 18.2, so it plays those
+    /// songs too slowly; see [`row_tick_every`](Self::row_tick_every)).
     pub fn refresh(&self) -> f64 {
-        let tempo = if self.tempo == 18 {
+        let tempo = if self.tempo <= 18 {
             18.2
         } else {
             self.tempo as f64
         };
         tempo * self.song.macro_speedup.max(1) as f64
+    }
+
+    /// Timer ticks per row tick: the macro speed-up, or for tempos below 18
+    /// `floor(18 × speed-up / tempo)` (MEASURED: tempo 10 with speed-up 20
+    /// advances rows every 36 ticks, tempo 1 every 18).
+    fn row_tick_every(&self) -> u32 {
+        let su = self.song.macro_speedup.max(1) as u32;
+        if self.tempo < 18 && self.tempo > 0 {
+            (18 * su / self.tempo as u32).max(1)
+        } else {
+            su
+        }
     }
 
     pub fn position(&self) -> (usize, usize, usize) {
@@ -387,7 +453,10 @@ impl A2Engine {
         if self.ended {
             return;
         }
-        let speedup = self.song.macro_speedup.max(1);
+        let every = self.row_tick_every();
+        if self.macro_tick >= every {
+            self.macro_tick = 0;
+        }
         if self.macro_tick == 0 {
             if self.row_len == 0 {
                 self.tick += 1;
@@ -416,7 +485,7 @@ impl A2Engine {
         for t in 0..self.tracks_in_use() {
             self.run_macros(t, out);
         }
-        self.macro_tick = (self.macro_tick + 1) % speedup;
+        self.macro_tick = (self.macro_tick + 1) % every;
     }
 
     fn start_row(&mut self, out: &mut impl RegisterSink) {
@@ -438,6 +507,14 @@ impl A2Engine {
                 col.last_param = col.param;
                 col.fx = fx;
                 col.param = param;
+                // MEASURED: when a plain or extra-fine arpeggio gives way to
+                // another effect, the note's pitch comes back on the next
+                // row's first tick unless the last step was the base, and
+                // that counts as a step.
+                let was_arp =
+                    matches!(col.last_fx, fx::ARPEGGIO | fx::EXTRA_FINE_ARP) && col.last_param != 0;
+                let is_arp = matches!(fx, fx::ARPEGGIO | fx::EXTRA_FINE_ARP) && param != 0;
+                col.arp_restore = was_arp && !is_arp && col.arp_phase != 1;
                 // MEASURED: an arpeggio, vibrato or tremolo starts from its
                 // first step when the column enters it from another effect
                 // (04 → 06 → 11 carries on; 0A → 04 restarts).
@@ -445,6 +522,28 @@ impl A2Engine {
                     col.arp_phase = 0;
                     col.vib_pos = 0;
                     col.trem_pos = 0;
+                    col.tremor_count = 0;
+                }
+                // MEASURED: a row without a vibrato-type effect forgets the
+                // vibrato's speed and depth (06, or 04 00, after an empty
+                // row or another effect do nothing; 04 → 06 carries on).
+                // Porta, slide, tremolo and arpeggio amounts are kept.
+                if group(fx) != 2 {
+                    col.vib_speed = 0;
+                    col.vib_depth = 0;
+                }
+                // MEASURED: the retrigger counter restarts only when a
+                // retrigger follows a non-empty row that was not one (15 00
+                // counts as not one); empty rows, notes and new parameters
+                // leave it running.
+                if (fx, param) != (0, 0) {
+                    let retrig = |(f, p): (u8, u8)| {
+                        (f == fx::RETRIG && p != 0) || (f == fx::MULTI_RETRIG && p >> 4 != 0)
+                    };
+                    if retrig((fx, param)) && !retrig(col.last_used) {
+                        col.retrig_count = 1;
+                    }
+                    col.last_used = (fx, param);
                 }
                 match fx {
                     fx::SLIDE_UP | fx::SLIDE_DOWN | fx::FINE_UP | fx::FINE_DOWN => {
@@ -569,12 +668,22 @@ impl A2Engine {
         if (!reload && !self.tracks[t].vol_lock) || forced {
             self.write_volume(t, out);
         }
+        // MEASURED: a new instrument starts its macros; with no key-on yet
+        // (an instrument alone, or a delayed note) they start as if keyed
+        // off, so a vibrato table plays from its key-off position. A key-on
+        // starts them again.
+        if reload {
+            self.start_macros(t);
+            if !self.tracks[t].key_on {
+                self.release_macros(t);
+            }
+        }
     }
 
     /// ZF0 "release sustaining sound": silence both operators, key off,
     /// fastest envelope, and forget the instrument (MEASURED writes).
     fn release_sound(&mut self, t: usize, out: &mut impl RegisterSink) {
-        let (m, c) = op_regs(self.channel(t));
+        let (m, c) = self.ops(t);
         let ch = reg_channel(self.channel(t));
         out.write(0x40 + m, 0x3f);
         out.write(0x40 + c, 0x3f);
@@ -594,7 +703,7 @@ impl A2Engine {
     /// The 20/23, C0 and 40/43 writes that follow a change of connection,
     /// feedback, panning or an operator's flags (MEASURED order).
     fn write_connection_group(&mut self, t: usize, out: &mut impl RegisterSink) {
-        let (m, c) = op_regs(self.channel(t));
+        let (m, c) = self.ops(t);
         let fm = self.tracks[t].fm;
         out.write(0x20 + m, fm[0]);
         out.write(0x20 + c, fm[1]);
@@ -607,7 +716,7 @@ impl A2Engine {
 
     /// AR/DR, SL/RR and waveform of one operator (0 modulator, 1 carrier).
     fn write_envelope_group(&mut self, t: usize, op: usize, out: &mut impl RegisterSink) {
-        let (m, c) = op_regs(self.channel(t));
+        let (m, c) = self.ops(t);
         let r = if op == 0 { m } else { c };
         let fm = self.tracks[t].fm;
         out.write(0x60 + r, fm[4 + op]);
@@ -633,7 +742,7 @@ impl A2Engine {
 
     fn load_fm(&mut self, t: usize, out: &mut impl RegisterSink) {
         let ch = self.channel(t);
-        let (m, c) = op_regs(ch);
+        let (m, c) = self.ops(t);
         let fm = self.tracks[t].fm;
         out.write(0x20 + m, fm[0]);
         out.write(0x20 + c, fm[1]);
@@ -655,6 +764,32 @@ impl A2Engine {
         self.tracks[t].fm[10] & 1 != 0
     }
 
+    /// Modulator and carrier register offsets of track `t`. In percussion
+    /// mode tracks 17-20 (SD, TT, TC, HH) are one operator each, the
+    /// instrument's modulator half; AdPlug sends the carrier half to offset
+    /// 0xFF, which lands on unused registers (MEASURED: 0x11F, 0x13F, ...).
+    fn ops(&self, t: usize) -> (u16, u16) {
+        match self.single_op(t) {
+            Some(op) => (op, 0xff),
+            None => op_regs(self.channel(t)),
+        }
+    }
+
+    /// The one operator of a percussion track, by track (MEASURED: a
+    /// melodic instrument on track 17 still plays operator 0x14).
+    fn single_op(&self, t: usize) -> Option<u16> {
+        if !self.percussion() {
+            return None;
+        }
+        match t {
+            16 => Some(0x14),
+            17 => Some(0x12),
+            18 => Some(0x15),
+            19 => Some(0x11),
+            _ => None,
+        }
+    }
+
     /// Scales a total level by the global volume (MEASURED:
     /// `63 - round((63 - tl) × gv / 63)`).
     fn scaled(&self, tl: u8) -> u8 {
@@ -667,9 +802,9 @@ impl A2Engine {
     }
 
     fn write_levels(&mut self, t: usize, tl_mod: u8, tl_car: u8, out: &mut impl RegisterSink) {
-        let (m, c) = op_regs(self.channel(t));
+        let (m, c) = self.ops(t);
         let tr = self.tracks[t];
-        let vm = if self.additive(t) {
+        let vm = if self.additive(t) || self.single_op(t).is_some() {
             self.scaled(tl_mod)
         } else {
             tl_mod
@@ -688,9 +823,9 @@ impl A2Engine {
     }
 
     fn write_mod_level(&mut self, t: usize, out: &mut impl RegisterSink) {
-        let (m, _) = op_regs(self.channel(t));
+        let (m, _) = self.ops(t);
         let tr = self.tracks[t];
-        let vm = if self.additive(t) {
+        let vm = if self.additive(t) || self.single_op(t).is_some() {
             self.scaled(tr.vol_mod)
         } else {
             tr.vol_mod
@@ -699,7 +834,7 @@ impl A2Engine {
     }
 
     fn write_car_level(&mut self, t: usize, out: &mut impl RegisterSink) {
-        let (_, c) = op_regs(self.channel(t));
+        let (_, c) = self.ops(t);
         let tr = self.tracks[t];
         out.write(0x40 + c, (tr.fm[3] & 0xc0) | self.scaled(tr.vol_car));
     }
@@ -722,6 +857,10 @@ impl A2Engine {
             out.write(0xb0 + ch, (f >> 8) as u8);
             self.tracks[t].key_on = false;
             self.tracks[t].keyed_off = true;
+            // MEASURED: a note off also restarts the retrigger count.
+            for col in self.tracks[t].cols.iter_mut() {
+                col.retrig_count = 0;
+            }
             self.release_macros(t);
             return;
         }
@@ -779,7 +918,7 @@ impl A2Engine {
         };
         tr.arp_table = m.arpeggio_table;
         tr.vib_table = m.vibrato_table;
-        tr.vib_base = tr.freq;
+        tr.vib_offset = 0;
         if m.length > 0 {
             tr.fm_macro = MacroState {
                 active: true,
@@ -846,7 +985,7 @@ impl A2Engine {
                 tr.vib_macro.active = true;
                 tr.vib_macro.released = true;
                 tr.vib_macro.jump = v.keyoff_pos.max(1);
-                tr.vib_base = tr.freq;
+                tr.vib_offset = 0;
             }
         }
     }
@@ -855,6 +994,7 @@ impl A2Engine {
         let ch = reg_channel(self.channel(t));
         let key = if self.tracks[t].key_on { 0x20 } else { 0 };
         self.tracks[t].out_freq = freq;
+        self.tracks[t].pitch_touched = true;
         out.write(0xa0 + ch, freq as u8);
         out.write(0xb0 + ch, key | (freq >> 8) as u8);
     }
@@ -870,6 +1010,20 @@ impl A2Engine {
             fx::SET_CAR_VOL => {
                 self.tracks[t].vol_car = 63 - (param & 0x3f);
                 self.write_car_level(t, out);
+            }
+            fx::SET_INS_VOL if self.single_op(t).is_some() => {
+                // MEASURED: on a one-operator drum it sets that operator.
+                self.tracks[t].vol_mod = 63 - (param & 0x3f);
+                self.write_mod_level(t, out);
+            }
+            fx::FORCE_INS_VOL if self.single_op(t).is_some() => {
+                // MEASURED: both levels, the operator written scaled.
+                let tl = 63 - (param & 0x3f);
+                self.tracks[t].vol_mod = tl;
+                self.tracks[t].vol_car = tl;
+                let (m, _) = self.ops(t);
+                let v = (self.tracks[t].fm[2] & 0xc0) | self.scaled(tl);
+                out.write(0x40 + m, v);
             }
             fx::SET_INS_VOL => {
                 let tl = 63 - (param & 0x3f);
@@ -900,7 +1054,7 @@ impl A2Engine {
                 // MEASURED: high nibble carrier, low nibble modulator; 8 and
                 // up leave it alone. Each goes out with its operator's AR/DR
                 // and SL/RR, carrier first.
-                let (m, car) = op_regs(self.channel(t));
+                let (m, car) = self.ops(t);
                 if param >> 4 < 8 {
                     let tr = &mut self.tracks[t];
                     tr.fm[9] = param >> 4;
@@ -1000,9 +1154,11 @@ impl A2Engine {
     /// Steps the track's macros by one timer tick (every tick, at the macro
     /// speed-up rate; MEASURED after all effects of the tick).
     fn run_macros(&mut self, t: usize, out: &mut impl RegisterSink) {
+        let touched = std::mem::take(&mut self.tracks[t].pitch_touched);
         self.run_fm_macro(t, out);
         self.run_arp_macro(t, out);
-        self.run_vib_macro(t, out);
+        self.run_vib_macro(t, touched, out);
+        self.tracks[t].pitch_touched = false;
     }
 
     fn run_fm_macro(&mut self, t: usize, out: &mut impl RegisterSink) {
@@ -1023,14 +1179,21 @@ impl A2Engine {
             self.tracks[t].fm_macro.count += 1;
             return;
         }
-        let (pos, count) =
-            match macro_next(&st, m.length, m.loop_begin, m.loop_length, m.keyoff_pos) {
-                Some(p) => (p, 0),
-                None => {
-                    self.tracks[t].fm_macro.active = false;
-                    return;
-                }
-            };
+        let (pos, count) = match macro_next(
+            &st,
+            m.length,
+            m.loop_begin,
+            m.loop_length,
+            m.keyoff_pos,
+            self.tracks[t].koff_loop,
+        ) {
+            Next::Step(p) => (p, 0),
+            Next::Hold => return,
+            Next::Stop => {
+                self.tracks[t].fm_macro.active = false;
+                return;
+            }
+        };
         let tr = &mut self.tracks[t].fm_macro;
         tr.pos = pos;
         tr.count = count;
@@ -1055,7 +1218,7 @@ impl A2Engine {
             .copied()
             .unwrap_or([0; 28]);
         let on = |col: usize| off[col] == 0;
-        let (m, c) = op_regs(self.channel(t));
+        let (m, c) = self.ops(t);
         // The step's level column is a volume: 63 is loudest (MEASURED, and
         // the corpus agrees: instruments at TL 0 carry 63 there).
         if on(5) {
@@ -1138,9 +1301,22 @@ impl A2Engine {
             return;
         }
         tr.count = 0;
-        let Some(pos) = macro_next(&st, a.length, a.loop_begin, a.loop_length, a.keyoff_pos) else {
-            tr.active = false;
-            return;
+        let koff_loop = self.tracks[t].koff_loop;
+        let tr = &mut self.tracks[t].arp_macro;
+        let pos = match macro_next(
+            &st,
+            a.length,
+            a.loop_begin,
+            a.loop_length,
+            a.keyoff_pos,
+            koff_loop,
+        ) {
+            Next::Step(p) => p,
+            Next::Hold => return,
+            Next::Stop => {
+                tr.active = false;
+                return;
+            }
         };
         tr.pos = pos;
         tr.jump = 0;
@@ -1156,21 +1332,43 @@ impl A2Engine {
         let note = self.tracks[t].note & 0x7f;
         let f = if v & 0x80 != 0 {
             self.note_freq(t, (v & 0x7f).clamp(1, 96))
-        } else if v == 0 || add == 0 || note == 0 {
-            self.arp_freq(t, 0)
+        } else if v == 0 || add == 0 {
+            // MEASURED: before any note (a delayed note's instrument starts
+            // the table) the base is note 0, which AdPlug plays as the top
+            // pitch, block 7 F-number 0x2AE.
+            if note == 0 {
+                FREQ_MAX
+            } else {
+                self.arp_freq(t, 0)
+            }
         } else {
-            self.note_freq(t, (note + (add & 0x7f)).min(96))
+            self.note_freq(t, (note + (add & 0x7f)).clamp(1, 96))
         };
         self.tracks[t].freq = f;
         self.write_freq(t, f, out);
     }
 
-    fn run_vib_macro(&mut self, t: usize, out: &mut impl RegisterSink) {
+    fn run_vib_macro(&mut self, t: usize, touched: bool, out: &mut impl RegisterSink) {
         let st = self.tracks[t].vib_macro;
         if !st.active {
             return;
         }
         let v = &self.song.vibrato_macros[self.tracks[t].vib_table as usize - 1];
+        if touched && st.delay == 0 {
+            // MEASURED: when an effect set the pitch this tick, the table
+            // takes that pitch as its own, writes it again and starts over
+            // (its next step is the second).
+            let first = v.data[0];
+            let tr = &mut self.tracks[t];
+            tr.freq = tr.out_freq;
+            tr.vib_offset = first;
+            tr.vib_macro.pos = 1;
+            tr.vib_macro.count = 0;
+            tr.vib_macro.jump = 0;
+            let f = tr.freq;
+            self.write_freq(t, f, out);
+            return;
+        }
         let tr = &mut self.tracks[t].vib_macro;
         if tr.delay > 0 {
             tr.delay -= 1;
@@ -1181,15 +1379,32 @@ impl A2Engine {
             return;
         }
         tr.count = 0;
-        let Some(pos) = macro_next(&st, v.length, v.loop_begin, v.loop_length, v.keyoff_pos) else {
-            tr.active = false;
-            return;
+        let koff_loop = self.tracks[t].koff_loop;
+        let tr = &mut self.tracks[t].vib_macro;
+        let pos = match macro_next(
+            &st,
+            v.length,
+            v.loop_begin,
+            v.loop_length,
+            v.keyoff_pos,
+            koff_loop,
+        ) {
+            Next::Step(p) => p,
+            Next::Hold => return,
+            Next::Stop => {
+                tr.active = false;
+                return;
+            }
         };
         tr.pos = pos;
         tr.jump = 0;
+        // MEASURED: the table moves the pitch by the change in its offset,
+        // so a portamento or slide under it keeps its progress.
         let by = v.data[pos as usize - 1] as i32;
-        let f = step_freq(self.tracks[t].vib_base, by);
-        self.tracks[t].freq = f;
+        let tr = &mut self.tracks[t];
+        let f = shift_freq(tr.freq, by - tr.vib_offset as i32);
+        tr.vib_offset = by as i8;
+        tr.freq = f;
         self.write_freq(t, f, out);
     }
 
@@ -1245,6 +1460,9 @@ impl A2Engine {
                 let _ = c;
             }
             0xe => {
+                if v == 0 || v == 1 {
+                    self.tracks[t].koff_loop = v == 1;
+                }
                 if v == 4 {
                     // Restart the envelope: key off and on at the pitch.
                     let ch = reg_channel(self.channel(t));
@@ -1267,6 +1485,8 @@ impl A2Engine {
                 }
                 0x2 => self.tracks[t].vol_lock = true,
                 0x3 => self.tracks[t].vol_lock = false,
+                0x4 => self.tracks[t].peak_lock = true,
+                0x5 => self.tracks[t].peak_lock = false,
                 0x6 => self.tracks[t].vslide_mode = 2,
                 0x7 => self.tracks[t].vslide_mode = 1,
                 0x8 => self.tracks[t].vslide_mode = 0,
@@ -1320,20 +1540,18 @@ impl A2Engine {
             let col = self.tracks[t].cols[c];
             let (fx, param) = (col.fx, col.param);
             let first = self.row_tick == 0;
-            // MEASURED: when a plain arpeggio (00xy) gives way to any other
-            // effect, the note's pitch comes back on the next row's first
-            // tick if the last step left it elsewhere, and that counts as a
-            // step.
-            let was_arp =
-                matches!(col.last_fx, fx::ARPEGGIO | fx::EXTRA_FINE_ARP) && col.last_param != 0;
-            let is_arp = matches!(fx, fx::ARPEGGIO | fx::EXTRA_FINE_ARP) && param != 0;
-            if first && was_arp && !is_arp {
+            // MEASURED: a tremor that stops while silent brings the level
+            // back on the next row's first tick.
+            if first && col.tremor_off && fx != fx::TREMOR {
+                self.tracks[t].cols[c].tremor_off = false;
+                self.write_volume(t, out);
+            }
+            if first && col.arp_restore {
                 let base = self.arp_freq(t, 0);
-                if self.tracks[t].out_freq != base {
-                    let col = &mut self.tracks[t].cols[c];
-                    col.arp_phase = (col.arp_phase + 1) % 3;
-                    self.write_freq(t, base, out);
-                }
+                let col = &mut self.tracks[t].cols[c];
+                col.arp_restore = false;
+                col.arp_phase = (col.arp_phase + 1) % 3;
+                self.write_freq(t, base, out);
             }
             let mem = col.slide_mem as i32;
             let arp_param = col.arp_mem;
@@ -1393,6 +1611,9 @@ impl A2Engine {
                     self.vibrato(t, c, out);
                 }
                 fx::TREMOLO => self.tremolo(t, c, out),
+                fx::RETRIG => self.retrig(t, c, param, 0, out),
+                fx::MULTI_RETRIG => self.retrig(t, c, param >> 4, param & 15, out),
+                fx::TREMOR => self.tremor(t, c, param, out),
                 fx::VSLIDE | fx::FINE_UP_VSLIDE | fx::FINE_DOWN_VSLIDE => {
                     self.vslide(t, param, out)
                 }
@@ -1413,6 +1634,82 @@ impl A2Engine {
                 fx::SLIDE_DOWN_VSLIDE_FINE => self.slide(t, -mem, out),
                 _ => {}
             }
+        }
+    }
+
+    /// Key off and on again every `every + 1` ticks, the first after
+    /// `every - 1` (MEASURED); 1A first moves the volume by `vol` (the
+    /// ProTracker steps: 1-5 down 1..16, 6 ×2/3, 7 ×1/2, 9-D up 1..16,
+    /// E ×3/2, F ×2).
+    fn retrig(&mut self, t: usize, c: usize, every: u8, vol: u8, out: &mut impl RegisterSink) {
+        if every == 0 {
+            return;
+        }
+        let col = &mut self.tracks[t].cols[c];
+        if col.retrig_count < every {
+            col.retrig_count += 1;
+            return;
+        }
+        col.retrig_count = 0;
+        if vol != 0 && vol != 8 {
+            let tr = &mut self.tracks[t];
+            let step = |tl: u8| -> u8 {
+                let v = 63 - tl as i32;
+                let v = match vol {
+                    1..=5 => v - (1 << (vol - 1)),
+                    6 => v * 2 / 3,
+                    7 => v / 2,
+                    9..=0xd => v + (1 << (vol - 9)),
+                    0xe => v * 3 / 2,
+                    _ => v * 2,
+                };
+                63 - v.clamp(0, 63) as u8
+            };
+            tr.vol_car = step(tr.vol_car);
+            let additive = tr.fm[10] & 1 != 0;
+            if additive {
+                tr.vol_mod = step(tr.vol_mod);
+            }
+            self.write_scaled_levels(t, out);
+        }
+        // MEASURED: it strikes the row note again, at the note's own pitch.
+        let note = self.tracks[t].note;
+        let f = if note != 0 {
+            self.note_freq(t, note)
+        } else {
+            self.tracks[t].freq
+        };
+        let ch = reg_channel(self.channel(t));
+        self.tracks[t].freq = f;
+        self.tracks[t].out_freq = f;
+        out.write(0xb0 + ch, 0);
+        out.write(0xa0 + ch, f as u8);
+        out.write(0xb0 + ch, 0x20 | (f >> 8) as u8);
+        self.tracks[t].key_on = true;
+    }
+
+    /// On for x ticks, off (silent) for y (MEASURED: off writes the carrier,
+    /// and the modulator when additive, at level 63; on writes both back).
+    fn tremor(&mut self, t: usize, c: usize, param: u8, out: &mut impl RegisterSink) {
+        if param == 0 {
+            return;
+        }
+        let (on, off) = ((param >> 4).max(1), (param & 15).max(1));
+        let col = &mut self.tracks[t].cols[c];
+        col.tremor_count += 1;
+        if !col.tremor_off && col.tremor_count > on {
+            col.tremor_off = true;
+            col.tremor_count = 1;
+            let (m, car) = self.ops(t);
+            let fm = self.tracks[t].fm;
+            out.write(0x40 + car, (fm[3] & 0xc0) | 0x3f);
+            if self.additive(t) {
+                out.write(0x40 + m, (fm[2] & 0xc0) | 0x3f);
+            }
+        } else if col.tremor_off && col.tremor_count > off {
+            col.tremor_off = false;
+            col.tremor_count = 1;
+            self.write_volume(t, out);
         }
     }
 
@@ -1448,7 +1745,15 @@ impl A2Engine {
     fn porta(&mut self, t: usize, c: usize, out: &mut impl RegisterSink) {
         let speed = self.tracks[t].cols[c].porta_speed as i32;
         let (cur, target) = (self.tracks[t].freq, self.tracks[t].porta_target);
-        if target == 0 || cur == 0 {
+        // MEASURED: with no target, 03 does nothing while 05 and 10 write the
+        // pitch unchanged; an idle channel is left alone.
+        if cur == 0 {
+            return;
+        }
+        if target == 0 {
+            if self.tracks[t].cols[c].fx != fx::PORTA {
+                self.write_freq(t, cur, out);
+            }
             return;
         }
         if cur == target {
@@ -1488,9 +1793,9 @@ impl A2Engine {
         let tr = self.tracks[t];
         let m = (tr.vol_mod as i32 + by).clamp(0, 63) as u8;
         let car = (tr.vol_car as i32 + by).clamp(0, 63) as u8;
-        let (mr, cr) = op_regs(self.channel(t));
+        let (mr, cr) = self.ops(t);
         out.write(0x40 + cr, (tr.fm[3] & 0xc0) | self.scaled(car));
-        if self.additive(t) {
+        if self.additive(t) || self.single_op(t).is_some() {
             out.write(0x40 + mr, (tr.fm[2] & 0xc0) | self.scaled(m));
         }
     }
@@ -1507,20 +1812,32 @@ impl A2Engine {
             return;
         };
         let additive = self.additive(t);
+        let both = additive || self.single_op(t).is_some();
         let (car, modu) = match self.tracks[t].vslide_mode {
             1 => (true, false),
             2 => (false, true),
             3 => (true, true),
-            _ => (true, additive),
+            _ => (true, both),
+        };
+        // Peak lock: no louder than the instrument's own levels (MEASURED).
+        let (floor_mod, floor_car) = match self
+            .song
+            .instruments
+            .get((self.tracks[t].instrument as usize).wrapping_sub(1))
+        {
+            Some(d) if self.tracks[t].peak_lock => {
+                ((d.fm[2] & 0x3f) as i32, (d.fm[3] & 0x3f) as i32)
+            }
+            _ => (0, 0),
         };
         let tr = &mut self.tracks[t];
         if car {
-            tr.vol_car = (tr.vol_car as i32 + by).clamp(0, 63) as u8;
+            tr.vol_car = (tr.vol_car as i32 + by).clamp(floor_car.min(tr.vol_car as i32), 63) as u8;
             self.write_car_level(t, out);
         }
         if modu {
             let tr = &mut self.tracks[t];
-            tr.vol_mod = (tr.vol_mod as i32 + by).clamp(0, 63) as u8;
+            tr.vol_mod = (tr.vol_mod as i32 + by).clamp(floor_mod.min(tr.vol_mod as i32), 63) as u8;
             self.write_mod_level(t, out);
         }
     }
@@ -1549,14 +1866,14 @@ fn step_freq(freq: u16, by: i32) -> u16 {
     let mut block = (freq >> 10) as i32;
     let mut fnum = (freq & 0x3ff) as i32 + by;
     if by > 0 {
-        while fnum > FREQ_HI as i32 {
+        while fnum >= FREQ_HI as i32 {
             if block == 7 {
                 return FREQ_MAX;
             }
             block += 1;
             fnum -= (FREQ_HI - FREQ_LO) as i32;
         }
-    } else {
+    } else if by < 0 {
         while fnum <= FREQ_LO as i32 {
             if block == 0 {
                 return FREQ_MIN;
@@ -1566,6 +1883,19 @@ fn step_freq(freq: u16, by: i32) -> u16 {
         }
     }
     (block << 10 | fnum) as u16
+}
+
+/// Like [`step_freq`] inside the slide range; outside it (a channel that
+/// never played sits at 0) the offset is added as a plain number, kept to
+/// 13 bits (MEASURED: a vibrato table on an idle channel writes 0x1FFF for
+/// -1).
+fn shift_freq(freq: u16, by: i32) -> u16 {
+    let fnum = (freq & 0x3ff) as i32;
+    if fnum >= FREQ_LO as i32 && fnum <= FREQ_HI as i32 {
+        step_freq(freq, by)
+    } else {
+        ((freq as i32 + by) & 0x1fff) as u16
+    }
 }
 
 /// Register offset of channel `ch` (0..17) for the A0/B0/C0 groups.

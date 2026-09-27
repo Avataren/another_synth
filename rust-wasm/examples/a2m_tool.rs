@@ -309,6 +309,47 @@ fn main() {
                 }
             }
         }
+        Some("raw") => {
+            // raw <file> <block> <offset hex> <len>
+            let (_, _, blocks) =
+                audio_processor::opl::a2::unpack(&std::fs::read(&args[2]).unwrap()).unwrap();
+            let b = &blocks[args[3].parse::<usize>().unwrap()];
+            let at = usize::from_str_radix(&args[4], 16).unwrap();
+            let n: usize = args[5].parse().unwrap();
+            for (i, chunk) in b[at..at + n].chunks(16).enumerate() {
+                println!("{:06x}: {:02x?}", at + i * 16, chunk);
+            }
+        }
+        Some("percuse") => {
+            for f in &args[2..] {
+                let song = parse(&std::fs::read(f).unwrap()).unwrap();
+                if song.flags & 0x40 == 0 {
+                    continue;
+                }
+                let mut fx = std::collections::BTreeMap::<(usize, u8), usize>::new();
+                let mut notes = [0usize; 5];
+                for &o in song.order.iter() {
+                    if (o as usize) >= song.patterns.len() {
+                        continue;
+                    }
+                    let pat = &song.patterns[o as usize];
+                    for r in 0..song.pattern_len as usize {
+                        for t in 15..20 {
+                            let c = pat.cell(r, t);
+                            if c.note != 0 {
+                                notes[t - 15] += 1;
+                            }
+                            for &(e, _) in &c.effects {
+                                if e != 0 {
+                                    *fx.entry((t, e)).or_default() += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+                println!("{f}: notes BD..HH {:?} fx {:?}", notes, fx);
+            }
+        }
         _ => eprintln!("usage: a2m_tool dump <file> [pattern...]"),
     }
 }
