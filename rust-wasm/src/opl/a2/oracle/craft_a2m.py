@@ -3,7 +3,10 @@
 (plan-opl.md, O7). Offsets are techinfo.htm's, as corrected by the O6 parser.
 
 Versions 4 and 8 are stored (no packer). Version 11 is written as an aPLib
-stream of literals only, which any aPLib depacker reads.
+stream of literals only, which any aPLib depacker reads; versions 12-14 as
+AT2's LZH (ar002 with wider fields, see lzh.rs) using literals only: each
+block declares a one-symbol code-length code, all 256 literals at length 8
+(so a literal is its own byte) and a one-symbol distance code.
 
     craft_a2m.py spec.py out.a2m
 
@@ -12,7 +15,7 @@ stream of literals only, which any aPLib depacker reads.
 import struct
 import sys
 
-SONGDATA_LEN = {4: 0x2dc4, 8: 0x2dc5, 11: 0x115a1e, 14: 0x115ea2}
+SONGDATA_LEN = {4: 0x2dc4, 8: 0x2dc5, 11: 0x115a1e, 12: 0x115e9f, 13: 0x115e9f, 14: 0x115ea2}
 
 
 def aplib_literals(data: bytes) -> bytes:
@@ -40,6 +43,36 @@ def aplib_literals(data: bytes) -> bytes:
     bit(1)
     bit(0)
     out.append(0)
+    return bytes(out)
+
+
+def lzh_literals(data: bytes) -> bytes:
+    bits = []
+
+    def put(value, n):
+        for i in range(n - 1, -1, -1):
+            bits.append((value >> i) & 1)
+
+    at = 0
+    while at < len(data):
+        block = data[at:at + 0xffff]
+        put(len(block), 16)
+        put(0, 15)          # code-length code: n = 0 ...
+        put(10, 15)         # ... one symbol, 10 = "length 8"
+        put(256, 16)        # 256 literal/length code lengths, all 8
+        put(0, 14)          # distance code: n = 0 ...
+        put(0, 14)          # ... one symbol
+        for b in block:
+            put(b, 8)
+        at += len(block)
+    while len(bits) % 8:
+        bits.append(0)
+    out = bytearray([0]) + len(data).to_bytes(4, 'little')
+    for i in range(0, len(bits), 8):
+        v = 0
+        for b in bits[i:i + 8]:
+            v = v << 1 | b
+        out.append(v)
     return bytes(out)
 
 
@@ -152,7 +185,8 @@ def build(spec: dict) -> bytes:
         lens = [len(b) for b in packed] + [0] * (nfields - len(packed))
         hdr += struct.pack('<%dH' % nfields, *lens)
     else:
-        packed = [aplib_literals(bytes(songdata))] + [aplib_literals(bytes(b)) for b in blocks]
+        pack = lzh_literals if v >= 12 else aplib_literals
+        packed = [pack(bytes(songdata))] + [pack(bytes(b)) for b in blocks]
         hdr = b'_A2module_' + bytes(4) + bytes([v, npat])
         lens = [len(b) for b in packed] + [0] * (17 - len(packed))
         hdr += struct.pack('<17I', *lens)

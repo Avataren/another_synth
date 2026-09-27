@@ -293,6 +293,11 @@ pub struct A2Engine {
     /// Ticks the current row lasts: speed, plus pattern delays.
     row_len: u16,
     row_tick: u16,
+    /// &0x and &1x on this row.
+    frame_delay: u8,
+    row_delay: u8,
+    /// 1-based number of the last instrument with FM data.
+    last_fm_instrument: usize,
     /// Order, pattern and row of the next row to play.
     next_pos: (usize, usize, usize),
     /// Times the song has passed an order marker.
@@ -319,13 +324,22 @@ impl A2Engine {
             row_ticks: 0,
             row_len: 0,
             row_tick: 0,
+            frame_delay: 0,
+            row_delay: 0,
             next_pos: (0, 0, 0),
+            last_fm_instrument: 0,
             loops: 0,
         };
         // MEASURED: each track's lock byte gives its volume slide type
         // (bits 2-3) always, its panning (bits 0-1) under song flag bit 5,
         // its volume lock (bit 4) under bit 1 and its peak lock (bit 5)
         // under bit 2.
+        e.last_fm_instrument = e
+            .song
+            .instruments
+            .iter()
+            .rposition(|i| i.fm != [0; 11])
+            .map_or(0, |i| i + 1);
         let flags = e.song.flags;
         for (t, tr) in e.tracks.iter_mut().enumerate() {
             let lock = e.song.lock_flags.get(t).copied().unwrap_or(0);
@@ -490,9 +504,13 @@ impl A2Engine {
 
     fn start_row(&mut self, out: &mut impl RegisterSink) {
         self.row_tick = 0;
-        self.row_len = self.speed.max(1) as u16;
+        self.frame_delay = 0;
+        self.row_delay = 0;
         (self.order_pos, self.pattern, self.row) = self.next_pos;
         self.play_row(out);
+        // MEASURED: a speed change counts from the row that carries it.
+        let speed = self.speed.max(1) as u16;
+        self.row_len = speed * (1 + self.row_delay as u16) + self.frame_delay as u16;
     }
 
     fn play_row(&mut self, out: &mut impl RegisterSink) {
@@ -507,6 +525,21 @@ impl A2Engine {
                 col.last_param = col.param;
                 col.fx = fx;
                 col.param = param;
+                // MEASURED: a combined volume-slide effect with 00 right after
+                // the same effect reuses its parameter (plain 0A does not).
+                let combo = matches!(
+                    fx,
+                    fx::PORTA_VSLIDE
+                        | fx::VIB_VSLIDE
+                        | fx::PORTA_VSLIDE_FINE
+                        | fx::VIB_VSLIDE_FINE
+                        | fx::ARP_VSLIDE
+                        | fx::ARP_VSLIDE_FINE
+                ) || (fx::SLIDE_UP_VSLIDE..=fx::FINE_DOWN_VSLIDE_FINE).contains(&fx);
+                if combo && param == 0 && fx == col.last_fx {
+                    col.param = col.last_param;
+                }
+                let param = col.param;
                 // MEASURED: when a plain or extra-fine arpeggio gives way to
                 // another effect, the note's pitch comes back on the next
                 // row's first tick unless the last step was the base, and
@@ -857,9 +890,11 @@ impl A2Engine {
             out.write(0xb0 + ch, (f >> 8) as u8);
             self.tracks[t].key_on = false;
             self.tracks[t].keyed_off = true;
-            // MEASURED: a note off also restarts the retrigger count.
+            // MEASURED: a note off also restarts the retrigger count and an
+            // arpeggio.
             for col in self.tracks[t].cols.iter_mut() {
                 col.retrig_count = 0;
+                col.arp_phase = 0;
             }
             self.release_macros(t);
             return;
@@ -913,6 +948,11 @@ impl A2Engine {
         tr.fm_macro = MacroState::default();
         tr.arp_macro = MacroState::default();
         tr.vib_macro = MacroState::default();
+        // MEASURED: AdPlug keeps macros only up to the last instrument
+        // with FM data (its instrument count); later ones never run.
+        if ins > self.last_fm_instrument {
+            return;
+        }
         let Some(m) = self.song.fm_macros.get(ins.wrapping_sub(1)) else {
             return;
         };
@@ -1002,6 +1042,15 @@ impl A2Engine {
     /// Effects applied once, when the row is read, before its notes.
     fn row_effect(&mut self, t: usize, c: usize, cell: &Cell, out: &mut impl RegisterSink) {
         let (fx, param) = cell.effects[c];
+        // MEASURED: the pitch an arpeggio leaves behind is restored here,
+        // before the row's notes (a note off on the same row comes after).
+        if self.tracks[t].cols[c].arp_restore {
+            let base = self.arp_freq(t, 0);
+            let col = &mut self.tracks[t].cols[c];
+            col.arp_restore = false;
+            col.arp_phase = (col.arp_phase + 1) % 3;
+            self.write_freq(t, base, out);
+        }
         match fx {
             fx::SET_MOD_VOL => {
                 self.tracks[t].vol_mod = 63 - (param & 0x3f);
@@ -1076,8 +1125,8 @@ impl A2Engine {
             }
             fx::EXTENDED => self.extended(t, c, param, out),
             fx::EXTENDED2 => match param >> 4 {
-                0x0 => self.row_len += (param & 15) as u16,
-                0x1 => self.row_len += self.speed as u16 * (param & 15) as u16,
+                0x0 => self.frame_delay = param & 15,
+                0x1 => self.row_delay = param & 15,
                 0x2 => self.tracks[t].note_delay = param & 15,
                 0x3 => self.tracks[t].note_cut = param & 15,
                 0x4 => self.tracks[t].fine_once = (param & 15) as i8,
@@ -1129,23 +1178,17 @@ impl A2Engine {
                     self.tracks[t].cols[c].porta_speed = param;
                 }
             }
-            fx::VIBRATO | fx::EXTRA_FINE_VIB => {
+            // MEASURED: a zero parameter reuses the last one; otherwise both
+            // nibbles are taken (04 20 is speed 2, depth 0).
+            fx::VIBRATO | fx::EXTRA_FINE_VIB if param != 0 => {
                 let col = &mut self.tracks[t].cols[c];
-                if param >> 4 != 0 {
-                    col.vib_speed = param >> 4;
-                }
-                if param & 15 != 0 {
-                    col.vib_depth = param & 15;
-                }
+                col.vib_speed = param >> 4;
+                col.vib_depth = param & 15;
             }
-            fx::TREMOLO | fx::EXTRA_FINE_TREM => {
+            fx::TREMOLO | fx::EXTRA_FINE_TREM if param != 0 => {
                 let col = &mut self.tracks[t].cols[c];
-                if param >> 4 != 0 {
-                    col.trem_speed = param >> 4;
-                }
-                if param & 15 != 0 {
-                    col.trem_depth = param & 15;
-                }
+                col.trem_speed = param >> 4;
+                col.trem_depth = param & 15;
             }
             _ => {}
         }
@@ -1265,7 +1308,12 @@ impl A2Engine {
         let pan = pan_bits(self.tracks[t].panning);
         out.write(0xc0 + reg_channel(self.channel(t)), (fm[10] & 0x0f) | pan);
         self.write_volume(t, out);
-        if step.fm[10] & 0x80 != 0 {
+        // MEASURED: the first step also keys the note on again when the
+        // instrument itself has no envelope (AR/DR and SL/RR all zero), as
+        // does the retrigger bit of any step.
+        let bare = self.song.instruments[ins].fm[4..8] == [0; 4];
+        let first = self.tracks[t].fm_macro.pos == 1;
+        if step.fm[10] & 0x80 != 0 || (first && bare) {
             let ch = reg_channel(self.channel(t));
             if self.tracks[t].key_on {
                 let note = self.tracks[t].note;
@@ -1546,13 +1594,7 @@ impl A2Engine {
                 self.tracks[t].cols[c].tremor_off = false;
                 self.write_volume(t, out);
             }
-            if first && col.arp_restore {
-                let base = self.arp_freq(t, 0);
-                let col = &mut self.tracks[t].cols[c];
-                col.arp_restore = false;
-                col.arp_phase = (col.arp_phase + 1) % 3;
-                self.write_freq(t, base, out);
-            }
+
             let mem = col.slide_mem as i32;
             let arp_param = col.arp_mem;
             if c == 0 {
@@ -1565,6 +1607,7 @@ impl A2Engine {
                     self.tracks[t].note_cut = 0;
                     let f = tr.freq;
                     self.tracks[t].key_on = false;
+                    self.tracks[t].keyed_off = true;
                     self.write_freq(t, f, out);
                 }
             }

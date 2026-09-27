@@ -75,8 +75,12 @@ fn compare(file: &str, ticks: usize, show: usize, state_only: bool) -> usize {
                     pos.1,
                     pos.2
                 );
-                println!("  want {}", fmt_writes(w));
-                println!("  got  {}", fmt_writes(&got));
+                let same = w.iter().zip(got.iter()).take_while(|(a, b)| a == b).count();
+                let from = same.saturating_sub(4);
+                let end = |v: &[(u16, u8)]| (same + 24).min(v.len());
+                println!("  ({same} writes agree; showing from {from})");
+                println!("  want {}", fmt_writes(&w[from..end(w)]));
+                println!("  got  {}", fmt_writes(&got[from..end(&got)]));
                 shown += 1;
             }
             if state_only {
@@ -308,6 +312,45 @@ fn main() {
                     }
                 }
             }
+        }
+        Some("features") => {
+            for f in &args[2..] {
+                let song = parse(&std::fs::read(f).unwrap()).unwrap();
+                let lock4 = song.lock_flags.iter().any(|&l| l & 0x40 != 0);
+                let pairs = song.four_op_instruments.first().copied().unwrap_or(0);
+                println!(
+                    "{}\tv{}\t4op {:06b}\tins-pairs {}\tlock4 {}\tperc {}",
+                    f.rsplit("/a2m/").next().unwrap(),
+                    song.version,
+                    song.four_op_tracks,
+                    pairs,
+                    lock4,
+                    song.flags & 0x40 != 0
+                );
+            }
+        }
+        Some("mine") => {
+            // mine <file> <ticks> <reg hex>... : the engine's writes to these registers
+            let song = parse(&std::fs::read(&args[2]).unwrap()).unwrap();
+            let ticks: usize = args[3].parse().unwrap();
+            let regs: Vec<u16> = args[4..]
+                .iter()
+                .map(|r| u16::from_str_radix(r, 16).unwrap())
+                .collect();
+            let mut e = A2Engine::new(song);
+            e.adplug_quirks = true;
+            let mut w = Vec::new();
+            e.reset(&mut w);
+            for t in 0..ticks {
+                let mut w: Vec<(u16, u8)> = Vec::new();
+                e.update(&mut w);
+                for (r, v) in w {
+                    if regs.contains(&r) {
+                        print!("{t}:{r:03x}={v:02x} ");
+                    }
+                }
+            }
+            println!();
         }
         Some("raw") => {
             // raw <file> <block> <offset hex> <len>
