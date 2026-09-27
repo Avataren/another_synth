@@ -58,3 +58,59 @@ describe('note delay and the row volume', () => {
     expect(volumes('mod', { row: 1, instrumentId: '01', midi: 62, velocity: 128, effect: delay2 })[0]).toEqual([0, 32]);
   });
 });
+
+/**
+ * A key-off cell's volume and effect still run in ST3 (st3play digadl.c
+ * `doadlib` takes the VOLUME branch after keying off; `docmd1` runs the
+ * command whatever the note). See `FormatProfile.noteOffRowRunsCell`.
+ */
+describe('key-off row with a volume', () => {
+  function events(moduleFormat: 's3m' | 'xm'): string[] {
+    const song: Song = {
+      title: 'key-off volume',
+      author: '',
+      bpm: 125,
+      moduleFormat,
+      sequence: ['p0'],
+      patterns: [
+        {
+          id: 'p0',
+          length: 2,
+          tracks: [
+            {
+              id: 't0',
+              steps: [
+                { row: 0, instrumentId: '01', midi: 60, velocity: 255 },
+                { row: 1, instrumentId: '01', midi: 60, isNoteOff: true, velocity: 0 },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const out: string[] = [];
+    const engine = new PlaybackEngine({
+      audioContext: { currentTime: 0 } as unknown as AudioContext,
+      scheduledNoteHandler: (e) => {
+        if (e.time >= 1) out.push(e.type);
+      },
+      scheduledPitchHandler: () => {},
+      scheduledVolumeHandler: (_id, _voice, volume, time) => {
+        if (time >= 1) out.push(`volume ${volume}`);
+      },
+    });
+    engine.loadSong(song, 0);
+    const scheduleRow = (Reflect.get(engine, 'scheduleRow') as (row: number, time: number) => void).bind(engine);
+    scheduleRow(0, 0);
+    scheduleRow(1, 1);
+    return out;
+  }
+
+  it('ST3 releases the note and still sets the volume', () => {
+    expect(events('s3m')).toEqual(['noteOff', 'volume 0']);
+  });
+
+  it('XM keeps the key-off alone', () => {
+    expect(events('xm')).toEqual(['noteOff']);
+  });
+});

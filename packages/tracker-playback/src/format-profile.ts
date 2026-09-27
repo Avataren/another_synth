@@ -477,6 +477,19 @@ export interface FormatProfile {
    * playVoice sets the volume and delays only the DMA trigger).
    */
   readonly noteDelayDefersCell?: boolean;
+
+  /**
+   * Whether a key-off row still runs the rest of its cell -- its volume and
+   * its effect -- after releasing the note. Absent = the key-off is all the
+   * row does.
+   *
+   * ST3 does: st3play digadl.c `doadlib` keys the channel off for note 254
+   * and still takes the cell's `// VOLUME***` branch (`setvol`, a TL write
+   * on the release), and `docmd1`/`docmd2` run the command whatever the
+   * note was. (FT2's getNewNote also runs handleEffects_TickZero after
+   * keyOff, but its key-off volume rules differ; XM is left as it was.)
+   */
+  readonly noteOffRowRunsCell?: boolean;
 }
 
 /**
@@ -771,6 +784,8 @@ export const S3M_PROFILE: FormatProfile = {
   // GET_LAST_NFO: D E F I J K L Q R S (see the field's docs).
   // donewnote returns early on an SDx cell: its volume waits for the note.
   noteDelayDefersCell: true,
+  // doadlib's VOLUME branch and docmd1 run on a ^^ cell too.
+  noteOffRowRunsCell: true,
   sharedEffectInfoCommands: [
     0x04, 0x05, 0x06, 0x09, 0x0a, 0x0b, 0x0c, 0x11, 0x12, 0x13,
   ],

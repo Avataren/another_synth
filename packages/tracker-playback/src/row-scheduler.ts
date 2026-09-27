@@ -430,11 +430,20 @@ export function scheduleRow(
             }
             this.scheduledNoteHandler(event);
             effectState.hasActiveVoice = false;
-            continue;
+            // Where the format runs the rest of a key-off cell, its volume
+            // and effect carry on below with no note (noteOffRowRunsCell).
+            // A bare key-off has nothing more to run.
+            if (
+              effectState.profile.noteOffRowRunsCell !== true ||
+              (!effect && step.velocity === undefined && !step.volumeCommand)
+            ) {
+              continue;
+            }
           }
 
-          // Handle note-on with effect processing
-          let newNote = step.midi;
+          // Handle note-on with effect processing. A key-off row's `midi` is
+          // the note it releases, not one to play.
+          let newNote = step.isNoteOff ? undefined : step.midi;
           let newVelocity = step.velocity;
 
           // If an instrument is specified but no note/effect/velocity is provided, retrigger the last
