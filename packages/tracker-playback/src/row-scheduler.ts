@@ -523,7 +523,16 @@ export function scheduleRow(
           const tick0HasVolumeCommand =
             hasVolumeCommand(tick0Batch.commands) ||
             hasVolumeCommand(volume0Batch.commands);
-          if (step.velocity !== undefined && !tick0HasVolumeCommand) {
+          // ST3 defers a note-delayed cell whole, its volume included; the
+        // processor carries it to the delay tick (noteDelayDefersCell).
+        const cellDeferred =
+          effect?.type === 'noteDelay' &&
+          effectState.profile.noteDelayDefersCell === true;
+        if (
+          step.velocity !== undefined &&
+          !tick0HasVolumeCommand &&
+          !cellDeferred
+        ) {
             const gain = clamp(step.velocity / 255);
             if (this.scheduledVolumeHandler) {
               // Per-track velocity should drive per-voice gain, not global instrument gain.
@@ -690,11 +699,16 @@ export function scheduleRow(
       // a later effectless row finds `vibratoApplied` already cleared, like
       // st3play's `if (ch->aspd != ch->aorgspd)` guard. ProTracker/FT2 hold
       // the offset instead (D75), hence the profile gate.
+      //
+      // The same guard catches an arpeggio's last tick: s_arp writes only
+      // `ch->aspd`, so a row after a `J` that leaves this channel empty
+      // snaps back to the note too.
       if (
         effectState.profile.pitchResetsAfterEffectlessRow === true &&
-        effectState.vibratoApplied
+        (effectState.vibratoApplied || effectState.arpeggioApplied)
       ) {
         effectState.vibratoApplied = false;
+        effectState.arpeggioApplied = false;
         effectState.vibratoHeldWave = 0;
         context.instrumentId = effectState.instrumentId;
         context.trackIndex = trackIndex;

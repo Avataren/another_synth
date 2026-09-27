@@ -591,6 +591,9 @@ export function processEffectTick0(
 
   // Reset per-row volume slide accumulator (effect memory stored separately)
   resetVolumeSlide(state);
+  // A row with a cell re-states the channel's pitch below (or holds it on
+  // purpose, for a delayed note); only rows without one need the flag.
+  state.arpeggioApplied = false;
 
   /** Whether this row started a note, i.e. whether a voice was allocated. */
   let triggeredNote = false;
@@ -633,7 +636,11 @@ export function processEffectTick0(
 
   // Apply the row's own volume before the note is triggered, so the note-on
   // can carry the level the note should start at.
-  if (newVelocity !== undefined) {
+  // A format that defers a delayed cell whole keeps the row's volume for the
+  // delay tick instead (see the 'noteDelay' case).
+  const defersCell =
+    hasNoteDelay && state.profile.noteDelayDefersCell === true;
+  if (newVelocity !== undefined && !defersCell) {
     // newVelocity is in 0-255 range (from MOD importer volume column)
     // Normalize to 0-1 for internal use
     state.currentVolume = newVelocity / 255;
@@ -1175,7 +1182,13 @@ export function processEffectTick0(
           // no sample number, hence no volume. None of them retriggered, so
           // the phrase never restarted on the C# -- it bent mid-phrase and
           // played on, which is heard as the melody not landing on its notes.
-          velocity: Math.round(clampVolume(state.currentVolume) * 255),
+          //
+          // Where the format defers the whole cell (ST3), the row's own
+          // volume has not been applied yet and rides with the note instead.
+          velocity:
+            defersCell && newVelocity !== undefined
+              ? newVelocity
+              : Math.round(clampVolume(state.currentVolume) * 255),
           ...(noteFrequency !== undefined ? { frequency: noteFrequency } : {}),
         };
         // If delay exceeds or equals the current speed, ProTracker spills to the next row.
@@ -1189,6 +1202,8 @@ export function processEffectTick0(
           state.noteDelayTick = -1;
         }
         // Don't trigger on tick 0
+      } else if (defersCell && newVelocity !== undefined) {
+        state.delayedVolume = newVelocity;
       }
       break;
     }
@@ -1447,6 +1462,12 @@ export function processEffectTickN(
     state.noteDelayTick = -1;
     pushPitch(commands, voiceIndex, state.currentFrequency);
     pushVolume(commands, voiceIndex, state.currentVolume);
+  } else if (state.noteDelayTick === tick && state.delayedVolume !== undefined) {
+    // A deferred cell with a volume and no note (noteDelayDefersCell).
+    state.currentVolume = state.delayedVolume / 255;
+    state.delayedVolume = undefined;
+    state.noteDelayTick = -1;
+    pushVolume(commands, voiceIndex, state.currentVolume, 'step');
   }
 
   if (!effect) {
@@ -1565,6 +1586,7 @@ export function processEffectTickN(
       const step = state.profile.arpeggioStep(tick, ticksPerRow);
       const offset =
         step === 1 ? state.arpeggioX : step === 2 ? state.arpeggioY : 0;
+      state.arpeggioApplied = offset !== 0;
 
       if (state.currentPeriod !== undefined) {
         const period = state.profile.pitch.arpeggioPeriod(

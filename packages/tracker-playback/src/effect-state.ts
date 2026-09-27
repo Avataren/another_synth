@@ -47,6 +47,13 @@ export interface TrackEffectState {
    */
   vibratoApplied: boolean;
   /**
+   * Whether the last arpeggio tick left the channel off its note. ST3 snaps
+   * it back on the next row with no effect command (st3play `docmd1`, see
+   * `FormatProfile.pitchResetsAfterEffectlessRow`), even a row the pattern
+   * leaves empty for this channel.
+   */
+  arpeggioApplied: boolean;
+  /**
    * The waveform sample of the last vibrato offset actually emitted.
    *
    * Both replayers advance the position *after* using it, so once a row has
@@ -157,6 +164,12 @@ export interface TrackEffectState {
         frequency?: number;
       }
     | undefined;
+  /**
+   * The volume (0-255) of a delayed cell with no note, where the format
+   * defers the whole cell (`FormatProfile.noteDelayDefersCell`): it lands
+   * on the delay tick.
+   */
+  delayedVolume: number | undefined;
 
   // Voice tracking
   voiceIndex: number;
@@ -284,6 +297,7 @@ export function createTrackEffectState(
     vibratoDepth: 0,
     vibratoPos: 0,
     vibratoApplied: false,
+    arpeggioApplied: false,
     vibratoHeldWave: 0,
     vibratoWaveform: 0,
     vibratoRetrigger: true,
@@ -314,6 +328,7 @@ export function createTrackEffectState(
     noteCutTick: -1,
     noteDelayTick: -1,
     delayedNote: undefined,
+    delayedVolume: undefined,
 
     voiceIndex: -1,
     hasActiveVoice: false,
@@ -426,6 +441,7 @@ export function resetEffectStateForNote(state: TrackEffectState): void {
   state.noteCutTick = -1;
   state.noteDelayTick = -1;
   state.delayedNote = undefined;
+  state.delayedVolume = undefined;
   state.tonePortaActive = false;
   state.hasActiveVoice = false;
 }

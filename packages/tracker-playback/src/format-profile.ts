@@ -464,6 +464,19 @@ export interface FormatProfile {
    * is set, and the row scheduler re-decodes the cell with the memory.
    */
   readonly sharedEffectInfoCommands?: readonly number[];
+
+  /**
+   * Whether a note delay defers the whole cell -- its volume too -- rather
+   * than only the note's trigger.
+   *
+   * ST3 does not process a delayed cell at all on tick 0. st3play digread.c
+   * `donewnote`: `if (ch->cmd == 'S'-64 && (ch->info & 0xF0) == 0xD0) return;
+   * // we have a note delay, do nothing yet`, and `s_notedelayb` calls
+   * `donewnote(channel, true)` on the delay tick, which is where the cell's
+   * volume lands. Absent = the volume applies on tick 0 (ProTracker's
+   * playVoice sets the volume and delays only the DMA trigger).
+   */
+  readonly noteDelayDefersCell?: boolean;
 }
 
 /**
@@ -756,6 +769,8 @@ export const S3M_PROFILE: FormatProfile = {
   // A pattern-delay repeat re-runs docmd1 (tick-0 commands), not docmd2.
   patternDelayRepeatsTickZero: true,
   // GET_LAST_NFO: D E F I J K L Q R S (see the field's docs).
+  // donewnote returns early on an SDx cell: its volume waits for the note.
+  noteDelayDefersCell: true,
   sharedEffectInfoCommands: [
     0x04, 0x05, 0x06, 0x09, 0x0a, 0x0b, 0x0c, 0x11, 0x12, 0x13,
   ],

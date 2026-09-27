@@ -369,7 +369,7 @@ async function compare(name: string, file: string): Promise<Comparison> {
     const detail = bad.map((reg) => `${reg.toString(16)} st3=[${fmt(a, reg)}] ours=[${fmt(b, reg)}]`).join('; ');
     if (!first) first = `tick ${tick}: ${detail}`;
     // eslint-disable-next-line no-console
-    if (process.env.OPL_TRACE_DEBUG === name && other.length <= 14) console.log(`  ${tick}: ${detail}`);
+    if (process.env.OPL_TRACE_DEBUG === name && other.length <= Number(process.env.OPL_TRACE_LINES ?? 14)) console.log(`  ${tick}: ${detail}`);
   }
   return { ticks: lastTick, other, pitch, ...(first ? { first } : {}), st3Writes, ourWrites };
 }
@@ -389,8 +389,8 @@ const SONGS: Array<[string, string, number, string]> = [
   ['starport', 'Purple Motion/starport bbs introtune.s3m', 38, 'engine: S3M vibrato timing'],
   ['redemptions', 'Omega/redemptions.s3m', 38, 'two file channels on A9 (ST3 merges them into one state)'],
   ['first-adlib-attempt', 'Skaven/first adlib attempt.as3m', 56, 'engine: volume on a key-off row; vibrato'],
-  ['rotagilla', 'Manwe/rotagilla.s3m', 22, 'engine: note-delay volume on tick 0'],
-  ['koakuma', 'Viraxor/koakuma.s3m', 407, 'engine: J00 memory; note-delay volume on tick 0'],
+  ['rotagilla', 'Manwe/rotagilla.s3m', 1, 'a key-off row\'s volume'],
+  ['koakuma', 'Viraxor/koakuma.s3m', 361, 'driver: ST3.03-3.20 / OpenMPT broken AdLib tone portamento'],
   ['church', 'Bisqwit/some kind of church theme.s3m', 0, 'exact'],
   ['rance-bird', '- unknown/(opl2) rance 4.1 - bird.s3m', 1184, 'engine: vibrato; two file channels on A6'],
 ];
