@@ -1,81 +1,84 @@
-# O7 progress (A2M player) — handoff, 2026-09-27
+# O7 progress (A2M player) — handoff, 2026-09-27 (session 2)
 
-Read with `.ai/plan-opl.md` (§3, §4, §6, O6 record) and `.ai/opl-next-session-prompt.md`.
-Commits so far: `14f3f8d5`, `701d87fe`, `66e2fad3`, plus the batch-4 checkpoint after them.
+Read with `.ai/plan-opl.md` (§3, §4, §6 incl. the D1 relaxation note, O6 record) and
+`.ai/opl-next-session-prompt.md`. Commits: `14f3f8d5`, `701d87fe`, `66e2fad3`, `398df56d`
+(batches 1–4), `5ed81cf4` (batch 5), batch 6 (this session's second commit).
 
 ## Where things stand
 
-- `rust-wasm/src/opl/a2/engine.rs` — `A2Engine`: tick/row clock, effects, macros, 4-op pitch
-  sharing (partial), percussion (AdPlug's routing). Emits register writes to a `RegisterSink`.
-  `adplug_quirks` flag = reproduce AdPlug-only behaviour (on in the compare tool only).
-- **Gate status (per-tick register STATE equal to AdPlug, 3000 ticks, `A2M_STATE=1`):** all
-  v9+ tier-1 files pass **except ETWARAWK and fm-tronikk** (4-op volume lock, below). v5
-  prehistorik also passes. v1 intro-tune / super mario and v5 little boring trance need the
-  old-effect mapping (below). Write-*sequence* equality also holds for most; the remaining
-  sequence-only differences write identical values (e.g. arpeggio restore with 18/19 when
-  there is no arpeggio memory, probe `combomem18`). Use state equality as the gate: the chip
-  samples register state between ticks, so equal state = equal audio.
-- All ~260 probes pass (`oracle/dev/runprobes.sh`, state and sequence).
-- Nothing is exported to wasm yet; no worklet, no app hookup (steps 3–5 of the O7 prompt).
+- `rust-wasm/src/opl/a2/engine.rs` — `A2Engine`, emits register writes to a `RegisterSink`.
+  `adplug_quirks` = reproduce AdPlug-only behaviour (on in `a2m_tool cmp` only).
+- **Gate (per-tick register STATE vs AdPlug, 3000 ticks, `A2M_STATE=1`): 263 of 278 corpus files
+  match, all 17 tier-1 files match.** All ~270 probes pass (`dev/runprobes.sh`).
+- Remaining 15 (first differing tick): instrument set #001 (0 — order list is only markers:
+  refuse at load, AdPlug releases every channel and ends), rainbow factory 462, class05 618,
+  LIMITBRK 806, oskari's returns 1142, TG_VEGAS 1158, pink chiptune 1162, crack it 1170,
+  oskari wins 1849, bring the pain 1988, battletoads 2052, mutable signs 2694,
+  c3 comp entry 2695, complete devastation 2883, clear 2985. Not yet looked at.
+- Nothing exported to wasm yet; no worklet, no app hookup (O7 prompt steps 3–5).
 
-## Oracle and tools (all black-box; AdPlug player source not read)
+## D1 relaxed (Morten: "just peek at at2 source, for debugging the last issues")
 
-- `oracle/trace-oracle.cpp`: `trace <file> <ticks>` / `render <file> <sec> <out.wav>`.
-  **Always run with `A2M_PLAYER=v2`**: `CAdPlug::factory` sends v1–8 to the old `Ca2mLoader`
-  (a CmodPlayer conversion); `Ca2mv2Player` (AdPlug's AT2 port) loads every version. It
-  mis-reads *stored* modules (v4/v8; none in the corpus). Bank-1 writes appear both as
-  `setchip(1)` and as `0x1xx`; normalise to `reg | chip<<8`.
-- `oracle/craft_a2m.py`: synthetic modules for versions 1, 5 (literal-only SixPack), 11
-  (literal-only aPLib) and 12–14 (literal-only AT2 LZH). Keys: instruments, fm_macros,
-  arp_macros, vib_macros, disabled, locks, flags, four_op, four_op_ins, speedup, ...
-- `oracle/probes/*.py`: the regression probes (SPEC dicts). `oracle/dev/`: `probe.py`
-  (craft + print AdPlug trace), `runprobes.sh`, `tier1.sh`, `cmp.sh`, `freqs.py`, `lin.sh`,
-  `mapfx.py`/`mapext.py` (brute-force old→new effect mapping). They hard-code the session
-  scratch path `S=...`; point `S` at a directory holding a built `trace-oracle`
-  (`g++ -O1 trace-oracle.cpp -I$P/include -I$P/include/adplug -L$P/lib -ladplug -llibbinio`,
-  `P=.ai/adplug-oracle/prefix`).
-- `examples/a2m_tool.rs`: `dump`, `macros`, `info`, `features`, `effects`, `raw`,
-  `mine <file> <ticks> <regs>`, `cmp <file> [ticks] [show]` (needs `A2M_ORACLE`; env
-  `A2M_STATE=1` for state compare).
+AT2 source cloned at `.ai/at2-src` (github.com/ivan-tat/at2 @ 336fbdd, gitignored). Useful
+files: `adt2unit/pas/play_line.pas` (row logic, read in full), `adt2unit/*.c` (C port of the
+player — closest to what AdPlug's `a2m-v2` derives from; e.g. `macro_poll_proc.c`,
+`update_effects.c`, `output_note.c`, `set_ins_volume.c`, `calc_freq_shift_*.c`),
+`formats/a2m/get_pat_event_a2m_v{1,5}.c` (old effect conversion), `check_crc32_a2m.c` (would
+settle O6's unverified header check value). Read for semantics; the Rust is written fresh.
+**Current AT2 ≠ AdPlug** in places (AdPlug ports an older AT2). AdPlug stays the gate; AT2 is
+used to form hypotheses, then probed. Record which one play follows in the landing record.
 
-## Pinned rules worth knowing (details are commented in engine.rs as MEASURED)
+## Rules pinned this session (all commented in engine.rs)
 
-Track→channel [3,0,4,1,5,2,6,7,8,12,9,13,10,14,11,15,16,17]; percussion mode moves tracks
-7–9 to 15–17 and 16–20 to BD/SD/TT/TC/HH (one-op drums at ops 0x14/0x12/0x15/0x11, second
-op at +0xFF, keyed via B7/B8 — AdPlug's behaviour, possibly a port bug; flagged for Morten's
-ears). Row clock: first row after `speed` row ticks; row tick every `speedup` timer ticks, or
-`floor(18·speedup/tempo)` for tempo < 18 (AdPlug then plays too slowly: its refresh is
-tempo×speedup; engine.refresh() follows AT2, 18.2 Hz floor). Extra-fine effects on row ticks
-≡ 3 mod 4. Default instrument of a track = track number. AdPlug arpeggio-table off-by-one
-(relative steps read element pos+1) is reproduced only under `adplug_quirks`; play follows
-AT2 (corpus chord tables prove intent). Macro TL column is a volume (63 − value), genuine.
+- Old effects: v1–4 table + FFy/FAy..FDy; v5–8 identity except 0x16 (manual slide → &4x/&5y:
+  with no note it adds to block+F-number raw), ZC/ZD dropped. AT2's converter also maps
+  FF1..FF9 to ZF2/ZF3/ZF4/ZF5/(ADSR target toggle)/ZF7/ZF6/ZF8 and F2y y=4..7 to a modulator
+  waveform, and FA–FD depend on a per-channel toggle (FF5/FF6) — **not implemented** (no corpus
+  file uses them; my earlier AdPlug probe of FF3/FF7 looked like ZF0 — recheck before relying).
+- Volume scaling (flag bit 7): sounding ops relative to the instrument's TL; reset level 0 for
+  carrier/additive modulator only (percussion modulator keeps its TL, then scaled again).
+- Voice = track's instrument or t+1 before any: decides additive, 0C/28 no-op on empty voice.
+- 4-op pairs: key/pitch/key-bit shared on the second track's channel; 4-op volume lock
+  (lock bit 6, ZE5/ZE6 per pair); FM-macro retrigger only from the second track, which also
+  restarts the first track's tables.
+- Tone porta 03: armed per column by a note with 03; one-shot effects keep it, running ones
+  disarm and zero its own speed. ZE2/ZE3 force-key. ZFF no-restart; ZFF + 26/27 = legato.
+- Arpeggio restore also for 18/19 (base counts as step 0); arpeggio table has its own base
+  note (`arp_note`); 26/27 swap after the note.
+- Tremor saves/restores its start level; AdPlug quirk: column-2 tremolo only ever louder.
+- Vibrato table: AT2 base-pitch model (`vib_freq`), reset by any pitch change incl. the
+  arpeggio table; key-off restart also resets its count (not its delay).
+- Pitch: AT2 `calc_freq_shift_up/down` (single wrap, wraps even for 0), porta limits
+  nFreq(0)=0x157 / nFreq(97)=block 7 0x2AE, nFreq caps notes ≥97, finetune added to the whole
+  word, 13-bit mask on writes; vibrato position advances on idle tracks.
+- FM macro flags 0x80 retrig, 0x40 envelope restart, 0x20 zero pitch until next step.
+- Declared track count (`song.tracks`) limits the tracks played; fixed notes (0x90+n).
+- Retrig counter zeroed on non-retrig rows; one-shot effects don't become "last effect".
+- Pan lock: reload takes lock-flag panning; FM-macro panning ignored under lock.
 
-## Old effect numbers (v1–4 → v9+), from `dev/mapfx.py 1` / `mapext.py 1 0f`
+## Tools
 
-0→00, 1→01, 2→02, 3→07, 4→08, 5→03, 6→05, 7→04, 8→06 (probable; ambiguous with other
-vslide combos), A→0C, B→0D, C→0B, D→0F, E→0E.
-9xy: nibble volume: x≠0 → carrier volume 4x+3 (like 12), else y → modulator 4y+3 (like 09).
-Fxy (extended), by x: 0→Z0y, 1→Z1y, 3→&4y (fine tune up; also matched 07 y),
-4→&5y, 6→volume slide (0A-like, needs exact variant), 8→fine volume slide (14-like),
-A→Z2y, B→Z3y, C→Z4y, D→Z5y, E→ZAy, 9→no effect. Still unknown: 2 (writes carrier
-waveform group: `0f 21` set carrier wf 1 — check 13 with nibble swap), 5, 7, F.
-v5–8 (0–0x23) not mapped yet: run `mapfx.py 5` and `mapext.py 5 <e>` for the extended ones.
-Implement as a conversion table applied at row time for song.version < 9.
+Scratch setup (dev scripts now read `$A2M_SCRATCH`): build `trace-oracle`
+(`g++ -O1 oracle/trace-oracle.cpp -I$P/include -I$P/include/adplug -L$P/lib -ladplug -llibbinio`,
+`P=.ai/adplug-oracle/prefix`), copy `oracle/dev/*` and `oracle/probes/*.py` (into
+`$A2M_SCRATCH/probes/`) there, write `tier1.txt` / `all.txt` (corpus-relative paths, one per
+line). Then `A2M_SCRATCH=... A2M_STATE=1 LIST=$A2M_SCRATCH/all.txt bash dev/tier1.sh` sweeps the
+corpus in ~5 s; `dev/cmp.sh <file> [ticks] [show]` shows diffs (the position label lags one
+row: it is the position *before* the tick); `dev/pp.sh VER FX P` is a quick two-track probe.
+`a2m_tool mine <file> <ticks> <regs>` prints the engine's writes; `fx4op` lists 4-op effects.
 
 ## Open items, in order
 
-1. v1–8 effect conversion (above) → intro-tune, super mario, little boring trance.
-2. 4-op volume lock (lock bit 6, 3 corpus files): volume effects act on the 4-op algorithm's
-   output ops ((ch0.con, ch3.con): 00 → O4; 10 → O1,O4; 01 → O2,O4; 11 → O1,O3,O4);
-   set-volume scales each output op's *instrument* TL by v; volume slides write one common
-   TL to all output ops (arithmetic not pinned — see probe output in the transcript notes:
-   after 0C 10 then 0A 02 all three read 0x31, 0x33). Or declare and explain the divergence.
-3. Run the whole corpus (278 files) in state mode to find untested semantics; extend
-   tick counts to full song length (until AdPlug's `ended`).
-4. Commit the gate as a Rust test: per-file per-tick state hashes (e.g. FNV per 64-tick
-   chunk) generated by a `regen` script from the oracle; plus the probe suite as TSV.
-5. Steps 3–5 of the O7 prompt: `A2Player` wasm class (engine + `Chip` + resampler, stepped at
-   `refresh()`), worklet or `opl-audio-processor` mode (load, play/pause, seek, loop,
-   mute/solo, scope taps), tracker hookup like AHX/SID, truthful refusal at load.
-6. Audio A/B vs AdPlug renders (`trace-oracle render`), CoT vs SB16 recording, Morten's ears,
-   landing record in the plan.
+1. The 14 remaining corpus divergences (above), same method: `cmp.sh`, dump the row, read the
+   AT2 routine, probe AdPlug, implement, rerun probes + sweep.
+2. Extend the gate to full song length (until AdPlug's `ended` flag in the trace header).
+3. Commit the gate as a Rust test: per-file per-tick state hashes (FNV per 64-tick chunk)
+   from a `regen` script, plus the probe suite as TSV (the test must not need AdPlug).
+4. O7 steps 3–5: `A2Player` wasm class (engine + `Chip` + resampler, stepped at
+   `refresh()`), worklet / `opl-audio-processor` mode (load, play/pause, seek, loop,
+   mute/solo, scope taps), tracker hookup like AHX/SID, truthful refusal at load (e.g. an
+   order list with no pattern).
+5. Audio A/B vs AdPlug renders (`trace-oracle render`), CoT vs the SB16 recording, Morten's
+   ears, O7 landing record in the plan (list every AdPlug-vs-AT2 choice: arpeggio-table
+   off-by-one, column-2 tremolo, empty-ADSR mute workaround not in AdPlug, porta after an
+   empty row, key-off vibrato restart, old FFy mapping).

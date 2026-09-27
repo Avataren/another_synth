@@ -1,5 +1,6 @@
-**Resume O7 from `.ai/opl-o7-progress.md` (handoff, 2026-09-27) — read it first; it supersedes
-the task list below where they differ.**
+**Resume O7 from `.ai/opl-o7-progress.md` (handoff, 2026-09-27, session 2) — read it first; it
+supersedes the task list below where they differ. D1 is relaxed for debugging: AT2's source is
+at `.ai/at2-src` (read for semantics, write fresh Rust; AdPlug's player source stays unread).**
 
 Continue the OPL work in `.ai/plan-opl.md`: next is **O7 (the A2M player)**, the second half of
 the Adlib Tracker II track. Read the plan first, especially §3 (Adlib Tracker II), §4 (oracles
