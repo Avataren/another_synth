@@ -670,9 +670,44 @@ report. That is the case for one of the three packers the corpus needs.
   0.60), third-octave shape σ 2.1 dB (3.7; AdPlug 1.3). Per band, our render is within
   ±0.5 dB of the card from 50 Hz to 5 kHz. Above that both emulators are brighter than the
   card: +2.1/+1.5 dB at 8 kHz, +6.2/+3.7 at 12.8 kHz, +9.7/+5.7 at 16 kHz (ours/Nuked),
-  which is the card's analog roll-off plus a little more top in ymfm. Absolute level cannot
-  be compared, because the recording is normalized (peak −0.01 dBFS). L/R balance matches
-  (the card +0.0, ours +0.1 dB).
+  which is the card's analog roll-off. ~~plus a little more top in ymfm~~ (wrong, see the
+  correction below). Absolute level cannot be compared, because the recording is normalized
+  (peak −0.01 dBFS). L/R balance matches (the card +0.0, ours +0.1 dB).
+- **Correction (2026-09-27, OPL review after O7):**
+  - **ymfm is not brighter than Nuked.** The band figures above were taken on the mono
+    L+R sum. Nuked outputs R one sample after L on most channels (7 of 18 on *Corridors*;
+    the rest have no skew), so its mono sum is a two-tap average, |cos(πf/fs)|: −0.5/−1.7/−5
+    dB at 4–8/8–12/12–20 kHz on those channels. That is the whole "excess" in ours. Per side,
+    soloing each channel of the *Corridors* write stream through both chips, our treble
+    equals Nuked's within 0.1 dB, and the skew is inaudible in stereo (20 µs). Against the
+    card, ours per side is +2.2/+6.3/+9.8 dB at 8/12.8/16 kHz: the SB16 output stage (DAC
+    hold plus analog filter), not the chip. **Compare OPL renders per side, never mono.**
+  - **Chip = Nuked apart from level.** With the app's write spacing
+    (`REPLAY_SPACING=1 a2m_tool replaychip`), the same writes through both chips agree within
+    ±0.3 dB from 25 Hz to 5 kHz, and the level is exactly 2× (+6.02 dB). Minimal scripts
+    (held notes, waveforms 1–7, FM, additive, AR a/c/d/e, key-off/on retriggers, legato)
+    match to a few LSB after halving, apart from a one-sample key-on offset (write timing).
+    Feedback 7 diverges sample by sample (chaotic, LSB rounding) but not spectrally.
+    `replaychip` without spacing lands a tick's writes at once and is not the app path: on
+    *Corridors* it reads −15 dB at 100 Hz.
+  - **Pitch equals the card.** The app-path render (quirks on or off, identical on
+    *Corridors*) equals AdPlug's pitch everywhere and the SB16's to ≈ 0.1 Hz, including the
+    ≈ 10-cent-flat tuning from AT2's F-number table and the G#3 + A3 cluster (206.3 and
+    218.9 Hz) at ≈ 9.5 s / 86 s / 163 s.
+  - **The recording's tempo is slower than the song's**: ≈ 88 Hz on average against tempo 90
+    (speed-up 1), and non-uniform (1.4–2.7 % slower by section) although the song has no
+    tempo or speed effects. Likely DOS AT2's timer (its PIT runs at ≥ 1 kHz and ticks are
+    lost under load). Not emulated.
+- **Bad Apple added (2026-09-27):** `NAB622/bad apple.a2m` (Dretz, v11, 18 tracks, tempo
+  221 × speed-up 2; supplied by Morten) joins the corpus and the demos: 279 corpus files,
+  278 demos. Its whole-song gate caught a missing rule at order 70: **ZFD beside a
+  vibrato-type effect (04, 06, 11, 2B), or ZFE beside a tremolo (16, 2C), makes it
+  "fine"**. It then steps once per row, in the per-row pass, and not on the ticks. The
+  extra-fine 2B/2C stop entirely. The flag lasts while the column keeps that kind of
+  effect and is cleared with the vibrato/tremolo state otherwise (AT2
+  `vibr_table.fine`/`trem_table.fine`; AdPlug agrees). With it, Bad Apple matches AdPlug for
+  all 115 019 ticks. Four probes pin the cases (`zfd_vib`, `zfd_vibslide`, `zfd_xfvib`,
+  `zfe_trem`; 302 probes); each fails on the engine without the rule.
 - **AdPlug vs AT2: what play follows** (AdPlug ports an older AT2; current AT2 source read
   under the relaxed D1, AdPlug's player never read):
   - *Follows AT2* (AdPlug reproduced only with `adplug_quirks`, for the gate):
