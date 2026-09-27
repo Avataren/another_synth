@@ -143,6 +143,18 @@ export type OplCommand =
   | { type: 'set-mute-solo'; mute: number; solo: number }
   /** Pause at the song's end instead of playing on. */
   | { type: 'set-stop-at-end'; enabled: boolean }
+  /**
+   * The Sound Blaster output low-pass (`SbOutputFilter`). `preset` sets
+   * cutoff, order and on/off; `cutoffHz`, `order` and `enabled` then
+   * override it. Fields left out keep their current value.
+   */
+  | {
+      type: 'set-filter';
+      enabled?: boolean;
+      preset?: SbFilterPreset;
+      cutoffHz?: number;
+      order?: 1 | 2;
+    }
   | { type: 'dispose' };
 
 /** Worklet -> main thread. */
@@ -161,6 +173,152 @@ export type OplEvent =
  * is OPL channel `ch`, mono, ±1 for one operator's full swing.
  */
 export const OPL_TAP_OUTPUTS = 18;
+
+/** The card whose OPL output stage the filter models. */
+export type SbFilterPreset = 'sb1' | 'sb2' | 'sbpro1' | 'sbpro2' | 'sb16' | 'none';
+
+/**
+ * dosbox-staging's `configure_opl_filter_for_model()` (soundblaster.cpp):
+ * a Butterworth low-pass on the OPL channel, tuned against real hardware
+ * recordings. SB16-era cards have no analog OPL low-pass. See
+ * .ai/notes-opl-sb-filter.md.
+ */
+export const SB_FILTER_PRESETS: Readonly<Record<SbFilterPreset, { enabled: boolean; cutoffHz: number; order: 1 | 2 }>> = {
+  sb1: { enabled: true, cutoffHz: 12000, order: 1 },
+  sb2: { enabled: true, cutoffHz: 12000, order: 1 },
+  sbpro1: { enabled: true, cutoffHz: 8000, order: 1 },
+  sbpro2: { enabled: true, cutoffHz: 8000, order: 1 },
+  sb16: { enabled: false, cutoffHz: 8000, order: 1 },
+  none: { enabled: false, cutoffHz: 8000, order: 1 },
+};
+
+/** The worklet's default: Scream Tracker 3's AdLib channels played on an SB Pro 2. */
+export const SB_FILTER_DEFAULT_PRESET: SbFilterPreset = 'sbpro2';
+
+/** One channel's filter memory: `z1`, `z2` (transposed direct form II) and the last output. */
+interface SbFilterState {
+  z1: number;
+  z2: number;
+  last: number;
+}
+
+/**
+ * The analog low-pass after a Sound Blaster's OPL output: Butterworth,
+ * 1st or 2nd order, bilinear-transformed as dosbox-staging's
+ * `Iir::Butterworth` is, -3 dB at the cutoff, with its own state per stereo side so it
+ * runs on across quanta. A reconfiguration seeds the state as if the last
+ * output had been held forever, so switching cutoff, order or bypass does
+ * not click.
+ */
+export class SbOutputFilter {
+  private enabledFlag: boolean;
+  private cutoff: number;
+  private orderValue: 1 | 2;
+  // Transposed direct form II; the 1st order has b2 = a2 = 0.
+  private b0 = 0;
+  private b1 = 0;
+  private b2 = 0;
+  private a1 = 0;
+  private a2 = 0;
+  private readonly states: [SbFilterState, SbFilterState] = [
+    { z1: 0, z2: 0, last: 0 },
+    { z1: 0, z2: 0, last: 0 },
+  ];
+
+  constructor(
+    private readonly sampleRate: number,
+    preset: SbFilterPreset = SB_FILTER_DEFAULT_PRESET,
+  ) {
+    const p = SB_FILTER_PRESETS[preset];
+    this.enabledFlag = p.enabled;
+    this.cutoff = p.cutoffHz;
+    this.orderValue = p.order;
+    this.update();
+  }
+
+  get enabled(): boolean {
+    return this.enabledFlag;
+  }
+
+  get cutoffHz(): number {
+    return this.cutoff;
+  }
+
+  get order(): 1 | 2 {
+    return this.orderValue;
+  }
+
+  configure(options: { enabled?: boolean; preset?: SbFilterPreset; cutoffHz?: number; order?: 1 | 2 }): void {
+    const p = options.preset !== undefined ? SB_FILTER_PRESETS[options.preset] : undefined;
+    if (p) {
+      this.enabledFlag = p.enabled;
+      this.cutoff = p.cutoffHz;
+      this.orderValue = p.order;
+    }
+    if (options.cutoffHz !== undefined && Number.isFinite(options.cutoffHz) && options.cutoffHz > 0) {
+      this.cutoff = options.cutoffHz;
+    }
+    if (options.order === 1 || options.order === 2) this.orderValue = options.order;
+    if (options.enabled !== undefined) this.enabledFlag = options.enabled;
+    this.update();
+  }
+
+  /** Filters `left` (and `right`, when given) in place. */
+  process(left: Float32Array, right?: Float32Array): void {
+    this.run(left, this.states[0]);
+    if (right) this.run(right, this.states[1]);
+  }
+
+  private run(x: Float32Array, s: SbFilterState): void {
+    const n = x.length;
+    if (n === 0) return;
+    if (!this.enabledFlag) {
+      s.last = x[n - 1] ?? 0;
+      return;
+    }
+    const { b0, b1, b2, a1, a2 } = this;
+    let { z1, z2 } = s;
+    let y = 0;
+    for (let i = 0; i < n; i++) {
+      const v = x[i] ?? 0;
+      y = b0 * v + z1;
+      z1 = b1 * v - a1 * y + z2;
+      z2 = b2 * v - a2 * y;
+      x[i] = y;
+    }
+    s.z1 = z1;
+    s.z2 = z2;
+    s.last = y;
+  }
+
+  private update(): void {
+    // Below Nyquist, as dosbox-staging's `clamp_filter_cutoff_freq` keeps it.
+    const fc = Math.min(Math.max(this.cutoff, 1), this.sampleRate * 0.45);
+    const k = Math.tan((Math.PI * fc) / this.sampleRate);
+    if (this.orderValue === 1) {
+      // a0 = K / (K + 1) on x and its last value: the zero at Nyquist puts
+      // -3 dB at fc, as `Iir::Butterworth::LowPass<1>` does.
+      this.b0 = k / (k + 1);
+      this.b1 = this.b0;
+      this.b2 = 0;
+      this.a1 = (k - 1) / (k + 1);
+      this.a2 = 0;
+    } else {
+      const norm = 1 / (1 + Math.SQRT2 * k + k * k);
+      this.b0 = k * k * norm;
+      this.b1 = 2 * this.b0;
+      this.b2 = this.b0;
+      this.a1 = 2 * (k * k - 1) * norm;
+      this.a2 = (1 - Math.SQRT2 * k + k * k) * norm;
+    }
+    // Steady state at the last output (unity DC gain): no step on the switch.
+    for (const s of this.states) {
+      const v = s.last;
+      s.z2 = (this.b2 - this.a2) * v;
+      s.z1 = (this.b1 - this.a1) * v + s.z2;
+    }
+  }
+}
 
 /** How often a changed late-write count is reported, at most. */
 const LATE_REPORT_SECONDS = 0.5;
@@ -185,6 +343,8 @@ export class OplProcessorCore {
   private framesSincePosition = 0;
   private lastPosition = '';
   private songEndReported = false;
+  /** The output stage on the stereo mix (never the taps); SB Pro 2 by default. */
+  private readonly filter: SbOutputFilter;
 
   /**
    * `contextFrame` is the AudioContext frame at construction (the worklet's
@@ -199,6 +359,7 @@ export class OplProcessorCore {
   ) {
     this.renderer = new RendererCtor(sampleRate);
     this.frameOffset = contextFrame;
+    this.filter = new SbOutputFilter(sampleRate);
   }
 
   get disposed(): boolean {
@@ -263,6 +424,9 @@ export class OplProcessorCore {
         break;
       case 'set-stop-at-end':
         this.stopAtEnd = command.enabled;
+        break;
+      case 'set-filter':
+        this.filter.configure(command);
         break;
       case 'dispose':
         this.disposedFlag = true;
@@ -397,6 +561,8 @@ export class OplProcessorCore {
             if (right) right[k] = (right[k] ?? 0) * g;
           }
         }
+        // After the end fade, so the filter carries on from the faded tail.
+        this.filter.process(left, right);
       } catch (error) {
         this.dropSong();
         left.fill(0);
@@ -419,6 +585,7 @@ export class OplProcessorCore {
         const scratch = new Float32Array(left.length);
         renderer.render(left, scratch);
       }
+      this.filter.process(left, right);
       // Outputs are zeroed by the browser each quantum: off, nothing to do.
       if (taps && this.tapsEnabled) {
         for (let ch = 0; ch < taps.length; ch++) {
