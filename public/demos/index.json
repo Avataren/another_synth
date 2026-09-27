@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-27T20:39:19.153Z",
+  "generated": "2026-09-27T20:43:45.284Z",
   "collections": [
     {
       "id": "a2m",
@@ -4611,6 +4611,15 @@
       "name": "Scream Tracker 3 AdLib",
       "songs": [
         {
+          "title": "Authentic Adlib attempt",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 11,
+          "instruments": 39,
+          "file": "s3m-adlib/Barbatruc/authentic adlib attempt.s3m",
+          "bytes": 8356
+        },
+        {
           "title": "a vision",
           "format": "S3M",
           "channels": 9,
@@ -4620,6 +4629,69 @@
           "bytes": 12306
         },
         {
+          "title": "summercon quickie intro",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 15,
+          "instruments": 40,
+          "file": "s3m-adlib/Basehead/summercon quickie intro.s3m",
+          "bytes": 8242
+        },
+        {
+          "title": "CosmoWarp",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 8,
+          "instruments": 16,
+          "file": "s3m-adlib/Beat/cosmowarp.s3m",
+          "bytes": 10677
+        },
+        {
+          "title": "Dark Image",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 12,
+          "instruments": 45,
+          "file": "s3m-adlib/Big Jim/dark image.s3m",
+          "bytes": 7239
+        },
+        {
+          "title": "Deep Space Nine",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 10,
+          "instruments": 19,
+          "file": "s3m-adlib/Bisqwit/deep space nine.s3m",
+          "bytes": 3802
+        },
+        {
+          "title": "FF2 Mysidia theme",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 4,
+          "instruments": 17,
+          "file": "s3m-adlib/Bisqwit/ff2 mysidia theme.s3m",
+          "bytes": 3246
+        },
+        {
+          "title": "jhmmid72",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 4,
+          "instruments": 9,
+          "file": "s3m-adlib/Bisqwit/jhmmid72.s3m",
+          "bytes": 1908
+        },
+        {
+          "title": "Peloponnesos",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 9,
+          "instruments": 10,
+          "file": "s3m-adlib/Bisqwit/peloponnesos.s3m",
+          "bytes": 7086
+        },
+        {
           "title": "Some kind of church theme.",
           "format": "S3M",
           "channels": 9,
@@ -4627,6 +4699,51 @@
           "instruments": 31,
           "file": "s3m-adlib/Bisqwit/some kind of church theme.s3m",
           "bytes": 11340
+        },
+        {
+          "title": "joe_x.s3m:st pikku klooni",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 14,
+          "instruments": 19,
+          "file": "s3m-adlib/Bisqwit/sta pikku klooni.s3m",
+          "bytes": 10210
+        },
+        {
+          "title": "\"A.M. A.L. Funk\" by E-Keet",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 19,
+          "instruments": 40,
+          "file": "s3m-adlib/E-Keet/a.m. a.l. funk.s3m",
+          "bytes": 14189
+        },
+        {
+          "title": "Voices and visions vol.1",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 8,
+          "instruments": 16,
+          "file": "s3m-adlib/Falcon (PL)/voices and visions vol.1.s3m",
+          "bytes": 3394
+        },
+        {
+          "title": "Waiting 4 U",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 36,
+          "instruments": 51,
+          "file": "s3m-adlib/Falcon (PL)/waiting 4 u.s3m",
+          "bytes": 12450
+        },
+        {
+          "title": "silly little OPL introtune.",
+          "format": "S3M",
+          "channels": 5,
+          "patterns": 1,
+          "instruments": 16,
+          "file": "s3m-adlib/Lowfreekwenzeeozzillation/silly little opl introtune.s3m",
+          "bytes": 2838
         },
         {
           "title": "and this is UltrSound",
@@ -4656,6 +4773,42 @@
           "bytes": 1051828
         },
         {
+          "title": "End of the line...",
+          "format": "S3M",
+          "channels": 6,
+          "patterns": 9,
+          "instruments": 25,
+          "file": "s3m-adlib/Marvin (DK)/end of the line.s3m",
+          "bytes": 4786
+        },
+        {
+          "title": "Popcorn Mix",
+          "format": "S3M",
+          "channels": 7,
+          "patterns": 13,
+          "instruments": 40,
+          "file": "s3m-adlib/Marvin (DK)/popcorn mix.s3m",
+          "bytes": 9954
+        },
+        {
+          "title": "Tick Tack Toe",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 10,
+          "instruments": 28,
+          "file": "s3m-adlib/Marvin (DK)/tick tack toe.s3m",
+          "bytes": 7708
+        },
+        {
+          "title": "Wasted Years...",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 8,
+          "instruments": 29,
+          "file": "s3m-adlib/Marvin (DK)/wasted years.s3m",
+          "bytes": 5892
+        },
+        {
           "title": "Mystic Reflections",
           "format": "S3M",
           "channels": 9,
@@ -4683,6 +4836,15 @@
           "bytes": 4130
         },
         {
+          "title": "THATS THE LUCKY oNE",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 11,
+          "instruments": 40,
+          "file": "s3m-adlib/Sid (DE)/thats the lucky one.s3m",
+          "bytes": 10146
+        },
+        {
           "title": "First Adlib Attempt",
           "format": "S3M",
           "channels": 13,
@@ -4701,6 +4863,15 @@
           "bytes": 3010
         },
         {
+          "title": "Snowman Ingame",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 9,
+          "instruments": 10,
+          "file": "s3m-adlib/Soda7/snowman ingame.s3m",
+          "bytes": 7776
+        },
+        {
           "title": "koakuma",
           "format": "S3M",
           "channels": 6,
@@ -4710,6 +4881,78 @@
           "bytes": 7424
         },
         {
+          "title": "pneumonoblahblahblah",
+          "format": "S3M",
+          "channels": 6,
+          "patterns": 8,
+          "instruments": 4,
+          "file": "s3m-adlib/Viraxor/pneumonoblahblahblah.s3m",
+          "bytes": 3856
+        },
+        {
+          "title": "Last Departure/Warp (nmBqw)",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 21,
+          "instruments": 5,
+          "file": "s3m-adlib/Warp/last departure.s3m",
+          "bytes": 6521
+        },
+        {
+          "title": "Time/Warp (named: Bisqwit)",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 19,
+          "instruments": 6,
+          "file": "s3m-adlib/Warp/time.s3m",
+          "bytes": 13281
+        },
+        {
+          "title": "AdLib.Hope, let me stay..",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 9,
+          "instruments": 10,
+          "file": "s3m-adlib/Xenon (DE)/hope, let me stay alive.s3m",
+          "bytes": 4837
+        },
+        {
+          "title": "AdLib.The Adlib Intro",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 3,
+          "instruments": 10,
+          "file": "s3m-adlib/Xenon (DE)/the adlib intro.s3m",
+          "bytes": 2370
+        },
+        {
+          "title": "Brothers Of Two",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 27,
+          "instruments": 30,
+          "file": "s3m-adlib/Yomaru Kasuga/brothers of two.s3m",
+          "bytes": 18992
+        },
+        {
+          "title": "(OPL2) Casements",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 7,
+          "instruments": 25,
+          "file": "s3m-adlib/unknown/(opl2) casements.s3m",
+          "bytes": 8221
+        },
+        {
+          "title": "(OPL2) Lagoon - Shop",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 4,
+          "instruments": 32,
+          "file": "s3m-adlib/unknown/(opl2) lagoon - shop.s3m",
+          "bytes": 7502
+        },
+        {
           "title": "(OPL2) Rance 4.1 - Bird",
           "format": "S3M",
           "channels": 16,
@@ -4717,6 +4960,33 @@
           "instruments": 59,
           "file": "s3m-adlib/unknown/(opl2) rance 4.1 - bird.s3m",
           "bytes": 14707
+        },
+        {
+          "title": "(OPL2) RPG Maker 95 - TOWN8",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 6,
+          "instruments": 17,
+          "file": "s3m-adlib/unknown/(opl2) rpg maker 95 - town8.s3m",
+          "bytes": 5033
+        },
+        {
+          "title": "(OPL2) TOTALLY NUTS...",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 5,
+          "instruments": 26,
+          "file": "s3m-adlib/unknown/(opl2) totally nuts.s3m",
+          "bytes": 9236
+        },
+        {
+          "title": "(OPL2) Wave of the Future",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 11,
+          "instruments": 40,
+          "file": "s3m-adlib/unknown/(opl2) wave of the future.s3m",
+          "bytes": 16132
         }
       ]
     },
