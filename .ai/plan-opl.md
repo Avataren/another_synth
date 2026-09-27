@@ -216,6 +216,11 @@ a smaller surface.
   live scene and OPL3 content. RAD is a cheap follow-up.
 - **D1 — licensing stance.** Recommend permissive-only for code; LGPL/GPL tools as render
   oracles only (§4).
+  **Relaxed for O7 debugging (Morten, 2026-09-27):** "just peek at at2 source, for debugging
+  the last issues". AT2's source (github.com/ivan-tat/at2 @ 336fbdd, GPL 3+) is cloned to
+  `.ai/at2-src` (gitignored) and read to understand semantics; the Rust player is still written
+  from scratch, not transliterated. AdPlug's `a2m-v2.cpp` is still not read. Where current AT2
+  and AdPlug disagree, the landing record says which the player follows.
 - **D2 — S3M drum instruments.** Recommend melodic only, matching ST3 (§2.3).
 - **D3 — A2M in the pattern editor, or playback only?** Recommend playback only first (Rust
   parser); editor support means a TS parser and a row model for 4-op/macros and is its own plan.

@@ -202,7 +202,7 @@ fn main() {
                                 }
                                 let sub = if group == 9 && matches!(e, 0x23 | 0x24 | 0x29) {
                                     d >> 4
-                                } else if group == 5 && e == 0x0e {
+                                } else if (group == 5 && e == 0x23) || (group == 1 && e == 0x0f) {
                                     d >> 4
                                 } else {
                                     0xff
@@ -326,6 +326,62 @@ fn main() {
                     pairs,
                     lock4,
                     song.flags & 0x40 != 0
+                );
+            }
+        }
+        Some("fx4op") => {
+            // effects (and extended subcommands) used on 4-op tracks
+            for f in &args[2..] {
+                let song = parse(&std::fs::read(f).unwrap()).unwrap();
+                const PAIRS: [(usize, usize); 6] =
+                    [(0, 1), (2, 3), (4, 5), (9, 10), (11, 12), (13, 14)];
+                let tracks: Vec<usize> = PAIRS
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| song.four_op_tracks >> i & 1 != 0)
+                    .flat_map(|(_, &(a, b))| [a, b])
+                    .collect();
+                if tracks.is_empty() {
+                    continue;
+                }
+                let mut seen = std::collections::BTreeSet::new();
+                for &o in song.order.iter() {
+                    if let Some(pat) = song.patterns.get(o as usize) {
+                        for r in 0..pat.rows {
+                            for &t in &tracks {
+                                if t >= pat.channels {
+                                    continue;
+                                }
+                                for &(e, d) in &pat.cell(r, t).effects {
+                                    if (e, d) != (0, 0) {
+                                        let sub = if matches!(e, 0x23 | 0x24 | 0x29) {
+                                            d >> 4
+                                        } else {
+                                            0xff
+                                        };
+                                        seen.insert((e, sub));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                let lock4 = tracks
+                    .iter()
+                    .any(|&t| song.lock_flags.get(t).copied().unwrap_or(0) & 0x40 != 0);
+                println!(
+                    "{}\tlock4 {}\tflags {:08b}\t{}",
+                    f.rsplit("/a2m/").next().unwrap(),
+                    lock4,
+                    song.flags,
+                    seen.iter()
+                        .map(|(e, s)| if *s == 0xff {
+                            format!("{e:02x}")
+                        } else {
+                            format!("{e:02x}.{s:x}")
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ")
                 );
             }
         }
