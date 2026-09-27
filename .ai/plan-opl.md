@@ -1,7 +1,7 @@
 # Plan: OPL tracking (one OPL2/OPL3 chip in Rust + S3M AdLib playback + Adlib Tracker II)
 
 Status: **IN PROGRESS. D0–D5 accepted as recommended (Morten, 2026-09-27). Corpus fetched
-(§4.1). O0–O3 landed 2026-09-27 (landing records at the end).**
+(§4.1). O0–O3, O3b and O5 landed 2026-09-27 (landing records at the end).**
 Morten's brief 2026-09-27 (verbatim intent): *"I'm considering adding adlibtracker and opl
 support to s3m, do you think they could share the same virtual opl chip in rust? would be
 nice if it could also support opl2/3"*. Answer: yes. The shared surface is the **register
@@ -467,3 +467,48 @@ Still open: koakuma's 361 are ST3.03–3.20 / OpenMPT's broken AdLib tone portam
 slides until the next empty/D row); first-adlib-attempt's 1 is a porta landing one F-number
 short. Not modelled: `st2Vibrato` (parsed, not plumbed; `>> 4`), R sharing `avibcnt` with
 vibrato, vibrato waveform 3's randomness, PCM `^^` zeroing `avol`.
+
+### O5 — app wiring (2026-09-27)
+
+- **`OplOutput`** (`src/audio/tracker/opl-output.ts`) holds the OPL worklet node (built only
+  once a song with AdLib instruments loads; `prepareInstrument` awaits it), an
+  `S3mOplDriver` and the batching. The driver's writes collect and go as one `writes`
+  message per task, after `driver.flush()`, so a scheduler wake-up is one message.
+- **Routing:** `TrackerSongBank` sends note on/off, retrigger, pitch (with the new optional
+  `source` argument on `TrackerSink.setVoicePitchAtTime`) and volume for an instrument
+  `isOplInstrument` accepts to the chip, mirroring `playThroughDriver`. The playback store
+  passes `steppedTickAutomation` and `oplInstrument`. `cancelAllScheduled`/`allNotesOff`
+  (stop, pause, every start, and a play from another row) **restart** the chip: `panic`, then
+  `driver.reset`. Dropping the chip's queue leaves the driver's register cache stale, so
+  keying off alone is not enough. A song-loop cut (`cutAllVoicesAtTime`) is
+  `driver.allNotesOff`. A seek while playing only moves the engine's position, so it gets
+  nothing extra.
+- **Channel map:** `s3mAdlibChannelForTrack` is kept on the song as `oplChannels` (S3M only,
+  saved and loaded, null for PCM/drum tracks) and reaches the bank from
+  `syncSongBankFromSlots` together with the AdLib timbres and `amigaLimits`.
+- **Mute/solo:** through `set-channel-mask`. A channel is silenced only when every track on it
+  is inaudible. OPL note events are no longer dropped for muted tracks, so ST3's channel
+  state keeps running and an unmute mid-note is right. Checked in the browser: rotagilla's
+  tracks 2–7 and 12–14 clear mask bits 0–5 and 6–8, and its PCM tracks leave the mask alone.
+- **Level:** `OPL_MIX_GAIN` = 0.5 (−6 dB), straight to the post-fx input. It **bypasses the
+  song's global volume**, because st3play's `updateadlib` scales TL by `avol` only
+  (`setvol`'s `useglobalvol` is PCM-only), but follows the user's master volume. Measured in
+  headless Chromium (12 s windows, dBFS RMS of the final output): rotagilla PCM −25.2 /
+  OPL −32.2, rocking-horse −29.7 / −30.0, ultrasound −23.7 / −31.6. **Ears decide;** it is
+  one constant.
+- **`StandaloneTrackerSink`** takes an optional `opl: { target, channelForTrack?,
+  amigaLimits?, panic? }`; `handlesOpl(id)` is for the two engine options.
+- **UI:** OPL slots count as filled song instruments (`isOplSlot`, `listsSongInstrument`),
+  their volume knob is disabled (slot volume is not applied to the chip), the bank name is
+  "S3M Import (OPL)", and the import notice says the notes play.
+- **Gate:** all three `Manwe/` songs play PCM and AdLib together in the app (headless
+  Chromium over the dev server: the OPL node renders, sampler voices start, no console
+  errors). `npm run test:run` green: 4965 tests; three worklet tests timed out under memory
+  pressure while Chromium ran and pass on a re-run. New: `opl-output.test.ts`,
+  `tracker-song-bank-opl-routing.test.ts`, standalone-sink OPL cases, and an `oplChannels`
+  save/load round trip.
+- **Not done:** keyboard preview of an OPL instrument (immediate `noteOn` has no track, so
+  it stays silent), per-channel OPL scope taps, the slot volume knob on OPL slots, and an OPL
+  instrument editor.
+- **Gotcha for driving the app:** Space is *Play Pattern*. Use the "Play Song" button.
+
