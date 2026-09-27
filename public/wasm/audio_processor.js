@@ -2465,6 +2465,120 @@ export class NoiseUpdateParams {
 }
 if (Symbol.dispose) NoiseUpdateParams.prototype[Symbol.dispose] = NoiseUpdateParams.prototype.free;
 
+const OplRendererFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_oplrenderer_free(ptr >>> 0, 1));
+
+export class OplRenderer {
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        OplRendererFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_oplrenderer_free(ptr, 0);
+    }
+    /**
+     * Writes applied after their time (a late batch from the main thread).
+     * @returns {number}
+     */
+    late_writes() {
+        const ret = wasm.oplrenderer_late_writes(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * The chip's native rate, for callers converting tick timing.
+     * @returns {number}
+     */
+    native_rate() {
+        const ret = wasm.oplrenderer_native_rate(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    queued_writes() {
+        const ret = wasm.oplrenderer_queued_writes(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Output frames rendered so far: the clock `write_at` frames are on.
+     * @returns {number}
+     */
+    frames_rendered() {
+        const ret = wasm.oplrenderer_frames_rendered(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Bit per channel (0..17): 1 plays, 0 mutes. The chip keeps running.
+     * @param {number} mask
+     */
+    set_channel_mask(mask) {
+        wasm.oplrenderer_set_channel_mask(this.__wbg_ptr, mask);
+    }
+    /**
+     * @param {number} sample_rate
+     */
+    constructor(sample_rate) {
+        const ret = wasm.oplrenderer_new(sample_rate);
+        this.__wbg_ptr = ret >>> 0;
+        OplRendererFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * Drop queued writes and silence the chip: every channel keyed off with
+     * its release forced to the fastest rate, rhythm off. Registers other
+     * than those keep their values (the next song re-programs them).
+     */
+    panic() {
+        wasm.oplrenderer_panic(this.__wbg_ptr);
+    }
+    /**
+     * Write a register now: before the next native sample.
+     * @param {number} reg
+     * @param {number} val
+     */
+    write(reg, val) {
+        wasm.oplrenderer_write(this.__wbg_ptr, reg, val);
+    }
+    /**
+     * Render `left.len()` frames (and the same into `right`). Returns frames.
+     * @param {Float32Array} left
+     * @param {Float32Array} right
+     * @returns {number}
+     */
+    render(left, right) {
+        var ptr0 = passArrayF32ToWasm0(left, wasm.__wbindgen_malloc);
+        var len0 = WASM_VECTOR_LEN;
+        var ptr1 = passArrayF32ToWasm0(right, wasm.__wbindgen_malloc);
+        var len1 = WASM_VECTOR_LEN;
+        const ret = wasm.oplrenderer_render(this.__wbg_ptr, ptr0, len0, left, ptr1, len1, right);
+        return ret >>> 0;
+    }
+    /**
+     * @param {number} gain
+     */
+    set_gain(gain) {
+        wasm.oplrenderer_set_gain(this.__wbg_ptr, gain);
+    }
+    /**
+     * Queue a write for output frame `frame` (this renderer's own clock,
+     * `frames_rendered`; fractional frames are honoured). Writes for the
+     * same frame keep their order.
+     * @param {number} frame
+     * @param {number} reg
+     * @param {number} val
+     */
+    write_at(frame, reg, val) {
+        wasm.oplrenderer_write_at(this.__wbg_ptr, frame, reg, val);
+    }
+}
+if (Symbol.dispose) OplRenderer.prototype[Symbol.dispose] = OplRenderer.prototype.free;
+
 const SidPlayerFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_sidplayer_free(ptr >>> 0, 1));

@@ -1,7 +1,7 @@
 # Plan: OPL tracking (one OPL2/OPL3 chip in Rust + S3M AdLib playback + Adlib Tracker II)
 
 Status: **IN PROGRESS. D0–D5 accepted as recommended (Morten, 2026-09-27). Corpus fetched
-(§4.1). O0 and O1 landed 2026-09-27 (landing records at the end).**
+(§4.1). O0, O1 and O2 landed 2026-09-27 (landing records at the end).**
 Morten's brief 2026-09-27 (verbatim intent): *"I'm considering adding adlibtracker and opl
 support to s3m, do you think they could share the same virtual opl chip in rust? would be
 nice if it could also support opl2/3"*. Answer: yes. The shared surface is the **register
@@ -293,3 +293,34 @@ a smaller surface.
 - **Deferred:** the SB16 *Corridors of Time* A/B, planned as part of the O1 gate, needs the
   A2M player, so it moves wholly to O7. A strict YM3812 model (WSE, DAC, modulator delay)
   stays unbuilt until a file needs it.
+
+### O2 — WASM class + worklet (2026-09-27)
+
+- **`OplRenderer`** (`rust-wasm/src/opl/wasm.rs`) is a register-stream device, not a song
+  player. `write_at(frame, reg, val)` stamps a write with an output frame of the renderer's
+  own clock and queues it by *native* sample index (`ceil(frame × native / out)`). It is
+  applied inside the resampler's pull loop, so it lands within one native sample (≈ 20 µs),
+  regardless of the render quantum. Past-due writes apply at once and are counted
+  (`late_writes`). Also `write` (immediate), `set_gain`, `set_channel_mask`, and `panic`
+  (drop the queue, fastest release, key everything off, rhythm off).
+- **Worklet:** `src/audio/worklets/opl-core.ts` + `opl-worklet.ts`, registered as
+  `opl-audio-processor`, with the same wasm handshake as SID/AHX. Commands:
+  `writes` (Float64Array of (AudioContext seconds, reg, val) triples), `set-gain`,
+  `set-channel-mask`, `panic`, `dispose`. Events: `late-writes` (at most every 0.5 s, when
+  the count changes) and `error`. It maps time to frames with `currentFrame − frames_rendered`,
+  refreshed every quantum, and seeded from `currentFrame` at construction so writes sent
+  before the first quantum map correctly too. It is added to `WORKLET_BUILD_OPTIONS`.
+- **Gate:** 7 Rust renderer tests. The strongest: the same stamped writes rendered in chunks
+  of 1, 37, 128 and 1000 frames give bit-identical output. Onsets track their stamps with a
+  constant ≈ 34-frame delay at 48 kHz (the resampler's group delay), ±2 frames of
+  quantisation. There are 7 core tests over the real wasm (mid-context start, pitch, batches
+  out of order, late reporting, panic/dispose, mono, mask/gain) and 4 shell tests on the
+  *built* bundle in a vm scope that advances `currentFrame`.
+- **WASM throughput:** 18 sounding channels to 48 kHz run at 64× real time, 42 µs per
+  128-frame quantum (≈ 1.6 % of the budget).
+- The wasm had been stale since the O0 commit (every file under `rust-wasm/src` is hashed,
+  golden fixtures included), and this rebuild fixes it. **Remember: any change under
+  `rust-wasm/src/opl/golden` also needs `npm run build:wasm`.** Full JS suite green (302
+  files, 4909 tests) on a clean run. An earlier run lost 3 tests to an OOM incident on the
+  machine; they pass on their own and on the re-run.
+- **Not in O2:** per-channel scope taps, and wiring into the app's mixer and song bank (O5).

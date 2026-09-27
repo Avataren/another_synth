@@ -47,6 +47,7 @@ pub mod chip;
 pub mod operator;
 pub mod resample;
 pub mod tables;
+pub mod wasm;
 
 pub use chip::{Chip, NATIVE_RATE};
 

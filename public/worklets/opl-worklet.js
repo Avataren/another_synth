@@ -3478,389 +3478,104 @@ async function __wbg_init(module_or_path) {
   return __wbg_finalize_init(instance, module);
 }
 
-// src/audio/worklets/ahx-core.ts
-var CONTINUE_PHASE_ON_TRIGGER = true;
-var POSITION_INTERVAL_SECONDS = 0.04;
-var SCOPE_INTERVAL_SECONDS = 1 / 120;
-var AHX_SCOPE_POINTS = 256;
-var END_FADE_FRAMES = 32;
-function fadeOutTail(buffer) {
-  const n = Math.min(END_FADE_FRAMES, buffer.length);
-  const start = buffer.length - n;
-  for (let i = 0; i < n; i++) {
-    buffer[start + i] = (buffer[start + i] ?? 0) * (1 - (i + 1) / n);
-  }
-}
-var toBytes = (bytes) => bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-var AhxProcessorCore = class {
-  constructor(PlayerCtor, sampleRate2, post) {
-    this.PlayerCtor = PlayerCtor;
+// src/audio/worklets/opl-core.ts
+var LATE_REPORT_SECONDS = 0.5;
+var OplProcessorCore = class {
+  /**
+   * `contextFrame` is the AudioContext frame at construction (the worklet's
+   * `currentFrame`), so writes that arrive before the first quantum map too.
+   */
+  constructor(RendererCtor, sampleRate2, contextFrame, post) {
     this.sampleRate = sampleRate2;
     this.post = post;
-    __publicField(this, "player", null);
-    __publicField(this, "playing", false);
-    __publicField(this, "gain", 1);
-    __publicField(this, "stopAtEnd", false);
-    __publicField(this, "capture", false);
-    __publicField(this, "mute", 0);
-    __publicField(this, "solo", 0);
-    __publicField(this, "hifi", false);
-    __publicField(this, "preview", false);
-    __publicField(this, "continuePhase", CONTINUE_PHASE_ON_TRIGGER);
-    __publicField(this, "loopPosition", false);
-    /** One `waveforms` payload, refilled in place each report (posting clones it). */
-    __publicField(this, "scopeData", new Int16Array(0));
-    __publicField(this, "framesSincePosition", 0);
-    __publicField(this, "framesSinceScope", 0);
-    __publicField(this, "lastPosition", -1);
-    __publicField(this, "lastRow", -1);
-    __publicField(this, "songEndReported", false);
-    /** What the last `plist-row` said: `0, -1` is "nothing sounds", which is also the state a fresh player is in. */
-    __publicField(this, "lastPlistInstrument", 0);
-    __publicField(this, "lastPlistRow", -1);
-    __publicField(this, "scratch", new Float32Array(0));
-    __publicField(this, "lastLoadId", -1);
+    __publicField(this, "renderer");
+    /** Context frame minus renderer frame; constant while every quantum renders. */
+    __publicField(this, "frameOffset");
+    __publicField(this, "lateReported", 0);
+    __publicField(this, "framesSinceReport", 0);
     __publicField(this, "disposedFlag", false);
+    this.renderer = new RendererCtor(sampleRate2);
+    this.frameOffset = contextFrame;
   }
-  /** True once `dispose` has been handled; the shell stops calling `process`. */
   get disposed() {
     return this.disposedFlag;
   }
   handle(command) {
     if (this.disposedFlag) return;
+    const renderer = this.renderer;
     switch (command.type) {
-      case "load-song":
-        if (command.id <= this.lastLoadId) break;
-        this.lastLoadId = command.id;
-        this.loadSong(command.id, command.bytes, command.stereoMode ?? 2, command.instruments ?? []);
-        break;
-      case "play":
-        this.player?.play();
-        this.playing = this.player !== null;
-        break;
-      case "pause":
-        this.player?.pause();
-        this.playing = false;
-        break;
-      case "restart":
-        if (this.player?.restart(command.subsong ?? 0)) {
-          this.playing = false;
-          this.resetReporting();
+      case "writes": {
+        if (!renderer) return;
+        const w = command.writes;
+        for (let i = 0; i + 2 < w.length; i += 3) {
+          const frame = w[i] * this.sampleRate - this.frameOffset;
+          renderer.write_at(frame, w[i + 1] & 511, w[i + 2] & 255);
         }
         break;
-      case "seek":
-        this.seek(command.position, command.row);
-        break;
-      case "set-loop-position":
-        this.loopPosition = command.enabled;
-        this.player?.set_loop_position(command.enabled);
-        break;
-      case "set-gain":
-        this.gain = command.gain;
-        this.player?.set_gain(command.gain);
-        break;
-      case "set-stop-at-end":
-        this.stopAtEnd = command.enabled;
-        break;
-      case "set-capture":
-        this.capture = command.enabled;
-        this.player?.enable_capture(command.enabled);
-        break;
-      case "set-mute-solo":
-        this.mute = command.mute >>> 0;
-        this.solo = command.solo >>> 0;
-        this.player?.set_mute_solo(this.mute, this.solo);
-        break;
-      case "set-hifi":
-        this.hifi = command.enabled;
-        this.player?.set_hifi(command.enabled);
-        break;
-      case "set-preview":
-        this.preview = command.enabled;
-        break;
-      case "preview-note-on":
-        this.player?.preview_note_on(command.instrument, command.note, command.velocity);
-        break;
-      case "preview-note-off":
-        this.player?.preview_note_off();
-        break;
-      case "set-continue-phase":
-        this.continuePhase = command.enabled;
-        this.player?.set_continue_phase_on_trigger(command.enabled);
-        break;
-      case "replace-instrument":
-        this.replaceInstrument(command.id, command.instrument, command.bytes);
-        break;
-      case "replace-instruments":
-        this.replaceInstruments(command.edits);
-        break;
-      case "get-warm-hold":
-        this.post({
-          type: "warm-hold",
-          instrument: command.instrument,
-          ticks: this.player?.preview_warm_hold_ticks(command.instrument) ?? 0
-        });
-        break;
-      case "get-hifi-stats": {
-        const p = this.player;
-        this.post({
-          type: "hifi-stats",
-          enabled: p?.hifi_enabled() ?? false,
-          locked: p?.hifi_locked() ?? false,
-          tables: p?.hifi_table_count() ?? 0,
-          misses: p?.hifi_miss_count() ?? 0
-        });
-        break;
       }
+      case "set-gain":
+        renderer?.set_gain(command.gain);
+        break;
+      case "set-channel-mask":
+        renderer?.set_channel_mask(command.mask >>> 0);
+        break;
+      case "panic":
+        renderer?.panic();
+        break;
       case "dispose":
         this.disposedFlag = true;
-        this.dropPlayer();
+        this.drop();
         break;
     }
   }
   /**
-   * Fills one render quantum. `right` may be absent (a mono output), in which
-   * case the two engine channels are averaged into `left`.
+   * Fills one render quantum starting at AudioContext frame `contextFrame`
+   * (the worklet's `currentFrame`). `right` may be absent on a mono output.
    */
-  process(left, right) {
-    const player = this.player;
-    if (!player) {
+  process(left, right, contextFrame) {
+    const renderer = this.renderer;
+    if (!renderer) {
       left.fill(0);
       right?.fill(0);
       return;
     }
     try {
-      let target = right;
-      if (!target) {
-        if (this.scratch.length < left.length) {
-          this.scratch = new Float32Array(left.length);
-        }
-        target = this.scratch.subarray(0, left.length);
+      this.frameOffset = contextFrame - renderer.frames_rendered();
+      if (right && right.length === left.length) {
+        renderer.render(left, right);
+      } else {
+        const scratch = new Float32Array(left.length);
+        renderer.render(left, scratch);
       }
-      player.render(left, target);
-      if (!right) {
-        for (let i = 0; i < left.length; i++) {
-          left[i] = ((left[i] ?? 0) + (target[i] ?? 0)) * 0.5;
-        }
-      }
-      if (this.playing && this.report(player, left.length)) {
-        fadeOutTail(left);
-        if (right) fadeOutTail(right);
-      }
-      if (this.preview) {
-        this.reportPListRow(player);
-        if (this.capture) this.reportWaveforms(player, left.length);
-      }
+      this.reportLate(renderer, left.length);
     } catch (error) {
-      this.dropPlayer();
+      this.drop();
       left.fill(0);
       right?.fill(0);
-      this.post({ type: "error", message: `AHX render failed: ${String(error)}` });
+      this.post({ type: "error", message: `OPL render failed: ${String(error)}` });
     }
   }
-  loadSong(id, bytes, stereoMode, instruments) {
-    this.dropPlayer();
+  reportLate(renderer, frames) {
+    this.framesSinceReport += frames;
+    if (this.framesSinceReport < this.sampleRate * LATE_REPORT_SECONDS) return;
+    this.framesSinceReport = 0;
+    const total = renderer.late_writes();
+    if (total === this.lateReported) return;
+    this.lateReported = total;
+    this.post({ type: "late-writes", total });
+  }
+  drop() {
+    if (!this.renderer) return;
     try {
-      const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-      const player = new this.PlayerCtor(data, this.sampleRate, stereoMode);
-      const rejected = [];
-      for (const edit of instruments) {
-        try {
-          player.replace_instrument(edit.instrument, toBytes(edit.bytes));
-        } catch {
-          rejected.push(edit.instrument);
-        }
-      }
-      player.set_gain(this.gain);
-      player.enable_capture(this.capture);
-      player.set_mute_solo(this.mute, this.solo);
-      if (this.preview) player.enable_preview();
-      player.set_hifi(this.hifi);
-      player.set_loop_position(this.loopPosition);
-      player.set_continue_phase_on_trigger(this.continuePhase);
-      this.player = player;
-      this.resetReporting();
-      this.post({
-        type: "song-loaded",
-        id,
-        info: {
-          name: player.song_name(),
-          positionCount: player.position_count(),
-          trackLength: player.track_length(),
-          channels: player.channels(),
-          droppedChannels: player.dropped_channels(),
-          sampleRate: this.sampleRate,
-          ...rejected.length > 0 ? { rejectedInstruments: rejected } : {}
-        }
-      });
-    } catch (error) {
-      this.post({
-        type: "error",
-        id,
-        message: `AHX load failed: ${String(error)}`
-      });
+      this.renderer.free();
+    } catch {
     }
-  }
-  /** `replace-instrument`: an edit of the loaded song, answered either way. */
-  replaceInstrument(id, instrument, bytes) {
-    if (!this.player) {
-      this.post({ type: "instrument-replaced", id, instrument, ok: false, message: "no song is loaded" });
-      return;
-    }
-    try {
-      this.player.replace_instrument(instrument, toBytes(bytes));
-      this.post({ type: "instrument-replaced", id, instrument, ok: true });
-    } catch (error) {
-      this.post({ type: "instrument-replaced", id, instrument, ok: false, message: String(error) });
-    }
-  }
-  /** `replace-instruments`: each edit swapped, one hi-fi walk for all, each answered. */
-  replaceInstruments(edits) {
-    const player = this.player;
-    if (!player) {
-      for (const { id, instrument } of edits) {
-        this.post({ type: "instrument-replaced", id, instrument, ok: false, message: "no song is loaded" });
-      }
-      return;
-    }
-    const answers = [];
-    for (const { id, instrument, bytes } of edits) {
-      try {
-        player.replace_instrument_deferred(instrument, toBytes(bytes));
-        answers.push({ type: "instrument-replaced", id, instrument, ok: true });
-      } catch (error) {
-        answers.push({ type: "instrument-replaced", id, instrument, ok: false, message: String(error) });
-      }
-    }
-    try {
-      player.finish_instrument_edits();
-    } catch (error) {
-      for (const answer of answers) {
-        if (answer.type === "instrument-replaced" && answer.ok) {
-          answer.ok = false;
-          answer.message = String(error);
-        }
-      }
-    }
-    for (const answer of answers) this.post(answer);
-  }
-  /**
-   * The player moves; the reports are re-armed (a seek back to a row already
-   * reported must not be swallowed as "no change", and a song-end reported
-   * before it is not the end of where it is now) and where it landed is sent
-   * at once, since a paused song reports nothing on its own.
-   */
-  seek(position, row) {
-    const player = this.player;
-    if (!player) return;
-    const kind = player.seek(position, row);
-    if (kind === 0) return;
-    this.resetReporting();
-    this.lastPosition = player.position();
-    this.lastRow = player.row();
-    this.post({
-      type: "position",
-      position: this.lastPosition,
-      row: this.lastRow,
-      tempo: player.tempo(),
-      ticks: player.ticks(),
-      seekKind: kind === 1 ? 1 : 2
-    });
-  }
-  /** Returns true when this quantum ended the song and the player was paused. */
-  report(player, frames) {
-    if (player.song_end_reached()) {
-      if (!this.songEndReported) {
-        this.songEndReported = true;
-        this.post({ type: "song-end" });
-        if (this.stopAtEnd) {
-          player.pause();
-          this.playing = false;
-          return true;
-        }
-      }
-    }
-    if (this.capture) this.reportWaveforms(player, frames);
-    this.framesSincePosition += frames;
-    if (this.framesSincePosition < this.sampleRate * POSITION_INTERVAL_SECONDS) {
-      return false;
-    }
-    this.framesSincePosition = 0;
-    const position = player.position();
-    const row = player.row();
-    if (position === this.lastPosition && row === this.lastRow) return false;
-    this.lastPosition = position;
-    this.lastRow = row;
-    this.post({
-      type: "position",
-      position,
-      row,
-      tempo: player.tempo(),
-      ticks: player.ticks()
-    });
-    return false;
-  }
-  /**
-   * The previewed note's PList row, posted when it changes. Two scalar reads a
-   * quantum and no allocation; a song player never gets here (`preview` is off
-   * for it), so it posts none and pays nothing.
-   */
-  reportPListRow(player) {
-    const row = player.preview_plist_row();
-    const instrument = player.preview_plist_instrument();
-    if (row === this.lastPlistRow && instrument === this.lastPlistInstrument) return;
-    this.lastPlistRow = row;
-    this.lastPlistInstrument = instrument;
-    this.post({ type: "plist-row", instrument, row });
-  }
-  /** The voices' waveforms at the scope rate (`SCOPE_INTERVAL_SECONDS`). */
-  reportWaveforms(player, frames) {
-    this.framesSinceScope += frames;
-    if (this.framesSinceScope < this.sampleRate * SCOPE_INTERVAL_SECONDS) return;
-    this.framesSinceScope = 0;
-    this.postWaveforms(player);
-  }
-  /** Snapshots every voice into the reused buffer and posts it. Allocates nothing per report. */
-  postWaveforms(player) {
-    const channels = player.channels();
-    const points = AHX_SCOPE_POINTS;
-    if (this.scopeData.length !== channels * points) {
-      this.scopeData = new Int16Array(channels * points);
-    }
-    for (let voice = 0; voice < channels; voice++) {
-      const run = this.scopeData.subarray(voice * points, (voice + 1) * points);
-      if (player.read_channel_snapshot(voice, run) !== points) return;
-    }
-    this.post({ type: "waveforms", channels, points, data: this.scopeData });
-  }
-  resetReporting() {
-    this.framesSincePosition = 0;
-    this.framesSinceScope = 0;
-    this.lastPosition = -1;
-    this.lastRow = -1;
-    this.songEndReported = false;
-    this.lastPlistInstrument = 0;
-    this.lastPlistRow = -1;
-  }
-  dropPlayer() {
-    this.playing = false;
-    if (this.lastPlistRow !== -1 || this.lastPlistInstrument !== 0) {
-      this.lastPlistRow = -1;
-      this.lastPlistInstrument = 0;
-      this.post({ type: "plist-row", instrument: 0, row: -1 });
-    }
-    if (this.player) {
-      try {
-        this.player.free();
-      } catch {
-      }
-      this.player = null;
-    }
+    this.renderer = null;
   }
 };
 
-// src/audio/worklets/ahx-worklet.ts
-var AhxAudioProcessor = class extends AudioWorkletProcessor {
+// src/audio/worklets/opl-worklet.ts
+var OplAudioProcessor = class extends AudioWorkletProcessor {
   constructor() {
     super();
     __publicField(this, "core", null);
@@ -3872,10 +3587,7 @@ var AhxAudioProcessor = class extends AudioWorkletProcessor {
         return;
       }
       if (!this.core) {
-        this.port.postMessage({
-          type: "error",
-          message: "AHX worklet received a command before the wasm was ready"
-        });
+        this.port.postMessage({ type: "error", message: "OPL worklet received a command before the wasm was ready" });
         return;
       }
       this.core.handle(data);
@@ -3886,32 +3598,30 @@ var AhxAudioProcessor = class extends AudioWorkletProcessor {
     if (this.wasmReady) return;
     try {
       initSync({ module: new Uint8Array(wasmBytes) });
-      this.core = new AhxProcessorCore(
-        AhxPlayer,
+      this.core = new OplProcessorCore(
+        OplRenderer,
         sampleRate,
+        currentFrame,
         (event) => this.port.postMessage(event)
       );
       this.wasmReady = true;
       this.port.postMessage({ type: "wasm-ready" });
     } catch (error) {
-      this.port.postMessage({
-        type: "error",
-        message: `AHX wasm init failed: ${String(error)}`
-      });
+      this.port.postMessage({ type: "error", message: `OPL wasm init failed: ${String(error)}` });
     }
   }
   process(_inputs, outputs) {
     if (this.core?.disposed) return false;
-    const channels = outputs[0];
-    const left = channels?.[0];
+    const main = outputs[0];
+    const left = main?.[0];
     if (!left) return true;
     if (this.core) {
-      this.core.process(left, channels[1]);
+      this.core.process(left, main[1], currentFrame);
     } else {
       left.fill(0);
-      channels[1]?.fill(0);
+      main[1]?.fill(0);
     }
     return true;
   }
 };
-registerProcessor("ahx-audio-processor", AhxAudioProcessor);
+registerProcessor("opl-audio-processor", OplAudioProcessor);
