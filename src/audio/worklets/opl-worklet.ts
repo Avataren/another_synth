@@ -3,7 +3,8 @@
 /**
  * AudioWorklet shell for the OPL chip (`rust-wasm/src/opl/wasm.rs`,
  * .ai/plan-opl.md O2): a register-stream device that anything playing OPL
- * music (S3M AdLib channels, later A2M) writes to.
+ * music (S3M AdLib channels) writes to, and in song mode the Adlib Tracker II
+ * player (`load-a2m`, `A2Player`).
  *
  * Handshake, same shape as the SID and AHX worklets: post `ready`; the main
  * thread answers with the wasm bytes (`wasm-binary`); this posts
@@ -16,8 +17,8 @@
 // First, and it must stay first: the wasm glue builds a TextDecoder at module
 // load, and an AudioWorkletGlobalScope has none until this polyfills it.
 import './textencoder.js';
-import { OplRenderer, initSync } from 'app/public/wasm/audio_processor.js';
-import { OplProcessorCore, type OplCommand, type OplWasmRendererCtor } from './opl-core';
+import { A2Player, OplRenderer, initSync } from 'app/public/wasm/audio_processor.js';
+import { OplProcessorCore, type A2WasmPlayerCtor, type OplCommand, type OplWasmRendererCtor } from './opl-core';
 
 // Module-local, like sid-worklet.ts: the synth worklet declares these
 // globally with a different shape, and the two must not collide.
@@ -60,8 +61,12 @@ class OplAudioProcessor extends AudioWorkletProcessor {
     if (this.wasmReady) return;
     try {
       initSync({ module: new Uint8Array(wasmBytes) });
-      this.core = new OplProcessorCore(OplRenderer as unknown as OplWasmRendererCtor, sampleRate, currentFrame, (event) =>
-        this.port.postMessage(event),
+      this.core = new OplProcessorCore(
+        OplRenderer as unknown as OplWasmRendererCtor,
+        sampleRate,
+        currentFrame,
+        (event) => this.port.postMessage(event),
+        A2Player as unknown as A2WasmPlayerCtor,
       );
       this.wasmReady = true;
       this.port.postMessage({ type: 'wasm-ready' });

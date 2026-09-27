@@ -462,6 +462,274 @@ var Waveform = Object.freeze({
   Custom: 4,
   "4": "Custom"
 });
+var A2PlayerFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_a2player_free(ptr >>> 0, 1));
+var A2Player = class {
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    A2PlayerFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_a2player_free(ptr, 0);
+  }
+  /**
+   * @returns {boolean}
+   */
+  is_playing() {
+    const ret = wasm.a2player_is_playing(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * Order positions before the first jump marker (the song's length as
+   * the tracker shows it).
+   * @returns {number}
+   */
+  order_count() {
+    const ret = wasm.a2player_order_count(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * The raw order entry at `index` (a pattern, or 0x80 + a jump target).
+   * @param {number} index
+   * @returns {number}
+   */
+  order_entry(index) {
+    const ret = wasm.a2player_order_entry(this.__wbg_ptr, index);
+    return ret;
+  }
+  /**
+   * @returns {number}
+   */
+  track_count() {
+    const ret = wasm.a2player_track_count(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * Bit masks over tracks (bit `t` = track `t`): muted tracks, and (when
+   * non-zero) the only tracks heard. Applied as the chip's channel mask.
+   * @param {number} mute
+   * @param {number} solo
+   */
+  set_mute_solo(mute, solo) {
+    wasm.a2player_set_mute_solo(this.__wbg_ptr, mute, solo);
+  }
+  /**
+   * The OPL channel track `track` plays on.
+   * @param {number} track
+   * @returns {number}
+   */
+  track_channel(track) {
+    const ret = wasm.a2player_track_channel(this.__wbg_ptr, track);
+    return ret >>> 0;
+  }
+  /**
+   * Keep playing order position `order` (its pattern) over and over:
+   * the tracker's "play pattern". `-1` plays the song on.
+   * @param {number} order
+   */
+  set_loop_order(order) {
+    wasm.a2player_set_loop_order(this.__wbg_ptr, order);
+  }
+  /**
+   * @param {number} index
+   * @returns {string}
+   */
+  instrument_name(index) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+      const ret = wasm.a2player_instrument_name(this.__wbg_ptr, index);
+      deferred1_0 = ret[0];
+      deferred1_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+  }
+  /**
+   * The instruments that hold FM data.
+   * @returns {number}
+   */
+  instrument_count() {
+    const ret = wasm.a2player_instrument_count(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * @returns {number}
+   */
+  rows_per_pattern() {
+    const ret = wasm.a2player_rows_per_pattern(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * Record per-channel scope taps during `render` (off by default).
+   * @param {boolean} enabled
+   */
+  set_taps_enabled(enabled) {
+    wasm.a2player_set_taps_enabled(this.__wbg_ptr, enabled);
+  }
+  /**
+   * Whether the song has come round once (passed its order list's end
+   * or a jump back) or stopped. It plays on either way.
+   * @returns {boolean}
+   */
+  song_end_reached() {
+    const ret = wasm.a2player_song_end_reached(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * Parses an `.a2m` module and builds a paused player at its start. A
+   * file the parser or the player cannot play is refused with one
+   * sentence saying why.
+   * @param {Uint8Array} bytes
+   * @param {number} sample_rate
+   */
+  constructor(bytes, sample_rate) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.a2player_new(ptr0, len0, sample_rate);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    this.__wbg_ptr = ret[0] >>> 0;
+    A2PlayerFinalization.register(this, this.__wbg_ptr, this);
+    return this;
+  }
+  /**
+   * @returns {number}
+   */
+  row() {
+    const ret = wasm.a2player_row(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  play() {
+    wasm.a2player_play(this.__wbg_ptr);
+  }
+  /**
+   * Moves to the start of `row` in order position `order`, keeping the
+   * play/pause state. The song is replayed silently from its top to get
+   * there; a row it never reaches is jumped to directly. Returns whether
+   * the row was reached by playing.
+   * @param {number} order
+   * @param {number} row
+   * @returns {boolean}
+   */
+  seek(order, row) {
+    const ret = wasm.a2player_seek(this.__wbg_ptr, order, row);
+    return ret !== 0;
+  }
+  /**
+   * The row playing now: its order position, pattern and row.
+   * @returns {number}
+   */
+  order() {
+    const ret = wasm.a2player_order(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * Stops the clock (the output is silence) without losing the position.
+   */
+  pause() {
+    wasm.a2player_pause(this.__wbg_ptr);
+  }
+  /**
+   * Renders `left.len()` frames (and the same into `right`); silence
+   * while paused. Returns the frames written.
+   * @param {Float32Array} left
+   * @param {Float32Array} right
+   * @returns {number}
+   */
+  render(left, right) {
+    var ptr0 = passArrayF32ToWasm0(left, wasm.__wbindgen_malloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = passArrayF32ToWasm0(right, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.a2player_render(this.__wbg_ptr, ptr0, len0, left, ptr1, len1, right);
+    return ret >>> 0;
+  }
+  /**
+   * @returns {number}
+   */
+  pattern() {
+    const ret = wasm.a2player_pattern(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * The timer rate now (Hz): tempo × macro speed-up.
+   * @returns {number}
+   */
+  refresh() {
+    const ret = wasm.a2player_refresh(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @returns {number}
+   */
+  version() {
+    const ret = wasm.a2player_version(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * 18: every OPL3 channel (what `read_tap` covers).
+   * @returns {number}
+   */
+  channels() {
+    const ret = wasm.a2player_channels(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * @returns {string}
+   */
+  composer() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+      const ret = wasm.a2player_composer(this.__wbg_ptr);
+      deferred1_0 = ret[0];
+      deferred1_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+  }
+  /**
+   * OPL channel `ch`'s tap from the last `render` (±1: one operator's
+   * full swing); zeros when taps are off. `track_channel` maps tracks.
+   * @param {number} ch
+   * @param {Float32Array} out
+   */
+  read_tap(ch, out) {
+    var ptr0 = passArrayF32ToWasm0(out, wasm.__wbindgen_malloc);
+    var len0 = WASM_VECTOR_LEN;
+    wasm.a2player_read_tap(this.__wbg_ptr, ch, ptr0, len0, out);
+  }
+  /**
+   * @param {number} gain
+   */
+  set_gain(gain) {
+    wasm.a2player_set_gain(this.__wbg_ptr, gain);
+  }
+  /**
+   * @returns {string}
+   */
+  song_name() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+      const ret = wasm.a2player_song_name(this.__wbg_ptr);
+      deferred1_0 = ret[0];
+      deferred1_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+  }
+};
+if (Symbol.dispose) A2Player.prototype[Symbol.dispose] = A2Player.prototype.free;
 var AhxPlayerFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_ahxplayer_free(ptr >>> 0, 1));
@@ -2549,7 +2817,7 @@ var OplRenderer = class {
    * @returns {number}
    */
   tap_channels() {
-    const ret = wasm.oplrenderer_tap_channels(this.__wbg_ptr);
+    const ret = wasm.a2player_channels(this.__wbg_ptr);
     return ret >>> 0;
   }
   /**

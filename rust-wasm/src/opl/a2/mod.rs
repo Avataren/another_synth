@@ -16,6 +16,7 @@ pub mod aplib;
 pub mod engine;
 pub mod gate;
 pub mod lzh;
+pub mod player;
 pub mod model;
 pub mod sixpack;
 

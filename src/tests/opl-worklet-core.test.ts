@@ -4,8 +4,14 @@ import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 // Relative on purpose: the `app/public/wasm/audio_processor.js` alias is
 // mocked for every other test, and this one is about the real bytes.
-import { OplRenderer, initSync } from '../../public/wasm/audio_processor.js';
-import { OPL_TAP_OUTPUTS, OplProcessorCore, type OplEvent, type OplWasmRendererCtor } from 'src/audio/worklets/opl-core';
+import { A2Player, OplRenderer, initSync } from '../../public/wasm/audio_processor.js';
+import {
+  OPL_TAP_OUTPUTS,
+  OplProcessorCore,
+  type A2WasmPlayerCtor,
+  type OplEvent,
+  type OplWasmRendererCtor,
+} from 'src/audio/worklets/opl-core';
 
 /**
  * .ai/plan-opl.md O2: the OPL worklet's render-thread core over the REAL wasm
@@ -194,5 +200,71 @@ describe('OplProcessorCore over the real wasm', () => {
     expect(peak(taps[0]!)).toBeGreaterThan(0.9);
     expect(peak(taps[0]!)).toBeLessThanOrEqual(1);
     expect(taps.slice(1).every((t) => peak(t) === 0)).toBe(true);
+  });
+});
+
+/**
+ * O7 song mode: the same worklet plays an Adlib Tracker II module through the
+ * Rust `A2Player`, with the SID worklet's command and event shapes.
+ */
+describe('OPL worklet song mode (A2M)', () => {
+  const A2M = resolve(ROOT, 'src/tests/fixtures/opl/a2m');
+  const cot = () => new Uint8Array(readFileSync(resolve(A2M, 'NAB622/corridors of time.a2m')));
+
+  function songCore() {
+    const events: OplEvent[] = [];
+    const core = new OplProcessorCore(
+      OplRenderer as unknown as OplWasmRendererCtor,
+      SAMPLE_RATE,
+      0,
+      (e) => events.push(e),
+      A2Player as unknown as A2WasmPlayerCtor,
+    );
+    return { core, events };
+  }
+
+  const peak = (x: Float32Array) => x.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+
+  it('loads, reports the song, plays with positions, and is silent paused', () => {
+    const { core, events } = songCore();
+    core.handle({ type: 'load-a2m', id: 1, bytes: cot() });
+    const loaded = events.find((e) => e.type === 'song-loaded');
+    expect(loaded).toMatchObject({ id: 1 });
+    const info = (loaded as Extract<OplEvent, { type: 'song-loaded' }>).info;
+    expect(info.tracks).toBe(18);
+    expect(info.trackChannels).toHaveLength(18);
+    expect(info.orders.length).toBeGreaterThan(10);
+    expect(render(core, 0, SAMPLE_RATE / 2).left.every((v) => v === 0)).toBe(true);
+    core.handle({ type: 'play' });
+    const { left, right } = render(core, 0, SAMPLE_RATE * 2);
+    expect(peak(left)).toBeGreaterThan(0.01);
+    expect(peak(right)).toBeGreaterThan(0.01);
+    expect(events.filter((e) => e.type === 'position').length).toBeGreaterThan(5);
+  });
+
+  it('refuses a module it cannot play with the load id and one sentence', () => {
+    const { core, events } = songCore();
+    const bytes = new Uint8Array(readFileSync(resolve(A2M, "OxygenStar/oxygenstar's instrument set #001.a2m")));
+    core.handle({ type: 'load-a2m', id: 7, bytes });
+    expect(events).toEqual([{ type: 'error', id: 7, message: expect.stringContaining('only jump markers') }]);
+  });
+
+  it('seeks, loops an order, mutes by track, and unloads back to the register stream', () => {
+    const { core, events } = songCore();
+    core.handle({ type: 'load-a2m', id: 1, bytes: cot() });
+    core.handle({ type: 'seek', order: 2, row: 0 });
+    expect(events.at(-1)).toMatchObject({ type: 'position', order: 2, row: 0, seek: true });
+    core.handle({ type: 'set-loop-order', order: 2 });
+    core.handle({ type: 'play' });
+    render(core, 0, SAMPLE_RATE * 6);
+    const orders = events.filter((e) => e.type === 'position').map((e) => (e as { order: number }).order);
+    expect(new Set(orders)).toEqual(new Set([2]));
+    core.handle({ type: 'set-mute-solo', mute: 0x3ffff, solo: 0 });
+    const muted = render(core, 0, SAMPLE_RATE).left;
+    expect(peak(muted.subarray(SAMPLE_RATE / 2))).toBeLessThan(1e-4);
+    core.handle({ type: 'unload-song' });
+    core.handle({ type: 'writes', writes: sinePatch(0x244, 4).flatMap(([r, v]) => [0, r as number, v as number]) });
+    core.handle({ type: 'writes', writes: [0, 0xb0, 0x32] });
+    expect(peak(render(core, 0, 4096).left)).toBeGreaterThan(0.05);
   });
 });

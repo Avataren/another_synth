@@ -493,6 +493,42 @@ impl A2Engine {
         (self.order_pos, self.pattern, self.row)
     }
 
+    /// Order, pattern and row the next row will be read from.
+    pub fn next_position(&self) -> (usize, usize, usize) {
+        self.next_pos
+    }
+
+    /// Makes the next row come from `order` (following jump markers) and
+    /// `row` instead: the player's order loop. False when no pattern is
+    /// reachable from there.
+    pub fn redirect(&mut self, order: usize, row: usize) -> bool {
+        match self.resolve_order(order.min(127)) {
+            Some((order, pattern, _)) => {
+                let row = if row < self.song.pattern_len as usize {
+                    row
+                } else {
+                    0
+                };
+                self.next_pos = (order, pattern, row);
+                self.ended = false;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Tracks the song plays (its declared count).
+    pub fn track_count(&self) -> usize {
+        self.tracks_in_use()
+    }
+
+    /// The OPL channel (0..17) whose operators and key track `t` uses (in a
+    /// 4-op pair each track has its own channel; the pair keys on the
+    /// second's).
+    pub fn track_channel(&self, t: usize) -> usize {
+        self.channel(t.min(19))
+    }
+
     pub fn ended(&self) -> bool {
         self.ended
     }

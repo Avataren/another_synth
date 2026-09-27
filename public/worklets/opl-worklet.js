@@ -436,6 +436,274 @@ var Waveform = Object.freeze({
   Custom: 4,
   "4": "Custom"
 });
+var A2PlayerFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_a2player_free(ptr >>> 0, 1));
+var A2Player = class {
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    A2PlayerFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_a2player_free(ptr, 0);
+  }
+  /**
+   * @returns {boolean}
+   */
+  is_playing() {
+    const ret = wasm.a2player_is_playing(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * Order positions before the first jump marker (the song's length as
+   * the tracker shows it).
+   * @returns {number}
+   */
+  order_count() {
+    const ret = wasm.a2player_order_count(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * The raw order entry at `index` (a pattern, or 0x80 + a jump target).
+   * @param {number} index
+   * @returns {number}
+   */
+  order_entry(index) {
+    const ret = wasm.a2player_order_entry(this.__wbg_ptr, index);
+    return ret;
+  }
+  /**
+   * @returns {number}
+   */
+  track_count() {
+    const ret = wasm.a2player_track_count(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * Bit masks over tracks (bit `t` = track `t`): muted tracks, and (when
+   * non-zero) the only tracks heard. Applied as the chip's channel mask.
+   * @param {number} mute
+   * @param {number} solo
+   */
+  set_mute_solo(mute, solo) {
+    wasm.a2player_set_mute_solo(this.__wbg_ptr, mute, solo);
+  }
+  /**
+   * The OPL channel track `track` plays on.
+   * @param {number} track
+   * @returns {number}
+   */
+  track_channel(track) {
+    const ret = wasm.a2player_track_channel(this.__wbg_ptr, track);
+    return ret >>> 0;
+  }
+  /**
+   * Keep playing order position `order` (its pattern) over and over:
+   * the tracker's "play pattern". `-1` plays the song on.
+   * @param {number} order
+   */
+  set_loop_order(order) {
+    wasm.a2player_set_loop_order(this.__wbg_ptr, order);
+  }
+  /**
+   * @param {number} index
+   * @returns {string}
+   */
+  instrument_name(index) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+      const ret = wasm.a2player_instrument_name(this.__wbg_ptr, index);
+      deferred1_0 = ret[0];
+      deferred1_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+  }
+  /**
+   * The instruments that hold FM data.
+   * @returns {number}
+   */
+  instrument_count() {
+    const ret = wasm.a2player_instrument_count(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * @returns {number}
+   */
+  rows_per_pattern() {
+    const ret = wasm.a2player_rows_per_pattern(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * Record per-channel scope taps during `render` (off by default).
+   * @param {boolean} enabled
+   */
+  set_taps_enabled(enabled) {
+    wasm.a2player_set_taps_enabled(this.__wbg_ptr, enabled);
+  }
+  /**
+   * Whether the song has come round once (passed its order list's end
+   * or a jump back) or stopped. It plays on either way.
+   * @returns {boolean}
+   */
+  song_end_reached() {
+    const ret = wasm.a2player_song_end_reached(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * Parses an `.a2m` module and builds a paused player at its start. A
+   * file the parser or the player cannot play is refused with one
+   * sentence saying why.
+   * @param {Uint8Array} bytes
+   * @param {number} sample_rate
+   */
+  constructor(bytes, sample_rate) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.a2player_new(ptr0, len0, sample_rate);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    this.__wbg_ptr = ret[0] >>> 0;
+    A2PlayerFinalization.register(this, this.__wbg_ptr, this);
+    return this;
+  }
+  /**
+   * @returns {number}
+   */
+  row() {
+    const ret = wasm.a2player_row(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  play() {
+    wasm.a2player_play(this.__wbg_ptr);
+  }
+  /**
+   * Moves to the start of `row` in order position `order`, keeping the
+   * play/pause state. The song is replayed silently from its top to get
+   * there; a row it never reaches is jumped to directly. Returns whether
+   * the row was reached by playing.
+   * @param {number} order
+   * @param {number} row
+   * @returns {boolean}
+   */
+  seek(order, row) {
+    const ret = wasm.a2player_seek(this.__wbg_ptr, order, row);
+    return ret !== 0;
+  }
+  /**
+   * The row playing now: its order position, pattern and row.
+   * @returns {number}
+   */
+  order() {
+    const ret = wasm.a2player_order(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * Stops the clock (the output is silence) without losing the position.
+   */
+  pause() {
+    wasm.a2player_pause(this.__wbg_ptr);
+  }
+  /**
+   * Renders `left.len()` frames (and the same into `right`); silence
+   * while paused. Returns the frames written.
+   * @param {Float32Array} left
+   * @param {Float32Array} right
+   * @returns {number}
+   */
+  render(left, right) {
+    var ptr0 = passArrayF32ToWasm0(left, wasm.__wbindgen_malloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = passArrayF32ToWasm0(right, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.a2player_render(this.__wbg_ptr, ptr0, len0, left, ptr1, len1, right);
+    return ret >>> 0;
+  }
+  /**
+   * @returns {number}
+   */
+  pattern() {
+    const ret = wasm.a2player_pattern(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * The timer rate now (Hz): tempo × macro speed-up.
+   * @returns {number}
+   */
+  refresh() {
+    const ret = wasm.a2player_refresh(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @returns {number}
+   */
+  version() {
+    const ret = wasm.a2player_version(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * 18: every OPL3 channel (what `read_tap` covers).
+   * @returns {number}
+   */
+  channels() {
+    const ret = wasm.a2player_channels(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * @returns {string}
+   */
+  composer() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+      const ret = wasm.a2player_composer(this.__wbg_ptr);
+      deferred1_0 = ret[0];
+      deferred1_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+  }
+  /**
+   * OPL channel `ch`'s tap from the last `render` (±1: one operator's
+   * full swing); zeros when taps are off. `track_channel` maps tracks.
+   * @param {number} ch
+   * @param {Float32Array} out
+   */
+  read_tap(ch, out) {
+    var ptr0 = passArrayF32ToWasm0(out, wasm.__wbindgen_malloc);
+    var len0 = WASM_VECTOR_LEN;
+    wasm.a2player_read_tap(this.__wbg_ptr, ch, ptr0, len0, out);
+  }
+  /**
+   * @param {number} gain
+   */
+  set_gain(gain) {
+    wasm.a2player_set_gain(this.__wbg_ptr, gain);
+  }
+  /**
+   * @returns {string}
+   */
+  song_name() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+      const ret = wasm.a2player_song_name(this.__wbg_ptr);
+      deferred1_0 = ret[0];
+      deferred1_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+  }
+};
+if (Symbol.dispose) A2Player.prototype[Symbol.dispose] = A2Player.prototype.free;
 var AhxPlayerFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_ahxplayer_free(ptr >>> 0, 1));
@@ -2523,7 +2791,7 @@ var OplRenderer = class {
    * @returns {number}
    */
   tap_channels() {
-    const ret = wasm.oplrenderer_tap_channels(this.__wbg_ptr);
+    const ret = wasm.a2player_channels(this.__wbg_ptr);
     return ret >>> 0;
   }
   /**
@@ -3507,14 +3775,16 @@ async function __wbg_init(module_or_path) {
 
 // src/audio/worklets/opl-core.ts
 var LATE_REPORT_SECONDS = 0.5;
+var POSITION_INTERVAL_SECONDS = 0.04;
 var OplProcessorCore = class {
   /**
    * `contextFrame` is the AudioContext frame at construction (the worklet's
    * `currentFrame`), so writes that arrive before the first quantum map too.
    */
-  constructor(RendererCtor, sampleRate2, contextFrame, post) {
+  constructor(RendererCtor, sampleRate2, contextFrame, post, SongCtor) {
     this.sampleRate = sampleRate2;
     this.post = post;
+    this.SongCtor = SongCtor;
     __publicField(this, "renderer");
     /** Context frame minus renderer frame; constant while every quantum renders. */
     __publicField(this, "frameOffset");
@@ -3522,6 +3792,16 @@ var OplProcessorCore = class {
     __publicField(this, "framesSinceReport", 0);
     __publicField(this, "disposedFlag", false);
     __publicField(this, "tapsEnabled", false);
+    __publicField(this, "song", null);
+    __publicField(this, "gain", 1);
+    __publicField(this, "loopOrder", -1);
+    __publicField(this, "mute", 0);
+    __publicField(this, "solo", 0);
+    __publicField(this, "stopAtEnd", false);
+    __publicField(this, "lastLoadId", -1);
+    __publicField(this, "framesSincePosition", 0);
+    __publicField(this, "lastPosition", "");
+    __publicField(this, "songEndReported", false);
     this.renderer = new RendererCtor(sampleRate2);
     this.frameOffset = contextFrame;
   }
@@ -3533,7 +3813,7 @@ var OplProcessorCore = class {
     const renderer = this.renderer;
     switch (command.type) {
       case "writes": {
-        if (!renderer) return;
+        if (!renderer || this.song) return;
         const w = command.writes;
         for (let i = 0; i + 2 < w.length; i += 3) {
           const frame = w[i] * this.sampleRate - this.frameOffset;
@@ -3542,7 +3822,9 @@ var OplProcessorCore = class {
         break;
       }
       case "set-gain":
+        this.gain = command.gain;
         renderer?.set_gain(command.gain);
+        this.song?.set_gain(command.gain);
         break;
       case "set-channel-mask":
         renderer?.set_channel_mask(command.mask >>> 0);
@@ -3550,15 +3832,127 @@ var OplProcessorCore = class {
       case "set-taps":
         this.tapsEnabled = command.enabled;
         renderer?.set_taps_enabled(command.enabled);
+        this.song?.set_taps_enabled(command.enabled);
         break;
       case "panic":
         renderer?.panic();
+        this.song?.pause();
+        break;
+      case "load-a2m":
+        if (command.id <= this.lastLoadId) break;
+        this.lastLoadId = command.id;
+        this.loadSong(command.id, command.bytes);
+        break;
+      case "unload-song":
+        this.dropSong();
+        break;
+      case "play":
+        this.song?.play();
+        break;
+      case "pause":
+        this.song?.pause();
+        break;
+      case "seek":
+        this.seek(command.order, command.row);
+        break;
+      case "set-loop-order":
+        this.loopOrder = command.order;
+        this.song?.set_loop_order(command.order);
+        break;
+      case "set-mute-solo":
+        this.mute = command.mute >>> 0;
+        this.solo = command.solo >>> 0;
+        this.song?.set_mute_solo(this.mute, this.solo);
+        break;
+      case "set-stop-at-end":
+        this.stopAtEnd = command.enabled;
         break;
       case "dispose":
         this.disposedFlag = true;
         this.drop();
+        this.dropSong();
         break;
     }
+  }
+  loadSong(id, bytes) {
+    this.dropSong();
+    if (!this.SongCtor) {
+      this.post({ type: "error", id, message: "This OPL worklet cannot play songs" });
+      return;
+    }
+    try {
+      const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      const song = new this.SongCtor(data, this.sampleRate);
+      song.set_gain(this.gain);
+      song.set_mute_solo(this.mute, this.solo);
+      song.set_loop_order(this.loopOrder);
+      song.set_taps_enabled(this.tapsEnabled);
+      this.song = song;
+      this.resetReporting();
+      const tracks = song.track_count();
+      const orders = [];
+      for (let i = 0; i < song.order_count(); i++) orders.push(song.order_entry(i));
+      const instrumentNames = [];
+      for (let i = 0; i < song.instrument_count(); i++) instrumentNames.push(song.instrument_name(i));
+      this.post({
+        type: "song-loaded",
+        id,
+        info: {
+          name: song.song_name(),
+          composer: song.composer(),
+          version: song.version(),
+          tracks,
+          trackChannels: Array.from({ length: tracks }, (_, t) => song.track_channel(t)),
+          orders,
+          rowsPerPattern: song.rows_per_pattern(),
+          instrumentNames,
+          refresh: song.refresh(),
+          sampleRate: this.sampleRate
+        }
+      });
+    } catch (error) {
+      this.post({ type: "error", id, message: String(error) });
+    }
+  }
+  seek(order, row) {
+    const song = this.song;
+    if (!song) return;
+    song.seek(Math.max(0, Math.floor(order)), Math.max(0, Math.floor(row)));
+    this.resetReporting();
+    this.lastPosition = `${song.order()}:${song.row()}`;
+    this.post({ type: "position", order: song.order(), pattern: song.pattern(), row: song.row(), seek: true });
+  }
+  /** Returns true when this quantum ended the song and it was paused. */
+  reportSong(song, frames) {
+    if (song.song_end_reached() && !this.songEndReported) {
+      this.songEndReported = true;
+      this.post({ type: "song-end" });
+      if (this.stopAtEnd) {
+        song.pause();
+        return true;
+      }
+    }
+    this.framesSincePosition += frames;
+    if (this.framesSincePosition < this.sampleRate * POSITION_INTERVAL_SECONDS) return false;
+    this.framesSincePosition = 0;
+    const key = `${song.order()}:${song.row()}`;
+    if (key === this.lastPosition) return false;
+    this.lastPosition = key;
+    this.post({ type: "position", order: song.order(), pattern: song.pattern(), row: song.row() });
+    return false;
+  }
+  resetReporting() {
+    this.framesSincePosition = 0;
+    this.lastPosition = "";
+    this.songEndReported = false;
+  }
+  dropSong() {
+    if (!this.song) return;
+    try {
+      this.song.free();
+    } catch {
+    }
+    this.song = null;
   }
   /**
    * Fills one render quantum starting at AudioContext frame `contextFrame`
@@ -3567,6 +3961,34 @@ var OplProcessorCore = class {
    * taps are off).
    */
   process(left, right, contextFrame, taps) {
+    const song = this.song;
+    if (song) {
+      try {
+        const r = right && right.length === left.length ? right : new Float32Array(left.length);
+        song.render(left, r);
+        if (taps && this.tapsEnabled) {
+          for (let ch = 0; ch < taps.length; ch++) {
+            const out = taps[ch];
+            if (out) song.read_tap(ch, out);
+          }
+        }
+        if (song.is_playing() && this.reportSong(song, left.length)) {
+          const n = Math.min(32, left.length);
+          for (let i = 0; i < n; i++) {
+            const k = left.length - n + i;
+            const g = 1 - (i + 1) / n;
+            left[k] = (left[k] ?? 0) * g;
+            if (right) right[k] = (right[k] ?? 0) * g;
+          }
+        }
+      } catch (error) {
+        this.dropSong();
+        left.fill(0);
+        right?.fill(0);
+        this.post({ type: "error", message: `A2M render failed: ${String(error)}` });
+      }
+      return;
+    }
     const renderer = this.renderer;
     if (!renderer) {
       left.fill(0);
@@ -3643,7 +4065,8 @@ var OplAudioProcessor = class extends AudioWorkletProcessor {
         OplRenderer,
         sampleRate,
         currentFrame,
-        (event) => this.port.postMessage(event)
+        (event) => this.port.postMessage(event),
+        A2Player
       );
       this.wasmReady = true;
       this.port.postMessage({ type: "wasm-ready" });
