@@ -1,12 +1,15 @@
 //! The A2M replay engine (batch O7 of `.ai/plan-opl.md`): song position,
 //! rows, ticks, effects and macros, producing OPL3 register writes.
 //!
-//! Adlib Tracker II's source is GPL 3+ and AdPlug's port of its player is
-//! LGPL; neither was read (plan decision D1). Every behaviour here was pinned
-//! by running AdPlug's `Ca2mv2Player` as a black box on corpus modules and on
-//! synthetic ones (`oracle/craft_a2m.py`), and comparing its register writes
-//! tick by tick (`oracle/trace-oracle.cpp`). "MEASURED" marks a rule read off
-//! those traces.
+//! AdPlug's port of the AT2 player is LGPL and was not read (plan decision
+//! D1). Every behaviour here was pinned by running AdPlug's `Ca2mv2Player`
+//! as a black box on corpus modules and on synthetic ones
+//! (`oracle/craft_a2m.py`), and comparing its register writes tick by tick
+//! (`oracle/trace-oracle.cpp`). "MEASURED" marks a rule read off those
+//! traces. For the last divergences D1 was relaxed: Adlib Tracker II's own
+//! source (GPL 3+) was read to form hypotheses, which were then probed; the
+//! code here is written from those rules, not from AT2's. Names such as
+//! `effect_table` or `output_note` refer to AT2 routines and tables.
 
 use super::model::{A2mSong, Cell, FmMacroStep};
 
@@ -97,6 +100,9 @@ mod fx {
     pub const GLOBAL_SLIDE_DOWN: u8 = 0x2f;
     /// Internal: version 5-8's 16xy, which has no v9 equivalent.
     pub const OLD_RAW_FINE: u8 = 0xf0;
+    /// Internal: a plain arpeggio in `effect_table` (AT2 `ef_Arpeggio +
+    /// ef_fix1`), so that it does not read as "no effect".
+    pub const ARP_FIX: u8 = 0xf1;
 }
 
 /// Where a register write goes.
@@ -146,14 +152,22 @@ struct Column {
     /// The previous row's effect and parameter.
     last_fx: u8,
     last_param: u8,
-    /// Plain portamento (03) state, apart from the speed 05 and 10 use
-    /// (MEASURED): a note with 03 arms it; any effect here that runs on
-    /// ticks or per row, 05 and 10 included, disarms it and zeroes its
-    /// speed. A disarmed 03 without a note does nothing and ignores its
-    /// parameter; an armed one sets both speeds. A porta note with 03 00
-    /// after a disarm slides at speed 0 (writes the pitch unchanged).
-    porta_armed: bool,
-    porta_speed03: u8,
+    /// AT2 `effect_table` as a row leaves it: the running effect and its
+    /// parameter; a one-shot effect keeps only the parameter byte, an empty
+    /// cell clears both.
+    cur_table: (u8, u8),
+    /// AT2 `last_effect`: the last non-zero `effect_table`, which decides
+    /// whether a zero parameter reuses the last one.
+    table_fx: u8,
+    table_param: u8,
+    /// 03 runs on this row (AT2: it is in `effect_table`): with a note, or
+    /// without one when the column's last effect was 03 (MEASURED: after
+    /// an empty row it carries on, after any other effect, a one-shot
+    /// included, it does nothing and ignores its parameter).
+    porta_on: bool,
+    /// Tone portamento target (AT2 `porta_table.freq`): set only by a note
+    /// with 03 in this column; 05 and 10 slide to the last one.
+    porta_target: u16,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -170,8 +184,6 @@ struct Track {
     freq: u16,
     /// Frequency last written to the chip (with arpeggio or vibrato).
     out_freq: u16,
-    /// Tone portamento target.
-    porta_target: u16,
     key_on: bool,
     /// 0 centre, 1 left, 2 right.
     panning: u8,
@@ -661,6 +673,10 @@ impl A2Engine {
                 let col = &mut self.tracks[t].cols[c];
                 col.last_fx = col.fx;
                 col.last_param = col.param;
+                if col.cur_table != (0, 0) {
+                    (col.table_fx, col.table_param) = col.cur_table;
+                }
+                col.cur_table.0 = 0;
                 col.fx = fx;
                 col.param = param;
                 // MEASURED: a combined volume-slide effect with 00 right after
@@ -674,8 +690,30 @@ impl A2Engine {
                         | fx::ARP_VSLIDE
                         | fx::ARP_VSLIDE_FINE
                 ) || (fx::SLIDE_UP_VSLIDE..=fx::FINE_DOWN_VSLIDE_FINE).contains(&fx);
-                if combo && param == 0 && fx == col.last_fx {
-                    col.param = col.last_param;
+                // AT2 `play_line`: 00 reuses the parameter of the last effect
+                // of the same family (05/10, 06/11 from `effect_table`
+                // itself, 18/19, 1B-22). With none, current AT2 drops the
+                // effect; AdPlug runs it with 00, and play follows AdPlug.
+                if combo && param == 0 {
+                    let (family, from) = match fx {
+                        fx::PORTA_VSLIDE | fx::PORTA_VSLIDE_FINE => {
+                            ([fx::PORTA_VSLIDE, fx::PORTA_VSLIDE_FINE], col.table_param)
+                        }
+                        fx::VIB_VSLIDE | fx::VIB_VSLIDE_FINE => {
+                            ([fx::VIB_VSLIDE, fx::VIB_VSLIDE_FINE], col.cur_table.1)
+                        }
+                        fx::ARP_VSLIDE | fx::ARP_VSLIDE_FINE => {
+                            ([fx::ARP_VSLIDE, fx::ARP_VSLIDE_FINE], col.table_param)
+                        }
+                        _ => ([0xff, 0xff], col.table_param),
+                    };
+                    let same = family.contains(&col.table_fx)
+                        || (family[0] == 0xff
+                            && (fx::SLIDE_UP_VSLIDE..=fx::FINE_DOWN_VSLIDE_FINE)
+                                .contains(&col.table_fx));
+                    if same && from != 0 {
+                        col.param = from;
+                    }
                 }
                 let param = col.param;
                 // MEASURED: when a plain or extra-fine arpeggio gives way to
@@ -692,8 +730,24 @@ impl A2Engine {
                 // MEASURED: an arpeggio, vibrato or tremolo starts from its
                 // first step when the column enters it from another effect
                 // (04 → 06 → 11 carries on; 0A → 04 restarts).
-                if group(fx) != group(col.last_fx) {
+                // An arpeggio's step is kept until a note, or until one
+                // starts after a last effect that was no arpeggio (AT2
+                // `arpgg_table.state`; MEASURED: an arpeggio left, then
+                // resumed after rows with notes only, goes on from x).
+                let arp_row = (fx == fx::ARPEGGIO && param != 0)
+                    || matches!(
+                        fx,
+                        fx::EXTRA_FINE_ARP | fx::ARP_VSLIDE | fx::ARP_VSLIDE_FINE
+                    );
+                if arp_row
+                    && !matches!(
+                        col.table_fx,
+                        fx::ARP_FIX | fx::EXTRA_FINE_ARP | fx::ARP_VSLIDE | fx::ARP_VSLIDE_FINE
+                    )
+                {
                     col.arp_phase = 0;
+                }
+                if group(fx) != group(col.last_fx) {
                     col.vib_pos = 0;
                     col.trem_pos = 0;
                     col.tremor_count = 0;
@@ -726,10 +780,6 @@ impl A2Engine {
                         col.retrig_count = 1;
                     }
                     col.last_used = (fx, param);
-                }
-                if !keeps_porta(fx, param) {
-                    col.porta_armed = false;
-                    col.porta_speed03 = 0;
                 }
                 match fx {
                     fx::SLIDE_UP | fx::SLIDE_DOWN | fx::FINE_UP | fx::FINE_DOWN => {
@@ -773,8 +823,29 @@ impl A2Engine {
             }
         }
         for (t, cell) in cells.iter().enumerate() {
+            for (c, &(fx, param)) in cell.effects.iter().enumerate() {
+                let col = &mut self.tracks[t].cols[c];
+                if (fx, param) == (0, 0) {
+                    col.cur_table = (0, 0);
+                } else if !one_shot(fx, param) && (fx != fx::PORTA || col.porta_on) {
+                    let lo = if col.fx == fx::ARPEGGIO {
+                        fx::ARP_FIX
+                    } else {
+                        col.fx
+                    };
+                    col.cur_table = (lo, col.param);
+                }
+            }
+        }
+        for (t, cell) in cells.iter().enumerate() {
             if cell.note != 0 {
-                if self.tracks[t].note_delay != 0 {
+                if self.tracks[t].note_delay != 0 && cell.note == 0xff {
+                    // AT2 tests for a key-off before a note delay: it keys
+                    // off now, and the delay's end only rewrites the pitch
+                    // (MEASURED).
+                    self.play_note(t, 0xff, out);
+                    self.tracks[t].delayed_note = 0xfe;
+                } else if self.tracks[t].note_delay != 0 {
                     // AT2 records a delayed note as the track's note at
                     // once (an FM macro retrigger plays it early).
                     self.tracks[t].delayed_note = cell.note;
@@ -785,6 +856,23 @@ impl A2Engine {
                 } else {
                     self.play_note(t, cell.note, out);
                 }
+            }
+            if cell.note == 0 && self.tracks[t].note_delay != 0 {
+                // A delay without a note strikes the track's last note
+                // (AT2 `event_table` note; MEASURED); after a key-off it
+                // only rewrites the pitch.
+                let tr = &mut self.tracks[t];
+                tr.delayed_note = if tr.keyed_off { 0xfe } else { tr.note };
+            }
+            if cell.note == 0 && self.tracks[t].fine_once != 0 {
+                // AT2 `output_note` with no note: &4x/&5x move the pitch
+                // that is sounding, and it stays there (MEASURED). Current
+                // AT2 skips this under a running portamento or a note delay;
+                // AdPlug does not, and play follows AdPlug (O7 record).
+                let tr = &mut self.tracks[t];
+                let f = (tr.freq as i32 + tr.fine_once as i32) as u16 & 0x1fff;
+                tr.freq = f;
+                self.write_freq(t, f, out);
             }
             self.note_pass_effects(t, out);
             self.swap_tables(t, cell);
@@ -810,7 +898,7 @@ impl A2Engine {
                     tr.arp_table = param;
                     tr.arp_note = tr.note;
                     if keep {
-                        tr.arp_macro.pos = tr.arp_macro.pos.min(len);
+                        keep_macro(&mut tr.arp_macro, len);
                     } else {
                         tr.arp_macro = MacroState {
                             active: len > 0,
@@ -827,7 +915,7 @@ impl A2Engine {
                     let tr = &mut self.tracks[t];
                     tr.vib_table = param;
                     if keep {
-                        tr.vib_macro.pos = tr.vib_macro.pos.min(len);
+                        keep_macro(&mut tr.vib_macro, len);
                     } else {
                         tr.vib_macro = MacroState {
                             active: len > 0,
@@ -1215,11 +1303,11 @@ impl A2Engine {
         };
         let cols = self.tracks[t].cols;
         if cols.iter().any(|c| Self::is_porta(c.fx)) {
-            // MEASURED: a portamento note sets the target. After a key-off
-            // (note off or ZF0) it first keys on again at the track's last
-            // note, which it leaves as the last note; otherwise it becomes
-            // the last note (silently, on a track that never played).
-            self.tracks[t].porta_target = freq;
+            // MEASURED: after a key-off (note off or ZF0) a portamento note
+            // first keys on again at the track's last note, which it leaves
+            // as the last note; otherwise it becomes the last note (silently,
+            // on a track that never played). The target is 03's own
+            // (`row_effect`).
             // Neither restarts the tables (AT2 `output_note` with
             // restart_macro off). ZE3 ("force key") keys on at the new note.
             if self.tracks[t].keyed_off {
@@ -1397,6 +1485,9 @@ impl A2Engine {
             // MEASURED: the base counts as the first step, so an 18 or 19
             // taking over carries on with x.
             col.arp_phase = 1;
+            // AT2 `change_frequency`: the note becomes the pitch that slides
+            // move from (MEASURED: a slide after it starts at the note).
+            self.tracks[t].freq = base;
             self.write_freq(t, base, out);
         }
         match fx {
@@ -1495,8 +1586,9 @@ impl A2Engine {
                 0x1 => self.row_delay = param & 15,
                 0x2 => self.tracks[t].note_delay = param & 15,
                 0x3 => self.tracks[t].note_cut = param & 15,
-                0x4 => self.tracks[t].fine_once = (param & 15) as i8,
-                0x5 => self.tracks[t].fine_once = -((param & 15) as i8),
+                // Both columns add up (AT2 `ftune_table`).
+                0x4 => self.tracks[t].fine_once += (param & 15) as i8,
+                0x5 => self.tracks[t].fine_once -= (param & 15) as i8,
                 _ => {}
             },
             fx::EXTENDED3 => {
@@ -1546,26 +1638,52 @@ impl A2Engine {
                 self.jump = Some((self.order_pos + 1, param as usize));
             }
             fx::PORTA => {
+                let target = (1..=97)
+                    .contains(&cell.note)
+                    .then(|| self.note_freq(t, cell.note));
                 let col = &mut self.tracks[t].cols[c];
-                if cell.note != 0 && cell.note != 0xff {
-                    col.porta_armed = true;
+                col.porta_on = target.is_some() || col.table_fx == fx::PORTA;
+                if col.porta_on {
+                    // A zero parameter reuses the last 03's; else the speed
+                    // is 0 (AT2 `porta_table.speed`, shared with 05 and 10).
+                    let p = if param == 0 && col.table_fx == fx::PORTA {
+                        col.table_param
+                    } else {
+                        param
+                    };
+                    col.param = p;
+                    col.porta_speed = p;
                 }
-                if col.porta_armed && param != 0 {
-                    col.porta_speed = param;
-                    col.porta_speed03 = param;
+                if let Some(f) = target {
+                    col.porta_target = f;
                 }
             }
             // MEASURED: a zero parameter reuses the last one; otherwise both
             // nibbles are taken (04 20 is speed 2, depth 0).
-            fx::VIBRATO | fx::EXTRA_FINE_VIB if param != 0 => {
+            fx::VIBRATO | fx::EXTRA_FINE_VIB => {
                 let col = &mut self.tracks[t].cols[c];
-                col.vib_speed = param >> 4;
-                col.vib_depth = param & 15;
+                // Reused only after 04 or 2B themselves (empty rows between
+                // included), not after 06, 11 or a one-shot effect (AT2
+                // `play_line` takes `last_effect`'s; MEASURED).
+                let p = if param == 0 && matches!(col.table_fx, fx::VIBRATO | fx::EXTRA_FINE_VIB) {
+                    col.table_param
+                } else {
+                    param
+                };
+                col.param = p;
+                col.vib_speed = p >> 4;
+                col.vib_depth = p & 15;
             }
-            fx::TREMOLO | fx::EXTRA_FINE_TREM if param != 0 => {
+            fx::TREMOLO | fx::EXTRA_FINE_TREM => {
                 let col = &mut self.tracks[t].cols[c];
-                col.trem_speed = param >> 4;
-                col.trem_depth = param & 15;
+                let p = if param == 0 && matches!(col.table_fx, fx::TREMOLO | fx::EXTRA_FINE_TREM) {
+                    col.table_param
+                } else {
+                    param
+                };
+                col.param = p;
+                col.trem_speed = p >> 4;
+                col.trem_depth = p & 15;
             }
             _ => {}
         }
@@ -2042,7 +2160,11 @@ impl A2Engine {
                 let tr = self.tracks[t];
                 if tr.note_delay != 0 && self.row_tick == tr.note_delay as u16 {
                     self.tracks[t].note_delay = 0;
-                    self.play_note(t, tr.delayed_note, out);
+                    match tr.delayed_note {
+                        0 => {}
+                        0xfe => self.write_freq(t, tr.freq, out),
+                        n => self.play_note(t, n, out),
+                    }
                 }
                 if tr.note_cut != 0 && self.row_tick == tr.note_cut as u16 {
                     self.tracks[t].note_cut = 0;
@@ -2172,6 +2294,19 @@ impl A2Engine {
         out.write(0xb0 + ch, 0x20 | (f >> 8) as u8);
         self.share_pitch(t);
         self.tracks[t].key_on = true;
+        // AT2 `output_note` with restart_macro: the instrument's tables start
+        // again, unless ZFF is on the row (MEASURED).
+        if note != 0 {
+            let keep = self.tracks[t]
+                .cols
+                .iter()
+                .any(|c| (c.fx, c.param) == (fx::EXTENDED, 0xff));
+            if keep {
+                self.tracks[t].arp_note = note;
+            } else {
+                self.start_macros(t);
+            }
+        }
     }
 
     /// On for x ticks, off (silent) for y (MEASURED: off writes the carrier,
@@ -2215,6 +2350,9 @@ impl A2Engine {
         };
         self.tracks[t].cols[c].arp_phase = (phase + 1) % 3;
         let f = self.arp_freq(t, add);
+        // AT2 `arpeggio` goes through `change_frequency`: each step is the
+        // pitch a slide moves from afterwards (MEASURED).
+        self.tracks[t].freq = f;
         self.write_freq(t, f, out);
     }
 
@@ -2253,15 +2391,11 @@ impl A2Engine {
 
     fn porta(&mut self, t: usize, c: usize, out: &mut impl RegisterSink) {
         let col = self.tracks[t].cols[c];
-        let speed = if col.fx == fx::PORTA {
-            col.porta_speed03
-        } else {
-            col.porta_speed
-        } as i32;
-        let (cur, target) = (self.tracks[t].freq, self.tracks[t].porta_target);
+        let speed = col.porta_speed as i32;
+        let (cur, target) = (self.tracks[t].freq, col.porta_target);
         // MEASURED: with no target, 03 does nothing while 05 and 10 write the
         // pitch unchanged; an idle channel is left alone.
-        if cur == 0 || (col.fx == fx::PORTA && !col.porta_armed) {
+        if cur == 0 || (col.fx == fx::PORTA && !col.porta_on) {
             return;
         }
         if target == 0 {
@@ -2485,9 +2619,9 @@ fn keeps_porta(fx: u8, param: u8) -> bool {
 /// carries on across rows while the column stays inside its group.
 fn group(fx: u8) -> u8 {
     match fx {
-        fx::ARPEGGIO | fx::ARP_VSLIDE | fx::ARP_VSLIDE_FINE => 1,
-        fx::VIBRATO | fx::VIB_VSLIDE | fx::VIB_VSLIDE_FINE => 2,
-        fx::TREMOLO => 3,
+        fx::ARPEGGIO | fx::EXTRA_FINE_ARP | fx::ARP_VSLIDE | fx::ARP_VSLIDE_FINE => 1,
+        fx::VIBRATO | fx::EXTRA_FINE_VIB | fx::VIB_VSLIDE | fx::VIB_VSLIDE_FINE => 2,
+        fx::TREMOLO | fx::EXTRA_FINE_TREM => 3,
         _ => 0x80 | fx,
     }
 }
@@ -2556,6 +2690,17 @@ fn step_freq(freq: u16, by: i32) -> Option<u16> {
     } else {
         porta_down(freq, (-by) as u16, FREQ_MIN)
     }
+}
+
+/// A table swap under ZFF carries on from the same step, clamped to the new
+/// table's length; a finished table stands at its end (AT2 keeps no
+/// separate "running" state: a table runs while its position is in range).
+fn keep_macro(m: &mut MacroState, len: u8) {
+    if !m.active && m.pos != 0 {
+        m.pos = len;
+    }
+    m.pos = m.pos.min(len);
+    m.active = len > 0;
 }
 
 /// Whether a macro has been started at all (so a restart can revive it).
