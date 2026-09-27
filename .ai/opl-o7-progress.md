@@ -1,3 +1,11 @@
+# O7 progress (A2M player) — handoff, 2026-09-27 (session 4)
+
+**Session 4: O7 steps 4 and 5 done** — batch 11 `a979c1bb` (tracker hookup), batch 12
+`afcd7249` (writes one per native sample; A/B tools), landing record `9a554490` in
+`.ai/plan-opl.md` (O7). A/B work files in `.ai/o7-ab/` (renders, `ab.py`, `sb.py`,
+`perch.py`; ~1 GB, deletable). Open for Morten: chip level 2x Nuked (clips on 9/17 tier-1
+files), and his ears. Everything below is history.
+
 # O7 progress (A2M player) — handoff, 2026-09-27 (session 3)
 
 **Session 3 status (supersedes "Where things stand" and open items 1-3 below):**
