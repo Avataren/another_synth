@@ -3789,6 +3789,110 @@ async function __wbg_init(module_or_path) {
 }
 
 // src/audio/worklets/opl-core.ts
+var SB_FILTER_PRESETS = {
+  sb1: { enabled: true, cutoffHz: 12e3, order: 1 },
+  sb2: { enabled: true, cutoffHz: 12e3, order: 1 },
+  sbpro1: { enabled: true, cutoffHz: 8e3, order: 1 },
+  sbpro2: { enabled: true, cutoffHz: 8e3, order: 1 },
+  sb16: { enabled: false, cutoffHz: 8e3, order: 1 },
+  none: { enabled: false, cutoffHz: 8e3, order: 1 }
+};
+var SB_FILTER_DEFAULT_PRESET = "sbpro2";
+var SbOutputFilter = class {
+  constructor(sampleRate2, preset = SB_FILTER_DEFAULT_PRESET) {
+    this.sampleRate = sampleRate2;
+    __publicField(this, "enabledFlag");
+    __publicField(this, "cutoff");
+    __publicField(this, "orderValue");
+    // Transposed direct form II; the 1st order has b2 = a2 = 0.
+    __publicField(this, "b0", 0);
+    __publicField(this, "b1", 0);
+    __publicField(this, "b2", 0);
+    __publicField(this, "a1", 0);
+    __publicField(this, "a2", 0);
+    __publicField(this, "states", [
+      { z1: 0, z2: 0, last: 0 },
+      { z1: 0, z2: 0, last: 0 }
+    ]);
+    const p = SB_FILTER_PRESETS[preset];
+    this.enabledFlag = p.enabled;
+    this.cutoff = p.cutoffHz;
+    this.orderValue = p.order;
+    this.update();
+  }
+  get enabled() {
+    return this.enabledFlag;
+  }
+  get cutoffHz() {
+    return this.cutoff;
+  }
+  get order() {
+    return this.orderValue;
+  }
+  configure(options) {
+    const p = options.preset !== void 0 ? SB_FILTER_PRESETS[options.preset] : void 0;
+    if (p) {
+      this.enabledFlag = p.enabled;
+      this.cutoff = p.cutoffHz;
+      this.orderValue = p.order;
+    }
+    if (options.cutoffHz !== void 0 && Number.isFinite(options.cutoffHz) && options.cutoffHz > 0) {
+      this.cutoff = options.cutoffHz;
+    }
+    if (options.order === 1 || options.order === 2) this.orderValue = options.order;
+    if (options.enabled !== void 0) this.enabledFlag = options.enabled;
+    this.update();
+  }
+  /** Filters `left` (and `right`, when given) in place. */
+  process(left, right) {
+    this.run(left, this.states[0]);
+    if (right) this.run(right, this.states[1]);
+  }
+  run(x, s) {
+    const n = x.length;
+    if (n === 0) return;
+    if (!this.enabledFlag) {
+      s.last = x[n - 1] ?? 0;
+      return;
+    }
+    const { b0, b1, b2, a1, a2 } = this;
+    let { z1, z2 } = s;
+    let y = 0;
+    for (let i = 0; i < n; i++) {
+      const v = x[i] ?? 0;
+      y = b0 * v + z1;
+      z1 = b1 * v - a1 * y + z2;
+      z2 = b2 * v - a2 * y;
+      x[i] = y;
+    }
+    s.z1 = z1;
+    s.z2 = z2;
+    s.last = y;
+  }
+  update() {
+    const fc = Math.min(Math.max(this.cutoff, 1), this.sampleRate * 0.45);
+    const k = Math.tan(Math.PI * fc / this.sampleRate);
+    if (this.orderValue === 1) {
+      this.b0 = k / (k + 1);
+      this.b1 = this.b0;
+      this.b2 = 0;
+      this.a1 = (k - 1) / (k + 1);
+      this.a2 = 0;
+    } else {
+      const norm = 1 / (1 + Math.SQRT2 * k + k * k);
+      this.b0 = k * k * norm;
+      this.b1 = 2 * this.b0;
+      this.b2 = this.b0;
+      this.a1 = 2 * (k * k - 1) * norm;
+      this.a2 = (1 - Math.SQRT2 * k + k * k) * norm;
+    }
+    for (const s of this.states) {
+      const v = s.last;
+      s.z2 = (this.b2 - this.a2) * v;
+      s.z1 = (this.b1 - this.a1) * v + s.z2;
+    }
+  }
+};
 var LATE_REPORT_SECONDS = 0.5;
 var POSITION_INTERVAL_SECONDS = 0.04;
 var OplProcessorCore = class {
@@ -3817,8 +3921,11 @@ var OplProcessorCore = class {
     __publicField(this, "framesSincePosition", 0);
     __publicField(this, "lastPosition", "");
     __publicField(this, "songEndReported", false);
+    /** The output stage on the stereo mix (never the taps); SB Pro 2 by default. */
+    __publicField(this, "filter");
     this.renderer = new RendererCtor(sampleRate2);
     this.frameOffset = contextFrame;
+    this.filter = new SbOutputFilter(sampleRate2);
   }
   get disposed() {
     return this.disposedFlag;
@@ -3881,6 +3988,9 @@ var OplProcessorCore = class {
         break;
       case "set-stop-at-end":
         this.stopAtEnd = command.enabled;
+        break;
+      case "set-filter":
+        this.filter.configure(command);
         break;
       case "dispose":
         this.disposedFlag = true;
@@ -4001,6 +4111,7 @@ var OplProcessorCore = class {
             if (right) right[k] = (right[k] ?? 0) * g;
           }
         }
+        this.filter.process(left, right);
       } catch (error) {
         this.dropSong();
         left.fill(0);
@@ -4023,6 +4134,7 @@ var OplProcessorCore = class {
         const scratch = new Float32Array(left.length);
         renderer.render(left, scratch);
       }
+      this.filter.process(left, right);
       if (taps && this.tapsEnabled) {
         for (let ch = 0; ch < taps.length; ch++) {
           const out = taps[ch];
