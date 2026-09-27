@@ -628,3 +628,86 @@ report. That is the case for one of the three packers the corpus needs.
   (gitignored); `ADPLUG_PREFIX=… rust-wasm/src/opl/a2/oracle/regen.sh` rebuilds both TSVs.
   O7 will reuse the same build as its render oracle.
 - **Not in O6:** the player (O7), wasm exports, A2T, and LZW/LZSS (versions 2/3/6/7).
+
+### O7 — A2M player (2026-09-27; batches 1–12, `14f3f8d5` … `afcd7249`)
+
+- **Where:** `rust-wasm/src/opl/a2/engine.rs` (`A2Engine`: rows, ticks, both effect
+  columns, FM/arpeggio/vibrato macros, 4-op pairs, percussion, OPL3 panning, locks, volume
+  scaling; writes registers to a `RegisterSink`), `player.rs` (`A2Player`, wasm: engine +
+  `Chip` + resampler, load/refuse, play/pause, seek by silent replay, loop one order,
+  mute/solo by track, taps, `pattern_cells` for the grid), `gate.rs` + `oracle/` (the
+  register gate and its regen). App: the OPL worklet's song mode (`opl-core.ts`),
+  `a2m-player.ts` (client), `a2m-import.ts` (grid from `song-loaded`), `a2m-file-codec.ts`,
+  `a2m-song-transport.ts`, `'a2m'` in `ModuleFormat` with its own brand. Playback only (D3).
+- **Register gate** (`cargo test --lib opl::a2`, no AdPlug needed): the engine's register
+  state equals AdPlug's `Ca2mv2Player` (with `adplug_quirks` on) at every tick of every
+  corpus song as AdPlug plays it, to its end flag (cap 120 000 ticks): **277 of 278 files**.
+  The 278th, OxygenStar's *instrument set #001*, is refused at load (its order list is only
+  jump markers; AdPlug plays nothing either). Plus **298 crafted probes**, 80 ticks each, all
+  equal. All 17 tier-1 files are in the 277.
+- **Audio A/B** (`.ai/o7-ab/`, not vendored; `a2m_tool render|writes|replaychip`,
+  `trace-oracle render|replay`): the tier-1 files, 60 s at 49 716 Hz, against AdPlug's
+  Nuked OPL3 render.
+  - The engine's own writes replayed through the same Nuked render equal AdPlug's render
+    (envelope r = 1.000, sample r 0.92–1.00) on 16 of 17. The 17th, *psychedelic sound
+    synthesis* (tempo 10), is the timer choice below: the registers are equal tick for tick,
+    but AdPlug ticks at 200 Hz and AT2 at 364.
+  - `A2Player` against AdPlug: at first envelope r 0.11–0.99 and levels −6.6 to +8.6 dB.
+    Split by replaying the same writes through each chip, the player's render path was
+    exact (A2Player = our `Chip` replay). The difference was **write timing**: all of a
+    tick's writes landed at one instant, so a key-off then key-on in the same tick (AT2 does
+    this to restart a note) never reached the envelope. **Fixed in batch 12:** writes go out
+    one per native sample. After that: envelope r 0.95–0.998 on 16 of 17, third-octave shape
+    within 0.1–1.4 dB, lag 2–22 ms (a tick, plus Nuked's own write queue).
+  - **Level:** our chip (a ymfm port, operator swing ±8191) is a flat **2× (+6.0 dB)**
+    over Nuked (±4084) on every file. Both clamp the channel sum at 16 bits, so ours clips on
+    dense songs where Nuked does not: 9 of 17 tier-1 files clip (intro-tune coop 0.9 % of
+    samples, fm-tronikk 0.2 %, boom 0.14 %); AdPlug clips on 2. **Not changed**, because it
+    is the O1 chip's scale (ymfm-exact by its gate) and would move the S3M OPL mix. Needs a
+    call from Morten: halve the chip's operator output (Nuked's scale), or keep ymfm's.
+- ***Corridors of Time* against the SB16 CT2290 recording** (full 182 s, aligned by
+  envelope): spaced writes 20 ms envelope r 0.60 (0.51 with same-instant writes; AdPlug
+  0.60), third-octave shape σ 2.1 dB (3.7; AdPlug 1.3). Per band, our render is within
+  ±0.5 dB of the card from 50 Hz to 5 kHz. Above that both emulators are brighter than the
+  card: +2.1/+1.5 dB at 8 kHz, +6.2/+3.7 at 12.8 kHz, +9.7/+5.7 at 16 kHz (ours/Nuked),
+  which is the card's analog roll-off plus a little more top in ymfm. Absolute level cannot
+  be compared, because the recording is normalized (peak −0.01 dBFS). L/R balance matches
+  (the card +0.0, ours +0.1 dB).
+- **AdPlug vs AT2: what play follows** (AdPlug ports an older AT2; current AT2 source read
+  under the relaxed D1, AdPlug's player never read):
+  - *Follows AT2* (AdPlug reproduced only with `adplug_quirks`, for the gate):
+    1. arpeggio tables: AdPlug tests element `pos` and adds `pos+1` (0,3,7 plays 0,7,0); the
+       corpus's chord tables show AT2 means 0,3,7;
+    2. a tremolo in the second effect column: AdPlug only ever makes it louder;
+    3. tempo below 18: AT2 runs the timer at 18.2 Hz × speed-up; AdPlug reports tempo ×
+       speed-up and plays those songs slow (*psychedelic sound synthesis*: 364 vs 200 Hz).
+  - *Follows AdPlug* (where current AT2 differs; the gate pins them):
+    1. `&4x`/`&5x` without a note is not skipped under a portamento or note delay;
+    2. a combined effect with 00 and nothing to reuse still runs (current AT2 drops it);
+    3. a global frequency slide moves only later tracks whose column is free (AT2: all later
+       tracks);
+    4. v1–4 `FFy`: every y is `ZF0`, and FA–FD always act on the modulator (AT2's converter
+       maps FF1–9 to locks, modes and a carrier toggle; no corpus file uses them);
+    5. the tremor count restarts on the previous-row rule while its saved level follows
+       `last_effect`;
+    6. the retrigger count from 1 follows `last_effect`;
+    7. from the earlier sessions: portamento after an empty row, and the key-off
+       vibrato-table restart, as AdPlug plays them.
+- **App (batch 11):** opening an `.a2m` reads it in a throwaway OPL worklet and builds a
+  read-only grid from `song-loaded`: AT2 note numbering (note 1 = C-0), key-off `###`, the
+  instrument, and both effect columns in AT2's letters. A v5–8 manual slide shows as the
+  `&4x/&5y` AT2 converts it to. The module is kept in the song file (`data.a2mFile`), so a
+  saved `.cmod` plays again. Transport: play song, play pattern (loops the order position),
+  pause/resume/stop, seek, playhead from the player, mute/solo as track masks, per-track
+  scopes and the spectrum from each track's OPL channel tap, song end for the jukebox.
+  Refusals (the player's one sentence, an A2T, or a suspended audio context) are shown to
+  the user, and the song already loaded stays. Checked in the running app (headless
+  Chromium): *Corridors of Time* and *intro-tune coop* load, play, scroll and meter with no
+  console errors.
+- **Tests:** `src/tests/a2m-playback-chain.test.ts` (12: display helpers, import, refusal,
+  play, taps, mute/solo, play-pattern, pause/stop/hand-back, jukebox end, `.cmod` round
+  trip; the whole chain over the real core and real wasm), `opl-worklet-core.test.ts`, the
+  Rust player tests (7). `npm run test:run`: 5014 green.
+- **Open:** the chip level/clipping call above; Morten's ears; no A2M keyboard preview or
+  instrument view (D3); pattern names (v11+) are not shown; orders after the first jump
+  marker are not in the sequence (the playhead holds still if a jump plays one).
