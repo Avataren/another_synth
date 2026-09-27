@@ -490,12 +490,22 @@ vibrato, vibrato waveform 3's randomness, PCM `^^` zeroing `avol`.
   is inaudible. OPL note events are no longer dropped for muted tracks, so ST3's channel
   state keeps running and an unmute mid-note is right. Checked in the browser: rotagilla's
   tracks 2–7 and 12–14 clear mask bits 0–5 and 6–8, and its PCM tracks leave the mask alone.
-- **Level:** `OPL_MIX_GAIN` = 0.5 (−6 dB), straight to the post-fx input. It **bypasses the
-  song's global volume**, because st3play's `updateadlib` scales TL by `avol` only
-  (`setvol`'s `useglobalvol` is PCM-only), but follows the user's master volume. Measured in
-  headless Chromium (12 s windows, dBFS RMS of the final output): rotagilla PCM −25.2 /
-  OPL −32.2, rocking-horse −29.7 / −30.0, ultrasound −23.7 / −31.6. **Ears decide;** it is
-  one constant.
+- **Level (revised after Morten's listen: "OPL seems a bit quiet"):** the chip's gain is
+  per file, **OpenMPT's balance**, found by reading its code (Compatible mix levels; its
+  comment says "approximately as loud as in DOSBox and a real SoundBlaster 16"). There, a
+  centred full-volume PCM channel reaches `preamp/128` of full scale, where `preamp` is the
+  S3M header master volume (`s3mSamplePreamp`, Load_s3m.cpp's rules). The chip reaches
+  `32768·6169·(36/48)/2²⁷` ≈ 1.13. Here the same PCM channel reaches cos(π/4) and the preamp
+  is not applied, so `s3mOplMixGain` = `cos(π/4)·1.13·128/preamp`. That is 2.13 at ST3's
+  default of 48, 0.80 for rotagilla and rocking-horse (127), 1.60 for ultrasound (64) and 3.19
+  for starport (32). It is stored as the song's `oplGain`. The first cut was a flat 0.5,
+  12.6 dB too quiet at preamp 48. It **bypasses the song's global volume**, because
+  st3play's `updateadlib` scales TL by `avol` only, but follows the user's master volume.
+  Measured afterwards, as dBFS RMS of the final output: AdLib-only songs −8 (starport) and
+  −11 (mystic), with the limiter holding peaks at 0.84; a PCM S3M (satellite_one) −13.9;
+  rotagilla PCM −25.1 / OPL −28.4; ultrasound PCM −23.6 / OPL −21.8. The deeper mismatch is
+  that the app ignores the S3M preamp for PCM, which makes low-master-volume files loud
+  everywhere. Not changed here: it would move every S3M's level.
 - **`StandaloneTrackerSink`** takes an optional `opl: { target, channelForTrack?,
   amigaLimits?, panic? }`; `handlesOpl(id)` is for the two engine options.
 - **UI:** OPL slots count as filled song instruments (`isOplSlot`, `listsSongInstrument`),
