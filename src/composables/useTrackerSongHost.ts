@@ -188,6 +188,15 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
     );
   });
 
+  /**
+   * The formats whose worklet feeds each track's own tap (`getTrackTap`)
+   * whatever the rows play: SID (a voice per track) and A2M (the OPL channel
+   * each track plays on, `A2mSongTransport.connectTrackTaps`).
+   */
+  function tapsPerTrack(): boolean {
+    return moduleFormat.value === 'sid' || moduleFormat.value === 'a2m';
+  }
+
   /** A SID voice's node: its track tap, whatever the row plays (the voice IS the track). */
   function sidVoiceNode(trackIndex: number): AudioNode | null {
     return trackIndex < trackCount.value ? songBank.getTrackTap(trackIndex) : null;
@@ -198,7 +207,7 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
     instrumentId?: string,
   ): void {
     if (!trackMonitoringWanted.value) return;
-    if (moduleFormat.value === 'sid') {
+    if (tapsPerTrack()) {
       const tap = sidVoiceNode(trackIndex);
       if (trackAudioNodes.value[trackIndex] !== tap) {
         trackAudioNodes.value = { ...trackAudioNodes.value, [trackIndex]: tap };
@@ -221,12 +230,13 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
     }
     const nodes: Record<number, AudioNode | null> = {};
     const tracks = (currentPattern.value?.tracks ?? []) as TrackerTrackData[];
-    if (moduleFormat.value === 'sid') {
+    if (tapsPerTrack()) {
       for (let i = 0; i < tracks.length; i++) nodes[i] = sidVoiceNode(i);
       trackAudioNodes.value = nodes;
       // The taps may be new ones (monitoring was switched back on): the SID
-      // worklet's voices go into these, not the dropped ones.
-      playbackStore.connectSidVoiceTaps();
+      // worklet's voices (or the A2M song's channels) go into these, not the dropped ones.
+      if (moduleFormat.value === 'sid') playbackStore.connectSidVoiceTaps();
+      else playbackStore.connectA2mTrackTaps();
       return;
     }
     for (let i = 0; i < tracks.length; i++) {
@@ -248,7 +258,7 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
   function clearTrackAudioNodes(): void {
     // A SID voice's tap is not a note's: it stays while anything looks (no
     // per-note callback would bring it back, the worklet plays the voices).
-    if (moduleFormat.value === 'sid' && trackMonitoringWanted.value) {
+    if (tapsPerTrack() && trackMonitoringWanted.value) {
       updateTrackAudioNodes();
       return;
     }

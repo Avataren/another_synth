@@ -31,7 +31,7 @@ const FONT = {
   O: '.###.|#...#|#...#|#...#|#...#|#...#|.###.', R: '####.|#...#|#...#|####.|#.#..|#..#.|#...#',
   S: '.####|#....|#....|.###.|....#|....#|####.', T: '#####|..#..|..#..|..#..|..#..|..#..|..#..',
   V: '#...#|#...#|#...#|#...#|#...#|.#.#.|..#..', X: '#...#|#...#|.#.#.|..#..|.#.#.|#...#|#...#',
-  3: '####.|....#|....#|.###.|....#|....#|####.',
+  3: '####.|....#|....#|.###.|....#|....#|####.', 2: '.###.|#...#|....#|..##.|.#...|#....|#####',
 };
 
 /** Every cell of `text` on the 5x7 grid (1 column gap), lit or not. */
@@ -96,6 +96,16 @@ function lettering(text, style, pw, ph, alt) {
       const p = pw;
       return { W: W + 2 * p, H: H + 2 * p, body:
         `<path d="M0 0h${W + 2 * p}v${H + 2 * p}h-${W + 2 * p}z${rects(lit, pw, ph, p, p)}" fill="currentColor" fill-rule="evenodd"/>` };
+    }
+    case 'ansi': { // a text-mode drop shadow in half-tone blocks (the DOS tracker's dialog shadows)
+      const key = new Set(lit.map((c) => `${c.x},${c.y}`));
+      const shade = lit.map((c) => ({ x: c.x + 1, y: c.y + 1 })).filter((c) => !key.has(`${c.x},${c.y}`));
+      const hw = pw / 2;
+      const hh = ph / 2;
+      const dots = shade.flatMap((c) => [{ x: 2 * c.x, y: 2 * c.y }, { x: 2 * c.x + 1, y: 2 * c.y + 1 }]);
+      return { W: W + pw, H: H + ph, body:
+        `<path d="${rects(dots, hw, hh)}" fill="${alt ?? 'currentColor'}"${alt ? '' : ' opacity=".45"'}/>` +
+        `<path d="${rects(lit, pw, ph)}" fill="currentColor"/>` };
     }
     case 'c64': // wide strokes, the C64 screen font's weight
       return { W, H, body: `<path d="${rects(lit, pw, ph)}" fill="currentColor"/>` };
@@ -187,6 +197,12 @@ const MARKS = {
     '<rect x="3" y="23" width="42" height="7" fill="#ff5fd7"/>' +
     '<g fill="#000"><rect x="6" y="25" width="10" height="3"/><rect x="18" y="25" width="6" height="3"/></g>' +
     '<rect x="38" y="24" width="4" height="5" fill="#fff"/>', 'Scream Tracker 3 S3M'),
+  // Two FM operators on the tracker's blue screen: a modulator bending the carrier's sine.
+  a2m: mark('<rect width="48" height="48" rx="4" fill="#0000aa"/><rect x="3" y="3" width="42" height="42" rx="2" fill="none" stroke="#55ffff" stroke-width="2"/>' +
+    '<rect x="8" y="10" width="10" height="8" fill="#55ffff"/><rect x="30" y="10" width="10" height="8" fill="#ffff55"/>' +
+    '<path d="M18 14h12" stroke="#fff" stroke-width="2"/>' +
+    '<path d="M7 32q3-9 6 0t6 0q2-7 4 0t4 0q2-9 5 0t5 0q3-9 6 0" fill="none" stroke="#ffff55" stroke-width="2.5" stroke-linecap="round"/>',
+    'Adlib Tracker II'),
   // A 28-pin chip with a pulse wave, on the C64's blue screen inside its border.
   goat: mark('<rect width="48" height="48" rx="6" fill="#8a7fff"/><rect x="4" y="4" width="40" height="40" rx="3" fill="#352879"/>' +
     '<g fill="#c9c3ff">' + Array.from({ length: 7 }, (_, i) =>
@@ -203,6 +219,7 @@ const BRANDS = [
   { id: 'hvl', label: 'HVL', style: 'hive', word: 'HVL', name: 'HivelyTracker HVL' },
   { id: 'xm', label: 'XM', style: 'bevel', word: 'XM', name: 'FastTracker 2 XM' },
   { id: 's3m', label: 'S3M', style: 'textmode', word: 'S3M', name: 'Scream Tracker 3 S3M' },
+  { id: 'a2m', label: 'A2M', style: 'ansi', word: 'A2M', name: 'Adlib Tracker II', alt: '#0000aa' },
   { id: 'goat', label: 'SID', style: 'c64', word: 'SID', name: 'GoatTracker C64 SID', alt: '#8a7fff' },
 ];
 
@@ -211,6 +228,6 @@ for (const b of BRANDS) {
   writeFileSync(join(OUT, `${b.id}-mark.svg`), MARKS[b.id]);
   writeFileSync(join(OUT, `${b.id}-badge.svg`), badgeLabel(b.label, b.style));
   // The wordmark's shadow/unlit colour is only a fixed colour where the era asks for one.
-  writeFileSync(join(OUT, `${b.id}-wordmark.svg`), wordmark(b.word, b.style, b.style === 'amiga' || b.style === 'c64' || b.style === 'dotmatrix' ? b.alt : undefined, b.name));
+  writeFileSync(join(OUT, `${b.id}-wordmark.svg`), wordmark(b.word, b.style, b.style === 'amiga' || b.style === 'c64' || b.style === 'dotmatrix' || b.style === 'ansi' ? b.alt : undefined, b.name));
 }
 console.log(`Wrote ${BRANDS.length * 3} SVGs to ${OUT}`);

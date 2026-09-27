@@ -67,6 +67,7 @@ describe('format brand registry', () => {
       s3m: 's3m',
       ahx: 'ahx',
       sid: 'goat',
+      a2m: 'a2m',
     };
     for (const format of MODULE_FORMATS) expect(brandIdForSong(format, null)).toBe(expected[format]);
   });
@@ -91,6 +92,7 @@ describe('format brand registry', () => {
     expect(brandIdForDemoLabel('S3M')).toBe('s3m');
     expect(brandIdForDemoLabel('AHX')).toBe('ahx');
     expect(brandIdForDemoLabel('HVL')).toBe('hvl');
+    expect(brandIdForDemoLabel('A2M')).toBe('a2m');
     expect(brandIdForDemoLabel('GT1')).toBe('goat');
     expect(brandIdForDemoLabel('GT2')).toBe('goat');
     expect(brandIdForDemoLabel('hvl')).toBe('hvl');

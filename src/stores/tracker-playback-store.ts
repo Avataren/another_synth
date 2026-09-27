@@ -14,6 +14,7 @@ import {
   type PlaybackMode,
 } from 'src/audio/tracker/ahx-song-transport';
 import { SidSongTransport } from 'src/audio/tracker/sid-song-transport';
+import { A2mSongTransport } from 'src/audio/tracker/a2m-song-transport';
 import type { Sid6581Revision } from 'src/audio/tracker/sid-player';
 import { debugLog } from 'src/diagnostics/debug-log';
 
@@ -454,6 +455,40 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     sanitizeMuteSoloState,
     stopSampleEngine,
   });
+  // ============================================
+  // A2M transport (.ai/plan-opl.md O7)
+  // ============================================
+  //
+  // An `'a2m'` song plays in an OPL worklet in song mode (`A2mSongTransport`)
+  // from its module bytes, playback only.
+
+  const a2m = new A2mSongTransport({
+    isPlaying,
+    isPaused,
+    playbackMode,
+    playbackRow,
+    currentSequenceIndex,
+    selectedSequenceIndex,
+    mutedTracks,
+    soloedTracks,
+    hasSongLoaded,
+    loopSong,
+    songEndListeners,
+    trackerStore,
+    getSongBank,
+    setPlaybackState: (playing) => audioStore.setPlaybackState(playing),
+    applyPosition,
+    resolveStartSequenceIndex,
+    recordLastSong,
+    sanitizeMuteSoloState,
+    stopSampleEngine,
+  });
+
+  /** Route an A2M song's track channels into the bank's per-track taps (the host rebuilt them). */
+  function connectA2mTrackTaps(): void {
+    a2m.connectTrackTaps();
+  }
+
   // An edit of the doc (the grid's write-back, the instrument page, an undo)
   // reaches a playing song through a reload.
   watch(
@@ -614,11 +649,17 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
     if (song.moduleFormat === 'ahx') {
       sid.leave();
+      a2m.leave();
       return ahx.loadAhxSong(song, mode);
     }
     ahx.leaveAhx();
-    if (song.moduleFormat === 'sid') return sid.load(song, mode);
+    if (song.moduleFormat === 'sid') {
+      a2m.leave();
+      return sid.load(song, mode);
+    }
     sid.leave();
+    if (song.moduleFormat === 'a2m') return a2m.load(song, mode);
+    a2m.leave();
 
     const engine = ensureEngine();
 
@@ -685,11 +726,17 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     );
     if (song.moduleFormat === 'ahx') {
       sid.leave();
+      a2m.leave();
       return ahx.playAhx(song, mode, startRow, startSequenceIndex);
     }
     ahx.leaveAhx();
-    if (song.moduleFormat === 'sid') return sid.play(song, mode, startRow, startSequenceIndex);
+    if (song.moduleFormat === 'sid') {
+      a2m.leave();
+      return sid.play(song, mode, startRow, startSequenceIndex);
+    }
     sid.leave();
+    if (song.moduleFormat === 'a2m') return a2m.play(song, mode, startRow, startSequenceIndex);
+    a2m.leave();
     const songBank = getSongBank();
 
     // Resolve and persist the starting sequence index up front so UI selection stays in sync
@@ -748,6 +795,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       sid.pause();
       return;
     }
+    if (a2m.isActive) {
+      a2m.pause();
+      return;
+    }
     if (!playbackEngineInstance) return;
 
     playbackEngineInstance.pause();
@@ -767,6 +818,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       sid.resume();
       return;
     }
+    if (a2m.isActive) {
+      a2m.resume();
+      return;
+    }
     await playbackEngineInstance?.play();
   }
 
@@ -780,6 +835,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     }
     if (sid.isActive) {
       sid.stop();
+      return;
+    }
+    if (a2m.isActive) {
+      a2m.stop();
       return;
     }
     if (!playbackEngineInstance) return;
@@ -808,6 +867,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       sid.seek(row);
       return;
     }
+    if (a2m.isActive) {
+      a2m.seek(row);
+      return;
+    }
     if (!playbackEngineInstance) return;
     playbackEngineInstance.seek(row);
   }
@@ -817,7 +880,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    */
   function setBpm(bpm: number): void {
     // The AHX engine's tempo comes from the song's own speed commands.
-    if (ahx.isActive || sid.isActive || !playbackEngineInstance) return;
+    if (ahx.isActive || sid.isActive || a2m.isActive || !playbackEngineInstance) return;
     playbackEngineInstance.setBpm(bpm);
   }
 
@@ -826,7 +889,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * takes effect without restarting playback.
    */
   function setPatternLength(patternId: string | null, rows: number): void {
-    if (ahx.isActive || sid.isActive || !playbackEngineInstance || !patternId) return;
+    if (ahx.isActive || sid.isActive || a2m.isActive || !playbackEngineInstance || !patternId) return;
     playbackEngineInstance.setPatternLength(patternId, rows);
   }
 
@@ -846,6 +909,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     }
     if (sid.isActive) {
       sid.syncMuteSolo();
+      return;
+    }
+    if (a2m.isActive) {
+      a2m.syncMuteSolo();
       return;
     }
     muteInaudibleTracks(before, getAudibilitySnapshot(trackCount));
@@ -906,6 +973,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     soloedTracks.value = newSoloed;
     ahx.syncAhxMuteSolo();
     sid.syncMuteSolo();
+    a2m.syncMuteSolo();
   }
 
   // ============================================
@@ -958,6 +1026,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     playbackEngineInstance?.setLoopSong(loop);
     ahx.setLoopSong(loop);
     sid.setLoopSong(loop);
+    a2m.setLoopSong(loop);
   }
 
   /**
@@ -981,6 +1050,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
     ahx.dispose();
     sid.dispose();
+    a2m.dispose();
 
     if (positionUnsubscribe) {
       positionUnsubscribe();
@@ -1063,6 +1133,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     connectSidVoiceTaps,
     getSidVoiceFullScale,
     getOplVoiceFullScale,
+    connectA2mTrackTaps,
     getSidPreviewFullScale,
     sidTransport,
     setSidRevision,

@@ -1086,6 +1086,18 @@ export const SID_PROFILE: FormatProfile = {
   },
 };
 
+/**
+ * Adlib Tracker II (`.a2m`, .ai/plan-opl.md O7): played end to end by the
+ * Rust `A2Player` in the OPL worklet, like AHX and SID by theirs, so no TS
+ * engine reads this. It exists because every format needs one; the grid
+ * shows AT2's own effect letters as display text, undecoded.
+ */
+export const A2M_PROFILE: FormatProfile = {
+  ...PROTRACKER_PROFILE,
+  format: 'a2m',
+  effectCommands: {},
+};
+
 const PROFILES: Record<ModuleFormat, FormatProfile> = {
   native: NATIVE_PROFILE,
   protracker: PROTRACKER_PROFILE,
@@ -1093,6 +1105,7 @@ const PROFILES: Record<ModuleFormat, FormatProfile> = {
   s3m: S3M_PROFILE,
   ahx: AHX_PROFILE,
   sid: SID_PROFILE,
+  a2m: A2M_PROFILE,
 };
 
 export interface ProfileOptions {

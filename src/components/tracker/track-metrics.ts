@@ -52,7 +52,7 @@ export const STANDARD_TRACK_COLUMNS = trackColumns(true, false);
  * The columns a song's rows have, from its format.
  *
  * SID (GoatTracker) steps are note, instrument, one command; AHX steps the
- * same; HVL steps add a second effect. None has a volume column. For every
+ * same; HVL and A2M steps add a second effect. None has a volume column. For every
  * other format the second effect column is the user's `preferExtraEffect`.
  * `ahxSongFormat` is whether an AHX song is AHX or HVL (`trackerStore.ahxSongFormat`);
  * `null` only when neither its doc nor its bytes say, which leaves the
@@ -64,6 +64,8 @@ export function songTrackColumns(
   preferExtraEffect: boolean,
 ): TrackColumns {
   if (moduleFormat === 'sid') return trackColumns(false, false);
+  // An Adlib Tracker II cell: note, instrument, two effects (v1-8's one maps into the first).
+  if (moduleFormat === 'a2m') return trackColumns(false, true);
   if (moduleFormat === 'ahx') {
     return trackColumns(
       false,

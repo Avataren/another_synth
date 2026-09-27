@@ -72,6 +72,8 @@ export interface A2WasmPlayer {
   version(): number;
   instrument_count(): number;
   instrument_name(index: number): string;
+  /** Pattern `pattern`'s cells, 6 bytes each, row-major over rows and tracks (`A2mPatternCells`). */
+  pattern_cells(pattern: number): Uint8Array;
   free(): void;
 }
 
@@ -94,6 +96,22 @@ export interface A2mSongInfo {
   /** Timer rate at the start (Hz). */
   refresh: number;
   sampleRate: number;
+  /**
+   * The cells of every pattern `orders` names, once each, as the engine
+   * plays them (old effect numbers mapped to the v9+ set): the grid's
+   * display. Tracks and rows as `tracks` and `rowsPerPattern`.
+   */
+  patterns: A2mPatternCells[];
+}
+
+/**
+ * One pattern's cells: `cells[(row * tracks + track) * 6 + k]` for k = note
+ * (0 none, 1..96 C-0.., 255 key off), instrument (1-based, 0 none), effect,
+ * param, effect 2, param 2.
+ */
+export interface A2mPatternCells {
+  pattern: number;
+  cells: Uint8Array;
 }
 
 /** Main thread -> worklet. */
@@ -274,6 +292,10 @@ export class OplProcessorCore {
       for (let i = 0; i < song.order_count(); i++) orders.push(song.order_entry(i));
       const instrumentNames: string[] = [];
       for (let i = 0; i < song.instrument_count(); i++) instrumentNames.push(song.instrument_name(i));
+      const patterns: A2mPatternCells[] = [...new Set(orders)].map((pattern) => ({
+        pattern,
+        cells: song.pattern_cells(pattern),
+      }));
       this.post({
         type: 'song-loaded',
         id,
@@ -288,6 +310,7 @@ export class OplProcessorCore {
           instrumentNames,
           refresh: song.refresh(),
           sampleRate: this.sampleRate,
+          patterns,
         },
       });
     } catch (error) {

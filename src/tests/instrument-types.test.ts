@@ -120,8 +120,12 @@ describe('editor routing table', () => {
       ahx: 'ahx-display',
       // plan-sid-tracking.md S4: the SID instrument editor.
       sid: 'sid-editor',
+      // plan-opl.md D3: an A2M song is playback only, its instruments shown, not edited.
+      a2m: null,
     });
     expect(resolveInstrumentEditor({ instrumentFormat: 'sid' })).toBe('sid-editor');
+    expect(canEditSlot({ instrumentType: 'opl', instrumentFormat: 'a2m' })).toBe(false);
+    expect(instrumentBadgeLabel({ instrumentType: 'opl', instrumentFormat: 'a2m' })).toBe('OPL');
     expect(canEditSlot({ instrumentFormat: 'sid' })).toBe(true);
     expect(resolveInstrumentEditorRoute({ instrumentFormat: 'sid' })).toBe('sid-instrument-editor');
     expect(instrumentBadgeLabel({ instrumentFormat: 'sid' })).toBe('SID');

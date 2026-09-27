@@ -319,6 +319,35 @@ impl A2Player {
             .map_or(String::new(), |i| cp437(&i.name))
     }
 
+    /// Pattern `pattern`'s cells for display, as the engine plays them (old
+    /// effect numbers mapped to the v9+ set, fixed notes as notes): six bytes
+    /// per cell (note, instrument, effect, param, effect 2, param 2),
+    /// row-major over `rows_per_pattern()` rows and `track_count()` tracks.
+    /// Empty for a pattern the song does not have.
+    pub fn pattern_cells(&self, pattern: usize) -> Vec<u8> {
+        let song = self.engine.song();
+        let Some(p) = song.patterns.get(pattern) else {
+            return Vec::new();
+        };
+        let rows = (song.pattern_len as usize).min(p.rows);
+        let tracks = self.engine.track_count().min(p.channels);
+        let mut out = Vec::with_capacity(rows * tracks * 6);
+        for r in 0..rows {
+            for t in 0..tracks {
+                let c = p.cell(r, t);
+                out.extend_from_slice(&[
+                    c.note,
+                    c.instrument,
+                    c.effects[0].0,
+                    c.effects[0].1,
+                    c.effects[1].0,
+                    c.effects[1].1,
+                ]);
+            }
+        }
+        out
+    }
+
     /// 18: every OPL3 channel (what `read_tap` covers).
     pub fn channels(&self) -> usize {
         CHANNELS
@@ -475,6 +504,39 @@ mod tests {
         p.set_mute_solo(u32::MAX, 0);
         let out = render(&mut p, 48_000);
         assert!(rms(&out[24_000..]) < 1e-4, "muted song still sounds");
+    }
+
+    #[test]
+    fn pattern_cells_are_the_played_cells() {
+        let p = A2Player::new(&corpus("Subz3ro/intro-tune coop.a2m"), 48_000.0).unwrap();
+        let song = p.engine().song();
+        let tracks = p.track_count();
+        let rows = p.rows_per_pattern();
+        let first = song.order.iter().copied().find(|&o| o < 0x80).unwrap() as usize;
+        let cells = p.pattern_cells(first);
+        assert_eq!(cells.len(), rows * tracks * 6);
+        for r in 0..rows {
+            for t in 0..tracks {
+                let c = song.patterns[first].cell(r, t);
+                let at = (r * tracks + t) * 6;
+                assert_eq!(
+                    &cells[at..at + 6],
+                    &[
+                        c.note,
+                        c.instrument,
+                        c.effects[0].0,
+                        c.effects[0].1,
+                        c.effects[1].0,
+                        c.effects[1].1
+                    ]
+                );
+            }
+        }
+        assert!(
+            cells.chunks(6).any(|c| c[0] != 0),
+            "the first pattern has notes"
+        );
+        assert!(p.pattern_cells(10_000).is_empty());
     }
 
     #[test]

@@ -18,6 +18,9 @@ import xmWordmark from 'src/assets/format-brands/xm-wordmark.svg?raw';
 import s3mMark from 'src/assets/format-brands/s3m-mark.svg?raw';
 import s3mBadge from 'src/assets/format-brands/s3m-badge.svg?raw';
 import s3mWordmark from 'src/assets/format-brands/s3m-wordmark.svg?raw';
+import a2mMark from 'src/assets/format-brands/a2m-mark.svg?raw';
+import a2mBadge from 'src/assets/format-brands/a2m-badge.svg?raw';
+import a2mWordmark from 'src/assets/format-brands/a2m-wordmark.svg?raw';
 import goatMark from 'src/assets/format-brands/goat-mark.svg?raw';
 import goatBadge from 'src/assets/format-brands/goat-badge.svg?raw';
 import goatWordmark from 'src/assets/format-brands/goat-wordmark.svg?raw';
@@ -37,9 +40,9 @@ import goatWordmark from 'src/assets/format-brands/goat-wordmark.svg?raw';
 /** The tracker's own name, carried by the native brand. */
 export const APP_NAME = 'FerroTracker';
 
-export type FormatBrandId = 'native' | 'mod' | 'xm' | 's3m' | 'ahx' | 'hvl' | 'goat';
+export type FormatBrandId = 'native' | 'mod' | 'xm' | 's3m' | 'ahx' | 'hvl' | 'goat' | 'a2m';
 
-export const FORMAT_BRAND_IDS: readonly FormatBrandId[] = ['native', 'mod', 'xm', 's3m', 'ahx', 'hvl', 'goat'];
+export const FORMAT_BRAND_IDS: readonly FormatBrandId[] = ['native', 'mod', 'xm', 's3m', 'ahx', 'hvl', 'goat', 'a2m'];
 
 /** The look for a song whose format is missing or unknown: the app's own. */
 export const FALLBACK_BRAND_ID: FormatBrandId = 'native';
@@ -168,6 +171,19 @@ export const FORMAT_BRANDS: Readonly<Record<FormatBrandId, FormatBrand>> = {
       light: { accent: '#604eff', accentInk: '#ffffff', accentAlt: '#8a7fff' },
     },
   },
+  a2m: {
+    id: 'a2m',
+    name: 'Adlib Tracker II',
+    shortLabel: 'A2M',
+    platform: 'PC DOS: OPL3 FM (AdLib, Sound Blaster)',
+    mark: a2mMark,
+    badge: a2mBadge,
+    wordmark: a2mWordmark,
+    palette: {
+      dark: { accent: '#6f8cff', accentInk: '#0b0f14', accentAlt: '#0000aa' },
+      light: { accent: '#2d3fd6', accentInk: '#ffffff', accentAlt: '#0000aa' },
+    },
+  },
 };
 
 export function formatBrand(id: FormatBrandId): FormatBrand {
@@ -198,6 +214,8 @@ export function brandIdForSong(
       return ahxVariant === 'hvl' ? 'hvl' : 'ahx';
     case 'sid':
       return 'goat';
+    case 'a2m':
+      return 'a2m';
     default: {
       const unbranded: never = format;
       void unbranded;
@@ -212,6 +230,7 @@ const DEMO_LABEL_BRANDS: Readonly<Record<string, FormatBrandId>> = {
   S3M: 's3m',
   AHX: 'ahx',
   HVL: 'hvl',
+  A2M: 'a2m',
   GT1: 'goat',
   GT2: 'goat',
   // A C64 .sid opens as the GoatTracker song it is transcribed into.

@@ -33,6 +33,7 @@ const INSTRUMENT_FORMATS: readonly InstrumentFormat[] = [
   's3m',
   'ahx',
   'sid',
+  'a2m',
 ];
 
 export interface InstrumentTags {
@@ -113,7 +114,7 @@ export function inferSlotTags(
     // Legacy 'mod' slots always came from an importer.
     const legacyLineage = slot.instrumentType === 'mod' || patchType === 'mod';
     const lineage: InstrumentFormat =
-      moduleFormat !== 'native' && moduleFormat !== 'ahx' && moduleFormat !== 'sid'
+      moduleFormat !== 'native' && moduleFormat !== 'ahx' && moduleFormat !== 'sid' && moduleFormat !== 'a2m'
         ? moduleFormat
         : legacyLineage
           ? 'protracker'
@@ -158,6 +159,8 @@ export const INSTRUMENT_EDITOR_BY_FORMAT: Readonly<Record<InstrumentFormat, Inst
   s3m: 'sampler-patch',
   ahx: 'ahx-display',
   sid: 'sid-editor',
+  // Playback only (plan-opl.md D3): an A2M instrument is shown, not edited.
+  a2m: null,
 };
 
 /**
@@ -237,6 +240,7 @@ const FORMAT_BADGE: Readonly<Record<InstrumentFormat, string>> = {
   s3m: 'S3M',
   ahx: 'AHX',
   sid: 'SID',
+  a2m: 'A2M',
 };
 
 /** Short list badge: the lineage for a module instrument, 'OPL' for AdLib, '' for native. */

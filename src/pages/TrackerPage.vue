@@ -848,7 +848,7 @@
               :audio-node="trackAudioNodes[index] ?? null"
               :audio-context="audioContext"
               :scope-source="isAhxSong ? playbackStore.getAhxChannelWaveform : null"
-              :analyser-full-scale="isSidSong ? playbackStore.getSidVoiceFullScale : trackerStore.oplChannels[index] != null ? playbackStore.getOplVoiceFullScale : null"
+              :analyser-full-scale="isSidSong ? playbackStore.getSidVoiceFullScale : trackerStore.isA2mSong || trackerStore.oplChannels[index] != null ? playbackStore.getOplVoiceFullScale : null"
               :scope-channel="index"
               :scope-gain="userSettings.ahxScopeGain"
             />
@@ -2351,6 +2351,7 @@ watch(isPaused, (paused) => {
   if (paused && isAhxSong.value) activeRow.value = playbackRow.value;
   // A SID song resumes in place the same way (`SidSongTransport.play`).
   if (paused && isSidSong.value) activeRow.value = playbackRow.value;
+  if (paused && trackerStore.isA2mSong) activeRow.value = playbackRow.value;
 });
 
 function handleStop() {

@@ -4,6 +4,7 @@ import { uid } from 'quasar';
 import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/tracker-types';
 import type { Patch } from 'src/audio/types/preset-types';
 import { clearLoadedSongHash } from 'src/composables/song-identity';
+import { decodeA2mFile } from 'src/audio/tracker/a2m-file-codec';
 import {
   inferSlotTags,
   isAhxSlot,
@@ -251,6 +252,8 @@ interface TrackerSnapshot {
   sidSubsong?: number;
   /** The grid's pattern names (a flat pattern has none of its own). */
   sidPatternNames?: Record<string, string>;
+  /** An A2M song's module (`data.a2mFile`): what plays. */
+  a2mFile?: string | null;
 }
 
 interface TrackerStoreState {
@@ -371,6 +374,11 @@ interface TrackerStoreState {
   sidFlat: readonly SidFlatSubsong[];
   /** The subsong the grid shows and the player plays. */
   sidSubsong: number;
+  /**
+   * An A2M song's module as base64 (`data.a2mFile`), which the OPL worklet
+   * plays; null for every other song, and for an A2M song saved without it.
+   */
+  a2mFile: string | null;
 }
 
 const DEFAULT_TRACK_COLORS = [
@@ -555,6 +563,12 @@ export interface TrackerSongFile {
      * Additive to v5 (an older build ignores it, and shows the grid).
      */
     sidFile?: string;
+    /**
+     * A2M songs only (.ai/plan-opl.md O7): the module as opened, base64
+     * (`encodeA2mFile`). What plays: the Rust player in the OPL worklet reads
+     * it; the grid beside it is display only (D3).
+     */
+    a2mFile?: string;
   };
 }
 
@@ -648,13 +662,18 @@ export const useTrackerStore = defineStore('trackerStore', {
       sidDoc: null,
       sidRevision: 0,
       sidFlat: markRaw([]),
-      sidSubsong: 0
+      sidSubsong: 0,
+      a2mFile: null
     };
   },
   getters: {
     /** The song is a SID song (plan-sid-tracking.md S3): three voices, played from `sidDoc`. */
     isSidSong(): boolean {
       return this.moduleFormat === 'sid';
+    },
+    /** The song is an Adlib Tracker II module: played from `a2mFile`, shown read-only (D3). */
+    isA2mSong(): boolean {
+      return this.moduleFormat === 'a2m';
     },
     /** A SID song with a doc: its grid is edited and written back to the doc (S4). */
     isSidEditable(): boolean {
@@ -669,7 +688,7 @@ export const useTrackerStore = defineStore('trackerStore', {
      * like any song's (plan-sid-authoring.md phase 2, `sid-doc/flat.ts`).
      */
     hasDocStructure(): boolean {
-      return this.moduleFormat === 'ahx' || this.moduleFormat === 'sid';
+      return this.moduleFormat === 'ahx' || this.moduleFormat === 'sid' || this.moduleFormat === 'a2m';
     },
     /**
      * The song's patterns and sequence are its doc's positions and cannot be
@@ -678,7 +697,7 @@ export const useTrackerStore = defineStore('trackerStore', {
      * orderlists), though its voices and slots stay the doc's (`hasDocStructure`).
      */
     hasFixedSequence(): boolean {
-      return this.moduleFormat === 'ahx';
+      return this.moduleFormat === 'ahx' || this.moduleFormat === 'a2m';
     },
     /** The song is an AHX song (editable or not): what the scope and waveform code means. */
     isAhxSong(): boolean {
@@ -710,6 +729,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       // A SID song's grid is the doc's projection and writes back to it (S4);
       // without a doc there is nothing an edit could reach.
       if (this.moduleFormat === 'sid') return this.sidDoc === null;
+      // An A2M song is playback only (plan-opl.md D3): its grid mirrors the module.
+      if (this.moduleFormat === 'a2m') return true;
       return this.moduleFormat === 'ahx' && this.ahxDoc === null;
     },
     /**
@@ -802,6 +823,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         songPatches: JSON.parse(JSON.stringify(this.songPatches)),
         ahxDoc,
         sidDoc,
+        a2mFile: this.moduleFormat === 'a2m' ? this.a2mFile : null,
         ...(sidDoc
           ? {
               sidFlat: this.sidFlat,
@@ -838,6 +860,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       // A SID song's doc likewise: the grid is its projection.
       const sidDoc = snapshot.moduleFormat === 'sid' ? snapshot.sidDoc ?? null : null;
       if (sidDoc !== this.sidDoc) this.sidRevision += 1;
+      this.a2mFile = snapshot.moduleFormat === 'a2m' ? snapshot.a2mFile ?? null : null;
       this.sidDoc = sidDoc;
       this.sidFlat = markRaw(sidDoc ? (snapshot.sidFlat ?? flattenSidDoc(sidDoc)) : []);
       this.sidSubsong = sidDoc ? Math.max(0, Math.min(this.sidFlat.length - 1, snapshot.sidSubsong ?? 0)) : 0;
@@ -933,6 +956,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.sidDoc = null;
       this.sidFlat = markRaw([]);
       this.sidSubsong = 0;
+      this.a2mFile = null;
       this.ahxRevision += 1;
       this.sidRevision += 1;
       sidSyncCacheOf(this).cells = new Map();
@@ -963,7 +987,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     addTrack(): boolean {
       // AHX has exactly four channels, editable or not; a SID song its chip's three.
-      if (this.isAhxSong || this.isSidSong) return false;
+      if (this.isAhxSong || this.isSidSong || this.isA2mSong) return false;
       const maxTracks = 32;
       if (!this.patterns.length) return false;
       const currentCount = this.patterns[0]?.tracks.length ?? 0;
@@ -984,7 +1008,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       return true;
     },
     removeTrack(_trackIndex: number): boolean {
-      if (this.isAhxSong || this.isSidSong) return false;
+      if (this.isAhxSong || this.isSidSong || this.isA2mSong) return false;
       const minTracks = 1;
       if (!this.patterns.length) return false;
       const currentCount = this.patterns[0]?.tracks.length ?? 0;
@@ -1479,6 +1503,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       // A SID song's doc is the song: saved as its file, byte for byte what
       // the Rust player reads (`sid-file-codec.ts`).
       if (this.moduleFormat === 'sid' && this.sidDoc !== null) data.sidFile = encodeSidFile(this.sidDoc);
+      if (this.moduleFormat === 'a2m' && this.a2mFile !== null) data.a2mFile = this.a2mFile;
       return { version: CURRENT_SONG_FILE_VERSION, data };
     },
     /**
@@ -1517,6 +1542,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.sidDoc = null;
       this.sidFlat = markRaw([]);
       this.sidSubsong = 0;
+      this.a2mFile = null;
       this.ahxRevision += 1;
       this.sidRevision += 1;
       sidSyncCacheOf(this).cells = new Map();
@@ -1646,6 +1672,20 @@ export const useTrackerStore = defineStore('trackerStore', {
 
       if (this.moduleFormat === 'ahx') this.adoptAhxDoc(file, data);
       if (this.moduleFormat === 'sid') this.adoptSidFile(data);
+      if (this.moduleFormat === 'a2m') this.adoptA2mFile(data);
+    },
+    /**
+     * Gives the A2M song just loaded its module (`data.a2mFile`). Only the
+     * text's shape is checked here; the player says at load whether it plays
+     * the bytes. A song without one keeps its grid, silent.
+     */
+    adoptA2mFile(data: TrackerSongFile['data']) {
+      const decoded = decodeA2mFile(data.a2mFile);
+      if (!decoded.ok) {
+        console.warn(`[TrackerStore] A2M song shown, not playable: its module is unusable (${decoded.reason})`);
+        return;
+      }
+      this.a2mFile = data.a2mFile ?? null;
     },
 
     // ------------------------------------------------------------------

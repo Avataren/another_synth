@@ -10,6 +10,7 @@ import { looksLikeAhxModule, importAhxToTrackerSong } from 'src/audio/tracker/ah
 import { attachAhxSource, ahxSourceRecordOf, setCurrentAhxSource, type AhxSource } from 'src/audio/tracker/ahx-source';
 import { decodeAhxFile } from 'src/audio/tracker/ahx-doc';
 import { importGtSongToTrackerSong, looksLikeGtSongFile } from 'src/audio/tracker/sid-import';
+import { importA2mToTrackerSong, looksLikeA2m } from 'src/audio/tracker/a2m-import';
 import { importPsidToTrackerSongAsync, looksLikePsidFile, psidImportSummaryOf } from 'src/audio/tracker/psid-import';
 import { recordLoadedSongHash } from 'src/composables/song-identity';
 import { usePostFxStore } from 'src/stores/post-fx-store';
@@ -74,7 +75,16 @@ export const SONG_FILE_EXTENSIONS = [
   '.hvl',
   '.sng',
   '.sid',
+  '.a2m',
 ] as const;
+
+/**
+ * A song file the app will not open, with the one sentence saying why: shown
+ * to the user, where every other load failure is only logged.
+ */
+export class SongRefusal extends Error {
+  override name = 'SongRefusal';
+}
 
 /** Whether `name` looks like a song file `parseSongBuffer` might read. */
 export function hasSongFileExtension(name: string): boolean {
@@ -149,7 +159,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
                 'audio/x-mod': ['.mod'],
                 'audio/mod': ['.mod'],
                 'audio/x-xm': ['.xm'],
-                'application/octet-stream': ['.ahx', '.hvl', '.sng', '.sid']
+                'application/octet-stream': ['.ahx', '.hvl', '.sng', '.sid', '.a2m']
               }
             }
           ],
@@ -163,7 +173,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     return await new Promise<ArrayBuffer | null>((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.cmod,application/json,.json,.mod,.xm,.s3m,.ahx,.hvl,.sng,.sid';
+      input.accept = '.cmod,application/json,.json,.mod,.xm,.s3m,.ahx,.hvl,.sng,.sid,.a2m';
       input.onchange = () => {
         const file = input.files?.[0];
         if (!file) {
@@ -301,6 +311,27 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
    * fetch and the parse out of the gap between songs. Nothing here reads or
    * writes tracker state, so it is safe to run during playback.
    */
+  /**
+   * The A2M import needs the audio engine (the module is read in the OPL
+   * worklet), so the context has to run: a bounded resume, as `replaceSong`
+   * does, and a truthful refusal when there was no gesture to allow it.
+   */
+  async function importA2m(data: ArrayBuffer): Promise<TrackerSongFile> {
+    const audioCtx = context.songBank.audioContext;
+    if (audioCtx.state !== 'running') {
+      await Promise.race([audioCtx.resume().catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 300))]);
+    }
+    const state: string = audioCtx.state;
+    if (state !== 'running') {
+      throw new SongRefusal('Click anywhere on the page to enable audio, then open the A2M module again: the audio engine reads it.');
+    }
+    try {
+      return await importA2mToTrackerSong(data, audioCtx);
+    } catch (error) {
+      throw new SongRefusal(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   async function parseSongBuffer(data: ArrayBuffer, name = ''): Promise<TrackerSongFile> {
     const buffer = new Uint8Array(data);
 
@@ -348,6 +379,11 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       // AHX / HivelyTracker module: played by the worklet's own engine, this
       // is only the display model
       return importAhxToTrackerSong(data);
+    }
+    if (looksLikeA2m(buffer)) {
+      // Adlib Tracker II (.ai/plan-opl.md O7): the Rust player in an OPL
+      // worklet reads the module and answers with the grid, or refuses it.
+      return importA2m(data);
     }
     if (looksLikeGtSongFile(buffer)) {
       // GoatTracker .sng (plan-sid-tracking.md S5): a SID song. The name is
@@ -397,6 +433,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to load song', error);
+      if (error instanceof SongRefusal) tell(error.message);
     } finally {
       context.isLoadingSong.value = false;
     }

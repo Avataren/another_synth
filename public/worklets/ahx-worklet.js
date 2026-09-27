@@ -483,6 +483,21 @@ var A2Player = class {
     return ret >>> 0;
   }
   /**
+   * Pattern `pattern`'s cells for display, as the engine plays them (old
+   * effect numbers mapped to the v9+ set, fixed notes as notes): six bytes
+   * per cell (note, instrument, effect, param, effect 2, param 2),
+   * row-major over `rows_per_pattern()` rows and `track_count()` tracks.
+   * Empty for a pattern the song does not have.
+   * @param {number} pattern
+   * @returns {Uint8Array}
+   */
+  pattern_cells(pattern) {
+    const ret = wasm.a2player_pattern_cells(this.__wbg_ptr, pattern);
+    var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v1;
+  }
+  /**
    * Bit masks over tracks (bit `t` = track `t`): muted tracks, and (when
    * non-zero) the only tracks heard. Applied as the chip's channel mask.
    * @param {number} mute
