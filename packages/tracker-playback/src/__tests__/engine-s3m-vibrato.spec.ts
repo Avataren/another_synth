@@ -84,4 +84,25 @@ describe('ST3 vibrato', () => {
     expect(offsets([H(0, 0x85, 60), H(1, 0x00, 62)], 2)[1]![0]).toBe(0);
     expect(offsets([H(0, 0x85, 60), H(1, 0x00, 62)], 2, true)[1]![0]).not.toBe(0);
   });
+
+  it('after a vibrato, an empty or D cell snaps back; E slides on from the bent pitch; others hold it', () => {
+    const cell = (row: number, command: number, param: number, effect: Step['effect']): Step => ({
+      row,
+      instrumentId: '01',
+      ...(effect ? { effect } : {}),
+      rawEffect: { command, param },
+    });
+    // H45 leaves the wave at idx 16 after row 0: +39.
+    const vib = H(0, 0x45, 60);
+    // An empty row snaps back on tick 0 and writes nothing after it.
+    expect(offsets([vib], 2)[1]).toEqual([]);
+    // D01: snaps back at tick 0, so tick 1 is at the note.
+    const d = offsets([vib, cell(1, 0x04, 0x01, { type: 'volSlide', paramX: 0, paramY: 1 })], 2)[1]!;
+    expect(d.every((v) => v === 0)).toBe(true);
+    // E01: +39 folds into the note, then 4 per tick: 43, 47, ...
+    expect(offsets([vib, cell(1, 0x05, 0x01, { type: 'portaDown', paramX: 0, paramY: 1 })], 2)[1]).toEqual([43, 47, 51, 55, 59]);
+    // Q (retrigger) leaves aspd alone: nothing re-states the pitch.
+    const q = offsets([vib, cell(1, 0x11, 0x00, { type: 'retrigVol', paramX: 0, paramY: 0 })], 2)[1]!;
+    expect(q.filter((v) => v !== undefined && v !== 39)).toEqual([]);
+  });
 });

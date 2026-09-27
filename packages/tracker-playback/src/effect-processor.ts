@@ -618,6 +618,29 @@ export function processEffectTick0(
 
   // Reset per-row volume slide accumulator (effect memory stored separately)
   resetVolumeSlide(state);
+
+  // ST3's E/F slide the channel's *current* period and make it the note's
+  // (`ch->aspd += ...; ch->aorgspd = ch->aspd;` in s_slidedown/s_slideup),
+  // and docmd1 does not snap a vibrato back before them -- so an offset the
+  // vibrato left behind becomes part of the note. Fold it in first.
+  if (
+    state.profile.st3Vibrato === true &&
+    newNote === undefined &&
+    state.vibratoApplied &&
+    state.currentPeriod !== undefined &&
+    (effect?.type === 'portaUp' ||
+      effect?.type === 'portaDown' ||
+      effect?.type === 'finePortaUp' ||
+      effect?.type === 'finePortaDown')
+  ) {
+    const dat = Math.round(state.vibratoHeldWave * VIBRATO_TABLE_PEAK);
+    updatePitchFromPeriod(
+      state,
+      state.currentPeriod + Math.floor((dat * state.vibratoDepth) / 32),
+    );
+    state.vibratoApplied = false;
+    state.vibratoHeldWave = 0;
+  }
   // A row with a cell re-states the channel's pitch below (or holds it on
   // purpose, for a delayed note); only rows without one need the flag.
   state.arpeggioApplied = false;
@@ -1406,13 +1429,26 @@ export function processEffectTick0(
   // gates that to the S3M profiles; the fallback below then emits
   // `state.currentFrequency` (the un-modulated base) for them. Tracks the row
   // omits altogether are handled by the engine's trailing pass.
+  //
+  // Only those two arms, though. Any other ST3 command leaves `aspd` where the
+  // vibrato bent it (E/F have already folded it into the note above), so a
+  // held offset stays until a later empty or D cell; `st3HoldsVibrato`.
   const isVibratoRow =
-    effect?.type === 'vibrato' || effect?.type === 'vibratoVol';
+    effect?.type === 'vibrato' ||
+    effect?.type === 'vibratoVol' ||
+    effect?.type === 'fineVibrato';
+  const st3HoldsVibrato =
+    state.profile.st3Vibrato === true &&
+    effect !== undefined &&
+    effect.type !== 'volSlide' &&
+    !isVibratoRow;
   const vibratoSnapsBack =
-    state.profile.pitchResetsAfterEffectlessRow === true && !isVibratoRow;
+    state.profile.pitchResetsAfterEffectlessRow === true &&
+    !isVibratoRow &&
+    !st3HoldsVibrato;
   const continuesVibrato =
     newNote === undefined &&
-    (isVibratoRow || !effect) &&
+    (isVibratoRow || !effect || st3HoldsVibrato) &&
     !vibratoSnapsBack &&
     state.vibratoApplied &&
     state.vibratoDepth > 0;
