@@ -1,7 +1,7 @@
 # Plan: OPL tracking (one OPL2/OPL3 chip in Rust + S3M AdLib playback + Adlib Tracker II)
 
-Status: **PROPOSED — plan-only pass 2026-09-27. D0–D5 accepted as recommended (Morten,
-2026-09-27). Corpus fetched (§4.1); no code landed.**
+Status: **IN PROGRESS. D0–D5 accepted as recommended (Morten, 2026-09-27). Corpus fetched
+(§4.1). O0 landed 2026-09-27 (landing record at the end).**
 Morten's brief 2026-09-27 (verbatim intent): *"I'm considering adding adlibtracker and opl
 support to s3m, do you think they could share the same virtual opl chip in rust? would be
 nice if it could also support opl2/3"*. Answer: yes. The shared surface is the **register
@@ -54,9 +54,14 @@ OPL2 compatibility mode. So the design is one OPL3 implementation with a mode fl
 | Rhythm mode (`0xBD`) | yes | yes |
 | Native rate | 3.579545 MHz / 72 ≈ 49 716 Hz | 14.31818 MHz / 288 ≈ 49 716 Hz |
 
-In OPL2 mode the chip masks bank 1, clamps waveform select to 0..3 (and to sine when WSE is
-off), and writes the mono sum to both outputs. The one OPL2 difference it will not reproduce
-is the YM3014 DAC's floating-point quantisation; accept it as a documented caveat.
+In compatibility mode (NEW=0) the chip **aliases** bank 1 onto bank 0 (every `0x1xx`
+write except `0x105` lands on `0x0xx`; ymfm `write_address_hi`, "tests reveal"), limits
+waveform select to 2 bits (0..3), and sends every channel to both outputs. **WSE (`0x01`
+bit 5) is not honoured by a YMF262**: waveforms 0..3 are always available in compatibility
+mode. WSE gating and the YM3014 DAC quantisation are YM3812-only. So "OPL2 mode" here means
+an OPL3 with NEW=0, which is what SB Pro 2 / SB16 owners heard. A strict YM3812 model (WSE,
+DAC, modulator delay) would be a later option if a file ever needs it. *(Corrected in O0,
+2026-09-27; the first draft said "masks bank 1" and "WSE gating", both wrong for an OPL3.)*
 
 ### 1.2 Shape
 
@@ -229,3 +234,33 @@ a smaller surface.
   truthfully, never silently.
 - **Timing across the TS→worklet boundary**: per-tick write batches must be scheduled ahead
   like notes are now. A late batch is a timing bug, not a chip bug, so log it separately.
+
+---
+
+## Landing records
+
+### O0 — chip spike (2026-09-27)
+
+- `rust-wasm/src/opl/` (`tables.rs`, `operator.rs`, `chip.rs`, `tests.rs`): a port of ymfm's
+  OPL3 path (commit 81aec25c, BSD-3; the notice is in `mod.rs`). The scope ended up wider than
+  planned, because the port made it cheap: all 18 channels as 2-op, NEW=0 and NEW=1, 8
+  waveforms, feedback, both connections, KSL/KSR, LFO AM/PM with depth bits, and C0 L/R output
+  bits. **Not yet (O1):** 4-op (`0x104`), rhythm mode (`0xBD` bit 5), resampling to the output
+  rate, and a strict YM3812 model.
+- Oracle: `golden/opl3-oracle.cpp` is built against ymfm by `golden/regen.sh`, which clones
+  the pinned commit (nothing vendored). There are 8 register scripts (sine, ADSR + quiet
+  re-prepare, feedback/waveforms/additive/multiples, LFO, 9-voice clamp, NEW=1 stereo +
+  waveforms 4..7, bank aliasing, re-key/rate-62 glitch/mid-note changes). **All 8 match
+  ymfm on every sample.** A mutation check (feedback shift, modulation shift) fails 5 and 8
+  of the scripts respectively, so the gate has teeth.
+- Timing that matters for matching, recorded for O2/O3: a register write takes effect on the
+  next sample's prepare step. Phase advances before output, so the first sample after
+  key-on uses phase = one step. An inactive channel (released below `EG_QUIET`) stops
+  updating its feedback until the next re-prepare, which happens after any write or every
+  4096 samples.
+- Ears: `.ai/opl-ref/o0-starport-phrase.wav` (local only) is a 3 s phrase on the first
+  three AdLib instruments of Purple Motion's *starport bbs introtune*, loaded exactly as ST3
+  lays out D00..D0A. The render is identical to ymfm's. Made with the ignored test
+  `opl::tests::render_script_to_wav`.
+- Full Rust suite: green except `ahx_render_golden::manifest_covers_every_fixture`, which
+  was already failing and is unrelated.

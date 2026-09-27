@@ -10,6 +10,7 @@ pub mod graph;
 pub mod impulse_generator;
 pub mod macros;
 pub mod nodes;
+pub mod opl;
 pub mod processing;
 pub mod sid;
 pub mod traits;
