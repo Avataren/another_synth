@@ -490,6 +490,17 @@ export interface FormatProfile {
    * keyOff, but its key-off volume rules differ; XM is left as it was.)
    */
   readonly noteOffRowRunsCell?: boolean;
+
+  /**
+   * ST3's vibrato (H, U and K's vibrato half) rather than ProTracker's:
+   * its own full-cycle tables, an arithmetic-shift depth, the H/U nibble
+   * memory (`Hx0` is depth 0; `H0y` keeps the speed), and ST3's restart
+   * rules -- the wave restarts on a PCM note and after any cell whose command
+   * is not H/U/K/R/D, keeps its phase across an AdLib note and across rows
+   * with no command. See `advanceSt3Vibrato` and st3play digcmd.c
+   * `s_vibrato`, `docmd1`.
+   */
+  readonly st3Vibrato?: boolean;
 }
 
 /**
@@ -786,6 +797,7 @@ export const S3M_PROFILE: FormatProfile = {
   noteDelayDefersCell: true,
   // doadlib's VOLUME branch and docmd1 run on a ^^ cell too.
   noteOffRowRunsCell: true,
+  st3Vibrato: true,
   sharedEffectInfoCommands: [
     0x04, 0x05, 0x06, 0x09, 0x0a, 0x0b, 0x0c, 0x11, 0x12, 0x13,
   ],

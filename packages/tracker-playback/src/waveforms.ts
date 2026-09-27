@@ -111,6 +111,13 @@ export function vibratoFrequency(state: TrackEffectState, wave: number): number 
     return state.currentFrequency * Math.pow(2, -semitones / 12);
   }
   const pitch = state.profile.pitch;
+  if (state.profile.st3Vibrato === true) {
+    // ST3's `(int16_t)(dat * depth) >> 5` on a signed table: an arithmetic
+    // shift, so the offset rounds down (see advanceSt3Vibrato).
+    const dat = Math.round(wave * VIBRATO_TABLE_PEAK);
+    const delta = Math.floor((dat * state.vibratoDepth) / 32);
+    return pitch.frequencyFromPeriod(pitch.clampPeriod(period + delta));
+  }
   // `wave` is the reference's table entry normalised to -1..1; scaling it back
   // by the peak recovers the exact non-negative magnitude both replayers
   // multiply (Math.round because 24/255*255 need not be exactly 24 in binary
@@ -167,4 +174,56 @@ export function advanceVibrato(state: TrackEffectState): number {
   const frequency = vibratoFrequency(state, wave);
   state.vibratoPos += state.vibratoSpeed;
   return frequency;
+}
+
+/**
+ * ST3's vibrato tables, from st3play digdata.c. `vibsin` is a full signed
+ * cycle (ProTracker's is a half cycle, mirrored). `vibramp` falls from 0 to
+ * -248 and climbs back through 0 to 248, and `vibsqu` is 255 for half a
+ * cycle and 0 for the other -- one-sided, unlike ProTracker's square.
+ */
+const ST3_VIBSIN_HALF = [
+  0x00, 0x18, 0x31, 0x4a, 0x61, 0x78, 0x8d, 0xa1, 0xb4, 0xc5, 0xd4, 0xe0, 0xeb,
+  0xf4, 0xfa, 0xfd, 0xff, 0xfd, 0xfa, 0xf4, 0xeb, 0xe0, 0xd4, 0xc5, 0xb4, 0xa1,
+  0x8d, 0x78, 0x61, 0x4a, 0x31, 0x18,
+];
+const ST3_VIBSIN_TABLE: readonly number[] = [
+  ...ST3_VIBSIN_HALF,
+  ...ST3_VIBSIN_HALF.map((v) => -v),
+];
+const ST3_VIBRAMP_TABLE: readonly number[] = Array.from({ length: 64 }, (_, i) =>
+  i === 0 ? 0 : i < 32 ? -256 + i * 8 : (i - 32) * 8,
+);
+
+/**
+ * One tick of ST3's vibrato, st3play digcmd.c `s_vibrato` / `s_finevibrato`:
+ *
+ *   cnt = ch->avibcnt; if (cnt & 0x80) cnt = 0;   // (types 0-2; 4-6 keep it)
+ *   dat = vibsin[cnt >> 1];
+ *   ch->aspd = ch->aorgspd + ((int16_t)(dat * depth) >> 5);  // U: >> 7
+ *   ch->avibcnt = (cnt + (speed << 1)) & 126;
+ *
+ * `vibratoPos` is `cnt >> 1`. U arrives with its depth already quartered
+ * (processEffectTick0), which makes its `>> 7` this `>> 5`. The shift is
+ * arithmetic, so a negative offset rounds down, not towards zero.
+ * `vibratoRestart` is the counter's bit 7 (see TrackEffectState). Waveform 3
+ * ("random") adds `patmusicrand` to the position; that is replaced by a plain
+ * sine, as playback here is deterministic.
+ */
+export function advanceSt3Vibrato(state: TrackEffectState): number {
+  let pos = state.vibratoPos & 63;
+  if (state.vibratoRestart && state.vibratoRetrigger) pos = 0;
+  state.vibratoRestart = false;
+  const dat =
+    (state.vibratoWaveform & 3) === 1
+      ? ST3_VIBRAMP_TABLE[pos]!
+      : (state.vibratoWaveform & 3) === 2
+        ? pos < 32
+          ? 0xff
+          : 0
+        : ST3_VIBSIN_TABLE[pos]!;
+  state.vibratoApplied = true;
+  state.vibratoHeldWave = dat / VIBRATO_TABLE_PEAK;
+  state.vibratoPos = (pos + state.vibratoSpeed) & 63;
+  return vibratoFrequency(state, state.vibratoHeldWave);
 }

@@ -187,6 +187,7 @@ async function playThroughDriver(file: string, seconds: number) {
     } as unknown as AudioContext,
     playbackClock: clock,
     steppedTickAutomation: (id) => driver.handles(id),
+    oplInstrument: (id) => driver.handles(id),
     scheduledNoteHandler: (e) => {
       if (e.type === 'noteOn') {
         if (!driver.handles(e.instrumentId) || e.midi === undefined) return;
@@ -386,13 +387,13 @@ const SONGS: Array<[string, string, number, string]> = [
   ['starport2', 'Skaven/starport bbs introtune 2 v2.s3m', 0, 'exact'],
   ['mystic', 'Mayaman/mystic reflections.s3m', 0, 'exact'],
   ['a-vision', 'Basehead/a vision.s3m', 0, 'exact'],
-  ['starport', 'Purple Motion/starport bbs introtune.s3m', 38, 'engine: S3M vibrato timing'],
+  ['starport', 'Purple Motion/starport bbs introtune.s3m', 0, 'exact'],
   ['redemptions', 'Omega/redemptions.s3m', 38, 'two file channels on A9 (ST3 merges them into one state)'],
-  ['first-adlib-attempt', 'Skaven/first adlib attempt.as3m', 52, 'engine: vibrato'],
+  ['first-adlib-attempt', 'Skaven/first adlib attempt.as3m', 40, 'engine: a slide one tick late'],
   ['rotagilla', 'Manwe/rotagilla.s3m', 0, 'exact'],
   ['koakuma', 'Viraxor/koakuma.s3m', 361, 'driver: ST3.03-3.20 / OpenMPT broken AdLib tone portamento'],
   ['church', 'Bisqwit/some kind of church theme.s3m', 0, 'exact'],
-  ['rance-bird', '- unknown/(opl2) rance 4.1 - bird.s3m', 1184, 'engine: vibrato; two file channels on A6'],
+  ['rance-bird', '- unknown/(opl2) rance 4.1 - bird.s3m', 119, 'two file channels on A6'],
 ];
 
 describe('S3M AdLib register writes against ST3 (st3play traces)', () => {

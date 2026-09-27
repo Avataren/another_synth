@@ -54,6 +54,12 @@ export interface TrackEffectState {
    */
   arpeggioApplied: boolean;
   /**
+   * ST3's `avibcnt` bit 7: the next vibrato tick restarts the wave (for
+   * waveforms 0-2). `docmd1` sets it on any cell whose command is not H, U,
+   * K, R or D (`ch->avibcnt |= 128`). See `FormatProfile.st3Vibrato`.
+   */
+  vibratoRestart: boolean;
+  /**
    * The waveform sample of the last vibrato offset actually emitted.
    *
    * Both replayers advance the position *after* using it, so once a row has
@@ -298,6 +304,7 @@ export function createTrackEffectState(
     vibratoPos: 0,
     vibratoApplied: false,
     arpeggioApplied: false,
+    vibratoRestart: false,
     vibratoHeldWave: 0,
     vibratoWaveform: 0,
     vibratoRetrigger: true,
@@ -428,8 +435,21 @@ export type ProcessorCommand =
 /**
  * Reset effect state for a new note
  */
-export function resetEffectStateForNote(state: TrackEffectState): void {
-  if (state.vibratoRetrigger) state.vibratoPos = 0;
+export function resetEffectStateForNote(
+  state: TrackEffectState,
+  /**
+   * ST3 restarts the vibrato wave on a PCM note whatever the waveform
+   * (st3play digamg.c `doamiga`: `ch->avibcnt = 0`), and on an AdLib note
+   * not at all (`doadlib` leaves it). True for an OPL instrument.
+   */
+  keepVibratoPhase = false,
+): void {
+  if (state.profile.st3Vibrato === true) {
+    if (!keepVibratoPhase) {
+      state.vibratoPos = 0;
+      state.vibratoRestart = false;
+    }
+  } else if (state.vibratoRetrigger) state.vibratoPos = 0;
   state.vibratoApplied = false;
   state.vibratoHeldWave = 0;
   if (state.tremoloRetrigger) state.tremoloPos = 0;

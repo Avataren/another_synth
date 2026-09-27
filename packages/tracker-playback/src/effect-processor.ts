@@ -8,6 +8,7 @@ import type { PitchSource, ProcessorCommand, TrackEffectState } from './effect-s
 import {
   TREMOLO_DEPTH_DIVISOR,
   VIBRATO_TABLE_PEAK,
+  advanceSt3Vibrato,
   advanceVibrato,
   getWaveformValue,
   vibratoFrequency,
@@ -105,6 +106,32 @@ function applyPortamentoStep(state: TrackEffectState): void {
 /**
  * Convert MIDI note to frequency
  */
+/**
+ * ST3's H/U parameter memory (st3play digcmd.c `s_vibrato`): a zero
+ * parameter reuses the last one whole, a zero speed nibble keeps the last
+ * speed, and the depth nibble is taken as written -- `Hx0` is depth 0.
+ * H and U share it (`alasteff`); U's depth counts a quarter.
+ */
+function applySt3VibratoInfo(
+  state: TrackEffectState,
+  effect: EffectCommand,
+  fine: boolean,
+): void {
+  let info = (effect.paramX << 4) | effect.paramY;
+  if (info === 0) info = state.lastVibrato;
+  if ((info & 0xf0) === 0) info = (state.lastVibrato & 0xf0) | (info & 0x0f);
+  state.lastVibrato = info;
+  state.vibratoSpeed = info >> 4;
+  state.vibratoDepth = (info & 0x0f) / (fine ? 4 : 1);
+}
+
+/** One vibrato tick in the profile's own flavour. */
+function vibratoTick(state: TrackEffectState): number {
+  return state.profile.st3Vibrato === true
+    ? advanceSt3Vibrato(state)
+    : advanceVibrato(state);
+}
+
 export function midiToFrequency(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
@@ -856,6 +883,10 @@ export function processEffectTick0(
         state.vibratoDepth = effect.paramY & 0x0f;
         break;
       }
+      if (state.profile.st3Vibrato === true) {
+        applySt3VibratoInfo(state, effect, false);
+        break;
+      }
       if (effect.paramX) state.vibratoSpeed = effect.paramX;
       if (effect.paramY) state.vibratoDepth = effect.paramY;
       state.lastVibrato = (state.vibratoSpeed << 4) | state.vibratoDepth;
@@ -1274,6 +1305,10 @@ export function processEffectTick0(
 
     case 'fineVibrato':
       // Uxy: Fine vibrato (smaller depth)
+      if (state.profile.st3Vibrato === true) {
+        applySt3VibratoInfo(state, effect, true);
+        break;
+      }
       if (effect.paramX) state.vibratoSpeed = effect.paramX;
       if (effect.paramY) state.vibratoDepth = effect.paramY / 4; // Quarter depth
       break;
@@ -1536,12 +1571,12 @@ export function processEffectTickN(
 
     case 'vibrato':
     case 'fineVibrato':
-      pushPitch(commands, voiceIndex, advanceVibrato(state));
+      pushPitch(commands, voiceIndex, vibratoTick(state));
       break;
 
     case 'vibratoVol':
       // Vibrato + volume slide
-      pushPitch(commands, voiceIndex, advanceVibrato(state));
+      pushPitch(commands, voiceIndex, vibratoTick(state));
       {
         const slid = applyVolumeSlideIfNeeded(state);
         if (slid !== undefined) {

@@ -156,6 +156,7 @@ export class PlaybackEngine {
   private readonly steppedTickAutomation:
     | ((instrumentId: string | undefined, trackIndex: number) => boolean)
     | undefined;
+  private readonly oplInstrument: ((instrumentId: string) => boolean) | undefined;
   private readonly audioContext: AudioContext | undefined;
   private stepIndex: Map<number, PlaybackPatternStep[]> = new Map();
   /**
@@ -338,6 +339,7 @@ export class PlaybackEngine {
     this.scheduledRetriggerHandler = options.scheduledRetriggerHandler;
     this.positionCommandHandler = options.positionCommandHandler;
     this.steppedTickAutomation = options.steppedTickAutomation;
+    this.oplInstrument = options.oplInstrument;
 
     const lookahead =
       options.lookaheadSeconds !== undefined &&
@@ -1425,6 +1427,11 @@ export class PlaybackEngine {
    */
   private canUseAutomationRamp(type: string): boolean {
     return RAMPABLE_EFFECTS.has(type);
+  }
+
+  /** Whether an OPL driver plays this instrument (`PlaybackOptions.oplInstrument`). */
+  private isOplInstrument(instrumentId: string): boolean {
+    return this.oplInstrument?.(instrumentId) ?? false;
   }
 
   /** Whether this track's slides must arrive tick by tick (`steppedTickAutomation`). */

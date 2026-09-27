@@ -46,6 +46,7 @@ export interface ScheduleRowHost {
   isTickBasedEffect(type: string): boolean;
   canUseAutomationRamp(type: string): boolean;
   usesSteppedTicks(instrumentId: string | undefined, trackIndex: number): boolean;
+  isOplInstrument(instrumentId: string): boolean;
   getTrackEffectState(trackIndex: number): TrackEffectState;
   getMsPerTick(): number;
   getMsPerRow(): number;
@@ -324,6 +325,16 @@ export function scheduleRow(
         const trackIndex = step.trackIndex;
         const effectState = this.getTrackEffectState(trackIndex);
         const effect = effectWithSharedInfo(step, effectState);
+        // ST3's docmd1: `if (cmd != H && cmd != U && cmd != K && cmd != R)
+        // ch->avibcnt |= 128;` inside the cmd > 0 arm, whose D branch skips
+        // it too -- the next vibrato restarts its wave.
+        if (
+          effectState.profile.st3Vibrato === true &&
+          step.rawEffect &&
+          !ST3_VIBRATO_KEEPS_PHASE.includes(step.rawEffect.command)
+        ) {
+          effectState.vibratoRestart = true;
+        }
 
         // Resolve instrumentId: use explicit step.instrumentId, or fall back to
         // the instrument currently playing on this track (for "naked" effects)
@@ -481,7 +492,10 @@ export function scheduleRow(
             effect?.type !== 'tonePortaVol' &&
             !volumeColumnTonePorta
           ) {
-            resetEffectStateForNote(effectState);
+            resetEffectStateForNote(
+              effectState,
+              this.isOplInstrument(instrumentId),
+            );
           }
 
           // Process tick 0 (pass step.frequency for ProTracker MODs)
@@ -797,6 +811,9 @@ function effectWithSharedInfo(
   const decoded = decodeRawEffect(raw.command, state.lastEffectInfo, state.profile);
   return decoded?.type === 'effect' ? decoded.effect : step.effect;
 }
+
+/** S3M commands that leave the vibrato phase alone: D, H, K, R, U. */
+const ST3_VIBRATO_KEEPS_PHASE: readonly number[] = [0x04, 0x08, 0x0b, 0x12, 0x15];
 
 /** Whether a command batch carries a volume command, without building one. */
 function hasVolumeCommand(commands: ProcessorCommand[]): boolean {

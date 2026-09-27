@@ -423,6 +423,13 @@ export interface PlaybackOptions {
    * once per tick -- has to receive the steps. Default: never.
    */
   steppedTickAutomation?: (instrumentId: string | undefined, trackIndex: number) => boolean;
+  /**
+   * Whether an OPL (AdLib) driver plays this instrument. Some formats treat
+   * those channels differently: ST3 does not restart the vibrato wave on an
+   * AdLib note (st3play `doadlib` never touches `avibcnt`; `doamiga` zeroes
+   * it). Default: none are.
+   */
+  oplInstrument?: (instrumentId: string) => boolean;
   /** Audio context for getting current time */
   audioContext?: AudioContext;
   /** Ticks per row (FT2 style, default 6) */
