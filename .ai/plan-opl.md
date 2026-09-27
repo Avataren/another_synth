@@ -157,7 +157,10 @@ and warning about drums as the importer does now. (D2)
 | DOSBox dbopl | — | GPL — out |
 | AdPlug (`adplay` to WAV) | render oracle for A2M and AdLib-only S3M | LGPL — run, do not copy |
 | OpenMPT | render oracle for mixed PCM+AdLib S3M | BSD-3 |
-| Adlib Tracker II source | A2M semantics | UNVERIFIED — check before reading |
+| Adlib Tracker II source | A2M semantics | **GPL 3+ (MEASURED, 2026-09-27: `COPYING` in ivan-tat/at2, ijsf/at2) — out; not read** |
+| AT2 `techinfo.htm` (adlibtracker.net/files, the authors' own format document) | A2M/A2T layout per version, effect table | documentation, no license text; read (a description, not code) |
+| apultra `src/expand.c` (Emmanuel Marty) | aPLib decompressor (A2M v9–11) | zlib (MEASURED, `LICENSE.zlib.md`) |
+| sixpack-kotlin (Benedikt Wüller) | SixPack decompressor (A2M v1, v5) | MIT (MEASURED); a port of Gage's 1991 DDJ SIXPACK.C, which itself states no license |
 
 Stance (proposal, D1): port from or study permissive sources only (datasheets, ymfm, Opal
 if its license checks out). Nuked/AdPlug/OpenMPT are used only as **binaries that render
@@ -522,3 +525,37 @@ vibrato, vibrato waveform 3's randomness, PCM `^^` zeroing `avol`.
   instrument editor.
 - **Gotcha for driving the app:** Space is *Play Pattern*. Use the "Play Song" button.
 
+
+### O6 pre-flight — licensing and packers (2026-09-27; STOPPED for Morten, nothing built)
+
+The prompt said: if no permissive description of the format or its packers exists, stop and
+report. That is the case for one of the three packers the corpus needs.
+
+- **AT2 source is GPL 3+** (MEASURED). Not read. AdPlug (LGPL) not read either.
+- **Format description exists and is permissive enough to read:** the AT2 authors'
+  `techinfo.htm` (kept locally at `.ai/a2m-ref/`, text in `techinfo.txt`). It gives the header
+  (`_A2module_`, CRC32 @0x0a, version @0x0e, #pat @0x0f), the block-length table (5 × u16 for
+  v1–4, 9 × u16 for v5–8, 17 × u32 for v9+), songdata layout per version (names, 13/14-byte
+  instruments, v9+ FM macro tables 255×3831, arp/vib macros 255×521, order 128, tempo/speed,
+  flags, pattern length, track count, macro speed-up, 4-op flags, lock flags; v11+ pattern
+  names, disabled-FM-column table; v12+ 4-op pair flags; v14 rows-per-beat + tempo finetune),
+  and pattern layout (v1–4: 16 pats/block, 64 rows × 9 ch × 4 B, row-major; v5–8: 8/block,
+  18 ch × 64 rows × 4 B, channel-major; v9+: 8/block, 20 ch × 256 rows × 6 B, two effects).
+- **Packers per version — doc vs. files:**
+  | Version | Doc says | Files show (MEASURED) | Corpus files | Permissive reference |
+  |---|---|---|---|---|
+  | 1, 5 | SixPack | header lengths sum to file size (v1: only `ceil(#pat/16)` lengths are real; the rest are junk) | 11 + 27 | sixpack-kotlin (MIT) — packer match UNVERIFIED |
+  | 9, 10, 11 | aPLib | first byte = literal Pascal length of the song name, as aPLib's raw first literal | 38 + 1 + 146 | apultra `expand.c` (zlib) |
+  | 12 | aPLib | **not aPLib:** `00`, u32 LE unpacked size (`0x115e9f` songdata, `0x3c000` per pattern block), stream — same container as 13/14 | 8 | none |
+  | 13 | "own implementation of LZH" (`adt2pack.pas`) | as v12 | 17 | none |
+  | 14 | (not stated) | as v12, songdata `0x115ea2` | 30 | none |
+  | 2/6 LZW, 3/7 LZSS, 4/8 raw | — | none in corpus | 0 | not needed |
+- **The AT2 LZH is not a stock public-domain LZH** (MEASURED against a from-scratch ar002/lh5
+  table reader over every NT/TBIT/CBIT/NP/PBIT combination, both bit orders, bit offsets 0–80
+  of the stream: no valid parse). The next big-endian u16 looks like an lh5-style block symbol
+  count (961 for a 245 760-byte near-empty pattern block ≈ 245760/256), so it is probably a
+  relative of lh5 with a different table encoding (INFERRED).
+- **Decision needed (D6):** (a) refuse v12–14 (55 of 278 files) with a true one-liner; (b)
+  black-box clean-room: dump AdPlug's decoded blocks as an oracle and infer the packer from
+  input/output pairs, never reading its source; (c) relax D1 for this one decoder. Also confirm
+  that sixpack-kotlin (MIT port of an unlicensed original) is acceptable as the SixPack source.
