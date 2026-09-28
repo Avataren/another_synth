@@ -37,7 +37,7 @@ import {
 import { RENDER_SAMPLE_RATE, firstDifference, initAhxWasm, peak, renderAhx } from './helpers/ahx-render';
 
 /**
- * The acceptance bar for the AHX doc (Song Edit B1): every one of the 77 `.ahx`
+ * The acceptance bar for the AHX doc (Song Edit B1): every one of the 103 `.ahx`
  * demos, parsed into a doc and written back with no edit, is the source file
  * byte for byte; and the edits the ops offer do to the file exactly what they
  * say. Three oracles, each written apart from the ops: bytes (the source), the
@@ -52,8 +52,8 @@ const PCM_SECONDS = 8;
 // Measured on this corpus: songs in which the engine reaches no step with a note
 // and a pitched instrument in the first 8 s (A1/A2 skip these). A broken picker
 // would skip far more than these.
-// corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 files, 2026-09-22)
-const EXPECTED_PICK_SKIPS = ['bill_buys_a_hoover.ahx', 'countdown_to_nil.ahx', 'dreams_odyssee.ahx', 'epic.ahx', 'get_to_the_chopper.ahx', 'kids.ahx', 'tattoo in the armpit.ahx'];
+// corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 files, 2026-09-28)
+const EXPECTED_PICK_SKIPS = ['bill_buys_a_hoover.ahx', 'countdown_to_nil.ahx', 'dreams_odyssee.ahx', 'epic.ahx', 'far_too_happy.ahx', 'get_to_the_chopper.ahx', 'kids.ahx', 'r_o_t_r.ahx', 'tattoo in the armpit.ahx'];
 
 /** Twelve songs that between them cover v0/v1, speed x1/x2/x3, a subsong, restart, explicit blank track 0, shared and unreferenced tracks, and 256 tracks. */
 const PCM_SUBSET = [
@@ -102,18 +102,18 @@ const firstReferenced = (doc: AhxDoc): number => doc.positions[0]!.track.find((t
 
 describe('T1(A): an unedited doc is the source file', () => {
   it('reads the whole corpus', () => {
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 files, 2026-09-22)
-    expect(songs.length).toBe(77);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 files, 2026-09-28)
+    expect(songs.length).toBe(103);
   });
 
-  it('buildAhxFile(docFromBytes(x)) == x, 77/77', () => {
+  it('buildAhxFile(docFromBytes(x)) == x, 103/103', () => {
     let checked = 0;
     for (const song of songs) {
       expect(same(build(song, song.doc), song.file.bytes), song.file.name).toBe(true);
       checked++;
     }
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 files, 2026-09-22)
-    expect(checked).toBe(77);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 files, 2026-09-28)
+    expect(checked).toBe(103);
   });
 
   it('is a fixed point: writing what it wrote gives the same bytes', () => {
@@ -124,8 +124,8 @@ describe('T1(A): an unedited doc is the source file', () => {
       expect(same(build(song, again), once), song.file.name).toBe(true);
       checked++;
     }
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 files, 2026-09-22)
-    expect(checked).toBe(77);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 files, 2026-09-28)
+    expect(checked).toBe(103);
   });
 
   it('holds the file untouched in the doc: shared tracks stay shared, unreferenced ones stay, transposes are kept', () => {
@@ -141,10 +141,10 @@ describe('T1(A): an unedited doc is the source file', () => {
       if (doc.positions.some((p) => p.transpose.some((v) => v !== 0))) transposed++;
     }
     // The measurements of plan section 1.1.
-    // corpus-size constants — re-measure when public/demos/ahx grows (last updated at 77 files, 2026-09-22)
-    expect(shared).toBe(76);
-    expect(unreferenced).toBe(36);
-    expect(transposed).toBe(53);
+    // corpus-size constants — re-measure when public/demos/ahx grows (last updated at 103 files, 2026-09-28)
+    expect(shared).toBe(102);
+    expect(unreferenced).toBe(46);
+    expect(transposed).toBe(70);
   });
 });
 
@@ -197,8 +197,8 @@ describe('T1(B): the edit matrix', () => {
       expect(same(build(song, next), song.file.bytes), song.file.name).toBe(true);
       applied++;
     }
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 files, 2026-09-22)
-    expect(applied).toBe(77);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 files, 2026-09-28)
+    expect(applied).toBe(103);
   });
 
   it('N2: a track cloned and every cell repointed plays the same (the 2 songs at 256 tracks refuse)', () => {
@@ -222,8 +222,8 @@ describe('T1(B): the edit matrix', () => {
     }
     expect(refused).toEqual(songs.filter((s) => s.doc.tracks.length === 256).map((s) => s.file.name));
     expect(refused.length).toBe(2);
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 files, 2026-09-22)
-    expect(applied).toBe(75);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 files, 2026-09-28)
+    expect(applied).toBe(101);
   });
 
   it('N3: ten unreferenced blank tracks change nothing but the size (256 tracks and the 65,535 limit refuse)', () => {
@@ -251,8 +251,8 @@ describe('T1(B): the edit matrix', () => {
       applied++;
     }
     expect(refused.length).toBeGreaterThanOrEqual(2);
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 files, 2026-09-22)
-    expect(applied + refused.length).toBe(77);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 files, 2026-09-28)
+    expect(applied + refused.length).toBe(103);
   });
 
   it('N4: a blank position inserted and deleted again leaves the song as it was', () => {
@@ -282,8 +282,8 @@ describe('T1(B): the edit matrix', () => {
       }
     }
     expect(identical).toBe(2 * songs.filter((s) => isBlankTrack(s.doc.tracks[0]!)).length);
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 files, 2026-09-22)
-    expect(identical).toBe(2 * 35);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 files, 2026-09-28)
+    expect(identical).toBe(2 * 48);
   });
 
   it('N5: every shared cell made unique and pointed back plays the same', () => {
@@ -348,8 +348,8 @@ describe('T1(B): the edit matrix', () => {
       applied++;
     }
     expect(skipped).toEqual(['outcast.ahx']);
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 files, 2026-09-22)
-    expect(applied).toBe(76);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 files, 2026-09-28)
+    expect(applied).toBe(102);
   });
 
   // The audible edits (A1, A2), and A3: structural tier on all 62.
@@ -422,8 +422,8 @@ describe('T1(B): the edit matrix', () => {
       expect(parseAhx(build(song, next)), song.file.name).toEqual(expected);
       applied++;
     }
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 files, 2026-09-22)
-    expect(applied + skipped.length).toBe(77);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 files, 2026-09-28)
+    expect(applied + skipped.length).toBe(103);
     // A broken picker must not silently skip everything: these are the songs measured to have no candidate.
     expect(skipped).toEqual(EXPECTED_PICK_SKIPS);
   });
@@ -440,8 +440,8 @@ describe('T1(B): the edit matrix', () => {
       expect(parseAhx(build(song, okDoc(setTranspose(song.doc, pick.position, pick.channel, value)))), song.file.name).toEqual(expected);
       applied++;
     }
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 files, 2026-09-22)
-    expect(applied).toBe(77 - EXPECTED_PICK_SKIPS.length);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 files, 2026-09-28)
+    expect(applied).toBe(103 - EXPECTED_PICK_SKIPS.length);
   });
 
   // The audio tier, on the twelve-song subset.

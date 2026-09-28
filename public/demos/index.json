@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-28T15:51:20.350Z",
+  "generated": "2026-09-28T17:03:10.331Z",
   "collections": [
     {
       "id": "a2m",
@@ -1968,6 +1968,15 @@
           "bytes": 3689
         },
         {
+          "title": "syphus-3amEternal.ahx",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 40,
+          "instruments": 28,
+          "file": "ahx/3am_eternal.ahx",
+          "bytes": 9914
+        },
+        {
           "title": "64k_is_all_you_need",
           "format": "AHX",
           "channels": 4,
@@ -2038,6 +2047,15 @@
           "instruments": 17,
           "file": "ahx/afterstorm.hvl",
           "bytes": 8699
+        },
+        {
+          "title": "airwolf",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 19,
+          "instruments": 12,
+          "file": "ahx/airwolf.ahx",
+          "bytes": 5639
         },
         {
           "title": "All That She Wants",
@@ -2229,6 +2247,15 @@
           "bytes": 3698
         },
         {
+          "title": "Electric City",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 39,
+          "instruments": 20,
+          "file": "ahx/electric_city.ahx",
+          "bytes": 10476
+        },
+        {
           "title": "Envy of Myra",
           "format": "AHX",
           "channels": 4,
@@ -2274,6 +2301,15 @@
           "bytes": 4400
         },
         {
+          "title": "far_too_happy",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 33,
+          "instruments": 5,
+          "file": "ahx/far_too_happy.ahx",
+          "bytes": 2845
+        },
+        {
           "title": "FinalFantasy2",
           "format": "AHX",
           "channels": 4,
@@ -2281,6 +2317,15 @@
           "instruments": 31,
           "file": "ahx/finalfantasy2.ahx",
           "bytes": 4616
+        },
+        {
+          "title": "Flow my tears",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 20,
+          "instruments": 14,
+          "file": "ahx/flow_my_tears.ahx",
+          "bytes": 3669
         },
         {
           "title": "Virgill-Forsaken",
@@ -2346,6 +2391,15 @@
           "bytes": 1864
         },
         {
+          "title": "Harmony",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 28,
+          "instruments": 3,
+          "file": "ahx/harmony.ahx",
+          "bytes": 427
+        },
+        {
           "title": "Hexplosion!",
           "format": "HVL",
           "channels": 16,
@@ -2353,6 +2407,15 @@
           "instruments": 36,
           "file": "ahx/hexplosion.hvl",
           "bytes": 38965
+        },
+        {
+          "title": "Hively_Dreaming.ahx",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 7,
+          "instruments": 7,
+          "file": "ahx/hively_dreaming.ahx",
+          "bytes": 3716
         },
         {
           "title": "I Love Holy Daze",
@@ -2382,6 +2445,24 @@
           "bytes": 8291
         },
         {
+          "title": "Iridion",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 128,
+          "instruments": 40,
+          "file": "ahx/iridion.ahx",
+          "bytes": 3683
+        },
+        {
+          "title": "Jaded Lights",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 33,
+          "instruments": 29,
+          "file": "ahx/jaded_lights.ahx",
+          "bytes": 9674
+        },
+        {
           "title": "Joyous",
           "format": "AHX",
           "channels": 4,
@@ -2400,6 +2481,15 @@
           "bytes": 15788
         },
         {
+          "title": "!karmageddon",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 62,
+          "instruments": 22,
+          "file": "ahx/karmageddon.ahx",
+          "bytes": 12764
+        },
+        {
           "title": "Kids",
           "format": "AHX",
           "channels": 4,
@@ -2416,6 +2506,15 @@
           "instruments": 20,
           "file": "ahx/klisje paa klisje.ahx",
           "bytes": 35060
+        },
+        {
+          "title": "!lambsbread",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 40,
+          "instruments": 42,
+          "file": "ahx/lambsbread.ahx",
+          "bytes": 18242
         },
         {
           "title": "Lanterns",
@@ -2517,6 +2616,15 @@
           "bytes": 16888
         },
         {
+          "title": "Mindwarp",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 27,
+          "instruments": 30,
+          "file": "ahx/mindwarp.ahx",
+          "bytes": 3986
+        },
+        {
           "title": "moderate sellotaping",
           "format": "HVL",
           "channels": 8,
@@ -2580,6 +2688,15 @@
           "bytes": 40742
         },
         {
+          "title": "plasticity",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 28,
+          "instruments": 6,
+          "file": "ahx/plasticity.ahx",
+          "bytes": 1760
+        },
+        {
           "title": "Platou",
           "format": "AHX",
           "channels": 4,
@@ -2598,6 +2715,15 @@
           "bytes": 5676
         },
         {
+          "title": "pYRODEX rESURRECTION",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 63,
+          "instruments": 15,
+          "file": "ahx/pyrodex_resurrection.ahx",
+          "bytes": 4520
+        },
+        {
           "title": "Quite_classic",
           "format": "AHX",
           "channels": 4,
@@ -2605,6 +2731,33 @@
           "instruments": 10,
           "file": "ahx/quite_classic.ahx",
           "bytes": 4448
+        },
+        {
+          "title": "R.O.T.R",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 114,
+          "instruments": 22,
+          "file": "ahx/r_o_t_r.ahx",
+          "bytes": 4556
+        },
+        {
+          "title": "Rainmaking",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 31,
+          "instruments": 28,
+          "file": "ahx/rainmaking.ahx",
+          "bytes": 7050
+        },
+        {
+          "title": "SYPHUS-rescue-pod.AHX",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 40,
+          "instruments": 14,
+          "file": "ahx/rescue_pod.ahx",
+          "bytes": 5743
         },
         {
           "title": "Ring Modulation Test Song",
@@ -2634,6 +2787,15 @@
           "bytes": 4971
         },
         {
+          "title": "Shattered Crystal Drops",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 32,
+          "instruments": 35,
+          "file": "ahx/shattered_crystal_drops.ahx",
+          "bytes": 16577
+        },
+        {
           "title": "(451) - SHUT UP AND CALCULATE.AHX",
           "format": "AHX",
           "channels": 4,
@@ -2652,6 +2814,15 @@
           "bytes": 2851
         },
         {
+          "title": "space_fighters",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 16,
+          "instruments": 6,
+          "file": "ahx/space_fighters.ahx",
+          "bytes": 2685
+        },
+        {
           "title": "Stormlord",
           "format": "AHX",
           "channels": 4,
@@ -2659,6 +2830,15 @@
           "instruments": 30,
           "file": "ahx/stormlord (hardcut).ahx",
           "bytes": 10683
+        },
+        {
+          "title": "STORMLORD II",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 16,
+          "instruments": 10,
+          "file": "ahx/stormlord_ii_filtered.ahx",
+          "bytes": 3862
         },
         {
           "title": "streets",
@@ -2695,6 +2875,15 @@
           "instruments": 7,
           "file": "ahx/sunspots.hvl",
           "bytes": 4153
+        },
+        {
+          "title": "SunStone",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 18,
+          "instruments": 20,
+          "file": "ahx/sunstone.ahx",
+          "bytes": 5543
         },
         {
           "title": "syphus-sweeties.hvl",
@@ -2778,6 +2967,24 @@
           "bytes": 3191
         },
         {
+          "title": "Time_in_the_Valley",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 11,
+          "instruments": 9,
+          "file": "ahx/time_in_the_valley.ahx",
+          "bytes": 5465
+        },
+        {
+          "title": "times_of_old",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 20,
+          "instruments": 4,
+          "file": "ahx/times_of_old.ahx",
+          "bytes": 2982
+        },
+        {
           "title": "syphus-Top Gun Anthem.hvl",
           "format": "HVL",
           "channels": 12,
@@ -2787,6 +2994,15 @@
           "bytes": 10564
         },
         {
+          "title": "twangies from heaven!",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 9,
+          "instruments": 7,
+          "file": "ahx/twangies_from_heaven!.ahx",
+          "bytes": 1916
+        },
+        {
           "title": "unexpected horse",
           "format": "HVL",
           "channels": 10,
@@ -2794,6 +3010,24 @@
           "instruments": 7,
           "file": "ahx/unexpected_horse.hvl",
           "bytes": 5327
+        },
+        {
+          "title": "!unraveling a dream",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 46,
+          "instruments": 41,
+          "file": "ahx/unraveling_a_dream.ahx",
+          "bytes": 20479
+        },
+        {
+          "title": "Urban Shuffle",
+          "format": "AHX",
+          "channels": 4,
+          "patterns": 8,
+          "instruments": 7,
+          "file": "ahx/urban_shuffle.ahx",
+          "bytes": 1695
         },
         {
           "title": "Wave Stepper",
@@ -2880,12 +3114,44 @@
           "bytes": 6582
         },
         {
+          "title": "driving",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/4mat_-_driving-_lff-_chiptune.mod",
+          "bytes": 27598
+        },
+        {
           "title": "7",
           "format": "MOD",
           "channels": 4,
           "signature": "M.K.",
           "file": "amiga/7.mod",
           "bytes": 102768
+        },
+        {
+          "title": "'95-raver's-megamix",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/95-ravers-megamix.mod",
+          "bytes": 710110
+        },
+        {
+          "title": "A Jam No. 3",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/A-JAM3.MOD",
+          "bytes": 154811
+        },
+        {
+          "title": "andante",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/ANDANTE.MOD",
+          "bytes": 123264
         },
         {
           "title": "axel f",
@@ -2927,6 +3193,22 @@
           "bytes": 406354
         },
         {
+          "title": "Guitarous",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/GUITAROU.MOD",
+          "bytes": 137064
+        },
+        {
+          "title": "Illumination",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/ILLUMINA.MOD",
+          "bytes": 608304
+        },
+        {
           "title": "klisje paa klisje",
           "format": "MOD",
           "channels": 4,
@@ -2941,6 +3223,14 @@
           "signature": "M.K.",
           "file": "amiga/SARCOPHASER.MOD",
           "bytes": 72418
+        },
+        {
+          "title": "Shadowrun",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/SHADOWRU.MOD",
+          "bytes": 184220
         },
         {
           "title": "a city at night",
@@ -2983,12 +3273,28 @@
           "bytes": 32284
         },
         {
+          "title": "aftertouch",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/aftertouch.mod",
+          "bytes": 478790
+        },
+        {
           "title": "ambition2",
           "format": "MOD",
           "channels": 4,
           "signature": "M.K.",
           "file": "amiga/ambition2.mod",
           "bytes": 92722
+        },
+        {
+          "title": "Ambient power",
+          "format": "MOD",
+          "channels": 8,
+          "signature": "8CHN",
+          "file": "amiga/ambpower.mod",
+          "bytes": 327496
         },
         {
           "title": "amegas",
@@ -2998,12 +3304,84 @@
           "bytes": 68864
         },
         {
+          "title": "anarchymenu01",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/anarchymenu_01.mod",
+          "bytes": 14636
+        },
+        {
+          "title": "apoplexy",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/apoplexy.mod",
+          "bytes": 100786
+        },
+        {
+          "title": "arcane",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/arcane.mod",
+          "bytes": 93588
+        },
+        {
+          "title": "back again",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/back_again.mod",
+          "bytes": 38788
+        },
+        {
+          "title": "back to my roots",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/backroot.mod",
+          "bytes": 221980
+        },
+        {
+          "title": "## ballada ##",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/ballada.mod",
+          "bytes": 63548
+        },
+        {
+          "title": "banana split",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/bananasplit.mod",
+          "bytes": 304552
+        },
+        {
+          "title": "barnicle",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/barnicle.mod",
+          "bytes": 574408
+        },
+        {
           "title": "beast-title",
           "format": "MOD",
           "channels": 4,
           "signature": "M.K.",
           "file": "amiga/beast-title.mod",
           "bytes": 56838
+        },
+        {
+          "title": "beyond music",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/beyond_music.mod",
+          "bytes": 402166
         },
         {
           "title": "black-hole",
@@ -3029,12 +3407,36 @@
           "bytes": 71564
         },
         {
+          "title": "boesendorfer p.s.s.",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/boesendorfer_p_s_s.mod",
+          "bytes": 216890
+        },
+        {
           "title": "butterfly syndrome",
           "format": "MOD",
           "channels": 4,
           "signature": "M.K.",
           "file": "amiga/butterfly_syndrome.mod",
           "bytes": 276712
+        },
+        {
+          "title": "class09",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/class09.mod",
+          "bytes": 13844
+        },
+        {
+          "title": "Condom corruption",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/corruption.mod",
+          "bytes": 230652
         },
         {
           "title": "crackerjournal(r.k)",
@@ -3045,11 +3447,43 @@
           "bytes": 109756
         },
         {
+          "title": "cream of the earth",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/creamof.mod",
+          "bytes": 123214
+        },
+        {
           "title": "crystalhammer",
           "format": "MOD",
           "channels": 4,
           "file": "amiga/crystalhammer.mod",
           "bytes": 68950
+        },
+        {
+          "title": "Crystal Rain",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/crystalr.mod",
+          "bytes": 112036
+        },
+        {
+          "title": "cyberride",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/cyberrid.mod",
+          "bytes": 199118
+        },
+        {
+          "title": "dark angels rage",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/darkangl.mod",
+          "bytes": 218778
         },
         {
           "title": "fred1",
@@ -3058,6 +3492,14 @@
           "signature": "M.K.",
           "file": "amiga/dear_rob.mod",
           "bytes": 66236
+        },
+        {
+          "title": "Desert-Dream-2",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/desert2.mod",
+          "bytes": 145658
         },
         {
           "title": "dungeonquest",
@@ -3076,12 +3518,84 @@
           "bytes": 147898
         },
         {
+          "title": "003",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "0",
+          "file": "amiga/echoing.mod",
+          "bytes": 106012
+        },
+        {
+          "title": "elekfunk !",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/elektric_funk.mod",
+          "bytes": 224342
+        },
+        {
+          "title": "emotions d'amour",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/emssion_of_love.mod",
+          "bytes": 398992
+        },
+        {
+          "title": "eyegabooom",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/eye.mod",
+          "bytes": 708176
+        },
+        {
+          "title": "just for blues",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/forblues.mod",
+          "bytes": 204158
+        },
+        {
+          "title": "giel song",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/giel.mod",
+          "bytes": 19684
+        },
+        {
           "title": "gods17",
           "format": "MOD",
           "channels": 4,
           "signature": "M.K.",
           "file": "amiga/gods_ingame.mod",
           "bytes": 320044
+        },
+        {
+          "title": "eon",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M!K!",
+          "file": "amiga/h0ffman_-_eon.mod",
+          "bytes": 572724
+        },
+        {
+          "title": "hallucinations",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/hallucinations.mod",
+          "bytes": 128020
+        },
+        {
+          "title": "professionaltracker",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/hoffman_and_daytripper_-_professional_tracker.mod",
+          "bytes": 1758188
         },
         {
           "title": "hymn to aurora",
@@ -3163,6 +3677,14 @@
           "bytes": 131602
         },
         {
+          "title": "knulla-kuk!!!",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/knulla-kuk.mod",
+          "bytes": 160218
+        },
+        {
           "title": "lastv8",
           "format": "MOD",
           "channels": 4,
@@ -3171,11 +3693,35 @@
           "bytes": 37392
         },
         {
+          "title": "legendaric",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/legend.mod",
+          "bytes": 207274
+        },
+        {
           "title": "lepeltheme",
           "format": "MOD",
           "channels": 4,
           "file": "amiga/lepeltheme.mod",
           "bytes": 76412
+        },
+        {
+          "title": "little<toy>world",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/littletoyworld.mod",
+          "bytes": 537216
+        },
+        {
+          "title": "lizardking's theme",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/lizardkings_theme.mod",
+          "bytes": 153869
         },
         {
           "title": "death1",
@@ -3231,12 +3777,36 @@
           "bytes": 83302
         },
         {
+          "title": "dragonsfunk",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/moby_-_dragonsfunk.mod",
+          "bytes": 192940
+        },
+        {
+          "title": "mortimers chipdisko",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/mortimers_chipdisko.mod",
+          "bytes": 26854
+        },
+        {
           "title": "musiklinjen",
           "format": "MOD",
           "channels": 4,
           "signature": "M.K.",
           "file": "amiga/musiklinjen.mod",
           "bytes": 184930
+        },
+        {
+          "title": "my dick in her mouth",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/my_xxxx_in_her_mouth.mod",
+          "bytes": 314116
         },
         {
           "title": "nexus seven",
@@ -3261,6 +3831,14 @@
           "signature": "M.K.",
           "file": "amiga/obarski mega-mix.mod",
           "bytes": 141812
+        },
+        {
+          "title": "orgasmod",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/orgasmod.mod",
+          "bytes": 277280
         },
         {
           "title": "oro",
@@ -3326,6 +3904,22 @@
           "bytes": 309020
         },
         {
+          "title": "my little ponies",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/radix-my_little_ponies.mod",
+          "bytes": 27654
+        },
+        {
+          "title": "monday",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/random_voice_-_monday.mod",
+          "bytes": 15960
+        },
+        {
           "title": "resonance ii",
           "format": "MOD",
           "channels": 4,
@@ -3340,6 +3934,22 @@
           "signature": "M.K.",
           "file": "amiga/rsi-intro.mod",
           "bytes": 54586
+        },
+        {
+          "title": "scrambled mind",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/scrambld.mod",
+          "bytes": 163738
+        },
+        {
+          "title": "Sirens",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/sirens.mod",
+          "bytes": 370880
         },
         {
           "title": "sleepwalk",
@@ -3365,6 +3975,14 @@
           "bytes": 347582
         },
         {
+          "title": "space-song",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/spaceson.mod",
+          "bytes": 103396
+        },
+        {
           "title": "stardust memories",
           "format": "MOD",
           "channels": 4,
@@ -3379,6 +3997,22 @@
           "signature": "8CHN",
           "file": "amiga/starlitdeception.mod",
           "bytes": 280146
+        },
+        {
+          "title": "storm rider",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/stormrider.mod",
+          "bytes": 242620
+        },
+        {
+          "title": "street jungle",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/street_jungle.mod",
+          "bytes": 139086
         },
         {
           "title": "telephone",
@@ -3420,6 +4054,14 @@
           "bytes": 81414
         },
         {
+          "title": "tilbury fair",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/tilbury_fair.mod",
+          "bytes": 596426
+        },
+        {
           "title": "to the beach",
           "format": "MOD",
           "channels": 4,
@@ -3428,12 +4070,28 @@
           "bytes": 305176
         },
         {
+          "title": "toy3",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/toy_story.mod",
+          "bytes": 93996
+        },
+        {
           "title": "toy story",
           "format": "MOD",
           "channels": 4,
           "signature": "M.K.",
           "file": "amiga/toytitle.mod",
           "bytes": 93996
+        },
+        {
+          "title": "ufo tune",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/ufo_tune.mod",
+          "bytes": 146590
         },
         {
           "title": "utopia ingame1",
@@ -3468,6 +4126,22 @@
           "bytes": 160170
         },
         {
+          "title": "Variations",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/variations.mod",
+          "bytes": 198742
+        },
+        {
+          "title": "virtual journey",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/virtual_journey.mod",
+          "bytes": 200102
+        },
+        {
           "title": "we're the devils",
           "format": "MOD",
           "channels": 4,
@@ -3490,6 +4164,33 @@
       "name": "FastTracker 2",
       "songs": [
         {
+          "title": "kru",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 13,
+          "instruments": 10,
+          "file": "ft2/0-kru.xm",
+          "bytes": 60359
+        },
+        {
+          "title": "Atarian - Free",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 34,
+          "instruments": 44,
+          "file": "ft2/04f.xm",
+          "bytes": 1785012
+        },
+        {
+          "title": "118 in 64 and 194",
+          "format": "XM",
+          "channels": 18,
+          "patterns": 12,
+          "instruments": 11,
+          "file": "ft2/118in64.xm",
+          "bytes": 64562
+        },
+        {
           "title": "One fine day...",
           "format": "XM",
           "channels": 24,
@@ -3506,6 +4207,24 @@
           "instruments": 32,
           "file": "ft2/4-mat_-_rose.xm",
           "bytes": 57215
+        },
+        {
+          "title": "Eternity",
+          "format": "XM",
+          "channels": 10,
+          "patterns": 13,
+          "instruments": 22,
+          "file": "ft2/4mat_-_eternity.xm",
+          "bytes": 46488
+        },
+        {
+          "title": "***70's Porn***M00G",
+          "format": "XM",
+          "channels": 6,
+          "patterns": 38,
+          "instruments": 37,
+          "file": "ft2/70sporn.xm",
+          "bytes": 529609
         },
         {
           "title": "Butterfly Flew Away",
@@ -3526,6 +4245,150 @@
           "bytes": 505489
         },
         {
+          "title": "Feats of valor",
+          "format": "XM",
+          "channels": 22,
+          "patterns": 52,
+          "instruments": 31,
+          "file": "ft2/FEATSOFV.XM",
+          "bytes": 706895
+        },
+        {
+          "title": "Reflecter",
+          "format": "XM",
+          "channels": 12,
+          "patterns": 28,
+          "instruments": 128,
+          "file": "ft2/REFLECTR.XM",
+          "bytes": 740554
+        },
+        {
+          "title": "Into the shadow",
+          "format": "XM",
+          "channels": 22,
+          "patterns": 37,
+          "instruments": 29,
+          "file": "ft2/SHADOW.XM",
+          "bytes": 482148
+        },
+        {
+          "title": "Shooting star",
+          "format": "XM",
+          "channels": 18,
+          "patterns": 41,
+          "instruments": 19,
+          "file": "ft2/SHOOTING.XM",
+          "bytes": 365113
+        },
+        {
+          "title": "temple of sun remix",
+          "format": "XM",
+          "channels": 8,
+          "patterns": 44,
+          "instruments": 31,
+          "file": "ft2/TEMPLSUN.XM",
+          "bytes": 463517
+        },
+        {
+          "title": "|- sunlight -|",
+          "format": "XM",
+          "channels": 18,
+          "patterns": 16,
+          "instruments": 15,
+          "file": "ft2/_sunlight_.xm",
+          "bytes": 43768
+        },
+        {
+          "title": "After Life",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 89,
+          "instruments": 39,
+          "file": "ft2/a-aafter.xm",
+          "bytes": 2347562
+        },
+        {
+          "title": "Autumn Depressions",
+          "format": "XM",
+          "channels": 24,
+          "patterns": 63,
+          "instruments": 128,
+          "file": "ft2/a-depres.xm",
+          "bytes": 584688
+        },
+        {
+          "title": "@Another Night@-96",
+          "format": "XM",
+          "channels": 8,
+          "patterns": 13,
+          "instruments": 32,
+          "file": "ft2/a-night.xm",
+          "bytes": 332951
+        },
+        {
+          "title": "Archons of light",
+          "format": "XM",
+          "channels": 12,
+          "patterns": 25,
+          "instruments": 128,
+          "file": "ft2/aa_arofl.xm",
+          "bytes": 420327
+        },
+        {
+          "title": "The Fiddle - Remix",
+          "format": "XM",
+          "channels": 20,
+          "patterns": 38,
+          "instruments": 128,
+          "file": "ft2/aa_fiddl.xm",
+          "bytes": 283290
+        },
+        {
+          "title": "Sirene Song",
+          "format": "XM",
+          "channels": 30,
+          "patterns": 48,
+          "instruments": 124,
+          "file": "ft2/aa_siren.xm",
+          "bytes": 1327890
+        },
+        {
+          "title": "My First Console",
+          "format": "XM",
+          "channels": 20,
+          "patterns": 35,
+          "instruments": 13,
+          "file": "ft2/aceman_-_my_first_console.xm",
+          "bytes": 98487
+        },
+        {
+          "title": "Through the Nature",
+          "format": "XM",
+          "channels": 22,
+          "patterns": 69,
+          "instruments": 37,
+          "file": "ft2/aceman_-_through_the_nature.xm",
+          "bytes": 937029
+        },
+        {
+          "title": "Age of Legends",
+          "format": "XM",
+          "channels": 22,
+          "patterns": 80,
+          "instruments": 59,
+          "file": "ft2/age.xm",
+          "bytes": 967411
+        },
+        {
+          "title": "Ambrozia",
+          "format": "XM",
+          "channels": 22,
+          "patterns": 110,
+          "instruments": 41,
+          "file": "ft2/ambrozia.xm",
+          "bytes": 1001617
+        },
+        {
           "title": "Amiga Boy",
           "format": "XM",
           "channels": 30,
@@ -3544,6 +4407,159 @@
           "bytes": 1504269
         },
         {
+          "title": "\"Ancient Stories\"AWS",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 62,
+          "instruments": 128,
+          "file": "ft2/ancientstories.xm",
+          "bytes": 1578924
+        },
+        {
+          "title": "artificial sweetener",
+          "format": "XM",
+          "channels": 8,
+          "patterns": 26,
+          "instruments": 7,
+          "file": "ft2/artificial_sweetener.xm",
+          "bytes": 52865
+        },
+        {
+          "title": "atbia3",
+          "format": "XM",
+          "channels": 28,
+          "patterns": 61,
+          "instruments": 51,
+          "file": "ft2/atbia3.xm",
+          "bytes": 2197112
+        },
+        {
+          "title": "\"Point of Departure\"",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 67,
+          "instruments": 123,
+          "file": "ft2/atekuro_-_point_of_departure.xm",
+          "bytes": 1616892
+        },
+        {
+          "title": "Autumn in Budapest",
+          "format": "XM",
+          "channels": 20,
+          "patterns": 35,
+          "instruments": 32,
+          "file": "ft2/autumn_in_budapest.xm",
+          "bytes": 1975090
+        },
+        {
+          "title": "aquarium - 16 bit",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 61,
+          "instruments": 128,
+          "file": "ft2/aws_aq16.xm",
+          "bytes": 1778127
+        },
+        {
+          "title": "A Bard's Tale...",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 26,
+          "instruments": 128,
+          "file": "ft2/bardtale.xm",
+          "bytes": 3124892
+        },
+        {
+          "title": "Children  (Heretic)",
+          "format": "XM",
+          "channels": 26,
+          "patterns": 30,
+          "instruments": 128,
+          "file": "ft2/children.xm",
+          "bytes": 627386
+        },
+        {
+          "title": "Happy H. Christmas",
+          "format": "XM",
+          "channels": 10,
+          "patterns": 7,
+          "instruments": 47,
+          "file": "ft2/christms.xm",
+          "bytes": 15265
+        },
+        {
+          "title": "* CoLoUrS *",
+          "format": "XM",
+          "channels": 28,
+          "patterns": 69,
+          "instruments": 43,
+          "file": "ft2/colours.xm",
+          "bytes": 2028623
+        },
+        {
+          "title": "Beyond the stars",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 45,
+          "instruments": 64,
+          "file": "ft2/dn-beyon.xm",
+          "bytes": 2789726
+        },
+        {
+          "title": "Sunshine of... DNA51",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 65,
+          "instruments": 127,
+          "file": "ft2/dn-sunsh.xm",
+          "bytes": 2806704
+        },
+        {
+          "title": "donovan's moonbike",
+          "format": "XM",
+          "channels": 12,
+          "patterns": 43,
+          "instruments": 26,
+          "file": "ft2/donovans_moonbike.xm",
+          "bytes": 368691
+        },
+        {
+          "title": "*** Dreams 2 ***",
+          "format": "XM",
+          "channels": 26,
+          "patterns": 25,
+          "instruments": 41,
+          "file": "ft2/dreams2.xm",
+          "bytes": 965904
+        },
+        {
+          "title": "To fallen Comrades",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 86,
+          "instruments": 104,
+          "file": "ft2/ds_tfc.xm",
+          "bytes": 1543107
+        },
+        {
+          "title": "E621",
+          "format": "XM",
+          "channels": 10,
+          "patterns": 29,
+          "instruments": 26,
+          "file": "ft2/e621.xm",
+          "bytes": 379325
+        },
+        {
+          "title": "Homecoming",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 25,
+          "instruments": 27,
+          "file": "ft2/elw-hom2.xm",
+          "bytes": 715233
+        },
+        {
           "title": "Sick on Monday",
           "format": "XM",
           "channels": 24,
@@ -3551,6 +4567,15 @@
           "instruments": 30,
           "file": "ft2/elw-sick.xm",
           "bytes": 802116
+        },
+        {
+          "title": "Experience",
+          "format": "XM",
+          "channels": 26,
+          "patterns": 32,
+          "instruments": 45,
+          "file": "ft2/experience.xm",
+          "bytes": 996570
         },
         {
           "title": "Hybrid song 2:20",
@@ -3571,6 +4596,69 @@
           "bytes": 620874
         },
         {
+          "title": "Fastfunk",
+          "format": "XM",
+          "channels": 20,
+          "patterns": 143,
+          "instruments": 128,
+          "file": "ft2/fastfunk.xm",
+          "bytes": 952249
+        },
+        {
+          "title": "Songs from the Cell",
+          "format": "XM",
+          "channels": 4,
+          "patterns": 53,
+          "instruments": 15,
+          "file": "ft2/flc_cell.xm",
+          "bytes": 51424
+        },
+        {
+          "title": "God = Martin Galway",
+          "format": "XM",
+          "channels": 16,
+          "patterns": 63,
+          "instruments": 55,
+          "file": "ft2/galway.xm",
+          "bytes": 910116
+        },
+        {
+          "title": "Giana 2001 rmx",
+          "format": "XM",
+          "channels": 22,
+          "patterns": 42,
+          "instruments": 122,
+          "file": "ft2/giana2k.xm",
+          "bytes": 491980
+        },
+        {
+          "title": "hacked_!!!",
+          "format": "XM",
+          "channels": 10,
+          "patterns": 12,
+          "instruments": 13,
+          "file": "ft2/hacked_!!!.xm",
+          "bytes": 162764
+        },
+        {
+          "title": "After Hours",
+          "format": "XM",
+          "channels": 30,
+          "patterns": 43,
+          "instruments": 43,
+          "file": "ft2/hours.xm",
+          "bytes": 835483
+        },
+        {
+          "title": "i realize",
+          "format": "XM",
+          "channels": 20,
+          "patterns": 59,
+          "instruments": 46,
+          "file": "ft2/i_realize_compo_edit.xm",
+          "bytes": 1408977
+        },
+        {
           "title": "im in love with you",
           "format": "XM",
           "channels": 14,
@@ -3578,6 +4666,24 @@
           "instruments": 30,
           "file": "ft2/im in love with you.xm",
           "bytes": 71179
+        },
+        {
+          "title": "Kingdom Skies - Jase",
+          "format": "XM",
+          "channels": 16,
+          "patterns": 56,
+          "instruments": 29,
+          "file": "ft2/j-kgdsky.xm",
+          "bytes": 520330
+        },
+        {
+          "title": "Jet Lag",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 64,
+          "instruments": 63,
+          "file": "ft2/jet_lag.xm",
+          "bytes": 983887
         },
         {
           "title": "Nine One One",
@@ -3589,6 +4695,15 @@
           "bytes": 973769
         },
         {
+          "title": "Deadline",
+          "format": "XM",
+          "channels": 18,
+          "patterns": 24,
+          "instruments": 128,
+          "file": "ft2/jt_deadl.xm",
+          "bytes": 367150
+        },
+        {
           "title": "Letting Go",
           "format": "XM",
           "channels": 26,
@@ -3596,6 +4711,24 @@
           "instruments": 128,
           "file": "ft2/jt_letgo.xm",
           "bytes": 99410
+        },
+        {
+          "title": "In my Life, my Mind.",
+          "format": "XM",
+          "channels": 28,
+          "patterns": 31,
+          "instruments": 128,
+          "file": "ft2/jt_mind.xm",
+          "bytes": 974301
+        },
+        {
+          "title": "Pools of Poison",
+          "format": "XM",
+          "channels": 22,
+          "patterns": 36,
+          "instruments": 128,
+          "file": "ft2/jt_pools.xm",
+          "bytes": 700000
         },
         {
           "title": "STRANGLEHOLD (C)JT",
@@ -3607,6 +4740,132 @@
           "bytes": 14622
         },
         {
+          "title": "Decade Spacesynth'd",
+          "format": "XM",
+          "channels": 18,
+          "patterns": 64,
+          "instruments": 18,
+          "file": "ft2/jwph_dxfl_decade-spacesynth.xm",
+          "bytes": 346982
+        },
+        {
+          "title": "kookoo",
+          "format": "XM",
+          "channels": 16,
+          "patterns": 12,
+          "instruments": 18,
+          "file": "ft2/kookoo.xm",
+          "bytes": 42733
+        },
+        {
+          "title": "RLD Installer #9",
+          "format": "XM",
+          "channels": 10,
+          "patterns": 27,
+          "instruments": 128,
+          "file": "ft2/lhs_rld9.xm",
+          "bytes": 148201
+        },
+        {
+          "title": "*Little Swedish Boy*",
+          "format": "XM",
+          "channels": 12,
+          "patterns": 19,
+          "instruments": 33,
+          "file": "ft2/lluvia-little_swedish_boy.xm",
+          "bytes": 36736
+        },
+        {
+          "title": "The Love Trap",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 48,
+          "instruments": 65,
+          "file": "ft2/lovetrp.xm",
+          "bytes": 1451948
+        },
+        {
+          "title": "Mind of a Dreamer",
+          "format": "XM",
+          "channels": 18,
+          "patterns": 40,
+          "instruments": 40,
+          "file": "ft2/mindrmr.xm",
+          "bytes": 655865
+        },
+        {
+          "title": "The Misty Lake",
+          "format": "XM",
+          "channels": 30,
+          "patterns": 32,
+          "instruments": 38,
+          "file": "ft2/mistylk.xm",
+          "bytes": 3172486
+        },
+        {
+          "title": "streets of Venice",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 61,
+          "instruments": 110,
+          "file": "ft2/nf-stven.xm",
+          "bytes": 1890949
+        },
+        {
+          "title": "It's Night Forever",
+          "format": "XM",
+          "channels": 24,
+          "patterns": 21,
+          "instruments": 67,
+          "file": "ft2/night.xm",
+          "bytes": 678474
+        },
+        {
+          "title": "ninja bolognese",
+          "format": "XM",
+          "channels": 16,
+          "patterns": 25,
+          "instruments": 33,
+          "file": "ft2/ninja.xm",
+          "bytes": 63217
+        },
+        {
+          "title": "Last Sunset",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 44,
+          "instruments": 44,
+          "file": "ft2/nwk-last.xm",
+          "bytes": 1676612
+        },
+        {
+          "title": "The adventure",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 32,
+          "instruments": 61,
+          "file": "ft2/nz_adv.xm",
+          "bytes": 1098705
+        },
+        {
+          "title": "Onward",
+          "format": "XM",
+          "channels": 28,
+          "patterns": 81,
+          "instruments": 64,
+          "file": "ft2/onward.xm",
+          "bytes": 673734
+        },
+        {
+          "title": "..phantasmagoria",
+          "format": "XM",
+          "channels": 28,
+          "patterns": 166,
+          "instruments": 48,
+          "file": "ft2/phantasmagoria.xm",
+          "bytes": 2045801
+        },
+        {
           "title": "unreal superhero",
           "format": "XM",
           "channels": 8,
@@ -3614,6 +4873,15 @@
           "instruments": 14,
           "file": "ft2/radix-unreal_superhero.xm",
           "bytes": 28841
+        },
+        {
+          "title": "feng shui schematics",
+          "format": "XM",
+          "channels": 16,
+          "patterns": 19,
+          "instruments": 20,
+          "file": "ft2/radix_-_feng_shui_schematics.xm",
+          "bytes": 80162
         },
         {
           "title": "take on me",
@@ -3634,6 +4902,150 @@
           "bytes": 15421279
         },
         {
+          "title": "Rainbow Dash",
+          "format": "XM",
+          "channels": 14,
+          "patterns": 44,
+          "instruments": 29,
+          "file": "ft2/rainbowdash.xm",
+          "bytes": 111398
+        },
+        {
+          "title": "unreeeal superhero 2",
+          "format": "XM",
+          "channels": 8,
+          "patterns": 8,
+          "instruments": 40,
+          "file": "ft2/rez-unreal_superhero2.xm",
+          "bytes": 23400
+        },
+        {
+          "title": "Rollin'DowntheStreet",
+          "format": "XM",
+          "channels": 20,
+          "patterns": 42,
+          "instruments": 24,
+          "file": "ft2/rollingdownthestreet.xm",
+          "bytes": 392942
+        },
+        {
+          "title": "sapphire_eyes",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 29,
+          "instruments": 24,
+          "file": "ft2/sapphire_eyes.xm",
+          "bytes": 484017
+        },
+        {
+          "title": "Scotchman in a skirt",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 25,
+          "instruments": 71,
+          "file": "ft2/scotch.xm",
+          "bytes": 880315
+        },
+        {
+          "title": "GhidaPoP",
+          "format": "XM",
+          "channels": 8,
+          "patterns": 25,
+          "instruments": 22,
+          "file": "ft2/shittune.xm",
+          "bytes": 37237
+        },
+        {
+          "title": "SIL FOREVER",
+          "format": "XM",
+          "channels": 10,
+          "patterns": 71,
+          "instruments": 44,
+          "file": "ft2/sil-the_silhouette_game_-_sil_forever.xm",
+          "bytes": 316999
+        },
+        {
+          "title": "squired",
+          "format": "XM",
+          "channels": 16,
+          "patterns": 41,
+          "instruments": 27,
+          "file": "ft2/squired.xm",
+          "bytes": 673260
+        },
+        {
+          "title": "Endless wave",
+          "format": "XM",
+          "channels": 18,
+          "patterns": 50,
+          "instruments": 21,
+          "file": "ft2/sr_sergio_-_endless_wave.xm",
+          "bytes": 1366359
+        },
+        {
+          "title": "The Rebel Princess",
+          "format": "XM",
+          "channels": 18,
+          "patterns": 37,
+          "instruments": 51,
+          "file": "ft2/sr_sergio_-_the_rebel_princess.xm",
+          "bytes": 1695162
+        },
+        {
+          "title": "<<T R A N C E  E-9>>",
+          "format": "XM",
+          "channels": 26,
+          "patterns": 61,
+          "instruments": 40,
+          "file": "ft2/sr_sergio_-_trance_e9.xm",
+          "bytes": 2254448
+        },
+        {
+          "title": "my_styles",
+          "format": "XM",
+          "channels": 18,
+          "patterns": 63,
+          "instruments": 42,
+          "file": "ft2/styles.xm",
+          "bytes": 1061359
+        },
+        {
+          "title": "superglam",
+          "format": "XM",
+          "channels": 20,
+          "patterns": 22,
+          "instruments": 32,
+          "file": "ft2/superglam.xm",
+          "bytes": 904386
+        },
+        {
+          "title": "sofa surfin' (short)",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 73,
+          "instruments": 64,
+          "file": "ft2/surfing.xm",
+          "bytes": 2409920
+        },
+        {
+          "title": "SurfingOnASineWave",
+          "format": "XM",
+          "channels": 21,
+          "patterns": 39,
+          "instruments": 28,
+          "file": "ft2/surfonasinewave.xm",
+          "bytes": 427614
+        },
+        {
+          "title": "Suspiria",
+          "format": "XM",
+          "channels": 24,
+          "patterns": 34,
+          "instruments": 31,
+          "file": "ft2/suspiria.xm",
+          "bytes": 348157
+        },
+        {
           "title": "Sweet dreams",
           "format": "XM",
           "channels": 24,
@@ -3641,6 +5053,87 @@
           "instruments": 24,
           "file": "ft2/sweetdre.xm",
           "bytes": 700313
+        },
+        {
+          "title": "Tits that fits",
+          "format": "XM",
+          "channels": 8,
+          "patterns": 19,
+          "instruments": 22,
+          "file": "ft2/titsfits.xm",
+          "bytes": 25335
+        },
+        {
+          "title": "Toilet story 4 u",
+          "format": "XM",
+          "channels": 16,
+          "patterns": 54,
+          "instruments": 39,
+          "file": "ft2/toilet4.xm",
+          "bytes": 122129
+        },
+        {
+          "title": "underwater sex.i.c.",
+          "format": "XM",
+          "channels": 20,
+          "patterns": 88,
+          "instruments": 42,
+          "file": "ft2/underwater.xm",
+          "bytes": 596214
+        },
+        {
+          "title": "unreeeal superhero 3",
+          "format": "XM",
+          "channels": 10,
+          "patterns": 16,
+          "instruments": 16,
+          "file": "ft2/unreeeal_superhero_3.xm",
+          "bytes": 35045
+        },
+        {
+          "title": "Untouched",
+          "format": "XM",
+          "channels": 30,
+          "patterns": 45,
+          "instruments": 43,
+          "file": "ft2/untouche.xm",
+          "bytes": 956506
+        },
+        {
+          "title": "When Northern Lights",
+          "format": "XM",
+          "channels": 28,
+          "patterns": 25,
+          "instruments": 19,
+          "file": "ft2/whennorthernlightsgodown.xm",
+          "bytes": 1753285
+        },
+        {
+          "title": "Saturation (Part I)",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 27,
+          "instruments": 48,
+          "file": "ft2/xo-sat.xm",
+          "bytes": 1531067
+        },
+        {
+          "title": "marie",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 70,
+          "instruments": 32,
+          "file": "ft2/xr-marie.xm",
+          "bytes": 1932582
+        },
+        {
+          "title": "picture of her",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 54,
+          "instruments": 59,
+          "file": "ft2/xr-pict.xm",
+          "bytes": 837889
         },
         {
           "title": "Dans la rue",
@@ -3784,6 +5277,13 @@
           "bytes": 3201
         },
         {
+          "title": "On a sanction from CIA",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/cadaver/on_a_sanction_from_cia.sng",
+          "bytes": 5364
+        },
+        {
           "title": "tarantula",
           "format": "GT1",
           "channels": 3,
@@ -3791,11 +5291,53 @@
           "bytes": 6818
         },
         {
+          "title": "The Consultant",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/cadaver/the_consultant.sng",
+          "bytes": 3060
+        },
+        {
+          "title": "Transylvanian Whipping",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/cadaver/transylvanian_whipping.sng",
+          "bytes": 7571
+        },
+        {
+          "title": "Unleash The F****** Fury",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/cadaver/unleash_the_fury.sng",
+          "bytes": 15507
+        },
+        {
           "title": "warlord",
           "format": "GT1",
           "channels": 3,
           "file": "goattracker/cadaver/warlord.sng",
           "bytes": 7174
+        },
+        {
+          "title": "i'll be a pimp in cabrini green",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/gt-examples/cabrini_green.sng",
+          "bytes": 20517
+        },
+        {
+          "title": "GhostTrackers",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/gt-examples/ghosttrackers.sng",
+          "bytes": 11209
+        },
+        {
+          "title": "My Own Hyperspace",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/gt-examples/my_own_hyperspace.sng",
+          "bytes": 7819
         },
         {
           "title": "Sid-Warrior",
@@ -3929,6 +5471,139 @@
           "channels": 3,
           "file": "goattracker/mch/two_years_in_gp.sng",
           "bytes": 5210
+        },
+        {
+          "title": "Sixpack of Cola",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/no-xs/sixpack_of_cola.sng",
+          "bytes": 10530
+        },
+        {
+          "title": "Cobra Mission 2",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/cobra_mission_2.sng",
+          "bytes": 12284
+        },
+        {
+          "title": "Dark Force",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/dark_force.sng",
+          "bytes": 13339
+        },
+        {
+          "title": "Everlasting Annoyance",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/everlasting_annoyance.sng",
+          "bytes": 2551
+        },
+        {
+          "title": "Gold Quest 5",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/gold_quest_5.sng",
+          "bytes": 12688
+        },
+        {
+          "title": "Grayhawk 2013",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/grayhawk2013.sng",
+          "bytes": 10948
+        },
+        {
+          "title": "Hover Raider RX",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/hover_raider_rx.sng",
+          "bytes": 10829
+        },
+        {
+          "title": "INVERT",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/invert.sng",
+          "bytes": 20806
+        },
+        {
+          "title": "Let's Invade",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/lets_invade_v3.sng",
+          "bytes": 17597
+        },
+        {
+          "title": "Night of the Valkyrie",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/night_of_the_valkirie.sng",
+          "bytes": 8629
+        },
+        {
+          "title": "On the Farm 3",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/on_the_farm3.sng",
+          "bytes": 15647
+        },
+        {
+          "title": "Retron - Phase One",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/retron.sng",
+          "bytes": 10042
+        },
+        {
+          "title": "Sheep vs Fox DX",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/sheep_vs_fox_dx.sng",
+          "bytes": 13128
+        },
+        {
+          "title": "Strike Team - Alpha Missions",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/strike_team_alpha.sng",
+          "bytes": 14917
+        },
+        {
+          "title": "Super Tau Zeta 2",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/super_tau_zeta_2.sng",
+          "bytes": 13545
+        },
+        {
+          "title": "Trance Sector Ultimate",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/trance_sector_ultimate_2015.sng",
+          "bytes": 16293
+        },
+        {
+          "title": "Up in the Air",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/up_in_the_air.sng",
+          "bytes": 11771
+        },
+        {
+          "title": "Woolly Jumper",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/woolly_jumper_v3.sng",
+          "bytes": 21810
+        },
+        {
+          "title": "X-Force Trance",
+          "format": "GT2",
+          "channels": 3,
+          "file": "goattracker/richard_bayliss/x_force_trance.sng",
+          "bytes": 14344
         },
         {
           "title": "Wings of Death -level 2",

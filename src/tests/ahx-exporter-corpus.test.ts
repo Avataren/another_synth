@@ -49,8 +49,8 @@ describe('the AHX exporter over the demo corpus, through the store', () => {
       checked++;
     }
     expect(differing).toEqual([]);
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 .ahx files, 2026-09-22)
-    expect(checked).toBe(77);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 .ahx files, 2026-09-28)
+    expect(checked).toBe(103);
   });
 
   it('exports every unedited .hvl song byte-identically to its source', () => {
@@ -89,8 +89,8 @@ describe('the AHX exporter over the demo corpus, through the store', () => {
 
   it('keeps a song name with edge whitespace verbatim when the title is untouched', () => {
     const padded = corpus.filter((f) => name_isAhx(f.name) && rawName(f.bytes) !== rawName(f.bytes).trim());
-    // The corpus has two (the title is the trimmed name, so only the base name can restore the padding).
-    expect(padded.map((f) => f.name)).toEqual(['blondie.ahx', 'carpe_noctem_theme.ahx']);
+    // The corpus has three (the title is the trimmed name, so only the base name can restore the padding).
+    expect(padded.map((f) => f.name)).toEqual(['blondie.ahx', 'carpe_noctem_theme.ahx', 'twangies_from_heaven!.ahx']);
     for (const { name, bytes } of padded) {
       const song = snapshotEditorSong(openInEditor(bytes));
       expect(song.data.currentSong.title, name).toBe(rawName(bytes).trim());

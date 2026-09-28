@@ -34,6 +34,7 @@ const EXPLICIT_BLANK_TRACK_0 = [
   'classic_cracktro.ahx',
   'depressed.ahx',
   'running.ahx',
+  'sunstone.ahx',
   'winter_dreams.ahx',
 ];
 
@@ -65,13 +66,14 @@ const TRAILING_NAME_NUL = ['meltwater_10ch.hvl'];
 
 describe('AHX/HVL writer corpus', () => {
   it('reads the whole corpus', () => {
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 77 .ahx + 22 .hvl files, 2026-09-23:
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 .ahx + 22 .hvl files, 2026-09-28;
+    // 2026-09-23:
     // chiprolled.hvl removed — byte-identical to Xeron's "never gonna give you up.hvl", user decision)
-    expect(corpus.length).toBe(99);
+    expect(corpus.length).toBe(125);
     expect(corpus.filter((f) => f.name.endsWith('.hvl')).length).toBe(22);
   });
 
-  it('(A) with the source as base, writes every file byte-identically: 99/99', () => {
+  it('(A) with the source as base, writes every file byte-identically: 125/125', () => {
     let checked = 0;
     for (const { name, bytes } of corpus) {
       const out = serializeAhx(parseAhx(bytes), { base: bytes });
@@ -86,11 +88,11 @@ describe('AHX/HVL writer corpus', () => {
       }
       checked++;
     }
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 99 files, 2026-09-23)
-    expect(checked).toBe(99);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 125 files, 2026-09-28)
+    expect(checked).toBe(125);
   });
 
-  it('(B) from the model alone, writes 91 files byte-identically and the other 8 as documented', () => {
+  it('(B) from the model alone, writes 116 files byte-identically and the other 9 as documented', () => {
     let identical = 0;
     let explained = 0;
     for (const { name, bytes } of corpus) {
@@ -133,13 +135,13 @@ describe('AHX/HVL writer corpus', () => {
       }
     }
     // corpus-size constant — re-measured 2026-09-23: chiprolled.hvl (removed as a
-    // byte-identical dupe) was byte-identical here too, so 92→91
-    expect(identical).toBe(91);
-    expect(explained).toBe(8);
-    expect(EXPLICIT_BLANK_TRACK_0.length + Object.values(INERT_BYTE_19_BITS).length + TRAILING_NAME_NUL.length).toBe(8);
+    // byte-identical dupe) was byte-identical here too, so 92→91; 2026-09-28 +26 demos → 116 (+ sunstone.ahx explained)
+    expect(identical).toBe(116);
+    expect(explained).toBe(9);
+    expect(EXPLICIT_BLANK_TRACK_0.length + Object.values(INERT_BYTE_19_BITS).length + TRAILING_NAME_NUL.length).toBe(9);
   });
 
-  it('is a fixed point: writing what it wrote gives the same bytes, all 99', () => {
+  it('is a fixed point: writing what it wrote gives the same bytes, all 125', () => {
     let checked = 0;
     for (const { name, bytes } of corpus) {
       const once = serializeAhx(parseAhx(bytes));
@@ -148,7 +150,7 @@ describe('AHX/HVL writer corpus', () => {
       expect(sameBytes(serializeAhx(parseAhx(once), { base: once }), once), `${name}: base = own output`).toBe(true);
       checked++;
     }
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 99 files, 2026-09-23)
-    expect(checked).toBe(99);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 125 files, 2026-09-28)
+    expect(checked).toBe(125);
   });
 });
