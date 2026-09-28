@@ -58,11 +58,7 @@ impl SampleData {
 
     #[inline]
     pub fn len(&self) -> usize {
-        if self.channels == 0 {
-            0
-        } else {
-            self.samples.len() / self.channels
-        }
+        self.samples.len().checked_div(self.channels).unwrap_or(0)
     }
 
     #[inline]
@@ -360,15 +356,14 @@ impl AudioNode for Sampler {
         // Expected domain: 0..1 where 0 = left, 0.5 = center, 1 = right.
         let has_pan_mod = inputs
             .get(&PortId::StereoPan)
-            .map_or(false, |sources| !sources.is_empty());
-        let (pan_add, _pan_mult) =
-            self.collect_modulation(PortId::StereoPan, inputs, buffer_size);
+            .is_some_and(|sources| !sources.is_empty());
+        let (pan_add, _pan_mult) = self.collect_modulation(PortId::StereoPan, inputs, buffer_size);
 
         // Collect sample offset modulation (driven by macros for MOD imports).
         // Expected domain: 0..1 where 0 = start, 1 = end of sample.
         let has_offset_mod = inputs
             .get(&PortId::SampleOffset)
-            .map_or(false, |sources| !sources.is_empty());
+            .is_some_and(|sources| !sources.is_empty());
         let (offset_add, _offset_mult) =
             self.collect_modulation(PortId::SampleOffset, inputs, buffer_size);
 

@@ -652,21 +652,33 @@ pub const INSTRUMENT_CORE_BYTES: usize = 22;
 /// high nibble of a "toggle filter" parameter (`parse_plist_entry_ahx`), and an
 /// instrument decoded for such a song must be read the same way. The buffer
 /// must be exactly as long as its own length byte says.
-pub fn parse_instrument(bytes: &[u8], format: SongFormat, version: u8, name: String) -> Result<Instrument, AhxParseError> {
+pub fn parse_instrument(
+    bytes: &[u8],
+    format: SongFormat,
+    version: u8,
+    name: String,
+) -> Result<Instrument, AhxParseError> {
     let r = Reader { buf: bytes };
     let core = parse_instrument_core(&r, 0)?;
     let entry_bytes = plist_entry_bytes(format);
     let expected = INSTRUMENT_CORE_BYTES + core.plist_length as usize * entry_bytes;
     if bytes.len() != expected {
-        return Err(AhxParseError::BadInstrumentLength { expected, got: bytes.len() });
+        return Err(AhxParseError::BadInstrumentLength {
+            expected,
+            got: bytes.len(),
+        });
     }
     let mut entries = Vec::with_capacity(core.plist_length as usize);
     for row in 0..core.plist_length as usize {
         let at = INSTRUMENT_CORE_BYTES + row * entry_bytes;
         let byte = |i: usize| r.u8(at + i, "plist entry");
         entries.push(match format {
-            SongFormat::Ahx => parse_plist_entry_ahx(byte(0)?, byte(1)?, byte(2)?, byte(3)?, version),
-            SongFormat::Hvl => parse_plist_entry_hvl(byte(0)?, byte(1)?, byte(2)?, byte(3)?, byte(4)?),
+            SongFormat::Ahx => {
+                parse_plist_entry_ahx(byte(0)?, byte(1)?, byte(2)?, byte(3)?, version)
+            }
+            SongFormat::Hvl => {
+                parse_plist_entry_hvl(byte(0)?, byte(1)?, byte(2)?, byte(3)?, byte(4)?)
+            }
         });
     }
     Ok(core.finish(name, entries))
@@ -694,6 +706,5 @@ pub fn parse(buf: &[u8]) -> Result<Song, AhxParseError> {
 /// future `formats/ahx.ts` (P1) has a native-decoder-verified reference for
 /// its own sniff check.
 pub fn looks_like_ahx_or_hvl(buf: &[u8]) -> bool {
-    buf.len() >= 4
-        && ((&buf[0..3] == b"THX" && buf[3] < 3) || (&buf[0..3] == b"HVL" && buf[3] < 2))
+    buf.len() >= 4 && ((&buf[0..3] == b"THX" && buf[3] < 3) || (&buf[0..3] == b"HVL" && buf[3] < 2))
 }

@@ -93,7 +93,8 @@ fn render_script_to_wav() {
         bits_per_sample: 16,
         sample_format: hound::SampleFormat::Int,
     };
-    let mut wav = hound::WavWriter::create(std::env::var("OPL_WAV").expect("OPL_WAV"), spec).unwrap();
+    let mut wav =
+        hound::WavWriter::create(std::env::var("OPL_WAV").expect("OPL_WAV"), spec).unwrap();
     for s in samples {
         wav.write_sample(s).unwrap();
     }
@@ -105,8 +106,14 @@ fn render_script_to_wav() {
 #[test]
 fn the_goldens_are_not_trivial() {
     let adsr = read_i16(&golden_dir().join("02-envelope-adsr.i16"));
-    assert!(adsr.iter().any(|&s| s.abs() > 4000), "ADSR golden never gets loud");
-    assert!(adsr[adsr.len() - 2000..].iter().all(|&s| s == 0), "ADSR golden never releases to silence");
+    assert!(
+        adsr.iter().any(|&s| s.abs() > 4000),
+        "ADSR golden never gets loud"
+    );
+    assert!(
+        adsr[adsr.len() - 2000..].iter().all(|&s| s == 0),
+        "ADSR golden never releases to silence"
+    );
 
     let stereo = read_i16(&golden_dir().join("06-opl3-stereo-waveforms.i16"));
     let (l, r): (Vec<i16>, Vec<i16>) = stereo.chunks_exact(2).map(|p| (p[0], p[1])).unzip();
@@ -114,7 +121,10 @@ fn the_goldens_are_not_trivial() {
     assert!(l.iter().any(|&s| s != 0) && r.iter().any(|&s| s != 0));
 
     let chord = read_i16(&golden_dir().join("05-nine-voice-chord.i16"));
-    assert!(chord.iter().any(|&s| s == i16::MAX || s == i16::MIN), "chord golden never clamps");
+    assert!(
+        chord.iter().any(|&s| s == i16::MAX || s == i16::MIN),
+        "chord golden never clamps"
+    );
 }
 
 /// Throughput, not a gate: 18 sounding 2-op channels plus the 48 kHz
@@ -130,7 +140,13 @@ fn throughput() {
     for ch in 0..18u16 {
         let (bank, c) = (0x100 * (ch / 9), ch % 9);
         let op = bank + c + 3 * (c / 3);
-        for (base, v) in [(0x20, 0x21), (0x40, 0x10), (0x60, 0xf2), (0x80, 0x24), (0xe0, 0x02)] {
+        for (base, v) in [
+            (0x20, 0x21),
+            (0x40, 0x10),
+            (0x60, 0xf2),
+            (0x80, 0x24),
+            (0xe0, 0x02),
+        ] {
             chip.write(base + op, v);
             chip.write(base + op + 3, v);
         }
@@ -151,7 +167,10 @@ fn throughput() {
         acc += l + r;
     }
     let elapsed = start.elapsed().as_secs_f64();
-    println!("{seconds} s of audio in {elapsed:.3} s: {:.0}x real time ({acc})", seconds as f64 / elapsed);
+    println!(
+        "{seconds} s of audio in {elapsed:.3} s: {:.0}x real time ({acc})",
+        seconds as f64 / elapsed
+    );
 }
 
 /// Vibrato lifts a high FNUM past the 10-bit range; the chip does not wrap it
@@ -164,8 +183,14 @@ fn vibrato_does_not_wrap_a_high_fnum() {
     // The upper swing at either depth: PM_SCALE's +4 (0xBD bit 6 clear), +8 (set).
     for pm in [4, 8] {
         let up = compute_phase_step(block_freq, 2, pm);
-        assert!(up > base, "pm {pm}: step {up} fell below the unmodulated {base}");
-        assert!(up - base < base / 50, "pm {pm}: step {up} jumped from {base}");
+        assert!(
+            up > base,
+            "pm {pm}: step {up} fell below the unmodulated {base}"
+        );
+        assert!(
+            up - base < base / 50,
+            "pm {pm}: step {up} jumped from {base}"
+        );
     }
     // And the lower swing stays just under it.
     let down = compute_phase_step(block_freq, 2, -8);

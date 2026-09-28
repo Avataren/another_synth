@@ -617,7 +617,7 @@ impl AudioNode for AnalogOscillator {
         if let Some(gs) = inputs.get(&PortId::GlobalGate) {
             for src in gs {
                 Self::apply_add(
-                    &src.buffer,
+                    src.buffer,
                     &mut self.gate_buf[..buffer_size],
                     src.amount,
                     src.transformation,

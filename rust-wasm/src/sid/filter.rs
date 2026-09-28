@@ -33,6 +33,7 @@
 //!   on the 8580 and on the 6581 profiles that follow GT (`GT_REF`, `R4AR`).
 //!   The measured chip profiles (`R3`, `R4`) have none: the 6581 ceiling is
 //!   the profile's `cutoff_ceiling_hz`. The maps themselves stay unclamped.
+//!
 //! Linear: no saturation. The 8580 is "clean", not perfectly so.
 //!
 //! 6581 (S2, plan §1.2 "static nonlinear remap of the cutoff register +
@@ -224,7 +225,11 @@ impl Filter {
 
     /// A filter with `model`'s maps; a 6581 plays `profile`'s cutoff curve,
     /// resonance map and soft limit (an 8580 ignores it).
-    pub fn with_profile(model: SidModel, profile: &'static RevisionProfile, sample_rate: f64) -> Self {
+    pub fn with_profile(
+        model: SidModel,
+        profile: &'static RevisionProfile,
+        sample_rate: f64,
+    ) -> Self {
         let mut f = Filter {
             s1: 0.0,
             s2: 0.0,
@@ -312,7 +317,10 @@ impl Filter {
     pub fn set(&mut self, cutoff_reg: u16, res: u8) {
         self.cutoff_reg = cutoff_reg & 0x7FF;
         self.res = res & 0xF;
-        let fc = self.cutoff().min(self.ceiling()).min(self.sample_rate * 0.49);
+        let fc = self
+            .cutoff()
+            .min(self.ceiling())
+            .min(self.sample_rate * 0.49);
         self.fc = fc;
         self.g = (PI * fc / self.sample_rate).tan();
         self.k = 1.0 / self.q();
@@ -394,13 +402,23 @@ mod tests {
                 let mut f = Filter::with_model(model, sr);
                 f.set(0x7FF, 0);
                 assert_eq!(f.effective_cutoff(), 4000.0, "{model:?} sr {sr} reg 0x7FF");
-                assert!(f.cutoff() > 4000.0, "{model:?}: the map itself is unclamped");
+                assert!(
+                    f.cutoff() > 4000.0,
+                    "{model:?}: the map itself is unclamped"
+                );
                 // First register whose map exceeds 4 kHz clamps; below passes.
-                let over = (0..=0x7FFu16).find(|&r| cutoff_hz_for(model, r) > 4000.0).unwrap();
+                let over = (0..=0x7FFu16)
+                    .find(|&r| cutoff_hz_for(model, r) > 4000.0)
+                    .unwrap();
                 f.set(over, 0);
                 assert_eq!(f.effective_cutoff(), 4000.0, "{model:?} reg {over:#x}");
                 f.set(over - 1, 0);
-                assert_eq!(f.effective_cutoff(), cutoff_hz_for(model, over - 1), "{model:?} reg {:#x}", over - 1);
+                assert_eq!(
+                    f.effective_cutoff(),
+                    cutoff_hz_for(model, over - 1),
+                    "{model:?} reg {:#x}",
+                    over - 1
+                );
             }
         }
     }
@@ -509,8 +527,14 @@ mod tests {
         // Endpoints: 220 Hz floor at 0, 18 kHz at 0x7FF.
         assert!((cutoff_hz_6581_with(&R4AR, 0) - 220.0).abs() < 1e-9);
         assert!((cutoff_hz_6581_with(&R4AR, 0x7FF) - 18_000.0).abs() < 1e-6);
-        assert_eq!(cutoff_hz_6581_with(&R4AR, 0x800), cutoff_hz_6581_with(&R4AR, 0)); // 11 bits only
-        assert_eq!(cutoff_hz_6581_with(&R4AR, 0xFFFF), cutoff_hz_6581_with(&R4AR, 0x7FF));
+        assert_eq!(
+            cutoff_hz_6581_with(&R4AR, 0x800),
+            cutoff_hz_6581_with(&R4AR, 0)
+        ); // 11 bits only
+        assert_eq!(
+            cutoff_hz_6581_with(&R4AR, 0xFFFF),
+            cutoff_hz_6581_with(&R4AR, 0x7FF)
+        );
         // Measured anchors (.ai/sid-chip-comparison-report.md §6.3), ±5%.
         for (reg, want) in [
             (0x200u16, 420.0),
@@ -558,7 +582,10 @@ mod tests {
             assert!((a / b).max(b / a) > 1.45, "reg {r}: 6581 {a} vs 8580 {b}");
         }
         assert_eq!(cutoff_hz_for(SidModel::Sid8580, 0x333), cutoff_hz(0x333));
-        assert_eq!(cutoff_hz_for(SidModel::Sid6581, 0x333), cutoff_hz_6581(0x333));
+        assert_eq!(
+            cutoff_hz_for(SidModel::Sid6581, 0x333),
+            cutoff_hz_6581(0x333)
+        );
     }
 
     #[test]
@@ -608,7 +635,10 @@ mod tests {
         let fc = cutoff_hz_6581_with(&R4AR, reg);
         for res in [0u8, 8, 15] {
             let g = sine_gain_6581(LP, reg, res, fc, 0.01);
-            assert!((g / resonance_q_6581_with(&R4AR, res) - 1.0).abs() < 0.02, "res {res}: {g}");
+            assert!(
+                (g / resonance_q_6581_with(&R4AR, res) - 1.0).abs() < 0.02,
+                "res {res}: {g}"
+            );
         }
         // Level-dependent peak gain: the band-pass state is clamped below
         // SAT = 1, so the resonant peak must fall as the level rises. At

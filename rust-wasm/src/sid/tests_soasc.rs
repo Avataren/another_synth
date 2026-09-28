@@ -27,7 +27,15 @@ fn the_measured_chips_are_revisions_a_chip_can_take() {
 fn r4_hits_the_sidbench_measurement() {
     // LP/HP crossover of SOASC's R4 sweeps, median of three voices, Hz.
     // The anchors are a smoothed fit: within 10% of each raw point.
-    for (hi, hz) in [(14u16, 297.0), (62, 294.0), (110, 452.0), (146, 1_193.0), (170, 3_689.0), (194, 8_276.0), (218, 13_196.0)] {
+    for (hi, hz) in [
+        (14u16, 297.0),
+        (62, 294.0),
+        (110, 452.0),
+        (146, 1_193.0),
+        (170, 3_689.0),
+        (194, 8_276.0),
+        (218, 13_196.0),
+    ] {
         let got = at_hi(&R4, hi);
         assert!((got / hz - 1.0).abs() < 0.10, "FC_HI {hi}: {got} vs {hz}");
     }
@@ -37,7 +45,15 @@ fn r4_hits_the_sidbench_measurement() {
 fn r2_hits_its_sidbench_measurement() {
     // LP/HP crossover of SOASC's R2 sweeps, Hz. R2 is R4's curve read 680
     // steps higher: 6.5% off on average, 12% at worst (FC_HI 104), below 15 kHz.
-    for (hi, hz) in [(14u16, 376.0), (50, 879.0), (68, 1_783.0), (86, 3_785.0), (104, 6_908.0), (122, 11_291.0), (140, 13_773.0)] {
+    for (hi, hz) in [
+        (14u16, 376.0),
+        (50, 879.0),
+        (68, 1_783.0),
+        (86, 3_785.0),
+        (104, 6_908.0),
+        (122, 11_291.0),
+        (140, 13_773.0),
+    ] {
         let got = at_hi(&R2, hi);
         assert!((got / hz - 1.0).abs() < 0.15, "FC_HI {hi}: {got} vs {hz}");
     }
@@ -49,7 +65,11 @@ fn measured_curves_rise_without_the_step_at_0x400() {
         let mut last = 0.0;
         for reg in 0..0x800u16 {
             let hz = cutoff_hz_6581_with(p, reg);
-            assert!(hz >= last * 0.995, "{:?} reg {reg:#05x}: {hz} after {last}", p.revision);
+            assert!(
+                hz >= last * 0.995,
+                "{:?} reg {reg:#05x}: {hz} after {last}",
+                p.revision
+            );
             last = hz;
         }
     }
@@ -62,11 +82,18 @@ fn r3_is_r4_shifted_brighter_by_880() {
     for reg in (0..0x480u16).step_by(0x20) {
         let want = cutoff_hz_6581_with(&R4, reg + 880);
         let got = cutoff_hz_6581_with(&R3, reg);
-        assert!((got / want - 1.0).abs() < 0.10, "reg {reg:#05x}: {got} vs {want}");
+        assert!(
+            (got / want - 1.0).abs() < 0.10,
+            "reg {reg:#05x}: {got} vs {want}"
+        );
     }
     // The order the recordings showed at every register: R4 darkest, R3 brightest.
     for reg in (0x100..0x400u16).step_by(0x40) {
-        let (r2, r3, r4) = (cutoff_hz_6581_with(&R2, reg), cutoff_hz_6581_with(&R3, reg), cutoff_hz_6581_with(&R4, reg));
+        let (r2, r3, r4) = (
+            cutoff_hz_6581_with(&R2, reg),
+            cutoff_hz_6581_with(&R3, reg),
+            cutoff_hz_6581_with(&R4, reg),
+        );
         assert!(r3 > r2 && r2 > r4 * 1.5, "reg {reg:#05x}: {r2} {r3} {r4}");
     }
 }
@@ -115,7 +142,15 @@ fn revision_names_round_trip() {
 
 /// A short filtered noise burst on voice 1, cutoff `fc_hi`.
 fn noise_through_filter(c: &mut Chip, fc_hi: u8, n: usize) -> Vec<f32> {
-    for (reg, val) in [(0x01, 0x40), (0x05, 0x00), (0x06, 0xF0), (0x16, fc_hi), (0x17, 0x01), (0x18, 0x1F), (0x04, 0x81)] {
+    for (reg, val) in [
+        (0x01, 0x40),
+        (0x05, 0x00),
+        (0x06, 0xF0),
+        (0x16, fc_hi),
+        (0x17, 0x01),
+        (0x18, 0x1F),
+        (0x04, 0x81),
+    ] {
         c.write(reg, val);
     }
     let mut out = vec![0.0; n];
@@ -131,7 +166,10 @@ fn switching_a_fresh_chip_is_building_it_with_that_profile() {
         switched.set_profile(p);
         assert_eq!(switched.profile(), p);
         assert_eq!(switched.tap_full_scale(), built.tap_full_scale());
-        assert_eq!(noise_through_filter(&mut switched, 0x40, 2048), noise_through_filter(&mut built, 0x40, 2048));
+        assert_eq!(
+            noise_through_filter(&mut switched, 0x40, 2048),
+            noise_through_filter(&mut built, 0x40, 2048)
+        );
     }
 }
 
@@ -139,9 +177,15 @@ fn switching_a_fresh_chip_is_building_it_with_that_profile() {
 fn a_switch_mid_play_moves_the_cutoff_at_once_and_keeps_the_registers() {
     let mut c = Chip::with_profile(SidModel::Sid6581, DEFAULT_SAMPLE_RATE, &R4).unwrap();
     noise_through_filter(&mut c, 0x40, 512);
-    assert_eq!(c.filter().effective_cutoff(), cutoff_hz_6581_with(&R4, 0x40 << 3));
+    assert_eq!(
+        c.filter().effective_cutoff(),
+        cutoff_hz_6581_with(&R4, 0x40 << 3)
+    );
     c.set_profile(&R3);
-    assert_eq!(c.filter().effective_cutoff(), cutoff_hz_6581_with(&R3, 0x40 << 3));
+    assert_eq!(
+        c.filter().effective_cutoff(),
+        cutoff_hz_6581_with(&R3, 0x40 << 3)
+    );
     assert_eq!(c.written(0x16), 0x40);
     // An 8580 keeps its own filter whatever it is told.
     let mut e = Chip::with_profile(SidModel::Sid8580, DEFAULT_SAMPLE_RATE, &GT_REF).unwrap();

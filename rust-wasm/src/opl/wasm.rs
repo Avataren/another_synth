@@ -108,7 +108,12 @@ impl OplRenderer {
             self.taps.resize(CHANNELS * n, 0.0);
         }
         self.tap_frames = if taps_on { n } else { 0 };
-        let (chip, queue, native_pos, late) = (&mut self.chip, &mut self.queue, &mut self.native_pos, &mut self.late);
+        let (chip, queue, native_pos, late) = (
+            &mut self.chip,
+            &mut self.queue,
+            &mut self.native_pos,
+            &mut self.late,
+        );
         for i in 0..n {
             let [l, r] = self.resampler.next(|| {
                 while let Some(w) = queue.front() {
@@ -222,7 +227,17 @@ mod tests {
     /// Channel 0: a sine carrier, instant attack, held (EG type sustain),
     /// fastest release.
     fn program_sine(r: &mut OplRenderer) {
-        for (reg, val) in [(0x20, 0x01), (0x23, 0x21), (0x40, 0x3f), (0x43, 0x00), (0x60, 0xf0), (0x63, 0xf0), (0x80, 0x00), (0x83, 0x0f), (0xa0, 0x44)] {
+        for (reg, val) in [
+            (0x20, 0x01),
+            (0x23, 0x21),
+            (0x40, 0x3f),
+            (0x43, 0x00),
+            (0x60, 0xf0),
+            (0x63, 0xf0),
+            (0x80, 0x00),
+            (0x83, 0x0f),
+            (0xa0, 0x44),
+        ] {
             r.write(reg, val);
         }
     }
@@ -282,11 +297,19 @@ mod tests {
             let onset = first_sound(&render(&mut r, 4096)).unwrap() as f64;
             delays.push(onset - key_frame);
         }
-        let (lo, hi) = delays.iter().fold((f64::MAX, f64::MIN), |(lo, hi), &d| (lo.min(d), hi.max(d)));
+        let (lo, hi) = delays
+            .iter()
+            .fold((f64::MAX, f64::MIN), |(lo, hi), &d| (lo.min(d), hi.max(d)));
         // One frame for detecting the onset on integer frames, one for the
         // write landing on a native-sample boundary.
-        assert!(hi - lo <= 2.0, "onset delays vary with the stamp: {delays:?}");
-        assert!(lo > 25.0 && hi < 40.0, "group delay out of range: {delays:?}");
+        assert!(
+            hi - lo <= 2.0,
+            "onset delays vary with the stamp: {delays:?}"
+        );
+        assert!(
+            lo > 25.0 && hi < 40.0,
+            "group delay out of range: {delays:?}"
+        );
     }
 
     #[test]
@@ -294,7 +317,10 @@ mod tests {
         let run = |chunk: usize| {
             let mut r = OplRenderer::new(44_100.0);
             program_sine(&mut r);
-            for (i, frame) in [300.0, 1210.7, 2047.0, 2048.0, 3333.3].into_iter().enumerate() {
+            for (i, frame) in [300.0, 1210.7, 2047.0, 2048.0, 3333.3]
+                .into_iter()
+                .enumerate()
+            {
                 r.write_at(frame, 0xa0, 0x40 + i as u8 * 16);
                 r.write_at(frame, 0xb0, if i % 2 == 0 { 0x32 } else { 0x12 });
             }
@@ -332,7 +358,10 @@ mod tests {
         assert_eq!(r.queued_writes(), 2);
         let out = render(&mut r, 6000);
         assert!(out[1000..1900].iter().any(|s| s.abs() > 0.05));
-        assert!(out[5000..].iter().all(|s| s.abs() < 1e-3), "note never released");
+        assert!(
+            out[5000..].iter().all(|s| s.abs() < 1e-3),
+            "note never released"
+        );
         assert_eq!(r.late_writes(), 0);
     }
 

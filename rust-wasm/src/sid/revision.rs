@@ -63,7 +63,13 @@ pub enum DieRevision {
 
 impl DieRevision {
     /// Every revision, in the order a picker lists them.
-    pub const ALL: [DieRevision; 5] = [DieRevision::GtRef, DieRevision::R2, DieRevision::R3, DieRevision::R4, DieRevision::R4AR];
+    pub const ALL: [DieRevision; 5] = [
+        DieRevision::GtRef,
+        DieRevision::R2,
+        DieRevision::R3,
+        DieRevision::R4,
+        DieRevision::R4AR,
+    ];
 
     /// The revision's name on the wasm API and in the app's settings.
     pub const fn name(self) -> &'static str {

@@ -59,6 +59,12 @@ pub struct ArpeggiatorGenerator {
     prev_step: usize,
 }
 
+impl Default for ArpeggiatorGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ArpeggiatorGenerator {
     /// Creates a new arpeggiator generator.
     pub fn new() -> Self {
@@ -100,6 +106,8 @@ impl ArpeggiatorGenerator {
         self.prev_step = 0;
     }
 
+    // Measure 2 is written as measure-1 pitches `- 12.0`, including `12.0 - 12.0`.
+    #[allow(clippy::eq_op)]
     pub fn create_test_pattern(&mut self, sample_rate: f32, arp_delay: f32) {
         // Two measures, each 16 notes, for a total of 32 steps.
         // Measure 1: a-c-f-g-a-c-f-g-a (up), then g-f-c-a-g-f-c (down)
@@ -108,7 +116,7 @@ impl ArpeggiatorGenerator {
         // Offsets are relative to the FIRST A = 0 semitones.
 
         // Measure 1 (16 steps):
-        let measure1 = vec![
+        let measure1 = [
             // Up (9)
             0.0,  // A
             3.0,  // C
@@ -130,7 +138,7 @@ impl ArpeggiatorGenerator {
         ];
 
         // Measure 2 (16 steps):
-        let measure2 = vec![
+        let measure2 = [
             // Up (9)
             8.0 - 12.0,  // F
             12.0 - 12.0, // A

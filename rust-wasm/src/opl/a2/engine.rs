@@ -1789,15 +1789,11 @@ impl A2Engine {
                     tr.cols[c].tremor_saved = (tr.vol_mod, tr.vol_car);
                 }
             }
-            fx::SET_SPEED => {
-                if param != 0 {
-                    self.speed = param;
-                }
+            fx::SET_SPEED if param != 0 => {
+                self.speed = param;
             }
-            fx::SET_TEMPO => {
-                if param != 0 {
-                    self.tempo = param;
-                }
+            fx::SET_TEMPO if param != 0 => {
+                self.tempo = param;
             }
             fx::POS_JUMP => {
                 self.jump = Some(((param & 0x7f) as usize, 0));
@@ -2108,8 +2104,8 @@ impl A2Engine {
         let Some(v) = self.song.vibrato_macros.get(table.wrapping_sub(1)) else {
             return;
         };
-        if !self.tracks[t].vib_macro.active
-            && !(touched && v.length > 0 && st_ran(&self.tracks[t].vib_macro))
+        if !(self.tracks[t].vib_macro.active
+            || (touched && v.length > 0 && st_ran(&self.tracks[t].vib_macro)))
         {
             return;
         }
@@ -2185,7 +2181,7 @@ impl A2Engine {
                 let op = (n / 4) as usize;
                 let byte = if n % 4 < 2 { 4 + op } else { 6 + op };
                 let tr = &mut self.tracks[t];
-                tr.fm[byte] = if n % 2 == 0 {
+                tr.fm[byte] = if n.is_multiple_of(2) {
                     (tr.fm[byte] & 0x0f) | v << 4
                 } else {
                     (tr.fm[byte] & 0xf0) | v
@@ -2274,7 +2270,13 @@ impl A2Engine {
     /// track's): fine slides and fine volume slides.
     fn note_pass_effects(&mut self, t: usize, out: &mut impl RegisterSink) {
         for c in 0..2 {
-            let Column { fx, param, vib_fine, trem_fine, .. } = self.tracks[t].cols[c];
+            let Column {
+                fx,
+                param,
+                vib_fine,
+                trem_fine,
+                ..
+            } = self.tracks[t].cols[c];
             let mem = self.tracks[t].cols[c].slide_mem as i32;
             match fx {
                 // AT2 `update_fine_effects`: a fine (ZFD/ZFE) vibrato or

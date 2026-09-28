@@ -18,10 +18,13 @@ fn main() {
     }
     let bytes = std::fs::read(&args[1]).expect("reads the song file");
     let frames: usize = args[2].parse().expect("FRAMES is a number");
-    let subsong: usize = args.get(4).map_or(0, |s| s.parse().expect("SUBSONG is a number"));
+    let subsong: usize = args
+        .get(4)
+        .map_or(0, |s| s.parse().expect("SUBSONG is a number"));
     let song = SidSong::parse(&bytes).expect("parses as a SID song file");
     let model = song.model;
-    let mut player = SidSongPlayer::with_model(song, model, DEFAULT_SAMPLE_RATE, subsong).expect("player builds");
+    let mut player = SidSongPlayer::with_model(song, model, DEFAULT_SAMPLE_RATE, subsong)
+        .expect("player builds");
     let mut out = String::new();
     for f in 0..frames {
         player.frame();

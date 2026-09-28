@@ -6,6 +6,12 @@ use std::any::Any;
 
 pub struct GateMixer {}
 
+impl Default for GateMixer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GateMixer {
     pub fn new() -> Self {
         Self {}

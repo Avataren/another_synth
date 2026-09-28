@@ -186,7 +186,9 @@ pub fn level_harmonics(level: usize) -> usize {
     match table.get(level) {
         Some(&h) => h,
         // Past the table (nothing asks for it): the formula, as before.
-        None => ((MAX_HARMONICS as f64 * (-(level as f64) / LEVELS_PER_OCTAVE as f64).exp2()).round() as usize).max(1),
+        None => ((MAX_HARMONICS as f64 * (-(level as f64) / LEVELS_PER_OCTAVE as f64).exp2())
+            .round() as usize)
+            .max(1),
     }
 }
 
@@ -196,7 +198,9 @@ pub fn level_harmonics(level: usize) -> usize {
 /// down to 64 for the 1-partial level. A power of two, and at least
 /// `8 * harmonics` for every level on the ladder.
 pub fn table_size_for(harmonics: usize) -> usize {
-    (POINTS_PER_TOP_PARTIAL * harmonics).next_power_of_two().clamp(MIN_TABLE_SIZE, TABLE_SIZE)
+    (POINTS_PER_TOP_PARTIAL * harmonics)
+        .next_power_of_two()
+        .clamp(MIN_TABLE_SIZE, TABLE_SIZE)
 }
 
 /// The size a source with an `n`-byte cycle builds `harmonics` partials at:
@@ -215,7 +219,9 @@ fn level_table_size(harmonics: usize, n: usize) -> usize {
 /// keep, so it is dropped too). A fundamental at or above Nyquist gets the
 /// 1-partial level.
 pub fn level_for(f0_cycles_per_sample: f64) -> usize {
-    (0..LEVEL_COUNT).find(|&l| (level_harmonics(l) as f64) * f0_cycles_per_sample < 0.5).unwrap_or(LEVEL_COUNT - 1)
+    (0..LEVEL_COUNT)
+        .find(|&l| (level_harmonics(l) as f64) * f0_cycles_per_sample < 0.5)
+        .unwrap_or(LEVEL_COUNT - 1)
 }
 
 /// What a voice keeps between mixer calls: one band-limited cycle and how it
@@ -236,8 +242,13 @@ impl HifiOsc {
     /// `table` (a power-of-two length, at least `n`) played as an `n`-byte cycle.
     fn new(table: Arc<[i16]>, n: usize) -> Self {
         let size = table.len();
-        debug_assert!(size.is_power_of_two() && size >= n && size % n == 0);
-        HifiOsc { ratio: (size / n) as u64, phase_mask: ((size as u64) << 16) - 1, last: size - 1, table }
+        debug_assert!(size.is_power_of_two() && size >= n && size.is_multiple_of(n));
+        HifiOsc {
+            ratio: (size / n) as u64,
+            phase_mask: ((size as u64) << 16) - 1,
+            last: size - 1,
+            table,
+        }
     }
 
     /// The band-limited value at 16.16 buffer position `pos`, in `i8` scale
@@ -268,7 +279,11 @@ impl HifiOsc {
             a[k] = self.table[i] as i32;
             b[k] = self.table[(i + 1) & self.last] as i32;
         }
-        let (a, b, frac) = (i32x4::from_array(a), i32x4::from_array(b), i32x4::from_array(frac));
+        let (a, b, frac) = (
+            i32x4::from_array(a),
+            i32x4::from_array(b),
+            i32x4::from_array(frac),
+        );
         a + (((b - a) * frac) >> i32x4::splat(16))
     }
 }
@@ -418,7 +433,11 @@ impl HifiBank {
     fn get_or_build(&mut self, cycle: &[i8], level: usize) -> Option<Arc<[i16]>> {
         // The common case, by far (a prewarm walk asks for the same table tick
         // after tick): one hash of the key, and out.
-        if let Some(t) = self.sources.get(cycle).and_then(|s| s.levels[level].as_ref()) {
+        if let Some(t) = self
+            .sources
+            .get(cycle)
+            .and_then(|s| s.levels[level].as_ref())
+        {
             return Some(t.clone());
         }
         // The table is not there: building it needs room.
@@ -432,13 +451,24 @@ impl HifiBank {
             self.cached_points = 0;
         }
         if !self.sources.contains_key(cycle) {
-            self.sources.insert(cycle.into(), Source { coeffs: staircase_spectrum(cycle), levels: Default::default() });
+            self.sources.insert(
+                cycle.into(),
+                Source {
+                    coeffs: staircase_spectrum(cycle),
+                    levels: Default::default(),
+                },
+            );
         }
         let source = self.sources.get_mut(cycle).expect("inserted above");
         let harmonics = level_harmonics(level);
         let size = level_table_size(harmonics, cycle.len());
         let inverse = self.planner.plan_fft_inverse(size);
-        let t = build_level(&*inverse, &mut self.scratch[..size], &source.coeffs, harmonics);
+        let t = build_level(
+            &*inverse,
+            &mut self.scratch[..size],
+            &source.coeffs,
+            harmonics,
+        );
         source.levels[level] = Some(t.clone());
         self.cached_tables += 1;
         self.cached_points += size;
@@ -477,7 +507,10 @@ fn staircase_spectrum(cycle: &[i8]) -> Vec<Complex<f32>> {
         // e^(-i*theta) * sin(theta) / (pi*k)
         let g = theta.sin() / (std::f64::consts::PI * k as f64);
         let (gr, gi) = (theta.cos() * g, -theta.sin() * g);
-        out.push(Complex::new((xr * gr - xi * gi) as f32, (xr * gi + xi * gr) as f32));
+        out.push(Complex::new(
+            (xr * gr - xi * gi) as f32,
+            (xr * gi + xi * gr) as f32,
+        ));
     }
     out
 }
@@ -485,7 +518,12 @@ fn staircase_spectrum(cycle: &[i8]) -> Vec<Complex<f32>> {
 /// One mip level: bins `1..=harmonics` (and their conjugates) populated, every
 /// other bin zero -- `wavetable.rs`'s truncation -- then one inverse FFT of
 /// `scratch.len()` points (the level's table size, `inverse`'s length).
-fn build_level(inverse: &dyn Fft<f32>, scratch: &mut [Complex<f32>], coeffs: &[Complex<f32>], harmonics: usize) -> Arc<[i16]> {
+fn build_level(
+    inverse: &dyn Fft<f32>,
+    scratch: &mut [Complex<f32>],
+    coeffs: &[Complex<f32>],
+    harmonics: usize,
+) -> Arc<[i16]> {
     let size = scratch.len();
     debug_assert_eq!(inverse.len(), size);
     debug_assert!(harmonics <= size / 8);
@@ -501,7 +539,14 @@ fn build_level(inverse: &dyn Fft<f32>, scratch: &mut [Complex<f32>], coeffs: &[C
     // rustfft's inverse is unscaled: dividing by M gives sum_k c_k e^(+i..)
     // and the `* m` above already put the coefficients on that scale.
     let scale = (1 << FRAC_BITS) as f32 / m;
-    scratch.iter().map(|c| (c.re * scale).round().clamp(i16::MIN as f32, i16::MAX as f32) as i16).collect()
+    scratch
+        .iter()
+        .map(|c| {
+            (c.re * scale)
+                .round()
+                .clamp(i16::MIN as f32, i16::MAX as f32) as i16
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -522,10 +567,17 @@ mod tests {
         for i in 1..2000 {
             let f0 = i as f64 * 0.00025; // 0.00025 .. 0.5 cycles/sample
             let l = level_for(f0);
-            assert!(level_harmonics(l) as f64 * f0 < 0.5 || l == LEVEL_COUNT - 1, "f0 {f0} level {l}");
+            assert!(
+                level_harmonics(l) as f64 * f0 < 0.5 || l == LEVEL_COUNT - 1,
+                "f0 {f0} level {l}"
+            );
             // ... and it is the richest such level.
             if l > 0 {
-                assert!(level_harmonics(l - 1) as f64 * f0 >= 0.5, "f0 {f0}: level {} would also fit", l - 1);
+                assert!(
+                    level_harmonics(l - 1) as f64 * f0 >= 0.5,
+                    "f0 {f0}: level {} would also fit",
+                    l - 1
+                );
             }
         }
         assert_eq!(level_for(0.0), 0);
@@ -601,7 +653,11 @@ mod tests {
             for i in 1..=200 {
                 let f0 = 0.65 / n as f64 * i as f64 / 200.0;
                 let h = level_harmonics(level_for(f0));
-                assert!(table_size_for(h) >= n, "n {n} f0 {f0}: H={h} gives {} points", table_size_for(h));
+                assert!(
+                    table_size_for(h) >= n,
+                    "n {n} f0 {f0}: H={h} gives {} points",
+                    table_size_for(h)
+                );
             }
             // Anything else (up to past Nyquist): the floor holds the ratio whole.
             let mut bank = HifiBank::new();
@@ -609,7 +665,10 @@ mod tests {
                 let f0 = 0.9 * i as f64 / 400.0;
                 let o = bank.oscillator(&cycle, f0).unwrap();
                 let size = o.table.len();
-                assert!(size >= n && size % n == 0, "n {n} f0 {f0}: size {size}");
+                assert!(
+                    size >= n && size.is_multiple_of(n),
+                    "n {n} f0 {f0}: size {size}"
+                );
                 assert_eq!(o.ratio as usize * n, size);
                 assert_eq!(size, level_table_size(level_harmonics(level_for(f0)), n));
             }
@@ -672,7 +731,9 @@ mod tests {
         for f0 in [1e-5, 0.01, 0.1] {
             let o = osc(&cycle, f0);
             // Mean of the interpolated table over one cycle.
-            let total: f64 = (0..TABLE_SIZE).map(|i| o.sample((i as u64 * (128u64 << 16) / TABLE_SIZE as u64) as u32) as f64).sum();
+            let total: f64 = (0..TABLE_SIZE)
+                .map(|i| o.sample((i as u64 * (128u64 << 16) / TABLE_SIZE as u64) as u32) as f64)
+                .sum();
             let got = total / TABLE_SIZE as f64 / (1 << FRAC_BITS) as f64;
             assert!((got - mean).abs() < 0.3, "f0 {f0}: mean {got} vs {mean}");
         }
@@ -687,11 +748,21 @@ mod tests {
         let h = level_harmonics(level_for(f0));
         assert!(h as f64 * f0 < 0.5);
         let size = o.table.len();
-        let mut spec: Vec<Complex<f32>> = o.table.iter().map(|&s| Complex::new(s as f32, 0.0)).collect();
+        let mut spec: Vec<Complex<f32>> = o
+            .table
+            .iter()
+            .map(|&s| Complex::new(s as f32, 0.0))
+            .collect();
         FftPlanner::new().plan_fft_forward(size).process(&mut spec);
         let peak = spec[1..=h].iter().map(|c| c.norm()).fold(0.0, f32::max);
-        let above = spec[h + 2..size / 2].iter().map(|c| c.norm()).fold(0.0, f32::max);
-        assert!(above < peak * 1e-3, "energy above H={h}: {above} vs peak {peak}");
+        let above = spec[h + 2..size / 2]
+            .iter()
+            .map(|c| c.norm())
+            .fold(0.0, f32::max);
+        assert!(
+            above < peak * 1e-3,
+            "energy above H={h}: {above} vs peak {peak}"
+        );
     }
 
     #[test]
@@ -722,14 +793,20 @@ mod tests {
         assert_eq!(bank.misses(), 0);
 
         // Exact hits are free and count nothing.
-        assert_eq!(table_ptr(&bank.oscillator(&cycle, 0.01).unwrap()), table_ptr(&slow));
+        assert_eq!(
+            table_ptr(&bank.oscillator(&cycle, 0.01).unwrap()),
+            table_ptr(&slow)
+        );
         assert_eq!(bank.misses(), 0);
 
         // A pitch that wants a level in between: served by the next coarser
         // one built (fewer partials -- never aliased), counted, nothing built.
         let mid_f0 = 0.05;
         assert!(level_for(mid_f0) > level_for(0.01) && level_for(mid_f0) < level_for(0.2));
-        assert_eq!(table_ptr(&bank.oscillator(&cycle, mid_f0).unwrap()), table_ptr(&coarse));
+        assert_eq!(
+            table_ptr(&bank.oscillator(&cycle, mid_f0).unwrap()),
+            table_ptr(&coarse)
+        );
         assert_eq!((bank.misses(), bank.table_count()), (1, built));
 
         // A table never seen has nothing to stand in for it: reference path.

@@ -37,8 +37,8 @@ pub mod player;
 pub mod revision;
 pub mod song;
 pub mod voice;
-pub mod waveform;
 pub mod wasm;
+pub mod waveform;
 
 #[cfg(test)]
 mod tests;
@@ -65,9 +65,9 @@ mod tests_s518;
 #[cfg(test)]
 mod tests_s519;
 #[cfg(test)]
-mod tests_start_tempo;
-#[cfg(test)]
 mod tests_soasc;
+#[cfg(test)]
+mod tests_start_tempo;
 
 pub use chip::Chip;
 pub use player::SidSongPlayer;
@@ -109,7 +109,10 @@ impl SidModel {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SidError {
-    ModelNotImplemented { model: SidModel, reason: &'static str },
+    ModelNotImplemented {
+        model: SidModel,
+        reason: &'static str,
+    },
     UnsupportedSampleRate(f64),
 }
 
@@ -134,7 +137,9 @@ pub fn freq_reg_to_hz(reg: u16) -> f64 {
 
 /// Nearest frequency register value for a pitch in Hz (clamped to 16 bits).
 pub fn hz_to_freq_reg(hz: f64) -> u16 {
-    (hz * 16_777_216.0 / PAL_CLOCK_HZ).round().clamp(0.0, 65_535.0) as u16
+    (hz * 16_777_216.0 / PAL_CLOCK_HZ)
+        .round()
+        .clamp(0.0, 65_535.0) as u16
 }
 
 /// Register value for a MIDI note (69 = A-4 = 440 Hz, equal temperament).
@@ -176,6 +181,8 @@ pub fn gt_note_freq_reg(index: u8) -> u16 {
         0
     } else {
         let hz = 440.0 * 2f64.powf((i as i32 - 57) as f64 / 12.0);
-        (hz * 16_777_216.0 / GT_TABLE_CLOCK_HZ).round().clamp(0.0, 65_535.0) as u16
+        (hz * 16_777_216.0 / GT_TABLE_CLOCK_HZ)
+            .round()
+            .clamp(0.0, 65_535.0) as u16
     }
 }

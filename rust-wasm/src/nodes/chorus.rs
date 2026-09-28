@@ -34,13 +34,11 @@ impl FeedbackFilter {
 
         // SAFETY: Clamp state to prevent unbounded growth and check for NaN
         const MAX_STATE: f32 = 100.0;
-        if !self.state.is_finite() {
-            self.state = 0.0;
-        } else if self.state > MAX_STATE {
-            self.state = MAX_STATE;
-        } else if self.state < -MAX_STATE {
-            self.state = -MAX_STATE;
-        }
+        self.state = if self.state.is_finite() {
+            self.state.clamp(-MAX_STATE, MAX_STATE)
+        } else {
+            0.0
+        };
 
         self.state
     }
@@ -127,7 +125,7 @@ fn generate_fir_coeffs(
 ) -> Vec<f32> {
     assert!(num_taps > 0, "Number of taps must be positive.");
     assert!(
-        num_taps % 2 != 0,
+        !num_taps.is_multiple_of(2),
         "Use an odd number of taps for a Type 1 linear phase FIR (zero delay at center)."
     );
     assert!(
@@ -321,7 +319,7 @@ impl Chorus {
         let required_samples_for_delay =
             (max_modulated_delay_ms / 1000.0 * internal_sample_rate).ceil() as usize;
         let max_delay_samples = required_samples_for_delay + INTERPOLATION_MARGIN;
-        let max_safe_read_delay = (max_delay_samples - INTERPOLATION_MARGIN).max(0) as f32;
+        let max_safe_read_delay = (max_delay_samples - INTERPOLATION_MARGIN) as f32;
 
         let initial_base_delay_samples = (base_delay_ms / 1000.0 * internal_sample_rate).max(0.0);
         let initial_depth_samples = (depth_ms / 1000.0 * internal_sample_rate * 0.5).abs();

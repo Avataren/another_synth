@@ -1,10 +1,8 @@
-use audio_processor::automation::AutomationFrame;
 use audio_processor::audio_engine::native::{AudioEngine, EFFECT_NODE_ID_OFFSET};
+use audio_processor::automation::AutomationFrame;
 use audio_processor::biquad::FilterType;
-use audio_processor::nodes::{
-    AnalogOscillatorStateUpdate, FilterSlope, Waveform,
-};
 use audio_processor::graph::{ModulationTransformation, ModulationType};
+use audio_processor::nodes::{AnalogOscillatorStateUpdate, FilterSlope, Waveform};
 use audio_processor::traits::PortId;
 
 const SAMPLE_RATE: f32 = 48_000.0;
@@ -62,26 +60,42 @@ fn oscillator_through_mixer_and_filter_produces_audio() {
             },
         )
         .unwrap();
-    engine.update_filters(
-        filter,
-        SAMPLE_RATE / 4.0,
-        0.0,
-        0.5,
-        0.0,
-        220.0,
-        0.5,
-        0,
-        FilterType::LowPass,
-        FilterSlope::Db12,
-    ).unwrap();
-    engine.connect_nodes(
-        osc, PortId::AudioOutput0, filter, PortId::AudioInput0, 1.0,
-        ModulationType::Additive, ModulationTransformation::None,
-    ).unwrap();
-    engine.connect_nodes(
-        filter, PortId::AudioOutput0, mixer, PortId::AudioInput0, 1.0,
-        ModulationType::Additive, ModulationTransformation::None,
-    ).unwrap();
+    engine
+        .update_filters(
+            filter,
+            SAMPLE_RATE / 4.0,
+            0.0,
+            0.5,
+            0.0,
+            220.0,
+            0.5,
+            0,
+            FilterType::LowPass,
+            FilterSlope::Db12,
+        )
+        .unwrap();
+    engine
+        .connect_nodes(
+            osc,
+            PortId::AudioOutput0,
+            filter,
+            PortId::AudioInput0,
+            1.0,
+            ModulationType::Additive,
+            ModulationTransformation::None,
+        )
+        .unwrap();
+    engine
+        .connect_nodes(
+            filter,
+            PortId::AudioOutput0,
+            mixer,
+            PortId::AudioInput0,
+            1.0,
+            ModulationType::Additive,
+            ModulationTransformation::None,
+        )
+        .unwrap();
 
     let output = render_gated(&mut engine, true);
     assert_peak(output, 0.001, "oscillator/filter/mixer");
@@ -95,15 +109,31 @@ fn envelope_modulates_mixer_gain() {
     let osc = engine.create_oscillator_node().unwrap();
     let envelope = engine.create_envelope_node().unwrap();
 
-    engine.update_envelope(envelope, 0.0, 0.05, 1.0, 0.05, 0.0, 0.0, 0.0, true).unwrap();
-    engine.connect_nodes(
-        osc, PortId::AudioOutput0, mixer, PortId::AudioInput0, 1.0,
-        ModulationType::Additive, ModulationTransformation::None,
-    ).unwrap();
-    engine.connect_nodes(
-        envelope, PortId::AudioOutput0, mixer, PortId::GainMod, 1.0,
-        ModulationType::VCA, ModulationTransformation::None,
-    ).unwrap();
+    engine
+        .update_envelope(envelope, 0.0, 0.05, 1.0, 0.05, 0.0, 0.0, 0.0, true)
+        .unwrap();
+    engine
+        .connect_nodes(
+            osc,
+            PortId::AudioOutput0,
+            mixer,
+            PortId::AudioInput0,
+            1.0,
+            ModulationType::Additive,
+            ModulationTransformation::None,
+        )
+        .unwrap();
+    engine
+        .connect_nodes(
+            envelope,
+            PortId::AudioOutput0,
+            mixer,
+            PortId::GainMod,
+            1.0,
+            ModulationType::VCA,
+            ModulationTransformation::None,
+        )
+        .unwrap();
 
     // Warm up and then gate on.
     let _ = render(&mut engine);
@@ -122,39 +152,46 @@ fn active_convolver_changes_signal() {
     let mut engine = AudioEngine::new(SAMPLE_RATE, 1);
     let mixer = engine.create_mixer_node().unwrap();
     let osc = engine.create_oscillator_node().unwrap();
-    engine.connect_nodes(
-        osc,
-        PortId::AudioOutput0,
-        mixer,
-        PortId::AudioInput0,
-        1.0,
-        ModulationType::Additive,
-        ModulationTransformation::None,
-    )
-    .unwrap();
+    engine
+        .connect_nodes(
+            osc,
+            PortId::AudioOutput0,
+            mixer,
+            PortId::AudioInput0,
+            1.0,
+            ModulationType::Additive,
+            ModulationTransformation::None,
+        )
+        .unwrap();
 
     // Warm up with the default convolver disabled.
     let _ = render_gated(&mut engine, true);
     let dry_left = render_gated(&mut engine, true);
 
-    engine.set_convolver_active(EFFECT_CONVOLVER_ID, true, 1.0)
+    engine
+        .set_convolver_active(EFFECT_CONVOLVER_ID, true, 1.0)
         .unwrap();
-    engine.update_effect_impulse(3, vec![1.0, 0.75, 0.5, 0.25])
+    engine
+        .update_effect_impulse(3, vec![1.0, 0.75, 0.5, 0.25])
         .unwrap();
     let wet_left = render_gated(&mut engine, true);
 
     let tail_left = render_gated(&mut engine, false);
 
     assert_peak(dry_left.clone(), 0.0005, "convolver dry source");
-    assert!(wet_left.iter().any(|&v: &f32| v.abs() > 1e-6),
-        "convolver produced no reverb tail");
+    assert!(
+        wet_left.iter().any(|&v: &f32| v.abs() > 1e-6),
+        "convolver produced no reverb tail"
+    );
     assert_ne!(
         rms(&dry_left),
         rms(&wet_left),
         "active convolver did not alter the signal"
     );
-    assert!(tail_left.iter().any(|&v: &f32| v.abs() > 1e-7),
-        "convolver produced no reverb tail");
+    assert!(
+        tail_left.iter().any(|&v: &f32| v.abs() > 1e-7),
+        "convolver produced no reverb tail"
+    );
 }
 
 #[test]
@@ -163,21 +200,39 @@ fn all_active_effects_pass_non_silent_input_without_panicking() {
     let mut engine = AudioEngine::new(SAMPLE_RATE, 1);
     let mixer = engine.create_mixer_node().unwrap();
     let osc = engine.create_oscillator_node().unwrap();
-    engine.connect_nodes(
-        osc, PortId::AudioOutput0, mixer, PortId::AudioInput0, 1.0,
-        ModulationType::Additive, ModulationTransformation::None,
-    ).unwrap();
+    engine
+        .connect_nodes(
+            osc,
+            PortId::AudioOutput0,
+            mixer,
+            PortId::AudioInput0,
+            1.0,
+            ModulationType::Additive,
+            ModulationTransformation::None,
+        )
+        .unwrap();
 
     engine.set_chorus_active(true);
     engine.set_delay_active(true);
     engine.set_reverb_active(true);
-    engine.set_convolver_active(EFFECT_CONVOLVER_ID, true, 1.0).unwrap();
-    engine.update_compressor(EFFECT_COMPRESSOR_ID, true, -12.0, 3.0, 5.0, 50.0, 0.0, 0.5).unwrap();
-    engine.update_saturation(EFFECT_SATURATION_ID, 2.0, 0.5, true).unwrap();
-    engine.update_bitcrusher(EFFECT_BITCRUSHER_ID, 8, 2, 0.5, true).unwrap();
+    engine
+        .set_convolver_active(EFFECT_CONVOLVER_ID, true, 1.0)
+        .unwrap();
+    engine
+        .update_compressor(EFFECT_COMPRESSOR_ID, true, -12.0, 3.0, 5.0, 50.0, 0.0, 0.5)
+        .unwrap();
+    engine
+        .update_saturation(EFFECT_SATURATION_ID, 2.0, 0.5, true)
+        .unwrap();
+    engine
+        .update_bitcrusher(EFFECT_BITCRUSHER_ID, 8, 2, 0.5, true)
+        .unwrap();
 
     let output = render(&mut engine);
-    assert!(output.iter().all(|value| value.is_finite()), "non-finite effect output");
+    assert!(
+        output.iter().all(|value| value.is_finite()),
+        "non-finite effect output"
+    );
     assert_peak(output, 0.0005, "all active effects");
 }
 
@@ -189,10 +244,17 @@ fn glide_connection_does_not_disconnect_pitch() {
     let osc = engine.create_oscillator_node().unwrap();
     let glide = engine.create_glide_node(0.02).unwrap();
     engine.insert_glide_on_global_frequency(glide, osc).unwrap();
-    engine.connect_nodes(
-        osc, PortId::AudioOutput0, mixer, PortId::AudioInput0, 1.0,
-        ModulationType::Additive, ModulationTransformation::None,
-    ).unwrap();
+    engine
+        .connect_nodes(
+            osc,
+            PortId::AudioOutput0,
+            mixer,
+            PortId::AudioInput0,
+            1.0,
+            ModulationType::Additive,
+            ModulationTransformation::None,
+        )
+        .unwrap();
 
     assert_peak(render_gated(&mut engine, true), 0.0005, "glide path");
 }
@@ -204,6 +266,8 @@ fn rms(buffer: &[f32]) -> f32 {
 
 #[cfg_attr(not(feature = "native-host"), allow(dead_code))]
 fn assert_peak(buffer: Vec<f32>, minimum: f32, label: &str) {
-    let peak = buffer.iter().fold(0.0f32, |peak, value| peak.max(value.abs()));
+    let peak = buffer
+        .iter()
+        .fold(0.0f32, |peak, value| peak.max(value.abs()));
     assert!(peak >= minimum, "{label} was silent (peak {peak})");
 }

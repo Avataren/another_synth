@@ -46,6 +46,12 @@ pub struct WavetableMorphCollection {
     pub wavetables: Vec<MipmappedWavetable>,
 }
 
+impl Default for WavetableMorphCollection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WavetableMorphCollection {
     pub fn new() -> Self {
         Self {

@@ -69,7 +69,7 @@ pub fn fill_seed(seed: &mut [u8]) -> Result<(), String> {
         // In WASM we avoid getrandom completely to prevent noisy failures when
         // Web Crypto is not available. The js_fallback_fill implementation
         // already logs a warning and falls back to Math.random() if needed.
-        return js_fallback_fill(seed);
+        js_fallback_fill(seed)
     }
 
     #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]

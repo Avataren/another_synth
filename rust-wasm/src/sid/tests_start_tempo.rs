@@ -17,7 +17,14 @@ fn song(mult: u8, instruments: Vec<Instrument>, first: Row) -> SidSong {
 }
 
 fn song_with(mult: u8, instruments: Vec<Instrument>, first: Row, wave: Vec<TableRow>) -> SidSong {
-    let list = |pattern: u8| Orderlist { entries: vec![OrderEntry { pattern, transpose: 0, repeat: 1 }], restart: 0 };
+    let list = |pattern: u8| Orderlist {
+        entries: vec![OrderEntry {
+            pattern,
+            transpose: 0,
+            repeat: 1,
+        }],
+        restart: 0,
+    };
     let mut rows = vec![Row::default(); 16];
     rows[0] = first;
     let s = SidSong {
@@ -29,16 +36,30 @@ fn song_with(mult: u8, instruments: Vec<Instrument>, first: Row, wave: Vec<Table
         name: b"start".to_vec(),
         author: Vec::new(),
         copyright: Vec::new(),
-        subsongs: vec![Subsong { orderlists: vec![list(0), list(1), list(1)] }],
-        patterns: vec![Pattern { rows }, Pattern { rows: vec![Row::default(); 16] }],
+        subsongs: vec![Subsong {
+            orderlists: vec![list(0), list(1), list(1)],
+        }],
+        patterns: vec![
+            Pattern { rows },
+            Pattern {
+                rows: vec![Row::default(); 16],
+            },
+        ],
         instruments,
-        tables: Tables { wave, ..Default::default() },
+        tables: Tables {
+            wave,
+            ..Default::default()
+        },
     };
     SidSong::parse(&s.to_bytes()).expect("parses")
 }
 
 fn one() -> Vec<Instrument> {
-    vec![Instrument { name: b"i".to_vec(), sustain: 15, ..Default::default() }]
+    vec![Instrument {
+        name: b"i".to_vec(),
+        sustain: 15,
+        ..Default::default()
+    }]
 }
 
 /// Frames per row of channel 1 after its first row, measured over rows 2-5.
@@ -71,19 +92,45 @@ fn a_multispeed_subsong_without_a_tempo_command_starts_at_six_frames_per_row_per
 
 #[test]
 fn a_tempo_command_on_the_first_row_still_sets_it() {
-    let f = Row { note: 0, instrument: 0, command: 0xF, param: 9 };
+    let f = Row {
+        note: 0,
+        instrument: 0,
+        command: 0xF,
+        param: 9,
+    };
     assert_eq!(frames_per_row(song(2, one(), f)), 9);
 }
 
 #[test]
 fn instrument_63_with_no_wave_table_gives_its_ad_byte_as_the_start_tempo() {
-    let mut ins = vec![Instrument { name: b"i".to_vec(), sustain: 15, ..Default::default() }; 63];
-    ins[62] = Instrument { name: b"t".to_vec(), attack: 0, decay: 8, ..Default::default() };
+    let mut ins = vec![
+        Instrument {
+            name: b"i".to_vec(),
+            sustain: 15,
+            ..Default::default()
+        };
+        63
+    ];
+    ins[62] = Instrument {
+        name: b"t".to_vec(),
+        attack: 0,
+        decay: 8,
+        ..Default::default()
+    };
     assert_eq!(frames_per_row(song(1, ins.clone(), Row::default())), 8);
     // At 2x it is the same byte, not scaled (GT stores ad - 1 as it stands).
     assert_eq!(frames_per_row(song(2, ins.clone(), Row::default())), 8);
     // With a wave table instrument 63 is an instrument like any other.
     ins[62].wave_ptr = 1;
-    let wave = vec![TableRow { left: 0x41, right: 0 }, TableRow { left: 0xFF, right: 0 }];
+    let wave = vec![
+        TableRow {
+            left: 0x41,
+            right: 0,
+        },
+        TableRow {
+            left: 0xFF,
+            right: 0,
+        },
+    ];
     assert_eq!(frames_per_row(song_with(1, ins, Row::default(), wave)), 6);
 }

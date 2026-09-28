@@ -4,7 +4,9 @@
 //! decoding of `opl_registers_base::cache_operator_data` (`ymfm_opl.cpp`),
 //! trimmed to what an OPL needs (no SSG-EG, detune, depress or reverb).
 
-use super::tables::{attenuation_increment, attenuation_to_volume, key_scale_atten, WAVEFORM_LENGTH};
+use super::tables::{
+    attenuation_increment, attenuation_to_volume, key_scale_atten, WAVEFORM_LENGTH,
+};
 
 /// Above this attenuation an operator is treated as silent (ymfm `EG_QUIET`).
 pub const EG_QUIET: u32 = 0x380;
@@ -106,7 +108,11 @@ pub fn compute_phase_step(block_freq: u32, multiple: u32, lfo_raw_pm: i32) -> u3
 
 #[inline]
 fn effective_rate(rawrate: u32, ksr: u32) -> u32 {
-    if rawrate == 0 { 0 } else { (rawrate + ksr).min(63) }
+    if rawrate == 0 {
+        0
+    } else {
+        (rawrate + ksr).min(63)
+    }
 }
 
 impl Operator {
@@ -136,14 +142,19 @@ impl Operator {
 
         self.am = r.r20 & 0x80 != 0;
         self.pm = r.r20 & 0x40 != 0;
-        c.phase_step = if self.pm { None } else { Some(compute_phase_step(block_freq, c.multiple, 0)) };
+        c.phase_step = if self.pm {
+            None
+        } else {
+            Some(compute_phase_step(block_freq, c.multiple, 0))
+        };
 
         c.total_level = (r.r40 as u32 & 0x3f) << 3;
         // KSL's two bits are stored swapped.
         let ksl_raw = (r.r40 as u32 >> 6) & 3;
         let ksl = ((ksl_raw >> 1) & 1) | ((ksl_raw & 1) << 1);
         if ksl != 0 {
-            c.total_level += key_scale_atten((block_freq >> 10) & 7, (block_freq >> 6) & 0xf) << ksl;
+            c.total_level +=
+                key_scale_atten((block_freq >> 10) & 7, (block_freq >> 6) & 0xf) << ksl;
         }
 
         // 4-bit sustain level where 15 means 31.
@@ -153,11 +164,19 @@ impl Operator {
 
         let ksr_bit = (r.r20 as u32 >> 4) & 1;
         let ksrval = keycode >> (2 * (ksr_bit ^ 1));
-        let (ar, dr, rr) = ((r.r60 as u32 >> 4) & 0xf, r.r60 as u32 & 0xf, r.r80 as u32 & 0xf);
+        let (ar, dr, rr) = (
+            (r.r60 as u32 >> 4) & 0xf,
+            r.r60 as u32 & 0xf,
+            r.r80 as u32 & 0xf,
+        );
         let sustaining = r.r20 & 0x20 != 0;
         c.eg_rate[EnvState::Attack as usize] = effective_rate(ar * 4, ksrval);
         c.eg_rate[EnvState::Decay as usize] = effective_rate(dr * 4, ksrval);
-        c.eg_rate[EnvState::Sustain as usize] = if sustaining { 0 } else { effective_rate(rr * 4, ksrval) };
+        c.eg_rate[EnvState::Sustain as usize] = if sustaining {
+            0
+        } else {
+            effective_rate(rr * 4, ksrval)
+        };
         c.eg_rate[EnvState::Release as usize] = effective_rate(rr * 4, ksrval);
     }
 
@@ -241,14 +260,24 @@ impl Operator {
 
     /// Signed 14-bit output for a phase already offset by any modulation.
     #[inline]
-    pub fn compute_volume(&self, phase: u32, am_offset: u32, waveforms: &[[u16; WAVEFORM_LENGTH]; 8]) -> i32 {
+    pub fn compute_volume(
+        &self,
+        phase: u32,
+        am_offset: u32,
+        waveforms: &[[u16; WAVEFORM_LENGTH]; 8],
+    ) -> i32 {
         if self.env_attenuation > EG_QUIET {
             return 0;
         }
-        let sin_att = waveforms[self.cache.waveform][(phase as usize) & (WAVEFORM_LENGTH - 1)] as u32;
+        let sin_att =
+            waveforms[self.cache.waveform][(phase as usize) & (WAVEFORM_LENGTH - 1)] as u32;
         let env_att = self.envelope_attenuation(am_offset) << 2;
         let result = attenuation_to_volume((sin_att & 0x7fff) + env_att);
-        if sin_att & 0x8000 != 0 { -result } else { result }
+        if sin_att & 0x8000 != 0 {
+            -result
+        } else {
+            result
+        }
     }
 
     /// The top 10 bits of the 10.10 phase.

@@ -31,7 +31,12 @@ pub fn i16_to_f32(s: i16) -> f32 {
 /// converting to `f32` and applying `gain`. Processes
 /// `min(interleaved.len() / 2, left.len(), right.len())` frames and returns
 /// that count; anything beyond it in `left`/`right` is left untouched.
-pub fn deinterleave_to_f32(interleaved: &[i16], left: &mut [f32], right: &mut [f32], gain: f32) -> usize {
+pub fn deinterleave_to_f32(
+    interleaved: &[i16],
+    left: &mut [f32],
+    right: &mut [f32],
+    gain: f32,
+) -> usize {
     let frames = (interleaved.len() / 2).min(left.len()).min(right.len());
     for i in 0..frames {
         left[i] = i16_to_f32(interleaved[2 * i]) * gain;
@@ -64,7 +69,13 @@ impl AhxPlayer {
     pub fn new(bytes: &[u8], sample_rate: u32, stereo_mode: u8) -> Result<AhxPlayer, String> {
         let song = format::parse(bytes).map_err(|e| e.to_string())?;
         let engine = AhxEngine::new(song, sample_rate, stereo_mode).map_err(|e| e.to_string())?;
-        Ok(AhxPlayer { engine, scratch: Vec::new(), gain: 1.0, playing: false, prewarm_owed: false })
+        Ok(AhxPlayer {
+            engine,
+            scratch: Vec::new(),
+            gain: 1.0,
+            playing: false,
+            prewarm_owed: false,
+        })
     }
 
     pub fn play(&mut self) {
@@ -160,9 +171,14 @@ impl AhxPlayer {
     /// [`finish_instrument_edits`](Self::finish_instrument_edits). A burst of
     /// edits (the editor sends what has piled up in one message) is then one
     /// walk of the song instead of one per instrument.
-    pub fn replace_instrument_deferred(&mut self, instrument: usize, bytes: &[u8]) -> Result<(), String> {
+    pub fn replace_instrument_deferred(
+        &mut self,
+        instrument: usize,
+        bytes: &[u8],
+    ) -> Result<(), String> {
         let song = self.engine.song();
-        let ins = format::parse_instrument(bytes, song.format, song.version, String::new()).map_err(|e| e.to_string())?;
+        let ins = format::parse_instrument(bytes, song.format, song.version, String::new())
+            .map_err(|e| e.to_string())?;
         let Some(tables_may_differ) = self.engine.replace_instrument(instrument, ins) else {
             return Err(format!("the song has no instrument {instrument}"));
         };
@@ -184,7 +200,10 @@ impl AhxPlayer {
     /// [`AhxEngine::prewarm_hifi_after_edit`] however many instruments changed.
     /// Call it from the message handler, never from `render`.
     pub fn finish_instrument_edits(&mut self) {
-        if std::mem::take(&mut self.prewarm_owed) && self.engine.hifi_enabled() && !self.engine.live_enabled() {
+        if std::mem::take(&mut self.prewarm_owed)
+            && self.engine.hifi_enabled()
+            && !self.engine.live_enabled()
+        {
             self.engine.prewarm_hifi_after_edit();
         }
     }
@@ -199,7 +218,9 @@ impl AhxPlayer {
     /// [`live_warm_hold_ticks`](super::engine::live_warm_hold_ticks)); 0 for an
     /// instrument the song does not have. Diagnostics.
     pub fn preview_warm_hold_ticks(&self, instrument: usize) -> u32 {
-        self.engine.live_warm_hold_ticks_for(instrument).unwrap_or(0)
+        self.engine
+            .live_warm_hold_ticks_for(instrument)
+            .unwrap_or(0)
     }
 
     /// Plays `instrument` (1-based) at `note` (1..=60, the AHX pitch table's
@@ -220,12 +241,16 @@ impl AhxPlayer {
     /// none (see [`AhxEngine::live_plist_state`]). A scalar, not a `Vec`: the
     /// worklet reads it every render quantum.
     pub fn preview_plist_row(&self) -> i32 {
-        self.engine.live_plist_state().map_or(-1, |(_, row)| row as i32)
+        self.engine
+            .live_plist_state()
+            .map_or(-1, |(_, row)| row as i32)
     }
 
     /// The instrument (1-based) that row belongs to, `0` when there is none.
     pub fn preview_plist_instrument(&self) -> u32 {
-        self.engine.live_plist_state().map_or(0, |(instrument, _)| instrument as u32)
+        self.engine
+            .live_plist_state()
+            .map_or(0, |(instrument, _)| instrument as u32)
     }
 
     /// Keep the wave phase across instrument triggers (the 68k behaviour)
@@ -380,7 +405,7 @@ impl AhxPlayer {
     }
 
     pub fn position_count(&self) -> usize {
-        self.engine.song().position_nr as usize
+        self.engine.song().position_nr
     }
 
     pub fn track_length(&self) -> usize {

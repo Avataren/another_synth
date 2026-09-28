@@ -36,7 +36,13 @@ impl SidPlayer {
     pub fn new(bytes: &[u8], sample_rate: f64) -> Result<SidPlayer, String> {
         let song = SidSong::parse(bytes).map_err(|e| e.to_string())?;
         let player = SidSongPlayer::new(song, sample_rate).map_err(|e| e.to_string())?;
-        Ok(SidPlayer { player, playing: false, gain: 1.0, mute: 0, solo: 0 })
+        Ok(SidPlayer {
+            player,
+            playing: false,
+            gain: 1.0,
+            mute: 0,
+            solo: 0,
+        })
     }
 
     pub fn play(&mut self) {
@@ -76,14 +82,24 @@ impl SidPlayer {
     pub fn set_mute_solo(&mut self, mute: u32, solo: u32) {
         self.mute = mute;
         self.solo = solo;
-        let heard = if solo & ALL_VOICES as u32 != 0 { solo } else { ALL_VOICES as u32 };
+        let heard = if solo & ALL_VOICES as u32 != 0 {
+            solo
+        } else {
+            ALL_VOICES as u32
+        };
         self.player.chip_mut().set_voice_mask((heard & !mute) as u8);
     }
 
     /// Fills `out` with the mix and `v0`..`v2` with the three voices' taps;
     /// silence (all four) while paused. Every buffer must be as long as `out`.
     /// Returns the frames written.
-    pub fn render(&mut self, out: &mut [f32], v0: &mut [f32], v1: &mut [f32], v2: &mut [f32]) -> usize {
+    pub fn render(
+        &mut self,
+        out: &mut [f32],
+        v0: &mut [f32],
+        v1: &mut [f32],
+        v2: &mut [f32],
+    ) -> usize {
         let n = out.len().min(v0.len()).min(v1.len()).min(v2.len());
         if !self.playing {
             out[..n].fill(0.0);
@@ -92,7 +108,8 @@ impl SidPlayer {
             v2[..n].fill(0.0);
             return n;
         }
-        self.player.render_taps(&mut out[..n], [&mut v0[..n], &mut v1[..n], &mut v2[..n]]);
+        self.player
+            .render_taps(&mut out[..n], [&mut v0[..n], &mut v1[..n], &mut v2[..n]]);
         if self.gain != 1.0 {
             for buffer in [&mut out[..n], &mut v0[..n], &mut v1[..n], &mut v2[..n]] {
                 for s in buffer.iter_mut() {
@@ -172,7 +189,10 @@ impl SidPlayer {
     /// Preview mode: `instrument` (1-based) at note table index `note`
     /// (0 = C-0 .. 92 = G#7). `false` outside preview or for a missing instrument.
     pub fn preview_note_on(&mut self, instrument: u32, note: u32) -> bool {
-        self.player.preview_note_on(instrument as usize, note.min(GT_NOTE_COUNT as u32 - 1) as u8)
+        self.player.preview_note_on(
+            instrument as usize,
+            note.min(GT_NOTE_COUNT as u32 - 1) as u8,
+        )
     }
 
     pub fn preview_note_off(&mut self) {

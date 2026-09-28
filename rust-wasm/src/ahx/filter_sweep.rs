@@ -21,7 +21,13 @@ use super::format::Instrument;
 /// (the instrument's initial position can already be past a limit; the
 /// reference treats that first arrival as "sliding into range", not a
 /// bounce).
-pub(crate) fn bound_bounce_step(pos: i32, sign: &mut i32, sliding_in: &mut bool, lower: i32, upper: i32) -> i32 {
+pub(crate) fn bound_bounce_step(
+    pos: i32,
+    sign: &mut i32,
+    sliding_in: &mut bool,
+    lower: i32,
+    upper: i32,
+) -> i32 {
     if lower == pos || upper == pos {
         if *sliding_in {
             *sliding_in = false;
@@ -128,7 +134,13 @@ impl FilterSweep {
         let f_max = if self.speed < 4 { 5 - self.speed } else { 1 };
         let mut pos = self.pos;
         for _ in 0..f_max {
-            pos = bound_bounce_step(pos, &mut self.sign, &mut self.sliding_in, self.lower_limit, self.upper_limit);
+            pos = bound_bounce_step(
+                pos,
+                &mut self.sign,
+                &mut self.sliding_in,
+                self.lower_limit,
+                self.upper_limit,
+            );
         }
 
         pos = pos.clamp(1, 63);

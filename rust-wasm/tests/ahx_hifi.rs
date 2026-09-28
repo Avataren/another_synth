@@ -13,7 +13,9 @@
 //! 3. **On keeps the music.** Same timing, same loudness, and the same note.
 
 use audio_processor::ahx::engine::AhxEngine;
-use audio_processor::ahx::format::{self, Envelope, Instrument, PList, PListEntry, Position, Song, Step};
+use audio_processor::ahx::format::{
+    self, Envelope, Instrument, PList, PListEntry, Position, Song, Step,
+};
 use audio_processor::ahx::voice::{WAVEFORM_NOISE, WAVEFORM_SAWTOOTH, WAVEFORM_SQUARE};
 use rustfft::{num_complex::Complex, FftPlanner};
 use std::fs;
@@ -23,7 +25,12 @@ const RATE: u32 = 44100;
 const BLOCKS: [usize; 4] = [128, 1, 333, 882];
 
 fn fixture(name: &str) -> Vec<u8> {
-    fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx").join(name)).unwrap()
+    fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../public/demos/ahx")
+            .join(name),
+    )
+    .unwrap()
 }
 
 fn engine_of(song: Song) -> AhxEngine {
@@ -63,12 +70,20 @@ fn hifi_off_is_bit_identical_to_never_touching_it() {
         let mut off = engine(name);
         off.set_hifi(false);
         assert!(!off.hifi_enabled());
-        assert_eq!(render(&mut off, frames, &BLOCKS), plain, "{name}: explicit off");
+        assert_eq!(
+            render(&mut off, frames, &BLOCKS),
+            plain,
+            "{name}: explicit off"
+        );
 
         let mut cycled = engine(name);
         cycled.set_hifi(true);
         cycled.set_hifi(false);
-        assert_eq!(render(&mut cycled, frames, &BLOCKS), plain, "{name}: on then off before the first sample");
+        assert_eq!(
+            render(&mut cycled, frames, &BLOCKS),
+            plain,
+            "{name}: on then off before the first sample"
+        );
     }
 }
 
@@ -90,7 +105,11 @@ fn hifi_switched_off_mid_song_rejoins_the_reference_exactly() {
     let b = render(&mut e, tail, &BLOCKS);
 
     assert_eq!(a[..], plain[..head * 2]);
-    assert_ne!(mid[..], plain[head * 2..head * 4], "hi-fi on changed nothing at all");
+    assert_ne!(
+        mid[..],
+        plain[head * 2..head * 4],
+        "hi-fi on changed nothing at all"
+    );
     assert_eq!(b[..], plain[head * 4..]);
 }
 
@@ -117,19 +136,42 @@ fn probe_song(waveform: u8, wave_length: u8, note: u8, square_pos: u8) -> Song {
     song.speed_multiplier = 1;
     song.position_nr = 1;
     song.restart = 0;
-    song.positions = vec![Position { track: vec![1, 0, 0, 0], transpose: vec![0; 4] }];
+    song.positions = vec![Position {
+        track: vec![1, 0, 0, 0],
+        transpose: vec![0; 4],
+    }];
     let mut steps = vec![Step::default(); song.track_length as usize];
     // Effect 9 sets the square position (PWM duty) directly; without it a
     // square starts at its narrowest, which is a constant at short lengths.
-    steps[0] = Step { note, instrument: 1, fx: 0x9, fx_param: square_pos, ..Step::default() };
+    steps[0] = Step {
+        note,
+        instrument: 1,
+        fx: 0x9,
+        fx_param: square_pos,
+        ..Step::default()
+    };
     song.tracks[1] = steps;
     song.tracks[0] = vec![Step::default(); song.track_length as usize];
     song.instruments[1] = Instrument {
         name: "probe".into(),
         volume: 64,
         wave_length,
-        envelope: Envelope { a_frames: 1, a_volume: 64, d_frames: 1, d_volume: 64, s_frames: 255, r_frames: 1, r_volume: 0 },
-        plist: PList { speed: 1, entries: vec![PListEntry { waveform, ..PListEntry::default() }] },
+        envelope: Envelope {
+            a_frames: 1,
+            a_volume: 64,
+            d_frames: 1,
+            d_volume: 64,
+            s_frames: 255,
+            r_frames: 1,
+            r_volume: 0,
+        },
+        plist: PList {
+            speed: 1,
+            entries: vec![PListEntry {
+                waveform,
+                ..PListEntry::default()
+            }],
+        },
         ..Instrument::default()
     };
     song
@@ -206,10 +248,23 @@ fn a_high_probe_note_folds_back_in_the_reference_and_not_in_hifi() {
         assert!(f0 > 1000.0 && f0 < 8000.0, "{label}: f0 {f0}");
         let (rx, hx) = (left(&r, 8820, 16384), left(&h, 8820, 16384));
         let guard = 3.0 * RATE as f64 / 16384.0; // a few bins around each harmonic (Hann main lobe)
-        let (rf, hf) = (inharmonic_fraction(&rx, f0, guard), inharmonic_fraction(&hx, f0, guard));
-        eprintln!("{label}: f0 {f0:.1} Hz, inharmonic energy: reference {:.2} dB, hifi {:.2} dB", 10.0 * rf.log10(), 10.0 * hf.log10());
-        assert!(rf > 1e-4, "{label}: the probe does not alias in the reference ({rf:e}); it proves nothing");
-        assert!(hf < rf * 0.01, "{label}: hifi inharmonic {hf:e} not >20 dB under the reference's {rf:e}");
+        let (rf, hf) = (
+            inharmonic_fraction(&rx, f0, guard),
+            inharmonic_fraction(&hx, f0, guard),
+        );
+        eprintln!(
+            "{label}: f0 {f0:.1} Hz, inharmonic energy: reference {:.2} dB, hifi {:.2} dB",
+            10.0 * rf.log10(),
+            10.0 * hf.log10()
+        );
+        assert!(
+            rf > 1e-4,
+            "{label}: the probe does not alias in the reference ({rf:e}); it proves nothing"
+        );
+        assert!(
+            hf < rf * 0.01,
+            "{label}: hifi inharmonic {hf:e} not >20 dB under the reference's {rf:e}"
+        );
     }
 }
 
@@ -226,9 +281,21 @@ fn hifi_keeps_the_probe_at_the_same_pitch_and_level() {
 
     let (pr, ph) = (power_spectrum(&r), power_spectrum(&h));
     let bin_hz = RATE as f64 / 16384.0;
-    let peak = |p: &[f64]| p.iter().enumerate().skip(2).max_by(|a, b| a.1.total_cmp(b.1)).map(|(k, _)| k as f64 * bin_hz).unwrap();
+    let peak = |p: &[f64]| {
+        p.iter()
+            .enumerate()
+            .skip(2)
+            .max_by(|a, b| a.1.total_cmp(b.1))
+            .map(|(k, _)| k as f64 * bin_hz)
+            .unwrap()
+    };
     // Strongest partial is the same one, within a bin.
-    assert!((peak(&pr) - peak(&ph)).abs() <= 2.0 * bin_hz, "peak {} vs {}", peak(&pr), peak(&ph));
+    assert!(
+        (peak(&pr) - peak(&ph)).abs() <= 2.0 * bin_hz,
+        "peak {} vs {}",
+        peak(&pr),
+        peak(&ph)
+    );
     // Level: RMS within 1.5 dB.
     let rms = |x: &[f64]| (x.iter().map(|v| v * v).sum::<f64>() / x.len() as f64).sqrt();
     let db = 20.0 * (rms(&h) / rms(&r)).log10();
@@ -287,10 +354,13 @@ fn robocop_iii_high_passages_fold_back_less_in_hifi() {
                 e[k].render_block(&mut chunk[k]);
             }
             let v = e[0].voice(voice);
-            let steady = v.track_on && v.voice_volume > 8 && v.waveform != WAVEFORM_NOISE as i32;
+            let steady = v.track_on && v.voice_volume > 8 && v.waveform != WAVEFORM_NOISE;
             let f0 = if steady { voice_f0(&e[0], voice) } else { 0.0 };
             let this = (f0, [left(&chunk[0], 0, tick), left(&chunk[1], 0, tick)]);
-            let breaks = f0 < MIN_F0 || history.last().is_some_and(|h| (h.0 - f0).abs() > f0 * 0.005);
+            let breaks = f0 < MIN_F0
+                || history
+                    .last()
+                    .is_some_and(|h| (h.0 - f0).abs() > f0 * 0.005);
             if breaks {
                 flush(&mut history, &mut low, &mut total, &mut windows);
             }
@@ -310,11 +380,19 @@ fn robocop_iii_high_passages_fold_back_less_in_hifi() {
         10.0 * (r / h).log10()
     );
 
-    fn flush(history: &mut Vec<(f64, [Vec<f64>; 2])>, low: &mut [f64; 2], total: &mut [f64; 2], windows: &mut usize) {
+    fn flush(
+        history: &mut Vec<(f64, [Vec<f64>; 2])>,
+        low: &mut [f64; 2],
+        total: &mut [f64; 2],
+        windows: &mut usize,
+    ) {
         if history.len() >= RUN_TICKS {
             let f0 = history.iter().map(|h| h.0).sum::<f64>() / history.len() as f64;
             for k in 0..2 {
-                let x: Vec<f64> = history.iter().flat_map(|h| h.1[k].iter().copied()).collect();
+                let x: Vec<f64> = history
+                    .iter()
+                    .flat_map(|h| h.1[k].iter().copied())
+                    .collect();
                 let p = power_spectrum(&x);
                 let bin_hz = RATE as f64 / x.len().next_power_of_two() as f64;
                 for (i, &e) in p.iter().enumerate().skip(1) {
@@ -330,8 +408,14 @@ fn robocop_iii_high_passages_fold_back_less_in_hifi() {
         history.clear();
     }
 
-    assert!(windows >= 8, "only {windows} steady high windows found; the measurement is too thin to mean anything");
-    assert!(h < r * 0.5, "hifi low-band energy {h:e} is not at least 3 dB under the reference's {r:e}");
+    assert!(
+        windows >= 8,
+        "only {windows} steady high windows found; the measurement is too thin to mean anything"
+    );
+    assert!(
+        h < r * 0.5,
+        "hifi low-band energy {h:e} is not at least 3 dB under the reference's {r:e}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -342,11 +426,12 @@ use std::time::Instant;
 
 /// Every fixture name in the demo directory, sorted.
 fn all_fixtures() -> Vec<String> {
-    let mut names: Vec<String> = fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx"))
-        .unwrap()
-        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-        .filter(|n| n.ends_with(".ahx") || n.ends_with(".hvl"))
-        .collect();
+    let mut names: Vec<String> =
+        fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".ahx") || n.ends_with(".hvl"))
+            .collect();
     names.sort();
     names
 }
@@ -373,7 +458,11 @@ fn prewarming_mid_song_changes_nothing_but_the_cache() {
     // half way through renders the same bytes as one that built its tables
     // as it went -- unless the prewarm disturbed the voices, the transport,
     // the tick phase or the capture rings it borrows.
-    for name in ["robocop_iii_j_tel.ahx", "sunspots.hvl", "get_to_the_chopper.ahx"] {
+    for name in [
+        "robocop_iii_j_tel.ahx",
+        "sunspots.hvl",
+        "get_to_the_chopper.ahx",
+    ] {
         let frames = RATE as usize * 6;
         let mut lazy = engine(name);
         lazy.set_hifi(true);
@@ -388,7 +477,10 @@ fn prewarming_mid_song_changes_nothing_but_the_cache() {
         let head = 3 * RATE as usize + 77; // mid-tick on purpose
         let mut got = render(&mut warm, head, &BLOCKS);
         let stats = warm.prewarm_hifi();
-        assert!(warm.hifi_locked() && stats.tables > 0 && !stats.cache_full, "{name}: {stats:?}");
+        assert!(
+            warm.hifi_locked() && stats.tables > 0 && !stats.cache_full,
+            "{name}: {stats:?}"
+        );
         got.extend(render(&mut warm, frames - head, &BLOCKS));
         assert_eq!(got, want, "{name}: prewarm mid-song disturbed the render");
         let mut got_scope = vec![0i16; 2048];
@@ -422,7 +514,11 @@ fn a_prewarmed_song_never_misses_across_laps_and_subsongs() {
     // The full horizon (12 laps or 12 minutes per subsong) is what
     // `cargo test --release` runs; an unoptimised build gets a short one
     // (3 laps or 90 s), which still walks every fixture past its first wrap.
-    let (max_laps, max_frames) = if cfg!(debug_assertions) { (3, RATE as usize * 90) } else { (12, RATE as usize * 60 * 12) };
+    let (max_laps, max_frames) = if cfg!(debug_assertions) {
+        (3, RATE as usize * 90)
+    } else {
+        (12, RATE as usize * 60 * 12)
+    };
     let mut out = vec![0i16; BLOCK * 2];
     let mut report = String::new();
     for name in all_fixtures() {
@@ -447,9 +543,16 @@ fn a_prewarmed_song_never_misses_across_laps_and_subsongs() {
             laps_total += laps;
         }
         let misses = e.hifi_misses();
-        assert_eq!(e.hifi_table_count(), tables, "{name}: tables built while rendering");
+        assert_eq!(
+            e.hifi_table_count(),
+            tables,
+            "{name}: tables built while rendering"
+        );
         if stats.converged {
-            assert_eq!(misses, 0, "{name}: prewarm converged, yet the audio thread missed");
+            assert_eq!(
+                misses, 0,
+                "{name}: prewarm converged, yet the audio thread missed"
+            );
         }
         report.push_str(&format!(
             "{name:28} prewarm: {:2} laps {:6} ticks {:5} tables {:5} sources converged={:5} | rendered {:5.0}s over {:2} laps: misses {misses}\n",
@@ -482,7 +585,11 @@ fn cold_start_render_of_a_sixteen_voice_hvl_with_and_without_prewarm() {
         assert_eq!(e.channels(), 16);
         e.set_hifi(true);
         let t0 = Instant::now();
-        let stats = if prewarm { Some(e.prewarm_hifi()) } else { None };
+        let stats = if prewarm {
+            Some(e.prewarm_hifi())
+        } else {
+            None
+        };
         let prewarm_ms = t0.elapsed().as_secs_f64() * 1e3;
         let tables_before = e.hifi_table_count();
         let mut out = vec![0i16; QUANTUM * 2];
@@ -505,15 +612,32 @@ fn cold_start_render_of_a_sixteen_voice_hvl_with_and_without_prewarm() {
         let sum: f64 = t.iter().sum();
         t.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let pct = |p: f64| t[((t.len() - 1) as f64 * p) as usize];
-        (sum / t.len() as f64, pct(0.5), pct(0.99), pct(0.999), *t.last().unwrap(), over)
+        (
+            sum / t.len() as f64,
+            pct(0.5),
+            pct(0.99),
+            pct(0.999),
+            *t.last().unwrap(),
+            over,
+        )
     };
     let c = summarise(&mut cold_t);
     let w = summarise(&mut warm_t);
     eprintln!("16-voice HVL, {SECONDS} s in {QUANTUM}-frame quanta at {RATE} Hz (budget {budget_us:.0} us)");
     eprintln!("                  mean us   p50     p99     p99.9   worst   quanta over budget");
-    eprintln!("  cold (lazy)     {:7.1} {:7.1} {:7.1} {:7.1} {:7.1}   {}", c.0, c.1, c.2, c.3, c.4, c.5);
-    eprintln!("  prewarmed       {:7.1} {:7.1} {:7.1} {:7.1} {:7.1}   {}", w.0, w.1, w.2, w.3, w.4, w.5);
-    eprintln!("  tables built while rendering: cold {}, prewarmed {}", cold.hifi_table_count() - cold_before, warm.hifi_table_count() - warm_before);
+    eprintln!(
+        "  cold (lazy)     {:7.1} {:7.1} {:7.1} {:7.1} {:7.1}   {}",
+        c.0, c.1, c.2, c.3, c.4, c.5
+    );
+    eprintln!(
+        "  prewarmed       {:7.1} {:7.1} {:7.1} {:7.1} {:7.1}   {}",
+        w.0, w.1, w.2, w.3, w.4, w.5
+    );
+    eprintln!(
+        "  tables built while rendering: cold {}, prewarmed {}",
+        cold.hifi_table_count() - cold_before,
+        warm.hifi_table_count() - warm_before
+    );
     eprintln!(
         "  prewarm: {prewarm_ms:.1} ms, {} ticks simulated, {} sources, {} tables ({:.1} MiB of tables), misses after: {}",
         stats.ticks,
@@ -523,10 +647,20 @@ fn cold_start_render_of_a_sixteen_voice_hvl_with_and_without_prewarm() {
         warm.hifi_misses()
     );
 
-    assert!(cold.hifi_table_count() > cold_before, "the cold run built nothing, so it measured nothing");
-    assert_eq!(warm.hifi_table_count(), warm_before, "the prewarmed run built tables while rendering");
+    assert!(
+        cold.hifi_table_count() > cold_before,
+        "the cold run built nothing, so it measured nothing"
+    );
+    assert_eq!(
+        warm.hifi_table_count(),
+        warm_before,
+        "the prewarmed run built tables while rendering"
+    );
     assert_eq!(warm.hifi_misses(), 0);
     assert!(warm.hifi_locked());
     // Nothing was degraded, so it is the same audio, sample for sample.
-    assert_eq!(warm_out, cold_out, "prewarmed hi-fi differs from lazily built hi-fi");
+    assert_eq!(
+        warm_out, cold_out,
+        "prewarmed hi-fi differs from lazily built hi-fi"
+    );
 }

@@ -1,7 +1,5 @@
-#![cfg_attr(
-    not(any(feature = "native-host", all(feature = "wasm", target_arch = "wasm32"))),
-    allow(dead_code)
-)]
+// Several helpers are only called from the wasm bindings (`wasm.rs`).
+#![cfg_attr(not(all(feature = "wasm", target_arch = "wasm32")), allow(dead_code))]
 
 // Shared patch loading logic for both native and wasm builds
 

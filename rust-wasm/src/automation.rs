@@ -202,6 +202,7 @@ impl AutomationFrame {
         voice_index * self.frequency_buffer_len
     }
 
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     fn ensure_gate_buffer_len(&mut self, target_len: usize) {
         let target_len = target_len.max(1);
         if self.gate_buffer_len != target_len || self.gates.len() < self.num_voices * target_len {
@@ -212,6 +213,7 @@ impl AutomationFrame {
         }
     }
 
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     fn ensure_frequency_buffer_len(&mut self, target_len: usize) {
         let target_len = target_len.max(1);
         if self.frequency_buffer_len != target_len
@@ -236,6 +238,7 @@ impl AutomationFrame {
         self.gates[start..end].fill(value);
     }
 
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     fn set_gate_buffer(&mut self, voice_index: usize, values: &[f32]) {
         if voice_index >= self.num_voices {
             return;
@@ -270,6 +273,7 @@ impl AutomationFrame {
         self.frequencies[start..end].fill(value);
     }
 
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     fn set_frequency_buffer(&mut self, voice_index: usize, values: &[f32]) {
         if voice_index >= self.num_voices {
             return;
@@ -779,7 +783,10 @@ mod tests {
         assert_eq!(frame.gains()[0], 0.75);
         assert_eq!(frame.velocities()[0], 0.5);
         assert_eq!(frame.gates()[0], 1.0);
-        assert_eq!(frame.frequencies()[frame.frequency_buffer_len()], DEFAULT_FREQUENCY);
+        assert_eq!(
+            frame.frequencies()[frame.frequency_buffer_len()],
+            DEFAULT_FREQUENCY
+        );
         assert_eq!(frame.gains()[1], DEFAULT_GAIN);
     }
 

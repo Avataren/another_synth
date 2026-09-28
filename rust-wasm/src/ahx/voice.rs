@@ -12,8 +12,10 @@ use super::filter_sweep::{bound_bounce_step, FilterSweep};
 use super::format::Instrument;
 use super::hifi::{HifiBank, HifiOsc};
 use super::plist;
+use super::waveform::{
+    FILTER_ROW_SIZE, WAVELENGTH_OFFSETS, WO_SAWTOOTH_04, WO_SQUARES, WO_TRIANGLE_04, WO_WHITENOISE,
+};
 use super::wrap_i16;
-use super::waveform::{FILTER_ROW_SIZE, WAVELENGTH_OFFSETS, WO_SAWTOOTH_04, WO_SQUARES, WO_TRIANGLE_04, WO_WHITENOISE};
 
 /// `hvl_replay.h:28`: `Period2Freq(period) = (AMIGA_PAULA_PAL_CLK*65536.f)/period`.
 /// `AMIGA_PAULA_PAL_CLK = ((28375160/4)/2) = 3546895` (`hvl_replay.h:19,21,25`,
@@ -63,11 +65,13 @@ pub const STEREOPAN_RIGHT: [i32; 5] = [128, 160, 193, 225, 255];
 /// the double one, and `255.0f` widens exactly.
 static PANNING: std::sync::OnceLock<([i32; 256], [i32; 256])> = std::sync::OnceLock::new();
 
+// The truncated literal 3.14159265 is the reference's, not `PI`: see above.
+#[allow(clippy::approx_constant)]
 fn panning_tables() -> &'static ([i32; 256], [i32; 256]) {
     PANNING.get_or_init(|| {
         let mut left = [0i32; 256];
         let mut right = [0i32; 256];
-        let mut aa: f64 = ((3.14159265f32 * 2.0f32) / 4.0f32) as f64;
+        let mut aa: f64 = ((3.141_592_7_f32 * 2.0f32) / 4.0f32) as f64;
         let mut ab: f64 = 0.0;
         let step: f64 = (3.14159265f64 * 2.0f64 / 4.0f64) / 256.0f64;
         for i in 0..256usize {
@@ -171,7 +175,13 @@ impl SquareSweep {
                 self.sign = -1;
             }
         }
-        self.pos = bound_bounce_step(self.pos, &mut self.sign, &mut self.sliding_in, self.lower_limit, self.upper_limit);
+        self.pos = bound_bounce_step(
+            self.pos,
+            &mut self.sign,
+            &mut self.sliding_in,
+            self.lower_limit,
+            self.upper_limit,
+        );
         self.wait = self.speed;
         true
     }
@@ -416,7 +426,12 @@ impl Voice {
     /// the continuing position already lands at `pos mod newLen`.
     /// `ring_sample_pos` is still cleared: the ring modulator is not part of
     /// the 68k evidence.
-    pub fn trigger_instrument(&mut self, instrument_idx: u8, ins: &Instrument, continue_phase: bool) {
+    pub fn trigger_instrument(
+        &mut self,
+        instrument_idx: u8,
+        ins: &Instrument,
+        continue_phase: bool,
+    ) {
         self.pan = self.set_pan;
         self.pan_mult_left = panning_left(self.pan as usize);
         self.pan_mult_right = panning_right(self.pan as usize);
@@ -496,7 +511,8 @@ impl Voice {
             if self.note_cut_wait <= 0 {
                 self.note_cut_on = false;
                 if self.hard_cut_release {
-                    self.adsr.hard_cut_release(&ins.envelope, self.hard_cut_release_f);
+                    self.adsr
+                        .hard_cut_release(&ins.envelope, self.hard_cut_release_f);
                 } else {
                     self.note_max_volume = 0;
                 }
@@ -509,7 +525,8 @@ impl Voice {
         self.adsr.step(&ins.envelope);
 
         // VolumeSlide (1216-1222).
-        self.note_max_volume = (self.note_max_volume + self.volume_slide_up - self.volume_slide_down).clamp(0, 0x40);
+        self.note_max_volume =
+            (self.note_max_volume + self.volume_slide_up - self.volume_slide_down).clamp(0, 0x40);
 
         // Portamento (1224-1255).
         if self.period_slide_on {
@@ -521,12 +538,17 @@ impl Voice {
                 }
                 if d0 != 0 {
                     let d3 = (d0 + d2) ^ d0;
-                    let new_period = if d3 >= 0 { self.period_slide_period + d2 } else { self.period_slide_limit };
+                    let new_period = if d3 >= 0 {
+                        self.period_slide_period + d2
+                    } else {
+                        self.period_slide_limit
+                    };
                     self.period_slide_period = wrap_i16(new_period);
                     self.plant_period = true;
                 }
             } else {
-                self.period_slide_period = wrap_i16(self.period_slide_period + self.period_slide_speed);
+                self.period_slide_period =
+                    wrap_i16(self.period_slide_period + self.period_slide_speed);
                 self.plant_period = true;
             }
         }
@@ -534,7 +556,8 @@ impl Voice {
         // Vibrato (1257-1268).
         if self.vibrato_depth != 0 {
             if self.vibrato_delay <= 0 {
-                self.vibrato_period = (VIB_TAB[self.vibrato_current as usize] as i32 * self.vibrato_depth) >> 7;
+                self.vibrato_period =
+                    (VIB_TAB[self.vibrato_current as usize] as i32 * self.vibrato_depth) >> 7;
                 self.plant_period = true;
                 self.vibrato_current = (self.vibrato_current + self.vibrato_speed) & 0x3f;
             } else {
@@ -581,7 +604,8 @@ impl Voice {
 
         // PerfPortamento (1316-1322).
         if self.period_perf_slide_on {
-            self.period_perf_slide_period = wrap_i16(self.period_perf_slide_period - self.period_perf_slide_speed);
+            self.period_perf_slide_period =
+                wrap_i16(self.period_perf_slide_period - self.period_perf_slide_speed);
             if self.period_perf_slide_period != 0 {
                 self.plant_period = true;
             }
@@ -610,7 +634,11 @@ impl Voice {
         // Ring-mod waveform source (1449-1459).
         if self.ring_new_waveform {
             let ring_wave = self.ring_waveform.min(1);
-            let base = if ring_wave == 0 { WO_TRIANGLE_04 } else { WO_SAWTOOTH_04 };
+            let base = if ring_wave == 0 {
+                WO_TRIANGLE_04
+            } else {
+                WO_SAWTOOTH_04
+            };
             let offset = base + WAVELENGTH_OFFSETS[self.wave_length as usize];
             self.ring_audio_source = Some(AudioSourceRef::Waves(offset));
         }
@@ -626,7 +654,8 @@ impl Voice {
                         WAVEFORM_NOISE => WO_WHITENOISE,
                         _ => WO_TRIANGLE_04,
                     };
-                    let mut off = base as i64 + (self.filter.pos as i64 - 0x20) * FILTER_ROW_SIZE as i64;
+                    let mut off =
+                        base as i64 + (self.filter.pos as i64 - 0x20) * FILTER_ROW_SIZE as i64;
                     if w < WAVEFORM_SQUARE {
                         off += WAVELENGTH_OFFSETS[self.wave_length as usize] as i64;
                     }
@@ -635,8 +664,9 @@ impl Voice {
                         // arithmetic, `<<`/`+` wrap (gcc, no UB exploitation).
                         off += ((self.wn_random & (2 * 0x280 - 1)) & !1) as i64;
                         self.wn_random = self.wn_random.wrapping_add(2_239_384);
-                        self.wn_random = (((self.wn_random >> 8) | self.wn_random.wrapping_shl(24))
-                            .wrapping_add(782_323)
+                        self.wn_random = (((self.wn_random >> 8)
+                            | self.wn_random.wrapping_shl(24))
+                        .wrapping_add(782_323)
                             ^ 75)
                             .wrapping_sub(6735);
                     }
@@ -647,14 +677,20 @@ impl Voice {
 
         // Ring modulation period calculation (1489-1520).
         if self.ring_audio_source.is_some() {
-            self.ring_audio_period = self.calc_period(self.ring_base_period, self.ring_fixed_period);
+            self.ring_audio_period =
+                self.calc_period(self.ring_base_period, self.ring_fixed_period);
         }
 
         // Normal period calculation (1522-1550).
         self.audio_period = self.calc_period(self.instr_period, self.fixed_note);
 
         // Final volume (1552).
-        self.audio_volume = wrap_i16(((((((self.adsr.volume >> 8) * self.note_max_volume) >> 6) * self.perf_sub_volume) >> 6) * self.track_master_volume) >> 6);
+        self.audio_volume = wrap_i16(
+            ((((((self.adsr.volume >> 8) * self.note_max_volume) >> 6) * self.perf_sub_volume)
+                >> 6)
+                * self.track_master_volume)
+                >> 6,
+        );
     }
 
     /// The period computation shared, line for line, by the ring-mod voice
@@ -667,7 +703,11 @@ impl Voice {
     fn calc_period(&self, base: i32, fixed: bool) -> i32 {
         let mut period = base;
         if !fixed {
-            let transpose = if self.override_transpose != 1000 { self.override_transpose } else { self.transpose };
+            let transpose = if self.override_transpose != 1000 {
+                self.override_transpose
+            } else {
+                self.transpose
+            };
             period = wrap_i16(period + transpose + self.track_period - 1);
         }
         period = period.clamp(0, 5 * 12);
@@ -681,7 +721,8 @@ impl Voice {
 
     /// `CalcSquare`, `hvl_process_frame:1413-1444`.
     fn calc_square(&mut self, waves: &[i8]) {
-        let mut ptr: i64 = WO_SQUARES as i64 + (self.filter.pos as i64 - 0x20) * FILTER_ROW_SIZE as i64;
+        let mut ptr: i64 =
+            WO_SQUARES as i64 + (self.filter.pos as i64 - 0x20) * FILTER_ROW_SIZE as i64;
         let shift = (5 - self.wave_length).max(0) as u32;
         let mut x = self.square.pos << shift;
         if x > 0x20 {
@@ -749,12 +790,14 @@ impl Voice {
         // Harmless (deterministic content) and ported as-is, not "fixed".
         if self.new_waveform {
             if self.waveform == WAVEFORM_NOISE {
-                let source = source_slice(self.audio_source, waves, &self.square_temp_buffer, 0x280);
+                let source =
+                    source_slice(self.audio_source, waves, &self.square_temp_buffer, 0x280);
                 self.voice_buffer[0..0x280].copy_from_slice(source);
             } else {
                 let block = 4usize * (1usize << self.wave_length);
                 let wave_loops = (1usize << ((5 - self.wave_length).max(0) as u32)) * 5;
-                let source = source_slice(self.audio_source, waves, &self.square_temp_buffer, block);
+                let source =
+                    source_slice(self.audio_source, waves, &self.square_temp_buffer, block);
                 fill_cycles(&mut self.voice_buffer, source, block, wave_loops);
             }
             self.voice_buffer[0x280] = self.voice_buffer[0];
@@ -790,7 +833,12 @@ impl Voice {
 /// buffer as an argument, not the voice, so the caller can keep writing to its
 /// other buffers while it holds the slice (no per-tick copy to get around the
 /// borrow).
-fn source_slice<'a>(source: AudioSourceRef, waves: &'a [i8], square_temp: &'a [i8], block: usize) -> &'a [i8] {
+fn source_slice<'a>(
+    source: AudioSourceRef,
+    waves: &'a [i8],
+    square_temp: &'a [i8],
+    block: usize,
+) -> &'a [i8] {
     match source {
         AudioSourceRef::Waves(offset) => &waves[offset..offset + block],
         AudioSourceRef::SquareTemp => &square_temp[0..block],
@@ -862,7 +910,7 @@ mod tests {
         let mut v = Voice::new();
         v.track_period = 25;
         v.period_slide_period = 0x7fff; // period_tab[25] + 0x7fff overflows int16
-        // 0x0358 + 0x7fff = 0x8357 -> wraps to -31913 -> clamps up to 0x0071.
+                                        // 0x0358 + 0x7fff = 0x8357 -> wraps to -31913 -> clamps up to 0x0071.
         assert_eq!(v.calc_period(1, false), 0x0071);
         // A fixed note skips the slide term entirely.
         assert_ne!(v.calc_period(1, true), 0x0071);
@@ -881,7 +929,11 @@ mod tests {
     /// free-running phase is `phase` samples into the 640-byte domain when the
     /// instrument triggers on `waveform`. `mix_chunk` reads
     /// `voice_buffer[sample_pos >> 16]`, so this is exactly that.
-    fn first_sample_after_trigger(waveform: i32, phase: u32, continue_phase: bool) -> (i8, i8, u32) {
+    fn first_sample_after_trigger(
+        waveform: i32,
+        phase: u32,
+        continue_phase: bool,
+    ) -> (i8, i8, u32) {
         let waves = &*waveform::WAVES;
         let mut ins = silent_instrument();
         ins.square_lower_limit = 0x20;
@@ -896,7 +948,11 @@ mod tests {
         v.new_waveform = true;
         v.process_frame_dsp(&ins, waves, 6, 0);
         v.set_audio(waves, 44100.0);
-        (v.voice_buffer[(v.sample_pos >> 16) as usize], v.voice_buffer[0], v.sample_pos)
+        (
+            v.voice_buffer[(v.sample_pos >> 16) as usize],
+            v.voice_buffer[0],
+            v.sample_pos,
+        )
     }
 
     #[test]
@@ -911,8 +967,14 @@ mod tests {
             let (on, wave0_on, pos_on) = first_sample_after_trigger(waveform, 20, true);
             assert_eq!(pos_on, 20 << 16, "the position is untouched");
             assert_eq!(wave0_on, wave0, "same table either way");
-            assert_ne!(on, wave0_on, "waveform {waveform}: first sample is not wave[0]");
-            assert_ne!(on, off, "waveform {waveform}: differs from the flag-off result");
+            assert_ne!(
+                on, wave0_on,
+                "waveform {waveform}: first sample is not wave[0]"
+            );
+            assert_ne!(
+                on, off,
+                "waveform {waveform}: differs from the flag-off result"
+            );
         }
     }
 

@@ -53,8 +53,9 @@ impl<'a> AudioOutput<'a> {
             values.copy_to_slice(&mut self.buffer[index..index + 4]);
         } else {
             let array = values.to_array();
-            for i in 0..self.buffer.len().saturating_sub(index) {
-                self.buffer[index + i] = array[i];
+            let n = self.buffer.len().saturating_sub(index);
+            if n > 0 {
+                self.buffer[index..index + n].copy_from_slice(&array[..n]);
             }
         }
     }

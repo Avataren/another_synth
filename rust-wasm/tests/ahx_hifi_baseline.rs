@@ -44,7 +44,12 @@ fn fnv(mut h: u64, bytes: &[u8]) -> u64 {
 }
 
 fn hifi_hash(fixture: &str) -> u64 {
-    let bytes = fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx").join(fixture)).unwrap();
+    let bytes = fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../public/demos/ahx")
+            .join(fixture),
+    )
+    .unwrap();
     let song = format::parse(&bytes).unwrap();
     let mut e = AhxEngine::new(song, RATE, 2).unwrap();
     e.set_continue_phase_on_trigger(true);
@@ -63,7 +68,11 @@ fn hifi_hash(fixture: &str) -> u64 {
         h = fnv(h, &raw);
         done += n;
     }
-    assert_eq!(e.hifi_misses(), 0, "{fixture}: a prewarmed song must not miss");
+    assert_eq!(
+        e.hifi_misses(),
+        0,
+        "{fixture}: a prewarmed song must not miss"
+    );
     h
 }
 
@@ -75,7 +84,10 @@ fn hifi_render_matches_the_pinned_baseline() {
         if print {
             println!("    (\"{fixture}\", 0x{got:016x}),");
         } else {
-            assert_eq!(got, want, "{fixture}: the hi-fi render moved (got 0x{got:016x})");
+            assert_eq!(
+                got, want,
+                "{fixture}: the hi-fi render moved (got 0x{got:016x})"
+            );
         }
     }
 }

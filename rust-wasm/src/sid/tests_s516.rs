@@ -25,7 +25,12 @@ fn t(l: u8, r: u8) -> TableRow {
 }
 
 fn row(note: u8, instrument: u8) -> Row {
-    Row { note, instrument, command: 0, param: 0 }
+    Row {
+        note,
+        instrument,
+        command: 0,
+        param: 0,
+    }
 }
 
 /// Instrument 1 sets the width to 0x640 with its pulse table (row 1: left
@@ -41,7 +46,14 @@ fn song(rows: Vec<Row>) -> SidSong {
         pulse_ptr,
         ..Default::default()
     };
-    let list = |pattern: u8| Orderlist { entries: vec![OrderEntry { pattern, transpose: 0, repeat: 1 }], restart: 0 };
+    let list = |pattern: u8| Orderlist {
+        entries: vec![OrderEntry {
+            pattern,
+            transpose: 0,
+            repeat: 1,
+        }],
+        restart: 0,
+    };
     let s = SidSong {
         version: SONG_FILE_VERSION,
         model: SidModel::Sid8580,
@@ -51,8 +63,15 @@ fn song(rows: Vec<Row>) -> SidSong {
         name: b"s516".to_vec(),
         author: Vec::new(),
         copyright: Vec::new(),
-        subsongs: vec![Subsong { orderlists: vec![list(0), list(1), list(1)] }],
-        patterns: vec![Pattern { rows }, Pattern { rows: vec![Row::default(); n] }],
+        subsongs: vec![Subsong {
+            orderlists: vec![list(0), list(1), list(1)],
+        }],
+        patterns: vec![
+            Pattern { rows },
+            Pattern {
+                rows: vec![Row::default(); n],
+            },
+        ],
         instruments: vec![base(1, 1), base(3, 0)],
         tables: Tables {
             // Row 1: pulse wave, note 0, stop. Row 3 is the same for instrument 2.
@@ -83,7 +102,10 @@ fn an_instrument_without_a_pulse_table_keeps_the_channels_width() {
     // its table; row 1 (instrument 2, no width, no table) must leave it.
     let w = widths(&song(vec![row(49, 1), row(49, 2)]), 12);
     assert_eq!(w[5], 0x640, "instrument 1's table set the width");
-    assert_eq!(w[11], 0x640, "instrument 2 has none, so the channel keeps it (GT)");
+    assert_eq!(
+        w[11], 0x640,
+        "instrument 2 has none, so the channel keeps it (GT)"
+    );
 }
 
 #[test]
@@ -108,9 +130,17 @@ fn an_instrument_without_a_pulse_table_leaves_the_running_one_going() {
     // modulation running: the width goes on rising through row 1 (frames
     // 6..11). Before S5.16 the pointer was cleared and the width froze.
     let w = widths(&modulating_song(vec![row(49, 1), row(49, 2)]), 12);
-    assert!(w[5] >= 0x640, "instrument 1's table set the width and started modulating");
+    assert!(
+        w[5] >= 0x640,
+        "instrument 1's table set the width and started modulating"
+    );
     for f in 7..12 {
-        assert!(w[f] > w[f - 1], "frame {f}: the width keeps rising under instrument 2 ({:#x} -> {:#x})", w[f - 1], w[f]);
+        assert!(
+            w[f] > w[f - 1],
+            "frame {f}: the width keeps rising under instrument 2 ({:#x} -> {:#x})",
+            w[f - 1],
+            w[f]
+        );
     }
 }
 
@@ -150,7 +180,10 @@ fn a_cutoff_row_straight_after_a_set_row_is_taken_on_the_same_frame() {
     // gplay.c:271-275 ("Can be combined with cutoff set"): set + cutoff in one
     // frame, so the cutoff is 0x25 << 3 with the mode, on the table's first
     // frame (frame 1: the note's table is heard from the frame after it, S5.19).
-    let (cutoff, res, mode) = filter_after(&filter_song(vec![t(0x91, 0xF1), t(0x00, 0x25), t(0xFF, 0x00)]), 2);
+    let (cutoff, res, mode) = filter_after(
+        &filter_song(vec![t(0x91, 0xF1), t(0x00, 0x25), t(0xFF, 0x00)]),
+        2,
+    );
     assert_eq!((cutoff, res, mode), (0x25 << 3, 15, 0x10));
 }
 
@@ -177,17 +210,33 @@ fn the_default_6581_is_the_gt_reference_and_r4ar_is_still_a_profile_a_chip_can_t
 #[test]
 fn gt_ref_cutoff_hits_the_measured_points_and_stays_below_r4ars_chords_at_the_low_end() {
     // Measured f0 of GT's 6581 low-pass (two-pole fit, res 0), Hz.
-    for (reg, hz) in [(0u16, 219.0), (0x100, 248.0), (0x200, 417.0), (0x280, 778.0), (0x300, 1_628.0), (0x380, 3_331.0)] {
-        assert!((cutoff_hz_6581_with(&GT_REF, reg) - hz).abs() < 1e-9, "reg {reg:#05x}");
+    for (reg, hz) in [
+        (0u16, 219.0),
+        (0x100, 248.0),
+        (0x200, 417.0),
+        (0x280, 778.0),
+        (0x300, 1_628.0),
+        (0x380, 3_331.0),
+    ] {
+        assert!(
+            (cutoff_hz_6581_with(&GT_REF, reg) - hz).abs() < 1e-9,
+            "reg {reg:#05x}"
+        );
     }
     // Between anchors it is log-linear: 0x160 is sqrt(266 * 299).
     assert!((cutoff_hz_6581_with(&GT_REF, 0x160) - (266.0f64 * 299.0).sqrt()).abs() < 1e-9);
     // R4AR's four chords ran 15-25% high across 0x080..=0x1C0; GtRef is under them.
     for reg in [0x080u16, 0x0C0, 0x100, 0x140, 0x180, 0x1C0] {
-        assert!(cutoff_hz_6581_with(&GT_REF, reg) < cutoff_hz_6581_with(&R4AR, reg) * 0.95, "reg {reg:#05x}");
+        assert!(
+            cutoff_hz_6581_with(&GT_REF, reg) < cutoff_hz_6581_with(&R4AR, reg) * 0.95,
+            "reg {reg:#05x}"
+        );
     }
     // Above the measurement the high piece is R4AR's.
-    assert_eq!(cutoff_hz_6581_with(&GT_REF, 0x500), cutoff_hz_6581_with(&R4AR, 0x500));
+    assert_eq!(
+        cutoff_hz_6581_with(&GT_REF, 0x500),
+        cutoff_hz_6581_with(&R4AR, 0x500)
+    );
 }
 
 #[test]
@@ -229,7 +278,13 @@ fn envelope_after_note_on(spaced: bool, cycles: u64) -> u8 {
     c.write(0x06, 0x00);
     c.write(0x04, 0x40); // pulse, gate off: release with rate period 9
     c.clock_cycles(30_000); // long enough to reach zero and freeze
-    let writes: [(u8, u8); 5] = [(0x06, 0xF7), (0x05, 0x00), (0x00, 0x14), (0x01, 0x03), (0x04, 0x09)];
+    let writes: [(u8, u8); 5] = [
+        (0x06, 0xF7),
+        (0x05, 0x00),
+        (0x00, 0x14),
+        (0x01, 0x03),
+        (0x04, 0x09),
+    ];
     let mut at = 0u64;
     for (reg, val) in writes {
         if reg == 0x04 {
@@ -254,10 +309,18 @@ fn write_after_applies_a_write_on_its_cycle_not_before() {
     c.clock_cycles(10);
     assert_eq!(c.voice(0).frequency(), 0, "cycle 10 is not reached yet");
     c.clock_cycles(1);
-    assert_eq!(c.voice(0).frequency(), 0x12AB, "both writes landed once it is");
+    assert_eq!(
+        c.voice(0).frequency(),
+        0x12AB,
+        "both writes landed once it is"
+    );
     c.write_after(5, 0x00, 0xCD);
     c.flush_writes();
-    assert_eq!(c.voice(0).frequency(), 0x12CD, "flush applies what is pending at once");
+    assert_eq!(
+        c.voice(0).frequency(),
+        0x12CD,
+        "flush applies what is pending at once"
+    );
 }
 
 #[test]
@@ -275,8 +338,14 @@ fn a_volume_write_that_lands_mid_render_is_heard_from_its_sample() {
     c.write_after(2_000, 0x18, 0x0F);
     let mut out = [0f32; 200];
     c.render(&mut out);
-    assert!(out[..85].iter().all(|&s| s == 0.0), "silent before the write lands");
-    assert!(out[95..].iter().all(|&s| s.abs() > 0.1), "audible from the write on");
+    assert!(
+        out[..85].iter().all(|&s| s == 0.0),
+        "silent before the write lands"
+    );
+    assert!(
+        out[95..].iter().all(|&s| s.abs() > 0.1),
+        "audible from the write on"
+    );
 }
 
 #[test]
@@ -309,7 +378,14 @@ fn hard_restart_note_levels() -> Vec<u8> {
         ..Default::default()
     };
     let n = 16;
-    let list = |pattern: u8| Orderlist { entries: vec![OrderEntry { pattern, transpose: 0, repeat: 1 }], restart: 0 };
+    let list = |pattern: u8| Orderlist {
+        entries: vec![OrderEntry {
+            pattern,
+            transpose: 0,
+            repeat: 1,
+        }],
+        restart: 0,
+    };
     let mut rows = vec![Row::default(); n];
     rows[0] = row(49, 1);
     rows[1] = row(49, 1);
@@ -322,10 +398,20 @@ fn hard_restart_note_levels() -> Vec<u8> {
         name: b"s516hr".to_vec(),
         author: Vec::new(),
         copyright: Vec::new(),
-        subsongs: vec![Subsong { orderlists: vec![list(0), list(1), list(1)] }],
-        patterns: vec![Pattern { rows }, Pattern { rows: vec![Row::default(); n] }],
+        subsongs: vec![Subsong {
+            orderlists: vec![list(0), list(1), list(1)],
+        }],
+        patterns: vec![
+            Pattern { rows },
+            Pattern {
+                rows: vec![Row::default(); n],
+            },
+        ],
         instruments: vec![ins],
-        tables: Tables { wave: vec![t(0x41, 0x00), t(0xFF, 0x00)], ..Default::default() },
+        tables: Tables {
+            wave: vec![t(0x41, 0x00), t(0xFF, 0x00)],
+            ..Default::default()
+        },
     };
     let s = SidSong::parse(&s.to_bytes()).expect("parses");
     let mut p = SidSongPlayer::new(s, DEFAULT_SAMPLE_RATE).expect("player builds");
@@ -353,7 +439,10 @@ fn the_players_note_on_after_a_hard_restart_is_delayed_by_the_adsr_bug_as_in_gt(
     // short of its last step at the bottom (one step per 30 x 313 cycles), so
     // the floor is 2 (was 0 or 1): frames 5-7 read 2, 2, 255.
     let l = hard_restart_note_levels();
-    assert!(l[6] <= 2 && l[6] <= l[5], "frame 6: still waiting on the rate counter, levels {l:?}");
+    assert!(
+        l[6] <= 2 && l[6] <= l[5],
+        "frame 6: still waiting on the rate counter, levels {l:?}"
+    );
     assert_eq!(l[7], 255, "frame 7: the attack has run, levels {l:?}");
 }
 
@@ -380,12 +469,19 @@ fn steady_tri_rms(mut c: Chip) -> f64 {
 
 #[test]
 fn the_trim_is_a_pure_scale_of_the_reference_level() {
-    for (model, trim) in [(SidModel::Sid8580, GAIN_TRIM_8580), (SidModel::Sid6581, GT_REF.gain_trim)] {
+    for (model, trim) in [
+        (SidModel::Sid8580, GAIN_TRIM_8580),
+        (SidModel::Sid6581, GT_REF.gain_trim),
+    ] {
         let mut reference = Chip::new(model).unwrap();
         reference.set_gain_trim(1.0);
         let r = steady_tri_rms(reference);
         let d = steady_tri_rms(Chip::new(model).unwrap());
-        assert!((d / r - trim).abs() < 1e-9, "{model:?}: {d} / {r} = {}, want {trim}", d / r);
+        assert!(
+            (d / r - trim).abs() < 1e-9,
+            "{model:?}: {d} / {r} = {}, want {trim}",
+            d / r
+        );
     }
 }
 
@@ -393,8 +489,9 @@ fn the_trim_is_a_pure_scale_of_the_reference_level() {
 fn r4ar_keeps_the_reference_level_and_gt_refs_level_follows_its_own_dc_and_trim() {
     use super::chip::CHIP_GAIN;
     assert_eq!(R4AR.gain_trim, 1.0);
-    assert!(GAIN_TRIM_8580 < 1.0);
-    let r4ar = steady_tri_rms(Chip::with_profile(SidModel::Sid6581, DEFAULT_SAMPLE_RATE, &R4AR).unwrap());
+    const { assert!(GAIN_TRIM_8580 < 1.0) };
+    let r4ar =
+        steady_tri_rms(Chip::with_profile(SidModel::Sid6581, DEFAULT_SAMPLE_RATE, &R4AR).unwrap());
     let gt = steady_tri_rms(Chip::new(SidModel::Sid6581).unwrap());
     // The AC level of a steady tone scales with headroom gain x trim; the
     // headroom gain follows the profile's DC terms (0.5625 vs 0.25 voice DC).
@@ -438,7 +535,7 @@ fn gt_ref_carries_the_measured_dc_and_r4ar_keeps_its_own() {
 }
 
 #[test]
-fn the_two_chips_are_equally_loud_as_reSIDs_are() {
+fn the_two_chips_are_equally_loud_as_resids_are() {
     // Measured against GoatTracker's playback: on every waveform and pitch
     // tried its 6581 and 8580 have the same RMS (0.098 for a full-volume
     // triangle). Ours differed 1.16 vs 1.65 times that before the trims;
@@ -471,7 +568,14 @@ fn gate_bits_around(later: &[(usize, u8)], frames: usize) -> Vec<bool> {
         ..Default::default()
     };
     let n = 16;
-    let list = |pattern: u8| Orderlist { entries: vec![OrderEntry { pattern, transpose: 0, repeat: 1 }], restart: 0 };
+    let list = |pattern: u8| Orderlist {
+        entries: vec![OrderEntry {
+            pattern,
+            transpose: 0,
+            repeat: 1,
+        }],
+        restart: 0,
+    };
     let mut rows = vec![Row::default(); n];
     rows[0] = row(49, 1);
     for &(r, note) in later {
@@ -486,10 +590,20 @@ fn gate_bits_around(later: &[(usize, u8)], frames: usize) -> Vec<bool> {
         name: b"s516g".to_vec(),
         author: Vec::new(),
         copyright: Vec::new(),
-        subsongs: vec![Subsong { orderlists: vec![list(0), list(1), list(1)] }],
-        patterns: vec![Pattern { rows }, Pattern { rows: vec![Row::default(); n] }],
+        subsongs: vec![Subsong {
+            orderlists: vec![list(0), list(1), list(1)],
+        }],
+        patterns: vec![
+            Pattern { rows },
+            Pattern {
+                rows: vec![Row::default(); n],
+            },
+        ],
         instruments: vec![ins],
-        tables: Tables { wave: vec![t(0x41, 0x00), t(0xFF, 0x00)], ..Default::default() },
+        tables: Tables {
+            wave: vec![t(0x41, 0x00), t(0xFF, 0x00)],
+            ..Default::default()
+        },
     };
     let s = SidSong::parse(&s.to_bytes()).expect("parses");
     let mut p = SidSongPlayer::new(s, DEFAULT_SAMPLE_RATE).expect("player builds");
@@ -509,7 +623,11 @@ fn a_key_off_in_the_next_row_clears_the_gate_gatetimer_frames_early() {
     // ticks earlier, on frame 4, and drops the gate then (gplay.c:920). Before
     // S5.16 the gate stayed up until the row itself.
     let g = gate_bits_around(&[(1, 126)], 8);
-    assert_eq!(g, vec![true, true, true, true, false, false, false, false], "{g:?}");
+    assert_eq!(
+        g,
+        vec![true, true, true, true, false, false, false, false],
+        "{g:?}"
+    );
 }
 
 #[test]
@@ -517,7 +635,9 @@ fn a_key_on_in_the_next_row_raises_the_gate_gatetimer_frames_early_too() {
     // Key off on row 1 (down from frame 4), key on on row 2, which starts on
     // frame 12: read two ticks earlier, on frame 10, the gate is up again then.
     let g = gate_bits_around(&[(1, 126), (2, 127)], 14);
-    let want = [true, true, true, true, false, false, false, false, false, false, true, true, true, true];
+    let want = [
+        true, true, true, true, false, false, false, false, false, false, true, true, true, true,
+    ];
     assert_eq!(g, want.to_vec(), "{g:?}");
 }
 

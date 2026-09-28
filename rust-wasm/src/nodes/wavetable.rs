@@ -266,8 +266,7 @@ fn generate_full_spectrum(waveform: Waveform, table_size: usize) -> (Vec<f32>, V
         Waveform::Triangle => {
             // Triangle: only odd harmonics with amplitudes decaying as 1/n²,
             // with an alternating sign. Use the same phase convention as the sine.
-            let mut i = 0;
-            for n in (1..=(table_size >> 1)).step_by(2) {
+            for (i, n) in (1..=(table_size >> 1)).step_by(2).enumerate() {
                 let factor = if i % 2 == 0 { 1.0 } else { -1.0 };
                 set_coeff(
                     &mut freq_im,
@@ -276,7 +275,6 @@ fn generate_full_spectrum(waveform: Waveform, table_size: usize) -> (Vec<f32>, V
                     factor / ((n * n) as f32),
                     scale,
                 );
-                i += 1;
             }
         }
         Waveform::Custom => {
@@ -300,7 +298,7 @@ fn generate_base_samples(waveform: Waveform, table_size: usize) -> Vec<f32> {
     let (freq_re, freq_im) = generate_full_spectrum(waveform, table_size);
     let mut spectrum: Vec<Complex<f32>> = freq_re
         .into_iter()
-        .zip(freq_im.into_iter())
+        .zip(freq_im)
         .map(|(re, im)| Complex { re, im })
         .collect();
 

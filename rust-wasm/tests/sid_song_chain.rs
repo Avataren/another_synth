@@ -16,7 +16,9 @@
 //! its samples.
 
 use audio_processor::sid::envelope::Stage;
-use audio_processor::sid::{gt_note_freq_reg, SidModel, SidSong, SidSongPlayer, DEFAULT_SAMPLE_RATE};
+use audio_processor::sid::{
+    gt_note_freq_reg, SidModel, SidSong, SidSongPlayer, DEFAULT_SAMPLE_RATE,
+};
 
 const FIXTURE: &[u8] = include_bytes!("fixtures/sid/s3-chain.asid");
 /// One PAL frame at 44.1 kHz is 879.8 samples (`player::frame_cycles`, GT
@@ -71,14 +73,27 @@ fn the_apps_file_round_trips_byte_exact_in_rust() {
     assert_eq!(s.name, b"S3 chain proof");
     assert_eq!(s.author, b"OpenClaw");
     assert_eq!(s.copyright, b"2026");
-    assert_eq!(s.model, SidModel::Sid6581, "the per-song tag set by setSidChipModel");
+    assert_eq!(
+        s.model,
+        SidModel::Sid6581,
+        "the per-song tag set by setSidChipModel"
+    );
     assert_eq!((s.channels, s.speed_multiplier, s.tempo), (3, 1, 6));
     assert_eq!(s.subsongs.len(), 2);
-    assert_eq!(s.patterns.iter().map(|p| p.rows.len()).collect::<Vec<_>>(), vec![32, 32, 16]);
+    assert_eq!(
+        s.patterns.iter().map(|p| p.rows.len()).collect::<Vec<_>>(),
+        vec![32, 32, 16]
+    );
     let names: Vec<&[u8]> = s.instruments.iter().map(|i| i.name.as_slice()).collect();
-    assert_eq!(names, vec![&b"Tri lead"[..], b"Arp pulse", b"Filt saw", b"Vib lead"]);
+    assert_eq!(
+        names,
+        vec![&b"Tri lead"[..], b"Arp pulse", b"Filt saw", b"Vib lead"]
+    );
     let t = &s.tables;
-    assert_eq!((t.wave.len(), t.pulse.len(), t.filter.len(), t.speed.len()), (6, 4, 4, 2));
+    assert_eq!(
+        (t.wave.len(), t.pulse.len(), t.filter.len(), t.speed.len()),
+        (6, 4, 4, 2)
+    );
     assert_eq!(s.subsongs[0].orderlists[2].entries[0].transpose, 5);
     assert_eq!(s.subsongs[0].orderlists[2].entries[0].repeat, 2);
 }
@@ -90,7 +105,11 @@ fn the_song_plays_on_a_chip_of_its_own_model_frame_by_frame() {
     // A PAL frame, 19 656 cycles (was a flat 882 at 50 Hz).
     assert!((p.samples_per_frame() - 879.809).abs() < 1e-3);
 
-    let (c4, e4, g4) = (gt_note_freq_reg(48), gt_note_freq_reg(52), gt_note_freq_reg(55));
+    let (c4, e4, g4) = (
+        gt_note_freq_reg(48),
+        gt_note_freq_reg(52),
+        gt_note_freq_reg(55),
+    );
     let a3 = gt_note_freq_reg(45);
     let c5 = gt_note_freq_reg(60);
     let mut checked = 0;
@@ -121,7 +140,11 @@ fn the_song_plays_on_a_chip_of_its_own_model_frame_by_frame() {
         // (0x5F0 at frame 82).
         match f {
             48 => assert_eq!(v2.pulse_width(), 0),
-            49..=53 => assert_eq!(v2.pulse_width(), 0x400 + 0x10 * (f as u16 - 49), "frame {f}"),
+            49..=53 => assert_eq!(
+                v2.pulse_width(),
+                0x400 + 0x10 * (f as u16 - 49),
+                "frame {f}"
+            ),
             81 => assert_eq!(v2.pulse_width(), 0x600),
             82 => assert_eq!(v2.pulse_width(), 0x5F0),
             _ => {}
@@ -136,9 +159,16 @@ fn the_song_plays_on_a_chip_of_its_own_model_frame_by_frame() {
             60 => assert_eq!((v3.frequency(), v3.control()), (a3, 0x21)),
             61 => {
                 let fl = chip.filter();
-                assert_eq!((fl.mode() & 0x70, fl.resonance(), fl.cutoff_reg()), (0x10, 12, 0x100));
+                assert_eq!(
+                    (fl.mode() & 0x70, fl.resonance(), fl.cutoff_reg()),
+                    (0x10, 12, 0x100)
+                );
             }
-            62..=64 => assert_eq!(chip.filter().cutoff_reg(), 0x100 + 0x10 * (f as u16 - 61), "frame {f}"),
+            62..=64 => assert_eq!(
+                chip.filter().cutoff_reg(),
+                0x100 + 0x10 * (f as u16 - 61),
+                "frame {f}"
+            ),
             124 => assert_eq!(chip.filter().cutoff_reg(), 0x4F0),
             125 | 126 | 131 => assert_eq!(chip.filter().cutoff_reg(), 0x500, "frame {f}"),
             _ => {}
@@ -227,7 +257,8 @@ fn both_chip_models_play_it_and_they_differ() {
 fn subsong_one_plays_its_own_orderlists() {
     // Subsong 1: voice 1 plays P1 (silent until row 8), voice 3 plays P0 up
     // an octave: A-4 + 12 = A-5 on frame 0.
-    let mut p = SidSongPlayer::with_model(song(), SidModel::Sid6581, DEFAULT_SAMPLE_RATE, 1).unwrap();
+    let mut p =
+        SidSongPlayer::with_model(song(), SidModel::Sid6581, DEFAULT_SAMPLE_RATE, 1).unwrap();
     frame(&mut p);
     assert_eq!(p.chip().voice(2).frequency(), gt_note_freq_reg(69));
     assert_eq!(p.chip().voice(2).control(), 0x11);

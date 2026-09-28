@@ -52,7 +52,10 @@ fn operator_map(fourop: u8) -> [OpList; CHANNELS] {
             if fourop & (1 << (pair + 3 * bank)) != 0 {
                 let (primary, partner) = (pair + 9 * bank, pair + 3 + 9 * bank);
                 let first = pair + 18 * bank;
-                map[primary] = OpList { ops: [first, first + 3, first + 6, first + 9], len: 4 };
+                map[primary] = OpList {
+                    ops: [first, first + 3, first + 6, first + 9],
+                    len: 4,
+                };
                 map[partner] = OpList::default();
             }
         }
@@ -68,7 +71,10 @@ struct OpList {
 
 impl OpList {
     fn two(a: usize, b: usize) -> OpList {
-        OpList { ops: [a, b, 0, 0], len: 2 }
+        OpList {
+            ops: [a, b, 0, 0],
+            len: 2,
+        }
     }
 
     fn as_slice(&self) -> &[usize] {
@@ -88,7 +94,14 @@ struct Channel {
 /// into `opout`: 0 = none, n = operator n's output), bits 7..9 add
 /// op1/op2/op3 to the output. OPL3 wires `opout` 1 to op2 at most, 2 to
 /// op3, 3 to op4 — each connection C0 bit 0 of the pair's two channels.
-const fn algorithm(op2in: u16, op3in: u16, op4in: u16, op1out: u16, op2out: u16, op3out: u16) -> u16 {
+const fn algorithm(
+    op2in: u16,
+    op3in: u16,
+    op4in: u16,
+    op1out: u16,
+    op2out: u16,
+    op3out: u16,
+) -> u16 {
     op2in | (op3in << 1) | (op4in << 4) | (op1out << 7) | (op2out << 8) | (op3out << 9)
 }
 const OPL3_ALGORITHMS: [u16; 4] = [
@@ -205,7 +218,8 @@ impl Chip {
 
     fn op_regs(&self, ch: usize, op: usize) -> OpRegs {
         let (co, oo) = (channel_offset(ch), operator_offset(op));
-        let block_freq = (((self.regs[0xb0 + co] & 0x1f) as u32) << 8) | self.regs[0xa0 + co] as u32;
+        let block_freq =
+            (((self.regs[0xb0 + co] & 0x1f) as u32) << 8) | self.regs[0xa0 + co] as u32;
         OpRegs {
             r20: self.regs[0x20 + oo],
             r40: self.regs[0x40 + oo],
@@ -231,7 +245,11 @@ impl Chip {
         }
         let am_depth = ((self.regs[0xbd] >> 7) & 1) as u32;
         let shift = 9 - 2 * am_depth;
-        let tri = if am_counter < 105 * 64 { am_counter } else { 210 * 64 + 63 - am_counter };
+        let tri = if am_counter < 105 * 64 {
+            am_counter
+        } else {
+            210 * 64 + 63 - am_counter
+        };
         self.lfo_am = (tri >> shift) as u8;
 
         // PM: 8 steps of 1024 samples, ≈ 6.1 Hz.
@@ -289,7 +307,11 @@ impl Chip {
             opmod = (c.feedback[0] as i32 + c.feedback[1] as i32) >> (10 - feedback);
         }
         let o = &self.ops[op];
-        let v = o.compute_volume(o.phase_index().wrapping_add(opmod as u32), self.lfo_am as u32, &self.waveforms);
+        let v = o.compute_volume(
+            o.phase_index().wrapping_add(opmod as u32),
+            self.lfo_am as u32,
+            &self.waveforms,
+        );
         self.chans[ch].feedback_in = v as i16;
         v
     }
@@ -297,7 +319,11 @@ impl Chip {
     #[inline]
     fn volume(&self, op: usize, modulation: i32) -> i32 {
         let o = &self.ops[op];
-        o.compute_volume(o.phase_index().wrapping_add(modulation as u32), self.lfo_am as u32, &self.waveforms)
+        o.compute_volume(
+            o.phase_index().wrapping_add(modulation as u32),
+            self.lfo_am as u32,
+            &self.waveforms,
+        )
     }
 
     /// Which outputs a channel feeds: C0 bits 4/5 under NEW=1, both otherwise.
@@ -377,7 +403,8 @@ impl Chip {
     fn output_tom_cymbal(&self, phase_select: u32) -> i32 {
         let [tt, tc, ..] = self.op_map[8].ops;
         let am = self.lfo_am as u32;
-        let mut result = self.ops[tt].compute_volume(self.ops[tt].phase_index(), am, &self.waveforms);
+        let mut result =
+            self.ops[tt].compute_volume(self.ops[tt].phase_index(), am, &self.waveforms);
         result += self.ops[tc].compute_volume(0x100 | (phase_select << 9), am, &self.waveforms);
         result.clamp(-32768, 32767) * 2
     }
@@ -414,7 +441,9 @@ impl Chip {
                 continue;
             }
             self.taps[ch] = v;
-            let (to_l, to_r) = self.routing(self.regs[0xc0 + channel_offset(ch)]).unwrap_or((false, false));
+            let (to_l, to_r) = self
+                .routing(self.regs[0xc0 + channel_offset(ch)])
+                .unwrap_or((false, false));
             if to_l {
                 l += v;
             }

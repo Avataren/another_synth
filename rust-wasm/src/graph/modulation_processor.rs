@@ -142,6 +142,10 @@ pub trait ModulationProcessor {
     }
 
     // Unsafe SIMD loop - unchanged conceptually, but ensure it uses slices correctly
+    /// # Safety
+    ///
+    /// No caller obligation: every raw access is within
+    /// `min(source.len(), target.len())`.
     #[inline(always)]
     unsafe fn simd_process_unchecked<const LANES: usize, F, FS>(
         source: &[f32],     // Source data slice

@@ -74,7 +74,7 @@ impl Convolver {
             "Impulse response must have 1, 2, or 4 channels (provided {})",
             num_ir_channels
         );
-        let length = impulse_response.get(0).map_or(0, |ch| ch.len());
+        let length = impulse_response.first().map_or(0, |ch| ch.len());
         assert!(length > 0, "Impulse response channels cannot be empty");
 
         let total_samples = impulse_response.iter().map(|ch| ch.len()).sum::<usize>();
@@ -164,7 +164,7 @@ impl Convolver {
         }
 
         // Determine input config
-        let input_l_slice_opt = inputs.get(0).filter(|s| s.len() >= buffer_len);
+        let input_l_slice_opt = inputs.first().filter(|s| s.len() >= buffer_len);
         let input_r_slice_opt = inputs
             .get(1)
             .filter(|s| s.len() >= buffer_len)
@@ -278,11 +278,11 @@ impl AudioNode for Convolver {
         let input_l_source_buffer_opt: Option<&[f32]> = inputs
             .get(&PortId::AudioInput0)
             .and_then(|s| s.first())
-            .map(|s| s.buffer.get(..buffer_size).unwrap_or(&s.buffer));
+            .map(|s| s.buffer.get(..buffer_size).unwrap_or(s.buffer));
         let input_r_source_buffer_opt: Option<&[f32]> = inputs
             .get(&PortId::AudioInput1)
             .and_then(|s| s.first())
-            .map(|s| s.buffer.get(..buffer_size).unwrap_or(&s.buffer));
+            .map(|s| s.buffer.get(..buffer_size).unwrap_or(s.buffer));
 
         // --- Determine final DRY slices using Cow ---
         let dry_l_signal: Cow<[f32]> = input_l_source_buffer_opt
@@ -300,8 +300,8 @@ impl AudioNode for Convolver {
         if let (Some(out_l_buffer), Some(out_r_buffer)) =
             (&mut out_l_buffer_opt, &mut out_r_buffer_opt)
         {
-            let conv_input_l: &[f32] = &*dry_l_signal;
-            let conv_input_r: &[f32] = &*dry_r_signal;
+            let conv_input_l: &[f32] = &dry_l_signal;
+            let conv_input_r: &[f32] = &dry_r_signal;
             let input_slices_for_conv: &[&[f32]] = &[conv_input_l, conv_input_r];
             let temp_wet_l_slice = &mut self.temp_wet_l[..buffer_size];
             let temp_wet_r_slice = &mut self.temp_wet_r[..buffer_size];

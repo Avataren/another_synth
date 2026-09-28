@@ -13,7 +13,12 @@ use std::path::Path;
 const RATE: u32 = 44100;
 
 fn bytes(name: &str) -> Vec<u8> {
-    fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx").join(name)).unwrap()
+    fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../public/demos/ahx")
+            .join(name),
+    )
+    .unwrap()
 }
 
 fn engine(name: &str, cap: Option<usize>) -> AhxEngine {
@@ -53,14 +58,25 @@ fn capture_never_changes_mixed_samples() {
 
         let mut on = engine(name, None);
         on.enable_capture(true);
-        assert_eq!(render(&mut on, frames, &BLOCKS), plain, "{name}: capture on");
+        assert_eq!(
+            render(&mut on, frames, &BLOCKS),
+            plain,
+            "{name}: capture on"
+        );
 
         // Toggled on and off mid-song, at block edges that are not tick edges.
         let mut toggled = engine(name, None);
         let mut got = Vec::new();
-        for (i, chunk) in [7777usize, 20000, 1, 50000, 4096, frames - 7777 - 20000 - 1 - 50000 - 4096]
-            .iter()
-            .enumerate()
+        for (i, chunk) in [
+            7777usize,
+            20000,
+            1,
+            50000,
+            4096,
+            frames - 7777 - 20000 - 1 - 50000 - 4096,
+        ]
+        .iter()
+        .enumerate()
         {
             toggled.enable_capture(i % 2 == 1);
             got.extend(render(&mut toggled, *chunk, &BLOCKS));
@@ -76,7 +92,10 @@ fn off_by_default_and_nothing_to_read() {
     render(&mut e, 4000, &BLOCKS);
     let mut out = [7i16; 64];
     assert_eq!(e.read_channel_snapshot(0, &mut out), 0);
-    assert!(out.iter().all(|&v| v == 7), "an off engine must not touch the buffer");
+    assert!(
+        out.iter().all(|&v| v == 7),
+        "an off engine must not touch the buffer"
+    );
 
     e.enable_capture(true);
     assert!(e.capture_enabled());
@@ -91,7 +110,11 @@ fn snapshot_argument_edges() {
     e.enable_capture(true);
     render(&mut e, 5000, &BLOCKS);
     let mut out = [0i16; 16];
-    assert_eq!(e.read_channel_snapshot(e.channels(), &mut out), 0, "voice out of range");
+    assert_eq!(
+        e.read_channel_snapshot(e.channels(), &mut out),
+        0,
+        "voice out of range"
+    );
     assert_eq!(e.read_channel_snapshot(0, &mut []), 0, "empty out");
     // Longer than the ring: capped at one point per captured frame.
     let mut big = vec![0i16; CAPTURE_FRAMES + 100];
@@ -123,8 +146,14 @@ fn snapshot_is_what_the_mixer_used() {
         assert_eq!(tail[f * 2] as i32, want.clamp(-0x8000, 0x7fff), "frame {f}");
         nonzero += (j != 0) as usize;
     }
-    assert!(nonzero > tick / 4, "the voice should be audible here ({nonzero} nonzero)");
-    assert!(snap.iter().all(|&v| v.abs() <= 8192), "full scale is s8 * volume 64");
+    assert!(
+        nonzero > tick / 4,
+        "the voice should be audible here ({nonzero} nonzero)"
+    );
+    assert!(
+        snap.iter().all(|&v| v.abs() <= 8192),
+        "full scale is s8 * volume 64"
+    );
 }
 
 #[test]
@@ -145,7 +174,11 @@ fn decimated_snapshot_box_averages_the_full_one() {
     let mut odd = [0i16; 1000];
     assert_eq!(e.read_channel_snapshot(0, &mut odd), 1000);
     let sum: i32 = full[CAPTURE_FRAMES - 2..].iter().map(|&v| v as i32).sum();
-    assert_eq!(odd[999] as i32, sum / 2, "newest point covers the newest frames");
+    assert_eq!(
+        odd[999] as i32,
+        sum / 2,
+        "newest point covers the newest frames"
+    );
 }
 
 #[test]
@@ -165,7 +198,10 @@ fn a_fresh_capture_reads_silence_and_rewind_clears_it() {
     };
     assert!(any_sound(&e, &mut snap), "playing voices must show up");
     assert!(e.init_subsong(0));
-    assert!(!any_sound(&e, &mut snap), "a rewound song starts from a clean ring");
+    assert!(
+        !any_sound(&e, &mut snap),
+        "a rewound song starts from a clean ring"
+    );
 }
 
 #[test]

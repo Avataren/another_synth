@@ -167,8 +167,8 @@ impl Limiter {
         }
 
         // From here both exist; reborrow as &mut [f32] without moving
-        let out_left_full: &mut [f32] = l_opt.as_deref_mut().unwrap();
-        let out_right_full: &mut [f32] = r_opt.as_deref_mut().unwrap();
+        let out_left_full: &mut [f32] = l_opt.unwrap();
+        let out_right_full: &mut [f32] = r_opt.unwrap();
 
         // Inputs
         let left_source = match inputs.get(&PortId::AudioInput0).and_then(|v| v.first()) {

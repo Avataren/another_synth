@@ -47,16 +47,65 @@ pub const WAVES_SIZE: usize = WO_HIGHPASSES + FILTER_ROW_SIZE * 31;
 /// `Offsets[]` in `hvl_process_frame` (`hvl_replay.c:1127`): per-wavelength
 /// byte offset into a waveform's 6-variant block (used for triangle/sawtooth
 /// indexing by `vc_WaveLength`).
-pub const WAVELENGTH_OFFSETS: [usize; 6] = [0x00, 0x04, 0x04 + 0x08, 0x04 + 0x08 + 0x10, 0x04 + 0x08 + 0x10 + 0x20, 0x04 + 0x08 + 0x10 + 0x20 + 0x40];
+pub const WAVELENGTH_OFFSETS: [usize; 6] = [
+    0x00,
+    0x04,
+    0x04 + 0x08,
+    0x04 + 0x08 + 0x10,
+    0x04 + 0x08 + 0x10 + 0x20,
+    0x04 + 0x08 + 0x10 + 0x20 + 0x40,
+];
 
 /// `lentab[45]`, `hvl_tables.c:6-9`. Per-sub-waveform length-minus-1, walked
 /// by `hvl_GenFilterWaves` while filtering each of the 45 concatenated
 /// sub-blocks (6 triangle + 6 sawtooth + 32 square + 1 white-noise) that make
 /// up one `FILTER_ROW_SIZE` block.
 const LENTAB: [usize; 45] = [
-    3, 7, 0xf, 0x1f, 0x3f, 0x7f, 3, 7, 0xf, 0x1f, 0x3f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f,
-    0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f,
-    0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, (0x280 * 3) - 1,
+    3,
+    7,
+    0xf,
+    0x1f,
+    0x3f,
+    0x7f,
+    3,
+    7,
+    0xf,
+    0x1f,
+    0x3f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    0x7f,
+    (0x280 * 3) - 1,
 ];
 
 /// `filter_thing[2790]`, `hvl_tables.c:34-385` — per-(filter-row, sub-block)
@@ -483,22 +532,26 @@ fn gen_whitenoise(buf: &mut [i8], len: usize) {
     let mut i = 0usize;
     loop {
         let s: i8 = if ays & 0x100 != 0 {
-            if ays & 0x8000 != 0 { -128i8 } else { 0x7f }
+            if ays & 0x8000 != 0 {
+                -128i8
+            } else {
+                0x7f
+            }
         } else {
             ays as u8 as i8
         };
         buf[i] = s;
         i += 1;
 
-        ays = (ays >> 5) | (ays << 27);
+        ays = ays.rotate_right(5);
         ays = (ays & 0xffff_ff00) | ((ays & 0xff) ^ 0x9a);
         let mut bx: u16 = ays as u16;
-        ays = (ays << 2) | (ays >> 30);
+        ays = ays.rotate_left(2);
         let mut ax: u16 = ays as u16;
         bx = bx.wrapping_add(ax);
         ax ^= bx;
         ays = (ays & 0xffff_0000) | (ax as u32);
-        ays = (ays >> 3) | (ays << 29);
+        ays = ays.rotate_right(3);
 
         if i >= len {
             break;
@@ -582,7 +635,10 @@ fn generate_waves() -> Vec<i8> {
     gen_triangle(&mut buf_part[rel(WO_TRIANGLE_40)..], 0x40);
     gen_triangle(&mut buf_part[rel(WO_TRIANGLE_80)..], 0x80);
     gen_square(&mut buf_part[rel(WO_SQUARES)..rel(WO_SQUARES) + 0x80 * 0x20]);
-    gen_whitenoise(&mut buf_part[rel(WO_WHITENOISE)..rel(WO_WHITENOISE) + WHITENOISE_LEN], WHITENOISE_LEN);
+    gen_whitenoise(
+        &mut buf_part[rel(WO_WHITENOISE)..rel(WO_WHITENOISE) + WHITENOISE_LEN],
+        WHITENOISE_LEN,
+    );
 
     gen_filter_waves(buf_part, lowbuf_part, highbuf_part);
 

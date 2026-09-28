@@ -607,7 +607,7 @@ impl AudioNode for Lfo {
         if let Some(gate_sources) = inputs.get(&PortId::CombinedGate) {
             for source in gate_sources {
                 Self::apply_add(
-                    &source.buffer,
+                    source.buffer,
                     &mut self.gate_buffer[..buffer_size],
                     source.amount,
                     source.transformation,
@@ -620,7 +620,7 @@ impl AudioNode for Lfo {
                                      default_add: f32,
                                      default_mult: f32| {
             let sources = inputs.get(&port_id);
-            if sources.map_or(false, |s| !s.is_empty()) {
+            if sources.is_some_and(|s| !s.is_empty()) {
                 // Reset scratch buffers for accumulation
                 self.mod_scratch_add[..buffer_size].fill(default_add);
                 self.mod_scratch_mult[..buffer_size].fill(default_mult);

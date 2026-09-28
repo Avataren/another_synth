@@ -9,8 +9,7 @@ pub(crate) fn read_wav_samples_f32<R: std::io::Read>(
     reader: &mut hound::WavReader<R>,
 ) -> Result<Vec<f32>, String> {
     let spec = reader.spec();
-    let samples: Result<Vec<f32>, hound::Error> = match (spec.bits_per_sample, spec.sample_format)
-    {
+    let samples: Result<Vec<f32>, hound::Error> = match (spec.bits_per_sample, spec.sample_format) {
         (32, hound::SampleFormat::Float) => reader.samples::<f32>().collect(),
         (16, hound::SampleFormat::Int) => reader
             .samples::<i16>()

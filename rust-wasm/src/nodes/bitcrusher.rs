@@ -80,8 +80,8 @@ impl AudioNode for Bitcrusher {
         let [Some(out_left), Some(out_right)] = outs else {
             panic!("Missing stereo output buffers for Bitcrusher");
         };
-        let out_left: &mut [f32] = *out_left;
-        let out_right: &mut [f32] = *out_right;
+        let out_left: &mut [f32] = out_left;
+        let out_right: &mut [f32] = out_right;
 
         let bits = self.bits.clamp(1, 24);
         let levels = 1u32.checked_shl(bits as u32).unwrap_or(0).max(2) as f32;

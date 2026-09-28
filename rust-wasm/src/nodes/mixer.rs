@@ -29,6 +29,12 @@ pub struct Mixer {
     temp_out_r: Vec<f32>,
 }
 
+impl Default for Mixer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Mixer {
     pub fn new() -> Self {
         let initial_capacity = 128;
@@ -125,7 +131,7 @@ impl AudioNode for Mixer {
         if let Some(audio_sources) = inputs.get(&PortId::AudioInput0) {
             for source in audio_sources {
                 Self::apply_add(
-                    &source.buffer,
+                    source.buffer,
                     &mut self.audio_in_buffer[..buffer_size],
                     source.amount,
                     source.transformation,
@@ -139,7 +145,7 @@ impl AudioNode for Mixer {
                                      default_add: f32,
                                      default_mult: f32| {
             let sources = inputs.get(&port_id);
-            if sources.map_or(false, |s| !s.is_empty()) {
+            if sources.is_some_and(|s| !s.is_empty()) {
                 Self::accumulate_modulations_inplace(
                     buffer_size,
                     sources.map(|v| v.as_slice()),

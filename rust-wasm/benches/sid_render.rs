@@ -12,7 +12,10 @@ use audio_processor::sid::{SidModel, SidSong, SidSongPlayer, DEFAULT_SAMPLE_RATE
 const BLOCK: usize = 128;
 const SECONDS: f64 = 60.0;
 const RUNS: usize = 5;
-const SONGS: [&str; 2] = ["tests/fixtures/sid/s3-chain.asid", "tests/fixtures/sid/s59-drum-example.asid"];
+const SONGS: [&str; 2] = [
+    "tests/fixtures/sid/s3-chain.asid",
+    "tests/fixtures/sid/s59-drum-example.asid",
+];
 
 /// Seconds to render `SECONDS` of the song, the best of `RUNS`.
 fn time_song(bytes: &[u8], model: SidModel) -> f64 {
@@ -20,7 +23,8 @@ fn time_song(bytes: &[u8], model: SidModel) -> f64 {
     let mut best = f64::INFINITY;
     for _ in 0..RUNS {
         let song = SidSong::parse(bytes).expect("fixture parses");
-        let mut player = SidSongPlayer::with_model(song, model, DEFAULT_SAMPLE_RATE, 0).expect("player builds");
+        let mut player =
+            SidSongPlayer::with_model(song, model, DEFAULT_SAMPLE_RATE, 0).expect("player builds");
         let mut out = [0f32; BLOCK];
         let (mut a, mut b, mut c) = ([0f32; BLOCK], [0f32; BLOCK], [0f32; BLOCK]);
         let start = Instant::now();

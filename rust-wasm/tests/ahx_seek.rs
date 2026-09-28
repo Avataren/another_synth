@@ -20,7 +20,12 @@ const RATE: u32 = 44100;
 const BLOCKS: [usize; 5] = [128, 1, 333, 882, 4096];
 
 fn bytes(name: &str) -> Vec<u8> {
-    fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx").join(name)).unwrap()
+    fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../public/demos/ahx")
+            .join(name),
+    )
+    .unwrap()
 }
 
 fn engine(name: &str) -> AhxEngine {
@@ -66,7 +71,11 @@ fn row_tops(name: &str, max_ticks: usize) -> Vec<RowTop> {
         if here != last {
             last = here;
             if seen.insert(here) {
-                tops.push(RowTop { pos: here.0 as usize, row: here.1 as usize, ticks });
+                tops.push(RowTop {
+                    pos: here.0 as usize,
+                    row: here.1 as usize,
+                    ticks,
+                });
             }
         }
         if e.song_end_reached() {
@@ -91,10 +100,18 @@ fn targets(name: &str) -> Vec<RowTop> {
     let tops = row_tops(name, 50 * 40);
     assert!(tops.len() > 8, "{name}: too short to seek in");
     let step = tops.len() / 6;
-    (0..6).map(|i| tops[i * step]).chain([tops[tops.len() - 1]]).collect()
+    (0..6)
+        .map(|i| tops[i * step])
+        .chain([tops[tops.len() - 1]])
+        .collect()
 }
 
-const SONGS: [&str; 4] = ["karma.ahx", "robocop_iii_j_tel.ahx", "sunspots.hvl", "blondie.ahx"];
+const SONGS: [&str; 4] = [
+    "karma.ahx",
+    "robocop_iii_j_tel.ahx",
+    "sunspots.hvl",
+    "blondie.ahx",
+];
 
 fn setup(e: &mut AhxEngine, hifi: bool, capture: bool) {
     if hifi {
@@ -115,16 +132,31 @@ fn seek_renders_exactly_what_a_full_run_renders_from_there() {
 
                 let mut seeked = engine(name);
                 setup(&mut seeked, hifi, capture);
-                assert_eq!(seeked.seek(t.pos, t.row), Some(SeekKind::Exact), "{name} {t:?}");
+                assert_eq!(
+                    seeked.seek(t.pos, t.row),
+                    Some(SeekKind::Exact),
+                    "{name} {t:?}"
+                );
 
                 let what = format!("{name} hifi={hifi} capture={capture} {t:?}");
-                assert_eq!((seeked.pos_nr(), seeked.note_nr()), (t.pos as i32, t.row as i32), "{what}");
+                assert_eq!(
+                    (seeked.pos_nr(), seeked.note_nr()),
+                    (t.pos as i32, t.row as i32),
+                    "{what}"
+                );
                 assert_eq!(seeked.tempo(), full.tempo(), "{what}: speed");
-                assert_eq!(seeked.ticks_played(), full.ticks_played(), "{what}: tick counter");
+                assert_eq!(
+                    seeked.ticks_played(),
+                    full.ticks_played(),
+                    "{what}: tick counter"
+                );
                 // Two seconds, in block sizes that split ticks; it spans several rows.
                 let want = render(&mut full, RATE as usize * 2, &BLOCKS);
                 let got = render(&mut seeked, RATE as usize * 2, &BLOCKS);
-                assert!(want == got, "{what}: render after the seek differs from the full run");
+                assert!(
+                    want == got,
+                    "{what}: render after the seek differs from the full run"
+                );
                 if capture {
                     for v in 0..full.channels() {
                         let (mut a, mut b) = (vec![0i16; 2048], vec![0i16; 2048]);
@@ -166,7 +198,10 @@ fn seek_from_any_earlier_state_equals_seek_from_fresh() {
         let mut back = engine(name);
         render(&mut back, RATE as usize * 15 + 17, &BLOCKS);
         back.seek(t.pos, t.row).unwrap();
-        assert!(render(&mut back, RATE as usize, &BLOCKS) == want, "{name}: backward seek");
+        assert!(
+            render(&mut back, RATE as usize, &BLOCKS) == want,
+            "{name}: backward seek"
+        );
 
         // Seek to a later target first, then to this one.
         let mut hop = engine(name);
@@ -174,7 +209,10 @@ fn seek_from_any_earlier_state_equals_seek_from_fresh() {
         hop.seek(far.pos, far.row).unwrap();
         render(&mut hop, 5000, &BLOCKS);
         hop.seek(t.pos, t.row).unwrap();
-        assert!(render(&mut hop, RATE as usize, &BLOCKS) == want, "{name}: hop");
+        assert!(
+            render(&mut hop, RATE as usize, &BLOCKS) == want,
+            "{name}: hop"
+        );
     }
 }
 
@@ -196,7 +234,7 @@ fn seek_out_of_range_changes_nothing() {
     let mut b = engine("karma.ahx");
     render(&mut a, 40_000, &BLOCKS);
     render(&mut b, 40_000, &BLOCKS);
-    let count = a.song().position_nr as usize;
+    let count = a.song().position_nr;
     let len = a.song().track_length as usize;
     assert_eq!(a.seek(count, 0), None);
     assert_eq!(a.seek(0, len), None);
@@ -220,7 +258,9 @@ fn seek_survives_mute_solo_hifi_and_capture_settings() {
     reference.prewarm_hifi();
     reference.set_mute_solo(0b0010, 0);
     played_to(&mut reference, t.ticks);
-    assert!(render(&mut e, RATE as usize, &BLOCKS) == render(&mut reference, RATE as usize, &BLOCKS));
+    assert!(
+        render(&mut e, RATE as usize, &BLOCKS) == render(&mut reference, RATE as usize, &BLOCKS)
+    );
     assert_eq!(e.hifi_misses(), reference.hifi_misses());
 }
 
@@ -229,11 +269,20 @@ fn seek_survives_mute_solo_hifi_and_capture_settings() {
 #[test]
 fn an_unreachable_row_starts_cold_at_that_row() {
     let mut cold = 0;
-    for name in SONGS.iter().copied().chain(["thats_the_wave_it_is.ahx", "the_fugitive.ahx", "wave_stepper.ahx"]) {
-        let reached: HashSet<(usize, usize)> = row_tops(name, 400_000).iter().map(|t| (t.pos, t.row)).collect();
+    for name in SONGS.iter().copied().chain([
+        "thats_the_wave_it_is.ahx",
+        "the_fugitive.ahx",
+        "wave_stepper.ahx",
+    ]) {
+        let reached: HashSet<(usize, usize)> = row_tops(name, 400_000)
+            .iter()
+            .map(|t| (t.pos, t.row))
+            .collect();
         let mut e = engine(name);
-        let (positions, len) = (e.song().position_nr as usize, e.song().track_length as usize);
-        let missing = (0..positions).flat_map(|p| (0..len).map(move |r| (p, r))).find(|k| !reached.contains(k));
+        let (positions, len) = (e.song().position_nr, e.song().track_length as usize);
+        let missing = (0..positions)
+            .flat_map(|p| (0..len).map(move |r| (p, r)))
+            .find(|k| !reached.contains(k));
         let Some((p, r)) = missing else { continue };
         assert_eq!(e.seek(p, r), Some(SeekKind::Cold), "{name} ({p},{r})");
         assert_eq!((e.pos_nr(), e.note_nr()), (p as i32, r as i32));
@@ -244,7 +293,10 @@ fn an_unreachable_row_starts_cold_at_that_row() {
         assert!(e.ticks_played() > 0);
         cold += 1;
     }
-    assert!(cold > 0, "the corpus has no unreachable row to cover the cold path");
+    assert!(
+        cold > 0,
+        "the corpus has no unreachable row to cover the cold path"
+    );
 }
 
 /// `set_loop_position`: off is the reference transport; on, the position runs
@@ -252,7 +304,10 @@ fn an_unreachable_row_starts_cold_at_that_row() {
 #[test]
 fn loop_position_repeats_one_position_on_a_running_clock() {
     for name in ["karma.ahx", "sunspots.hvl", "blondie.ahx"] {
-        let t = row_tops(name, 4000).into_iter().find(|t| t.row == 0 && t.pos == 1).expect("position 1 reached");
+        let t = row_tops(name, 4000)
+            .into_iter()
+            .find(|t| t.row == 0 && t.pos == 1)
+            .expect("position 1 reached");
         let mut e = engine(name);
         e.set_loop_position(true);
         e.seek(t.pos, t.row).unwrap();
@@ -284,7 +339,10 @@ fn loop_position_is_the_reference_until_the_position_ends() {
     // Same bytes as the reference for as long as the reference stays on the
     // position; only the wrap differs.
     for name in ["karma.ahx", "sunspots.hvl"] {
-        let t = row_tops(name, 4000).into_iter().find(|t| t.row == 0 && t.pos == 1).unwrap();
+        let t = row_tops(name, 4000)
+            .into_iter()
+            .find(|t| t.row == 0 && t.pos == 1)
+            .unwrap();
         let mut plain = engine(name);
         plain.seek(t.pos, t.row).unwrap();
         let mut looped = engine(name);
@@ -296,7 +354,10 @@ fn loop_position_is_the_reference_until_the_position_ends() {
         while plain.pos_nr() == t.pos as i32 {
             plain.render_block(&mut a);
             looped.render_block(&mut b);
-            assert!(a == b, "{name}: tick {compared} differs inside the position");
+            assert!(
+                a == b,
+                "{name}: tick {compared} differs inside the position"
+            );
             compared += 1;
         }
         assert!(compared > 10);
@@ -337,20 +398,21 @@ fn pause_and_resume_is_only_a_gap() {
                 p.play();
                 p
             };
-            let run = |p: &mut AhxPlayer, frames: usize, blocks: &[usize]| -> (Vec<f32>, Vec<f32>) {
-                let (mut l, mut r) = (Vec::new(), Vec::new());
-                let (mut done, mut k) = (0, 0);
-                while done < frames {
-                    let n = blocks[k % blocks.len()].min(frames - done);
-                    let (mut bl, mut br) = (vec![0f32; n], vec![0f32; n]);
-                    p.render(&mut bl, &mut br);
-                    l.extend(bl);
-                    r.extend(br);
-                    done += n;
-                    k += 1;
-                }
-                (l, r)
-            };
+            let run =
+                |p: &mut AhxPlayer, frames: usize, blocks: &[usize]| -> (Vec<f32>, Vec<f32>) {
+                    let (mut l, mut r) = (Vec::new(), Vec::new());
+                    let (mut done, mut k) = (0, 0);
+                    while done < frames {
+                        let n = blocks[k % blocks.len()].min(frames - done);
+                        let (mut bl, mut br) = (vec![0f32; n], vec![0f32; n]);
+                        p.render(&mut bl, &mut br);
+                        l.extend(bl);
+                        r.extend(br);
+                        done += n;
+                        k += 1;
+                    }
+                    (l, r)
+                };
 
             let (first, second, gap) = (RATE as usize * 3 + 71, RATE as usize * 2, 128 * 300 + 5);
             let mut straight = mk();
@@ -361,13 +423,23 @@ fn pause_and_resume_is_only_a_gap() {
             let at = (paused.position(), paused.row(), paused.ticks());
             paused.pause();
             let (silence_l, silence_r) = run(&mut paused, gap, &[128, 999]);
-            assert!(silence_l.iter().chain(&silence_r).all(|&s| s == 0.0), "{name}: paused output is silent");
-            assert_eq!((paused.position(), paused.row(), paused.ticks()), at, "{name}: the clock moved while paused");
+            assert!(
+                silence_l.iter().chain(&silence_r).all(|&s| s == 0.0),
+                "{name}: paused output is silent"
+            );
+            assert_eq!(
+                (paused.position(), paused.row(), paused.ticks()),
+                at,
+                "{name}: the clock moved while paused"
+            );
             paused.play();
             let (rl, rr) = run(&mut paused, second, &[333, 128, 1]);
             gl.extend(rl);
             gr.extend(rr);
-            assert!(gl == wl && gr == wr, "{name} hifi={hifi}: resumed render differs from the uninterrupted one");
+            assert!(
+                gl == wl && gr == wr,
+                "{name} hifi={hifi}: resumed render differs from the uninterrupted one"
+            );
         }
     }
 }
@@ -396,7 +468,10 @@ fn player_seek_keeps_the_play_state_and_reports_position() {
 #[test]
 fn hifi_prewarm_does_not_change_which_subsong_a_seek_replays() {
     let mut e = engine("blondie.ahx");
-    assert!(e.song().subsong_nr > 0, "the test needs a song with a subsong");
+    assert!(
+        e.song().subsong_nr > 0,
+        "the test needs a song with a subsong"
+    );
     e.set_hifi(true);
     e.prewarm_hifi();
     assert_eq!(e.seek(0, 0), Some(SeekKind::Exact));
@@ -426,9 +501,14 @@ fn seek_is_exact_across_the_whole_corpus() {
         played_to(&mut full, t.ticks);
         let mut seeked = engine(&name);
         setup(&mut seeked, true, false);
-        assert_eq!(seeked.seek(t.pos, t.row), Some(SeekKind::Exact), "{name} {t:?}");
+        assert_eq!(
+            seeked.seek(t.pos, t.row),
+            Some(SeekKind::Exact),
+            "{name} {t:?}"
+        );
         assert!(
-            render(&mut full, RATE as usize, &BLOCKS) == render(&mut seeked, RATE as usize, &BLOCKS),
+            render(&mut full, RATE as usize, &BLOCKS)
+                == render(&mut seeked, RATE as usize, &BLOCKS),
             "{name} {t:?}"
         );
     }

@@ -198,7 +198,11 @@ mod tests {
             st.step(&e);
             lowest = lowest.min(st.volume);
         }
-        assert!(lowest <= -50 * 256, "the release should swing towards -64: {}", lowest >> 8);
+        assert!(
+            lowest <= -50 * 256,
+            "the release should swing towards -64: {}",
+            lowest >> 8
+        );
         assert_eq!(st.volume, 0, "and land on the release level");
     }
 }

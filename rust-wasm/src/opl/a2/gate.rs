@@ -72,7 +72,7 @@ impl StateHasher {
         self.touched.clear();
         self.hash = fnv(self.hash, 0xff);
         self.ticks += 1;
-        if self.ticks % CHUNK == 0 {
+        if self.ticks.is_multiple_of(CHUNK) {
             self.chunks.push(self.hash);
             self.hash = FNV_OFFSET;
         }
@@ -80,7 +80,7 @@ impl StateHasher {
 
     /// The chunk hashes, the last one partial.
     pub fn finish(mut self) -> Vec<u64> {
-        if self.ticks % CHUNK != 0 {
+        if !self.ticks.is_multiple_of(CHUNK) {
             self.chunks.push(self.hash);
         }
         self.chunks

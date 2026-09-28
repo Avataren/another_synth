@@ -114,7 +114,7 @@ impl AudioNode for GlobalFrequencyNode {
 
         // --- 1) Process Detune Modulation ---
         let detune_mod_sources = inputs.get(&PortId::DetuneMod);
-        if detune_mod_sources.map_or(false, |s| !s.is_empty()) {
+        if detune_mod_sources.is_some_and(|s| !s.is_empty()) {
             // Accumulate modulation into shared scratch buffers
             Self::accumulate_modulations_inplace(
                 buffer_size,

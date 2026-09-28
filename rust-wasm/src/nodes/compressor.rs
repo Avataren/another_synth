@@ -148,8 +148,8 @@ impl AudioNode for Compressor {
         let [Some(out_left), Some(out_right)] = outs else {
             return;
         };
-        let out_left: &mut [f32] = *out_left;
-        let out_right: &mut [f32] = *out_right;
+        let out_left: &mut [f32] = out_left;
+        let out_right: &mut [f32] = out_right;
 
         let mix = self.mix;
         let dry_mix = 1.0 - mix;

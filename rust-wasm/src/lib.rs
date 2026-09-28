@@ -12,6 +12,8 @@ pub mod macros;
 pub mod nodes;
 pub mod opl;
 pub mod processing;
+// The SID docs align formulas and tables inside prose list items.
+#[allow(clippy::doc_overindented_list_items)]
 pub mod sid;
 pub mod traits;
 pub mod utils;

@@ -26,6 +26,7 @@
 //!   Enough shifts under a low combination drive the whole register to 0,
 //!   a fixed point of the LFSR: noise then stays silent until TEST reloads
 //!   the ones.
+//!
 //! The 8580 and 6581 LFSRs are the same circuit. The chips differ in the
 //! analog path, not here.
 
@@ -34,8 +35,16 @@ pub const NOISE_TEST_VALUE: u32 = 0x7F_FFFF;
 const NOISE_MASK: u32 = 0x7F_FFFF;
 
 /// Register bit -> DAC bit, most significant first.
-const TAPS: [(u32, u32); 8] =
-    [(20, 11), (18, 10), (14, 9), (11, 8), (9, 7), (5, 6), (2, 5), (0, 4)];
+const TAPS: [(u32, u32); 8] = [
+    (20, 11),
+    (18, 10),
+    (14, 9),
+    (11, 8),
+    (9, 7),
+    (5, 6),
+    (2, 5),
+    (0, 4),
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Noise {
@@ -65,7 +74,9 @@ impl Noise {
     /// 12-bit waveform output built from the eight output taps.
     #[inline]
     pub fn output(&self) -> u16 {
-        TAPS.iter().fold(0u16, |o, &(from, to)| o | ((((self.reg >> from) & 1) as u16) << to))
+        TAPS.iter().fold(0u16, |o, &(from, to)| {
+            o | ((((self.reg >> from) & 1) as u16) << to)
+        })
     }
 
     /// Clear every tap cell whose DAC line the combined waveform pulls low.

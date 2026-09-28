@@ -72,7 +72,11 @@ fn karma_planar_f32_round_trips_to_the_c_reference_hashes() {
                 bytes.extend_from_slice(&(v as i16).to_le_bytes());
             }
         }
-        assert_eq!(fnv(0xcbf29ce484222325, &bytes), want, "chunk {prev}..{upto}");
+        assert_eq!(
+            fnv(0xcbf29ce484222325, &bytes),
+            want,
+            "chunk {prev}..{upto}"
+        );
         prev = upto;
     }
 }
@@ -126,7 +130,10 @@ fn metadata_and_native_channel_count_are_exposed() {
 fn garbage_input_is_an_error_not_a_panic() {
     assert!(AhxPlayer::new(b"not an ahx file at all, really", 44100, 2).is_err());
     assert!(AhxPlayer::new(&[], 44100, 2).is_err());
-    assert!(AhxPlayer::new(&fixture("karma.ahx"), 10, 2).is_err(), "sample rate too low");
+    assert!(
+        AhxPlayer::new(&fixture("karma.ahx"), 10, 2).is_err(),
+        "sample rate too low"
+    );
 }
 
 /// The product path: `set_hifi(true)` on the wasm-facing player prewarms, so
@@ -135,7 +142,10 @@ fn garbage_input_is_an_error_not_a_panic() {
 #[test]
 fn set_hifi_on_prewarms_so_render_builds_nothing() {
     let mut p = AhxPlayer::new(&fixture("robocop_iii_j_tel.ahx"), 44100, 2).unwrap();
-    assert_eq!((p.hifi_enabled(), p.hifi_locked(), p.hifi_table_count()), (false, false, 0));
+    assert_eq!(
+        (p.hifi_enabled(), p.hifi_locked(), p.hifi_table_count()),
+        (false, false, 0)
+    );
 
     p.set_hifi(true);
     assert!(p.hifi_enabled() && p.hifi_locked());
@@ -153,5 +163,8 @@ fn set_hifi_on_prewarms_so_render_builds_nothing() {
     assert_eq!(p.hifi_table_count(), tables);
 
     p.set_hifi(false);
-    assert_eq!((p.hifi_enabled(), p.hifi_locked(), p.hifi_table_count()), (false, false, 0));
+    assert_eq!(
+        (p.hifi_enabled(), p.hifi_locked(), p.hifi_table_count()),
+        (false, false, 0)
+    );
 }

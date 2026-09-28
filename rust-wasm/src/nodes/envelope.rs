@@ -435,7 +435,7 @@ impl AudioNode for Envelope {
             for source in gate_sources {
                 // Apply source buffer additively (respecting amount and transform)
                 Self::apply_add(
-                    &source.buffer,
+                    source.buffer,
                     &mut self.gate_buffer[..buffer_size],
                     source.amount,
                     source.transformation,
@@ -445,7 +445,7 @@ impl AudioNode for Envelope {
 
         // --- 2) Process Attack Modulation Input ---
         let attack_mod_sources = inputs.get(&PortId::AttackMod);
-        if attack_mod_sources.map_or(false, |s| !s.is_empty()) {
+        if attack_mod_sources.is_some_and(|s| !s.is_empty()) {
             // Accumulate modulation into shared scratch buffers
             Self::accumulate_modulations_inplace(
                 buffer_size,
@@ -929,7 +929,7 @@ mod tests {
 
             // Value should always be in valid range
             assert!(
-                value >= 0.0 && value <= 1.0,
+                (0.0..=1.0).contains(&value),
                 "Envelope value out of range: {}",
                 value
             );

@@ -18,10 +18,20 @@ use std::fs;
 use std::path::Path;
 
 const RATE: u32 = 44100;
-const SONGS: [&str; 4] = ["karma.ahx", "robocop_iii_j_tel.ahx", "blondie.ahx", "sunspots.hvl"];
+const SONGS: [&str; 4] = [
+    "karma.ahx",
+    "robocop_iii_j_tel.ahx",
+    "blondie.ahx",
+    "sunspots.hvl",
+];
 
 fn bytes(name: &str) -> Vec<u8> {
-    fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx").join(name)).unwrap()
+    fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../public/demos/ahx")
+            .join(name),
+    )
+    .unwrap()
 }
 
 fn engine(name: &str, on: Option<bool>, hifi: bool) -> AhxEngine {
@@ -52,9 +62,15 @@ fn first_difference(a: &[i16], b: &[i16]) -> Option<usize> {
 fn the_default_is_off_and_off_is_the_default_render() {
     for name in SONGS {
         let mut implicit = engine(name, None, false);
-        assert!(!implicit.continue_phase_on_trigger(), "{name}: default must be off");
+        assert!(
+            !implicit.continue_phase_on_trigger(),
+            "{name}: default must be off"
+        );
         let mut explicit = engine(name, Some(false), false);
-        let (a, b) = (render(&mut implicit, RATE as usize * 3), render(&mut explicit, RATE as usize * 3));
+        let (a, b) = (
+            render(&mut implicit, RATE as usize * 3),
+            render(&mut explicit, RATE as usize * 3),
+        );
         assert!(a == b, "{name}: explicit off differs from the default");
     }
 }
@@ -67,12 +83,21 @@ fn matrix_on_differs_from_off_and_is_deterministic() {
             let off = render(&mut engine(name, Some(false), hifi), frames);
             let on = render(&mut engine(name, Some(true), hifi), frames);
             let on_again = render(&mut engine(name, Some(true), hifi), frames);
-            assert!(on == on_again, "{name} hifi={hifi}: flag-on render is not deterministic");
+            assert!(
+                on == on_again,
+                "{name} hifi={hifi}: flag-on render is not deterministic"
+            );
             let at = first_difference(&off, &on);
-            assert!(at.is_some(), "{name} hifi={hifi}: flag on changed nothing in 4 s");
+            assert!(
+                at.is_some(),
+                "{name} hifi={hifi}: flag on changed nothing in 4 s"
+            );
             // A song's first notes trigger on a fresh voice (phase 0 either way),
             // so the divergence must start after the first trigger, not at frame 0.
-            assert!(on.iter().any(|&s| s != 0), "{name} hifi={hifi}: flag on is silent");
+            assert!(
+                on.iter().any(|&s| s != 0),
+                "{name} hifi={hifi}: flag on is silent"
+            );
         }
     }
 }
@@ -120,9 +145,18 @@ fn seek_stays_exact_with_the_flag_on() {
             }
             let mut seeked = engine(name, Some(true), hifi);
             assert_eq!(seeked.seek(pos, row), Some(SeekKind::Exact), "{name}");
-            assert!(seeked.continue_phase_on_trigger(), "the flag survives a seek");
-            let (a, b) = (render(&mut full, RATE as usize * 2), render(&mut seeked, RATE as usize * 2));
-            assert!(a == b, "{name} hifi={hifi}: seek with the flag on differs from a full run");
+            assert!(
+                seeked.continue_phase_on_trigger(),
+                "the flag survives a seek"
+            );
+            let (a, b) = (
+                render(&mut full, RATE as usize * 2),
+                render(&mut seeked, RATE as usize * 2),
+            );
+            assert!(
+                a == b,
+                "{name} hifi={hifi}: seek with the flag on differs from a full run"
+            );
         }
     }
 }

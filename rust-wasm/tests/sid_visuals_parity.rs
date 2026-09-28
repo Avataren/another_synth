@@ -27,7 +27,10 @@ use audio_processor::sid::{SidModel, SidSong, SidSongPlayer};
 use serde_json::{json, Value};
 
 const CHAIN: &[u8] = include_bytes!("fixtures/sid/s3-chain.asid");
-const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/tests/fixtures/sid-visuals-parity.json");
+const FIXTURE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../src/tests/fixtures/sid-visuals-parity.json"
+);
 /// Chip cycles per player frame: one PAL vertical blank (GT-parity 0925b;
 /// was 50 Hz's 19 705).
 const CYCLES_PER_FRAME: u32 = audio_processor::sid::player::PAL_FRAME_CYCLES;
@@ -77,14 +80,34 @@ fn maps() -> (Value, Value) {
     let mut cutoff = serde_json::Map::new();
     let mut q = serde_json::Map::new();
     for model in [SidModel::Sid8580, SidModel::Sid6581] {
-        cutoff.insert(model_name(model).into(), json!(regs.iter().map(|&r| json!([r, cutoff_hz_for(model, r)])).collect::<Vec<_>>()));
-        q.insert(model_name(model).into(), json!((0u8..16).map(|r| json!([r, resonance_q_for(model, r)])).collect::<Vec<_>>()));
+        cutoff.insert(
+            model_name(model).into(),
+            json!(regs
+                .iter()
+                .map(|&r| json!([r, cutoff_hz_for(model, r)]))
+                .collect::<Vec<_>>()),
+        );
+        q.insert(
+            model_name(model).into(),
+            json!((0u8..16)
+                .map(|r| json!([r, resonance_q_for(model, r)]))
+                .collect::<Vec<_>>()),
+        );
     }
     (Value::Object(cutoff), Value::Object(q))
 }
 
 fn waves() -> Value {
-    let cases: [(u8, u16); 8] = [(0x10, 0), (0x20, 0), (0x40, 0x800), (0x40, 0x200), (0x30, 0), (0x50, 0x800), (0x60, 0x400), (0x70, 0x800)];
+    let cases: [(u8, u16); 8] = [
+        (0x10, 0),
+        (0x20, 0),
+        (0x40, 0x800),
+        (0x40, 0x200),
+        (0x30, 0),
+        (0x50, 0x800),
+        (0x60, 0x400),
+        (0x70, 0x800),
+    ];
     let mut out = Vec::new();
     for model in [SidModel::Sid8580, SidModel::Sid6581] {
         for &(control, pw) in &cases {
@@ -113,7 +136,14 @@ fn instruments() -> Value {
             p.frame();
             let v = p.chip().voice(0);
             let f = p.chip().filter();
-            rows.push(json!([v.frequency(), v.pulse_width(), v.control(), f.cutoff_reg(), f.resonance(), f.mode() >> 4]));
+            rows.push(json!([
+                v.frequency(),
+                v.pulse_width(),
+                v.control(),
+                f.cutoff_reg(),
+                f.resonance(),
+                f.mode() >> 4
+            ]));
         }
         out.push(json!({ "instrument": instrument, "note": note, "rows": rows }));
     }
@@ -137,6 +167,7 @@ fn sid_visuals_parity_fixture_is_what_the_rust_does() {
         std::fs::write(FIXTURE, &text).expect("fixture written");
         return;
     }
-    let committed = std::fs::read_to_string(FIXTURE).expect("fixture exists (regenerate with UPDATE_SID_VISUALS_FIXTURE=1)");
+    let committed = std::fs::read_to_string(FIXTURE)
+        .expect("fixture exists (regenerate with UPDATE_SID_VISUALS_FIXTURE=1)");
     assert!(committed == text, "the Rust no longer produces src/tests/fixtures/sid-visuals-parity.json: regenerate it and re-check the TS ports");
 }

@@ -218,9 +218,10 @@ fn main() {
                                 if e == 0 && d == 0 {
                                     continue;
                                 }
-                                let sub = if group == 9 && matches!(e, 0x23 | 0x24 | 0x29) {
-                                    d >> 4
-                                } else if (group == 5 && e == 0x23) || (group == 1 && e == 0x0f) {
+                                let sub = if (group == 9 && matches!(e, 0x23 | 0x24 | 0x29))
+                                    || (group == 5 && e == 0x23)
+                                    || (group == 1 && e == 0x0f)
+                                {
                                     d >> 4
                                 } else {
                                     0xff
@@ -617,7 +618,8 @@ fn main() {
             out.extend_from_slice(b"RIFF");
             out.extend_from_slice(&(36 + pcm.len() as u32).to_le_bytes());
             out.extend_from_slice(b"WAVEfmt ");
-            for v in [16u32] {
+            {
+                let v = 16u32;
                 out.extend_from_slice(&v.to_le_bytes());
             }
             out.extend_from_slice(&1u16.to_le_bytes());

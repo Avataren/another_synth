@@ -19,7 +19,12 @@ use std::time::Instant;
 const RATE: u32 = 44100;
 
 fn demo(name: &str) -> Vec<u8> {
-    fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx").join(name)).unwrap()
+    fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../public/demos/ahx")
+            .join(name),
+    )
+    .unwrap()
 }
 
 fn engine(name: &str, hifi: bool, lanes: bool) -> AhxEngine {
@@ -58,11 +63,12 @@ fn assert_same(name: &str, hifi: bool, frames: usize, chunk: usize, mute: u32, s
 }
 
 fn all_demos() -> Vec<String> {
-    let mut v: Vec<String> = fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx"))
-        .unwrap()
-        .map(|e| e.unwrap().file_name().into_string().unwrap())
-        .filter(|n| n.ends_with(".ahx") || n.ends_with(".hvl"))
-        .collect();
+    let mut v: Vec<String> =
+        fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|n| n.ends_with(".ahx") || n.ends_with(".hvl"))
+            .collect();
     v.sort();
     v
 }
@@ -94,10 +100,30 @@ fn lanes_match_scalar_at_ragged_block_sizes() {
 
 #[test]
 fn lanes_match_scalar_with_voices_muted_and_soloed() {
-    for &(mute, solo) in &[(0b0001u32, 0u32), (0b0110, 0), (0, 0b0100), (0b1111, 0), (0b1_0101_0101, 0)] {
+    for &(mute, solo) in &[
+        (0b0001u32, 0u32),
+        (0b0110, 0),
+        (0, 0b0100),
+        (0b1111, 0),
+        (0b1_0101_0101, 0),
+    ] {
         for &hifi in &[false, true] {
-            assert_same("robocop_iii_j_tel.ahx", hifi, RATE as usize * 2, 441, mute, solo);
-            assert_same("doobrey_gubbins.hvl", hifi, RATE as usize * 2, 441, mute, solo);
+            assert_same(
+                "robocop_iii_j_tel.ahx",
+                hifi,
+                RATE as usize * 2,
+                441,
+                mute,
+                solo,
+            );
+            assert_same(
+                "doobrey_gubbins.hvl",
+                hifi,
+                RATE as usize * 2,
+                441,
+                mute,
+                solo,
+            );
         }
     }
 }
@@ -106,7 +132,13 @@ fn lanes_match_scalar_with_voices_muted_and_soloed() {
 #[ignore = "timing; run in --release with --nocapture"]
 fn mix_lanes_timing() {
     const SECONDS: usize = 30;
-    for (name, hifi) in [("karma.ahx", false), ("karma.ahx", true), ("wave_stepper.ahx", true), ("sunspots.hvl", true), ("doobrey_gubbins.hvl", true)] {
+    for (name, hifi) in [
+        ("karma.ahx", false),
+        ("karma.ahx", true),
+        ("wave_stepper.ahx", true),
+        ("sunspots.hvl", true),
+        ("doobrey_gubbins.hvl", true),
+    ] {
         let mut best = [f64::MAX; 2];
         for (slot, lanes) in [(0usize, false), (1, true)] {
             for _ in 0..7 {

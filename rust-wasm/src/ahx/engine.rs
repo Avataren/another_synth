@@ -118,7 +118,10 @@ struct Capture {
 
 impl Capture {
     fn new(channels: usize) -> Self {
-        Capture { ring: vec![0; channels * CAPTURE_FRAMES], written: 0 }
+        Capture {
+            ring: vec![0; channels * CAPTURE_FRAMES],
+            written: 0,
+        }
     }
 
     fn clear(&mut self) {
@@ -240,7 +243,10 @@ pub fn live_warm_hold_ticks(ins: &Instrument) -> u32 {
 
     // A PList pitch slide (`1`, `2`) runs for as long as the note is held and
     // meets a new mip level as it goes: nothing short of the full hold covers it.
-    if entries.iter().any(|e| e.fx.contains(&1) || e.fx.contains(&2)) {
+    if entries
+        .iter()
+        .any(|e| e.fx.contains(&1) || e.fx.contains(&2))
+    {
         return LIVE_WARM_HOLD_TICKS;
     }
 
@@ -272,7 +278,9 @@ pub fn live_warm_hold_ticks(ins: &Instrument) -> u32 {
     let square_cycle = if starts_square {
         // The limits are subsampled by the wave length (`SquareSweep::trigger`).
         let shift = (5 - ins.wave_length.min(5) as i32) as u32;
-        let range = ((ins.square_upper_limit as i32 >> shift) - (ins.square_lower_limit as i32 >> shift)).unsigned_abs();
+        let range = ((ins.square_upper_limit as i32 >> shift)
+            - (ins.square_lower_limit as i32 >> shift))
+            .unsigned_abs();
         (2 * range + SWEEP_SLIDE_IN) * (ins.square_speed as u32 + 1)
     } else {
         0
@@ -280,7 +288,11 @@ pub fn live_warm_hold_ticks(ins: &Instrument) -> u32 {
 
     // The vibrato is silent for its delay, then swings the pitch through one
     // 64-step cycle at most every tick.
-    let vibrato_ticks = if ins.vibrato_depth != 0 { ins.vibrato_delay as u32 + 64 } else { 0 };
+    let vibrato_ticks = if ins.vibrato_depth != 0 {
+        ins.vibrato_delay as u32 + 64
+    } else {
+        0
+    };
 
     // One periodic process is walked by one cycle. Two of them (two sweeps, or a
     // sweep and a vibrato, whose periods drift against each other) meet in
@@ -288,14 +300,18 @@ pub fn live_warm_hold_ticks(ins: &Instrument) -> u32 {
     // the periods, which no short hold covers (`depressed.ahx` instrument 34
     // still finds a new table 877 ticks in; `doobrey_gubbins.hvl` instrument 3
     // runs both sweeps): those keep the whole hold.
-    let processes = [filter_cycle, square_cycle, vibrato_ticks].iter().filter(|&&t| t != 0).count();
+    let processes = [filter_cycle, square_cycle, vibrato_ticks]
+        .iter()
+        .filter(|&&t| t != 0)
+        .count();
     if processes >= 2 {
         return LIVE_WARM_HOLD_TICKS;
     }
     let sweep_ticks = filter_cycle.max(square_cycle);
 
     let attack_decay = ins.envelope.a_frames as u32 + ins.envelope.d_frames as u32;
-    (plist_ticks + sweep_ticks + vibrato_ticks + attack_decay + LIVE_WARM_MIN_HOLD_TICKS).clamp(LIVE_WARM_MIN_HOLD_TICKS, LIVE_WARM_HOLD_TICKS)
+    (plist_ticks + sweep_ticks + vibrato_ticks + attack_decay + LIVE_WARM_MIN_HOLD_TICKS)
+        .clamp(LIVE_WARM_MIN_HOLD_TICKS, LIVE_WARM_HOLD_TICKS)
 }
 
 /// Most ticks the prewarm gives the release after the hold (an instrument's
@@ -355,7 +371,12 @@ impl AhxEngine {
     /// hidden from the docs, and a cap of 0 is an error rather than a silent
     /// zero-voice engine.
     #[doc(hidden)]
-    pub fn with_channel_cap(song: Song, freq: u32, defstereo: u8, cap: usize) -> Result<Self, EngineError> {
+    pub fn with_channel_cap(
+        song: Song,
+        freq: u32,
+        defstereo: u8,
+        cap: usize,
+    ) -> Result<Self, EngineError> {
         if cap == 0 {
             return Err(EngineError::InvalidChannelCap);
         }
@@ -382,7 +403,11 @@ impl AhxEngine {
                 (d, ((song.mixgain_raw.unwrap_or(0) as i32) << 8) / 100)
             }
         };
-        let version = if song.format == SongFormat::Hvl { song.version } else { 0 };
+        let version = if song.format == SongFormat::Hvl {
+            song.version
+        } else {
+            0
+        };
 
         let mut engine = AhxEngine {
             waves: WAVES.as_slice(),
@@ -419,7 +444,11 @@ impl AhxEngine {
         if nr > self.song.subsong_nr as usize {
             return false;
         }
-        let pos_nr = if nr > 0 { self.song.subsongs[nr - 1] as i32 } else { 0 };
+        let pos_nr = if nr > 0 {
+            self.song.subsongs[nr - 1] as i32
+        } else {
+            0
+        };
         self.subsong = nr;
         self.t = Transport {
             tempo: 6,
@@ -476,7 +505,7 @@ impl AhxEngine {
     /// would never get anywhere. Mute/solo, hi-fi and capture are untouched
     /// (capture's ring is cleared, as after a restart).
     pub fn seek(&mut self, pos: usize, row: usize) -> Option<SeekKind> {
-        if pos >= self.song.position_nr as usize || row >= self.song.track_length as usize {
+        if pos >= self.song.position_nr || row >= self.song.track_length as usize {
             return None;
         }
         let looping = std::mem::replace(&mut self.loop_position, false);
@@ -484,7 +513,10 @@ impl AhxEngine {
         let mut kind = SeekKind::Cold;
         for _ in 0..=MAX_SEEK_TICKS {
             // The top of a row: its step is what the next tick plays.
-            if self.t.step_wait_frames == 0 && self.t.pos_nr == pos as i32 && self.t.note_nr == row as i32 {
+            if self.t.step_wait_frames == 0
+                && self.t.pos_nr == pos as i32
+                && self.t.note_nr == row as i32
+            {
                 kind = SeekKind::Exact;
                 // Reached by the wrap to the restart position: a seek is a
                 // fresh start there, not the end of the song.
@@ -515,10 +547,12 @@ impl AhxEngine {
     fn skip_mix(&mut self, samples: usize) {
         const END: u64 = 0x280 << 16;
         for v in self.voices.iter_mut().take(self.channels) {
-            v.sample_pos = ((v.sample_pos as u64 % END + samples as u64 * v.delta as u64) % END) as u32;
+            v.sample_pos =
+                ((v.sample_pos as u64 % END + samples as u64 * v.delta as u64) % END) as u32;
             if v.ring_mix_active {
-                v.ring_sample_pos =
-                    ((v.ring_sample_pos as u64 % END + samples as u64 * v.ring_delta as u64) % END) as u32;
+                v.ring_sample_pos = ((v.ring_sample_pos as u64 % END
+                    + samples as u64 * v.ring_delta as u64)
+                    % END) as u32;
             }
         }
     }
@@ -671,7 +705,11 @@ impl AhxEngine {
                     self.t.song_end_reached = false;
                     laps += 1;
                     let tables = self.hifi_table_count();
-                    quiet = if tables == tables_at_lap_start { quiet + 1 } else { 0 };
+                    quiet = if tables == tables_at_lap_start {
+                        quiet + 1
+                    } else {
+                        0
+                    };
                     tables_at_lap_start = tables;
                     if quiet >= PREWARM_QUIET_LAPS {
                         break;
@@ -726,7 +764,9 @@ impl AhxEngine {
 
     /// Whether the bank is locked (prewarmed) rather than building lazily.
     pub fn hifi_locked(&self) -> bool {
-        self.hifi.as_ref().is_some_and(|b| b.mode() == BankMode::Locked)
+        self.hifi
+            .as_ref()
+            .is_some_and(|b| b.mode() == BankMode::Locked)
     }
 
     /// Live mute/solo. Bit `i` of `mute` mutes voice `i`; when `solo` has any
@@ -775,7 +815,9 @@ impl AhxEngine {
     /// divide evenly. A voice's full-scale value is `+-8192` (`s8 * volume 64`).
     /// Writes only into `out`; no allocation.
     pub fn read_channel_snapshot(&self, voice: usize, out: &mut [i16]) -> usize {
-        let Some(c) = self.capture.as_ref() else { return 0 };
+        let Some(c) = self.capture.as_ref() else {
+            return 0;
+        };
         if voice >= self.channels || out.is_empty() {
             return 0;
         }
@@ -787,7 +829,9 @@ impl AhxEngine {
         let start = c.written.wrapping_sub((n * stride) as u64) as usize;
         for (k, o) in out[..n].iter_mut().enumerate() {
             let base = start.wrapping_add(k * stride);
-            let sum: i32 = (0..stride).map(|m| ring[(base + m) & CAPTURE_MASK] as i32).sum();
+            let sum: i32 = (0..stride)
+                .map(|m| ring[(base + m) & CAPTURE_MASK] as i32)
+                .sum();
             *o = (sum / stride as i32) as i16;
         }
         n
@@ -871,7 +915,13 @@ impl AhxEngine {
         self.song
             .tracks
             .get(track)
-            .and_then(|t| if note >= 0 { t.get(note as usize) } else { None })
+            .and_then(|t| {
+                if note >= 0 {
+                    t.get(note as usize)
+                } else {
+                    None
+                }
+            })
             .copied()
             .unwrap_or_default()
     }
@@ -913,7 +963,10 @@ impl AhxEngine {
     pub fn live_plist_state(&self) -> Option<(usize, usize)> {
         let live = self.live.as_ref()?;
         let voice = &self.voices[0];
-        if voice.instrument_idx == 0 || voice.perf_row < 0 || (live.released && voice.adsr.r_frames <= 0) {
+        if voice.instrument_idx == 0
+            || voice.perf_row < 0
+            || (live.released && voice.adsr.r_frames <= 0)
+        {
             return None;
         }
         Some((voice.instrument_idx as usize, voice.perf_row as usize))
@@ -952,7 +1005,8 @@ impl AhxEngine {
     /// already locked wants [`prewarm_hifi_after_edit`](Self::prewarm_hifi_after_edit)
     /// next when tables may differ, to build what the new instrument reaches.
     pub fn replace_instrument(&mut self, idx: usize, mut ins: Instrument) -> Option<bool> {
-        if idx == 0 || idx > self.song.instrument_nr as usize || idx >= self.song.instruments.len() {
+        if idx == 0 || idx > self.song.instrument_nr as usize || idx >= self.song.instruments.len()
+        {
             return None;
         }
         let tables_may_differ = !same_tables(&self.song.instruments[idx], &ins);
@@ -964,7 +1018,8 @@ impl AhxEngine {
         // hold length, a function of the same fields, is unchanged), so the
         // next note-on need not walk the instrument again.
         if tables_may_differ {
-            self.live_warm.retain(|&(instrument, _)| instrument as usize != idx);
+            self.live_warm
+                .retain(|&(instrument, _)| instrument as usize != idx);
         }
         Some(tables_may_differ)
     }
@@ -979,7 +1034,11 @@ impl AhxEngine {
     pub fn instrument_is_triggered(&self, idx: usize) -> bool {
         idx >= 1
             && idx <= u8::MAX as usize
-            && self.song.tracks.iter().any(|track| track.iter().any(|step| step.instrument as usize == idx))
+            && self
+                .song
+                .tracks
+                .iter()
+                .any(|track| track.iter().any(|step| step.instrument as usize == idx))
     }
 
     /// [`prewarm_hifi`](Self::prewarm_hifi) for after an instrument edit: the
@@ -1030,7 +1089,14 @@ impl AhxEngine {
     /// 0 with no transport, no patterns and no other voice.
     fn live_irq(&mut self) {
         let Some(mut live) = self.live else { return };
-        Self::live_tick(&mut self.voices[0], &mut live, &self.song, self.waves, self.t.tempo, self.continue_phase_on_trigger);
+        Self::live_tick(
+            &mut self.voices[0],
+            &mut live,
+            &self.song,
+            self.waves,
+            self.t.tempo,
+            self.continue_phase_on_trigger,
+        );
         self.live = Some(live);
 
         self.voices[0].set_audio(self.waves, self.freq_f);
@@ -1041,7 +1107,14 @@ impl AhxEngine {
 
     /// The voice-state half of a live tick, shared by the real one and by the
     /// prewarm's scratch run so the two cannot drift apart.
-    fn live_tick(voice: &mut Voice, live: &mut Live, song: &Song, waves: &[i8], tempo: i32, continue_phase: bool) {
+    fn live_tick(
+        voice: &mut Voice,
+        live: &mut Live,
+        song: &Song,
+        waves: &[i8],
+        tempo: i32,
+        continue_phase: bool,
+    ) {
         if let Some((instrument, note, volume)) = live.pending_on.take() {
             // The instrument branch of `process_step`, for a step with a note
             // and an instrument and no effects.
@@ -1108,19 +1181,31 @@ impl AhxEngine {
     /// [`warm_live`](Self::warm_live) with the hold length given, so a test can
     /// set the bounded hold against the full one.
     fn warm_live_for(&mut self, instrument: u8, note: i32, hold: u32) {
-        let Some(bank) = self.hifi.as_mut() else { return };
+        let Some(bank) = self.hifi.as_mut() else {
+            return;
+        };
         if self.live_warm.contains(&(instrument, note)) {
             return;
         }
         for attempt in 0..2 {
             bank.set_mode(BankMode::Prewarm);
             let mut voice = Voice::new();
-            let mut live = Live { pending_on: Some((instrument, note, 0x40)), ..Live::default() };
+            let mut live = Live {
+                pending_on: Some((instrument, note, 0x40)),
+                ..Live::default()
+            };
             for tick in 0..hold + LIVE_WARM_RELEASE_TICKS {
                 if tick == hold {
                     live.pending_off = true;
                 }
-                Self::live_tick(&mut voice, &mut live, &self.song, self.waves, self.t.tempo, self.continue_phase_on_trigger);
+                Self::live_tick(
+                    &mut voice,
+                    &mut live,
+                    &self.song,
+                    self.waves,
+                    self.t.tempo,
+                    self.continue_phase_on_trigger,
+                );
                 voice.set_audio(self.waves, self.freq_f);
                 voice.select_hifi(bank);
                 if bank.is_full() || (live.released && voice.adsr.r_frames <= 0) {
@@ -1148,7 +1233,11 @@ impl AhxEngine {
         if self.t.step_wait_frames == 0 {
             if self.t.get_new_position {
                 let cur = self.t.pos_nr as usize;
-                let nextpos = if self.t.pos_nr + 1 == position_nr { 0 } else { cur + 1 };
+                let nextpos = if self.t.pos_nr + 1 == position_nr {
+                    0
+                } else {
+                    cur + 1
+                };
                 for i in 0..self.channels {
                     let v = &mut self.voices[i];
                     v.track = self.song.positions[cur].track[i] as usize;
@@ -1175,7 +1264,11 @@ impl AhxEngine {
             if !self.t.pattern_break {
                 self.t.note_nr += 1;
                 if self.t.note_nr >= self.song.track_length as i32 {
-                    self.t.pos_jump = if self.loop_position { self.t.pos_nr } else { self.t.pos_nr + 1 };
+                    self.t.pos_jump = if self.loop_position {
+                        self.t.pos_nr
+                    } else {
+                        self.t.pos_nr + 1
+                    };
                     self.t.pos_jump_note = 0;
                     self.t.pattern_break = true;
                 }
@@ -1285,8 +1378,20 @@ impl AhxEngine {
         }
 
         let track_length = self.song.track_length as i32;
-        stepfx_1(&mut self.t, voice, track_length, (step.fx & 0xf) as i32, step.fx_param as i32);
-        stepfx_1(&mut self.t, voice, track_length, (step.fxb & 0xf) as i32, step.fxb_param as i32);
+        stepfx_1(
+            &mut self.t,
+            voice,
+            track_length,
+            (step.fx & 0xf) as i32,
+            step.fx_param as i32,
+        );
+        stepfx_1(
+            &mut self.t,
+            voice,
+            track_length,
+            (step.fxb & 0xf) as i32,
+            step.fxb_param as i32,
+        );
 
         if instr != 0 && instr <= self.song.instrument_nr {
             let ins = &self.song.instruments[instr as usize];
@@ -1295,15 +1400,28 @@ impl AhxEngine {
 
         voice.period_slide_on = false;
 
-        stepfx_2(voice, (step.fx & 0xf) as i32, step.fx_param as i32, &mut note);
-        stepfx_2(voice, (step.fxb & 0xf) as i32, step.fxb_param as i32, &mut note);
+        stepfx_2(
+            voice,
+            (step.fx & 0xf) as i32,
+            step.fx_param as i32,
+            &mut note,
+        );
+        stepfx_2(
+            voice,
+            (step.fxb & 0xf) as i32,
+            step.fxb_param as i32,
+            &mut note,
+        );
 
         if note != 0 {
             voice.track_period = note;
             voice.plant_period = true;
         }
 
-        for (fx, param) in [(step.fx & 0xf, step.fx_param), (step.fxb & 0xf, step.fxb_param)] {
+        for (fx, param) in [
+            (step.fx & 0xf, step.fx_param),
+            (step.fxb & 0xf, step.fxb_param),
+        ] {
             stepfx_3(&mut self.voices, i, self.version, fx as i32, param as i32);
         }
     }
@@ -1320,7 +1438,11 @@ impl AhxEngine {
     /// one, and the reference byte (shifted up to the same scale) where it
     /// does not, carries that scale through the sums, and drops it after the
     /// mix gain in 64-bit so the wider intermediate cannot wrap.
-    fn mix_chunk<const CAPTURE: bool, const HIFI: bool>(&mut self, mut samples: usize, out: &mut [i16]) {
+    fn mix_chunk<const CAPTURE: bool, const HIFI: bool>(
+        &mut self,
+        mut samples: usize,
+        out: &mut [i16],
+    ) {
         const END: u32 = 0x280 << 16;
         let chans = self.channels;
         let mut delta = [0u32; MAX_CHANNELS];
@@ -1338,7 +1460,11 @@ impl AhxEngine {
         for i in 0..chans {
             let v = &self.voices[i];
             delta[i] = v.delta;
-            vol[i] = if gated && self.voice_silenced(i) { 0 } else { v.voice_volume };
+            vol[i] = if gated && self.voice_silenced(i) {
+                0
+            } else {
+                v.voice_volume
+            };
             pos[i] = v.sample_pos;
             panl[i] = v.pan_mult_left;
             panr[i] = v.pan_mult_right;
@@ -1356,21 +1482,27 @@ impl AhxEngine {
         let mut o = 0usize;
         // Capture bookkeeping; every use is behind `CAPTURE`, and render_block
         // picks that instance only when a capture is present.
-        let mut written = if CAPTURE { self.capture.as_ref().map_or(0, |c| c.written) } else { 0 };
+        let mut written = if CAPTURE {
+            self.capture.as_ref().map_or(0, |c| c.written)
+        } else {
+            0
+        };
         while samples > 0 {
             let mut loops = samples;
             for i in 0..chans {
                 if pos[i] >= END {
                     pos[i] -= END;
                 }
-                let cnt = (END.wrapping_sub(pos[i]).wrapping_sub(1) / delta[i]).wrapping_add(1) as usize;
+                let cnt =
+                    (END.wrapping_sub(pos[i]).wrapping_sub(1) / delta[i]).wrapping_add(1) as usize;
                 loops = loops.min(cnt);
 
                 if ring[i] {
                     if rpos[i] >= END {
                         rpos[i] -= END;
                     }
-                    let cnt = (END.wrapping_sub(rpos[i]).wrapping_sub(1) / rdelta[i]).wrapping_add(1) as usize;
+                    let cnt = (END.wrapping_sub(rpos[i]).wrapping_sub(1) / rdelta[i])
+                        .wrapping_add(1) as usize;
                     loops = loops.min(cnt);
                 }
             }
@@ -1422,7 +1554,10 @@ impl AhxEngine {
                     }
                     let lo = i32x4::splat(-0x8000);
                     let hi = i32x4::splat(0x7fff);
-                    let (l, r) = a.simd_clamp(lo, hi).cast::<i16>().interleave(b.simd_clamp(lo, hi).cast::<i16>());
+                    let (l, r) = a
+                        .simd_clamp(lo, hi)
+                        .cast::<i16>()
+                        .interleave(b.simd_clamp(lo, hi).cast::<i16>());
                     l.copy_to_slice(&mut out[o..o + 4]);
                     r.copy_to_slice(&mut out[o + 4..o + 8]);
                     o += 8;
@@ -1453,7 +1588,8 @@ impl AhxEngine {
                     if CAPTURE {
                         if let Some(c) = self.capture.as_mut() {
                             let scope = if HIFI { j >> FRAC_BITS } else { j };
-                            c.ring[i * CAPTURE_FRAMES + ((written as usize) & CAPTURE_MASK)] = scope as i16;
+                            c.ring[i * CAPTURE_FRAMES + ((written as usize) & CAPTURE_MASK)] =
+                                scope as i16;
                         }
                     }
                     a = a.wrapping_add((j * panl[i]) >> 7);
@@ -1493,12 +1629,11 @@ impl AhxEngine {
 /// pre-trigger effects.
 fn stepfx_1(t: &mut Transport, voice: &mut Voice, track_length: i32, fx: i32, param: i32) {
     match fx {
-        0x0 => {
+        0x0
             // Position Jump HI.
-            if (param & 0x0f) > 0 && (param & 0x0f) <= 9 {
+            if (param & 0x0f) > 0 && (param & 0x0f) <= 9 => {
                 t.pos_jump = param & 0xf;
             }
-        }
         0x5 | 0xa => {
             // Volume slide (+ tone portamento).
             voice.volume_slide_down = param & 0x0f;
@@ -1532,16 +1667,15 @@ fn stepfx_1(t: &mut Transport, voice: &mut Voice, track_length: i32, fx: i32, pa
                 t.pos_jump_note = 0;
             }
         }
-        0xe => {
+        0xe
             // Extended: only note cut lives in this pass (1.6: 0xd removed).
-            if (param >> 4) == 0xc && (param & 0x0f) < t.tempo {
+            if (param >> 4) == 0xc && (param & 0x0f) < t.tempo => {
                 voice.note_cut_wait = param & 0x0f;
                 if voice.note_cut_wait != 0 {
                     voice.note_cut_on = true;
                     voice.hard_cut_release = false;
                 }
             }
-        }
         0xf => {
             // Speed.
             t.tempo = param;
@@ -1571,7 +1705,8 @@ fn stepfx_2(voice: &mut Voice, fx: i32, param: i32, note: &mut i32) {
             }
             if *note != 0 {
                 let target = crate::ahx::voice::PERIOD_TAB[(*note as usize).min(60)] as i32;
-                let mut diff = crate::ahx::voice::PERIOD_TAB[(voice.track_period as usize).min(60)] as i32;
+                let mut diff =
+                    crate::ahx::voice::PERIOD_TAB[(voice.track_period as usize).min(60)] as i32;
                 diff -= target;
                 let new = diff + voice.period_slide_period;
                 if new != 0 {
@@ -1662,12 +1797,11 @@ fn stepfx_3(voices: &mut [Voice], i: usize, version: u8, fx: i32, param: i32) {
             0x0b => {
                 voice.note_max_volume = (voice.note_max_volume - (param & 0x0f)).max(0);
             }
-            0x0f => {
+            0x0f
                 // Misc flags (1.5), `ht_Version >= 1` only.
-                if version >= 1 && (param & 0xf) == 1 {
+                if version >= 1 && (param & 0xf) == 1 => {
                     voice.override_transpose = voice.transpose;
                 }
-            }
             _ => {}
         },
         _ => {}
@@ -1751,7 +1885,10 @@ mod tests {
 
     #[test]
     fn pattern_break_beyond_track_length_restarts_at_row_zero() {
-        let mut t = Transport { pos_nr: 3, ..Transport::default() };
+        let mut t = Transport {
+            pos_nr: 3,
+            ..Transport::default()
+        };
         let mut v = Voice::new();
         stepfx_1(&mut t, &mut v, 16, 0xd, 0x50); // D50 -> row 50 > 16
         assert!(t.pattern_break);
@@ -1763,7 +1900,10 @@ mod tests {
 
     #[test]
     fn speed_zero_ends_the_song() {
-        let mut t = Transport { tempo: 6, ..Transport::default() };
+        let mut t = Transport {
+            tempo: 6,
+            ..Transport::default()
+        };
         let mut v = Voice::new();
         stepfx_1(&mut t, &mut v, 64, 0xf, 0);
         assert!(t.song_end_reached);
@@ -1778,7 +1918,10 @@ mod tests {
     fn the_bounded_hold_builds_every_table_the_full_hold_does() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx");
         let (mut capped_holds, mut full_holds, mut instruments) = (0u64, 0u64, 0u64);
-        let mut names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().path()).collect();
+        let mut names: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
         names.sort();
         for path in names {
             let song = crate::ahx::format::parse(&std::fs::read(&path).unwrap()).unwrap();
@@ -1817,19 +1960,38 @@ mod tests {
 
     #[test]
     fn replace_instrument_keeps_the_name_and_refuses_what_the_song_lacks() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx/karma.ahx");
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx/karma.ahx");
         let song = crate::ahx::format::parse(&std::fs::read(&path).unwrap()).unwrap();
         let count = song.instrument_nr as usize;
-        let idx = (1..=count).find(|&i| !song.instruments[i].name.is_empty()).expect("the fixture names an instrument");
+        let idx = (1..=count)
+            .find(|&i| !song.instruments[i].name.is_empty())
+            .expect("the fixture names an instrument");
         let name = song.instruments[idx].name.clone();
         let mut e = AhxEngine::new(song, 44100, 2).unwrap();
 
-        let replacement = Instrument { name: "other".into(), volume: 7, ..Instrument::default() };
-        assert_eq!(e.replace_instrument(idx, replacement), Some(true), "a bare instrument has none of the original's PList: other tables");
-        assert_eq!(e.song().instruments[idx].name, name, "a wire form has no name; the song's is kept");
+        let replacement = Instrument {
+            name: "other".into(),
+            volume: 7,
+            ..Instrument::default()
+        };
+        assert_eq!(
+            e.replace_instrument(idx, replacement),
+            Some(true),
+            "a bare instrument has none of the original's PList: other tables"
+        );
+        assert_eq!(
+            e.song().instruments[idx].name,
+            name,
+            "a wire form has no name; the song's is kept"
+        );
         assert_eq!(e.song().instruments[idx].volume, 7);
 
-        assert_eq!(e.replace_instrument(0, Instrument::default()), None, "0 is the placeholder, not an instrument");
+        assert_eq!(
+            e.replace_instrument(0, Instrument::default()),
+            None,
+            "0 is the placeholder, not an instrument"
+        );
         assert_eq!(e.replace_instrument(count + 1, Instrument::default()), None);
         assert_eq!(e.song().instruments[0], Instrument::default());
     }
@@ -1838,7 +2000,8 @@ mod tests {
     /// when an edit can reach other tables: a volume or envelope edit keeps it.
     #[test]
     fn a_table_free_edit_keeps_the_previews_warm_record_and_a_table_edit_drops_it() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx/karma.ahx");
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx/karma.ahx");
         let song = crate::ahx::format::parse(&std::fs::read(&path).unwrap()).unwrap();
         let mut e = AhxEngine::new(song, 44100, 2).unwrap();
         e.set_hifi(true);
@@ -1850,18 +2013,29 @@ mod tests {
         quieter.volume = quieter.volume.wrapping_sub(3);
         quieter.envelope.d_volume = quieter.envelope.d_volume.wrapping_sub(1);
         assert_eq!(e.replace_instrument(1, quieter.clone()), Some(false));
-        assert!(e.live_warm.contains(&(1, 30)), "no table can differ: the record stands");
+        assert!(
+            e.live_warm.contains(&(1, 30)),
+            "no table can differ: the record stands"
+        );
 
-        quieter.wave_length = if quieter.wave_length == 0 { 1 } else { quieter.wave_length - 1 };
+        quieter.wave_length = if quieter.wave_length == 0 {
+            1
+        } else {
+            quieter.wave_length - 1
+        };
         assert_eq!(e.replace_instrument(1, quieter), Some(true));
-        assert!(!e.live_warm.contains(&(1, 30)), "a table edit: the next note-on prewarms again");
+        assert!(
+            !e.live_warm.contains(&(1, 30)),
+            "a table edit: the next note-on prewarms again"
+        );
     }
 
     /// A voice that is holding an instrument when its PList shrinks (or empties)
     /// must not index past the end: the row is bounds-checked every tick.
     #[test]
     fn a_held_voice_survives_its_plist_being_cut_short() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx/karma.ahx");
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx/karma.ahx");
         let song = crate::ahx::format::parse(&std::fs::read(&path).unwrap()).unwrap();
         let count = song.instrument_nr as usize;
         let mut e = AhxEngine::new(song, 44100, 2).unwrap();
@@ -1889,7 +2063,8 @@ mod tests {
 
     #[test]
     fn only_what_reaches_a_wave_table_counts_as_a_table_change() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx/karma.ahx");
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx/karma.ahx");
         let song = crate::ahx::format::parse(&std::fs::read(&path).unwrap()).unwrap();
         let base = song.instruments[16].clone();
         let mut e = AhxEngine::new(song, 44100, 2).unwrap();
@@ -1900,23 +2075,45 @@ mod tests {
         same.envelope.r_volume = 5;
         same.hard_cut_release = !base.hard_cut_release;
         same.hard_cut_release_frames = 3;
-        assert_eq!(e.replace_instrument(16, same), Some(false), "volume, envelope and hard cut reach no table");
+        assert_eq!(
+            e.replace_instrument(16, same),
+            Some(false),
+            "volume, envelope and hard cut reach no table"
+        );
 
         let edits: [(&str, fn(&mut Instrument)); 9] = [
             ("wave length", |i| i.wave_length = (i.wave_length + 1) % 6),
-            ("filter speed", |i| i.filter_speed = i.filter_speed.wrapping_add(1) & 0x3f),
-            ("square speed", |i| i.square_speed = i.square_speed.wrapping_add(1)),
-            ("square limit", |i| i.square_upper_limit = i.square_upper_limit.wrapping_add(1)),
+            ("filter speed", |i| {
+                i.filter_speed = i.filter_speed.wrapping_add(1) & 0x3f
+            }),
+            ("square speed", |i| {
+                i.square_speed = i.square_speed.wrapping_add(1)
+            }),
+            ("square limit", |i| {
+                i.square_upper_limit = i.square_upper_limit.wrapping_add(1)
+            }),
             ("vibrato", |i| i.vibrato_depth = (i.vibrato_depth + 1) & 0xf),
-            ("plist speed", |i| i.plist.speed = i.plist.speed.wrapping_add(1)),
-            ("plist waveform", |i| i.plist.entries[0].waveform = (i.plist.entries[0].waveform + 1) % 5),
-            ("plist row added", |i| i.plist.entries.push(Default::default())),
-            ("plist row removed", |i| { i.plist.entries.pop(); }),
+            ("plist speed", |i| {
+                i.plist.speed = i.plist.speed.wrapping_add(1)
+            }),
+            ("plist waveform", |i| {
+                i.plist.entries[0].waveform = (i.plist.entries[0].waveform + 1) % 5
+            }),
+            ("plist row added", |i| {
+                i.plist.entries.push(Default::default())
+            }),
+            ("plist row removed", |i| {
+                i.plist.entries.pop();
+            }),
         ];
         for (what, edit) in edits {
             let mut changed = e.song().instruments[16].clone();
             edit(&mut changed);
-            assert_eq!(e.replace_instrument(16, changed), Some(true), "{what} can reach another table");
+            assert_eq!(
+                e.replace_instrument(16, changed),
+                Some(true),
+                "{what} can reach another table"
+            );
         }
     }
 }

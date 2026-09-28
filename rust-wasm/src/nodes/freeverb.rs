@@ -34,7 +34,7 @@ impl CombFilter {
 
     /// Process a single sample.
     #[inline(always)]
-    pub fn process<'a>(&mut self, input: f32) -> f32 {
+    pub fn process(&mut self, input: f32) -> f32 {
         let output = self.buffer[self.index];
         // One-pole lowpass for internal damping.
         self.filter_store = output * self.damp2 + self.filter_store * self.damp1;
@@ -73,7 +73,7 @@ impl AllpassFilter {
 
     /// Process one sample.
     #[inline(always)]
-    pub fn process<'a>(&mut self, input: f32) -> f32 {
+    pub fn process(&mut self, input: f32) -> f32 {
         let bufout = self.buffer[self.index];
         let output = bufout - input;
         self.buffer[self.index] = input + bufout * self.feedback;
@@ -291,8 +291,8 @@ impl AudioNode for Freeverb {
         let [Some(out_left), Some(out_right)] = outs else {
             panic!("Missing stereo output buffers");
         };
-        let out_left: &mut [f32] = *out_left;
-        let out_right: &mut [f32] = *out_right;
+        let out_left: &mut [f32] = out_left;
+        let out_right: &mut [f32] = out_right;
 
         // Fixed gain constant to scale down each channel.
         let fixed_gain = 0.015;

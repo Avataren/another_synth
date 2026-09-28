@@ -8,8 +8,9 @@ use wasm_bindgen::prelude::*;
 use crate::graph::ModulationSource;
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PortId {
+    #[default]
     AudioInput0,
     AudioInput1,
     AudioInput2,
@@ -38,12 +39,6 @@ pub enum PortId {
     ArpGate,
     CombinedGate,
     SampleOffset,
-}
-
-impl Default for PortId {
-    fn default() -> Self {
-        PortId::AudioInput0
-    }
 }
 
 impl PortId {

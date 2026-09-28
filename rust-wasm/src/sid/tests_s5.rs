@@ -12,16 +12,32 @@ use super::*;
 const SPF: usize = 880;
 
 fn row(note: u8, instrument: u8, command: u8, param: u8) -> Row {
-    Row { note, instrument, command, param }
+    Row {
+        note,
+        instrument,
+        command,
+        param,
+    }
 }
 
 fn tie_song(param: u8) -> SidSong {
-    let mut p0 = Pattern { rows: vec![Row::default(); 2] };
+    let mut p0 = Pattern {
+        rows: vec![Row::default(); 2],
+    };
     // Row 0: C-4 (note 49 = index 48) triggers; row 1: E-4 (index 52) with 3XY.
     p0.rows[0] = row(49, 1, 0, 0);
     p0.rows[1] = row(53, 0, 0x3, param);
-    let blank = Pattern { rows: vec![Row::default(); 2] };
-    let list = |pattern: u8| Orderlist { entries: vec![OrderEntry { pattern, transpose: 0, repeat: 1 }], restart: 0 };
+    let blank = Pattern {
+        rows: vec![Row::default(); 2],
+    };
+    let list = |pattern: u8| Orderlist {
+        entries: vec![OrderEntry {
+            pattern,
+            transpose: 0,
+            repeat: 1,
+        }],
+        restart: 0,
+    };
     let song = SidSong {
         version: SONG_FILE_VERSION,
         model: SidModel::Sid8580,
@@ -31,7 +47,9 @@ fn tie_song(param: u8) -> SidSong {
         name: b"s5".to_vec(),
         author: Vec::new(),
         copyright: Vec::new(),
-        subsongs: vec![Subsong { orderlists: vec![list(0), list(1), list(1)] }],
+        subsongs: vec![Subsong {
+            orderlists: vec![list(0), list(1), list(1)],
+        }],
         patterns: vec![p0, blank],
         instruments: vec![Instrument {
             name: b"t".to_vec(),
@@ -43,8 +61,20 @@ fn tie_song(param: u8) -> SidSong {
         // Wave row 1: triangle and gate, then stop. Speed row 1: 0x0010 a
         // frame, for the gliding control.
         tables: Tables {
-            wave: vec![TableRow { left: 0x11, right: 0x00 }, TableRow { left: 0xFF, right: 0x00 }],
-            speed: vec![TableRow { left: 0x00, right: 0x10 }],
+            wave: vec![
+                TableRow {
+                    left: 0x11,
+                    right: 0x00,
+                },
+                TableRow {
+                    left: 0xFF,
+                    right: 0x00,
+                },
+            ],
+            speed: vec![TableRow {
+                left: 0x00,
+                right: 0x10,
+            }],
             ..Default::default()
         },
     };
@@ -114,10 +144,21 @@ fn a_delayed_wave_step_waits_then_sets_its_note_the_readme_minor_chord() {
     // third (the note after the wait: INFERRED, see player.rs); the jump loops
     // to row 2.
     let t = |l: u8, r: u8| TableRow { left: l, right: r };
-    let mut p0 = Pattern { rows: vec![Row::default(); 1] };
+    let mut p0 = Pattern {
+        rows: vec![Row::default(); 1],
+    };
     p0.rows[0] = row(49, 1, 0, 0);
-    let blank = Pattern { rows: vec![Row::default(); 1] };
-    let list = |pattern: u8| Orderlist { entries: vec![OrderEntry { pattern, transpose: 0, repeat: 1 }], restart: 0 };
+    let blank = Pattern {
+        rows: vec![Row::default(); 1],
+    };
+    let list = |pattern: u8| Orderlist {
+        entries: vec![OrderEntry {
+            pattern,
+            transpose: 0,
+            repeat: 1,
+        }],
+        restart: 0,
+    };
     let song = SidSong {
         version: SONG_FILE_VERSION,
         model: SidModel::Sid8580,
@@ -127,25 +168,50 @@ fn a_delayed_wave_step_waits_then_sets_its_note_the_readme_minor_chord() {
         name: b"s5".to_vec(),
         author: Vec::new(),
         copyright: Vec::new(),
-        subsongs: vec![Subsong { orderlists: vec![list(0), list(1), list(1)] }],
+        subsongs: vec![Subsong {
+            orderlists: vec![list(0), list(1), list(1)],
+        }],
         patterns: vec![p0, blank],
-        instruments: vec![Instrument { name: b"t".to_vec(), sustain: 15, wave_ptr: 1, first_wave: 0x09, ..Default::default() }],
+        instruments: vec![Instrument {
+            name: b"t".to_vec(),
+            sustain: 15,
+            wave_ptr: 1,
+            first_wave: 0x09,
+            ..Default::default()
+        }],
         tables: Tables {
-            wave: vec![t(0x21, 0x00), t(0x02, 0x03), t(0x02, 0x07), t(0x02, 0x00), t(0xFF, 0x02)],
+            wave: vec![
+                t(0x21, 0x00),
+                t(0x02, 0x03),
+                t(0x02, 0x07),
+                t(0x02, 0x00),
+                t(0xFF, 0x02),
+            ],
             ..Default::default()
         },
     };
-    let mut p = SidSongPlayer::new(SidSong::parse(&song.to_bytes()).expect("parses"), DEFAULT_SAMPLE_RATE).expect("player builds");
+    let mut p = SidSongPlayer::new(
+        SidSong::parse(&song.to_bytes()).expect("parses"),
+        DEFAULT_SAMPLE_RATE,
+    )
+    .expect("player builds");
     let notes: Vec<u16> = (0..16)
         .map(|_| {
             frame(&mut p);
             p.channel_freq(0)
         })
         .collect();
-    let [c, eb, g] = [gt_note_freq_reg(48), gt_note_freq_reg(51), gt_note_freq_reg(55)];
+    let [c, eb, g] = [
+        gt_note_freq_reg(48),
+        gt_note_freq_reg(51),
+        gt_note_freq_reg(55),
+    ];
     // The jump is taken on the frame the step after it starts (the player's
     // one-jump-per-frame rule), so the loop keeps 3 frames per step too.
-    assert_eq!(notes, vec![0, c, c, c, eb, eb, eb, g, g, g, c, c, c, eb, eb, eb]);
+    assert_eq!(
+        notes,
+        vec![0, c, c, c, eb, eb, eb, g, g, g, c, c, c, eb, eb, eb]
+    );
     assert_eq!(p.chip().voice(0).control(), 0x21);
 }
 
@@ -155,11 +221,22 @@ fn a_delayed_wave_step_waits_then_sets_its_note_the_readme_minor_chord() {
 /// speed). Tempo 4: row 0 = frames 0-3, row 1 = frames 4-7.
 fn wave_porta_song(row1_param: u8) -> SidSong {
     let t = |l: u8, r: u8| TableRow { left: l, right: r };
-    let mut p0 = Pattern { rows: vec![Row::default(); 2] };
+    let mut p0 = Pattern {
+        rows: vec![Row::default(); 2],
+    };
     p0.rows[0] = row(49, 1, 0, 0);
     p0.rows[1] = row(53, 0, 0x3, row1_param);
-    let blank = Pattern { rows: vec![Row::default(); 2] };
-    let list = |pattern: u8| Orderlist { entries: vec![OrderEntry { pattern, transpose: 0, repeat: 1 }], restart: 0 };
+    let blank = Pattern {
+        rows: vec![Row::default(); 2],
+    };
+    let list = |pattern: u8| Orderlist {
+        entries: vec![OrderEntry {
+            pattern,
+            transpose: 0,
+            repeat: 1,
+        }],
+        restart: 0,
+    };
     let song = SidSong {
         version: SONG_FILE_VERSION,
         model: SidModel::Sid8580,
@@ -169,7 +246,9 @@ fn wave_porta_song(row1_param: u8) -> SidSong {
         name: b"s56".to_vec(),
         author: Vec::new(),
         copyright: Vec::new(),
-        subsongs: vec![Subsong { orderlists: vec![list(0), list(1), list(1)] }],
+        subsongs: vec![Subsong {
+            orderlists: vec![list(0), list(1), list(1)],
+        }],
         patterns: vec![p0, blank],
         instruments: vec![Instrument {
             name: b"t".to_vec(),
@@ -180,7 +259,10 @@ fn wave_porta_song(row1_param: u8) -> SidSong {
             ..Default::default()
         }],
         tables: Tables {
-            speed: vec![TableRow { left: 0x00, right: 0x10 }],
+            speed: vec![TableRow {
+                left: 0x00,
+                right: 0x10,
+            }],
             wave: vec![t(0x11, 0x80), t(0x21, 0x03), t(0xFF, 0x01)],
             ..Default::default()
         },
@@ -200,7 +282,12 @@ fn a_wave_table_note_passes_through_a_tie_and_the_base_pitch_is_re_asserted() {
     // wave program cycles every 2 frames (the jump row costs no frame), so
     // the saw/+3 note lands on odd frames, the tri/no-note row on even ones.
     let mut p = SidSongPlayer::new(wave_porta_song(0), DEFAULT_SAMPLE_RATE).expect("player builds");
-    let [c, eb, g, base] = [gt_note_freq_reg(48), gt_note_freq_reg(51), gt_note_freq_reg(55), gt_note_freq_reg(52)];
+    let [c, eb, g, base] = [
+        gt_note_freq_reg(48),
+        gt_note_freq_reg(51),
+        gt_note_freq_reg(55),
+        gt_note_freq_reg(52),
+    ];
     let freqs: Vec<u16> = (0..8)
         .map(|_| {
             frame(&mut p);
@@ -231,7 +318,11 @@ fn a_wave_table_note_passes_through_a_speed_glide_and_the_glide_resumes() {
     // = 0x10 a frame toward E-4 (index 52); the glide is far from clamped at
     // 0x10 steps.
     let mut p = SidSongPlayer::new(wave_porta_song(1), DEFAULT_SAMPLE_RATE).expect("player builds");
-    let [c, eb, g] = [gt_note_freq_reg(48), gt_note_freq_reg(51), gt_note_freq_reg(55)];
+    let [c, eb, g] = [
+        gt_note_freq_reg(48),
+        gt_note_freq_reg(51),
+        gt_note_freq_reg(55),
+    ];
     let freqs: Vec<u16> = (0..8)
         .map(|_| {
             frame(&mut p);

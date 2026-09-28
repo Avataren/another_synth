@@ -301,7 +301,7 @@ impl Voice {
 
     // New method to only update LFO phases
     fn update_free_running_lfos(&mut self) {
-        for (_id, node) in &mut self.graph.nodes {
+        for node in self.graph.nodes.values_mut() {
             if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
                 if lfo.retrigger_mode == LfoRetriggerMode::FreeRunning {
                     // web_sys::console::log_1(&format!("LFO state advancing phase",).into());

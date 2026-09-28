@@ -10,7 +10,12 @@ use std::path::Path;
 const RATE: usize = 44100;
 
 fn fixture(name: &str) -> Vec<u8> {
-    fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx").join(name)).unwrap()
+    fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../public/demos/ahx")
+            .join(name),
+    )
+    .unwrap()
 }
 
 fn preview_player(name: &str) -> AhxPlayer {
@@ -32,7 +37,9 @@ fn render(p: &mut AhxPlayer, seconds: f32) -> (f32, Vec<f32>, Vec<f32>) {
 }
 
 fn crossings(x: &[f32]) -> usize {
-    x.windows(2).filter(|w| (w[0] < 0.0) != (w[1] < 0.0)).count()
+    x.windows(2)
+        .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
+        .count()
 }
 
 #[test]
@@ -68,12 +75,18 @@ fn a_held_note_sustains_and_note_off_releases_to_silence() {
         // Held for a good while longer than any sustain the file sets: still sounding.
         render(&mut p, 2.0);
         let (held, ..) = render(&mut p, 0.2);
-        assert!(held > 0.0, "instrument {instrument} died while its key was down");
+        assert!(
+            held > 0.0,
+            "instrument {instrument} died while its key was down"
+        );
         p.preview_note_off();
         // Release frames top out at 255 ticks (5.1 s at 50 Hz).
         render(&mut p, 6.0);
         let (after, ..) = render(&mut p, 0.2);
-        assert_eq!(after, 0.0, "instrument {instrument} still sounds after its release");
+        assert_eq!(
+            after, 0.0,
+            "instrument {instrument} still sounds after its release"
+        );
     }
     assert!(heard > 0, "no instrument made a sound");
 }
@@ -122,7 +135,10 @@ fn velocity_scales_the_level() {
         }
         p.preview_note_on(instrument, 30, 32);
         let (soft, ..) = render(&mut p, 0.5);
-        assert!(soft < loud * 0.6, "velocity 32 ({soft}) not clearly quieter than 127 ({loud})");
+        assert!(
+            soft < loud * 0.6,
+            "velocity 32 ({soft}) not clearly quieter than 127 ({loud})"
+        );
         return;
     }
     panic!("no instrument made a sound");
@@ -165,8 +181,16 @@ fn hifi_in_preview_mode_is_locked_at_once_and_note_on_prewarms_the_pressed_instr
             if attack > 0.0 {
                 heard += 1;
             }
-            assert_eq!(p.hifi_table_count(), built, "instrument {instrument} note {note}: render built a table");
-            assert_eq!(p.hifi_miss_count(), 0.0, "instrument {instrument} note {note}: render missed a table");
+            assert_eq!(
+                p.hifi_table_count(),
+                built,
+                "instrument {instrument} note {note}: render built a table"
+            );
+            assert_eq!(
+                p.hifi_miss_count(),
+                0.0,
+                "instrument {instrument} note {note}: render missed a table"
+            );
         }
     }
     assert!(heard > 0, "no instrument made a sound");
@@ -211,8 +235,14 @@ fn a_held_note_outlasts_the_envelope_and_a_released_one_does_not() {
             let mut held = AhxEngine::new(song.clone(), RATE as u32, 2).unwrap();
             held.enable_live();
             held.live_note_on(instrument, 30, 127);
-            assert!(peak_after(&mut held, 0.3) > 0, "instrument {instrument} is silent");
-            assert!(peak_after(&mut held, 3.7) > 0, "instrument {instrument} died while held (s_frames {s_frames:?})");
+            assert!(
+                peak_after(&mut held, 0.3) > 0,
+                "instrument {instrument} is silent"
+            );
+            assert!(
+                peak_after(&mut held, 3.7) > 0,
+                "instrument {instrument} died while held (s_frames {s_frames:?})"
+            );
 
             let mut released = AhxEngine::new(song, RATE as u32, 2).unwrap();
             released.enable_live();
@@ -220,7 +250,11 @@ fn a_held_note_outlasts_the_envelope_and_a_released_one_does_not() {
             assert!(peak_after(&mut released, 0.3) > 0);
             released.live_note_off();
             peak_after(&mut released, 2.6);
-            assert_eq!(peak_after(&mut released, 1.1), 0, "instrument {instrument} kept sounding after note-off");
+            assert_eq!(
+                peak_after(&mut released, 1.1),
+                0,
+                "instrument {instrument} kept sounding after note-off"
+            );
         }
     }
 }
@@ -248,11 +282,18 @@ mod playhead {
     /// A row that changes nothing but the note, so the trace is only about
     /// where the cursor goes.
     fn step() -> PListEntry {
-        PListEntry { note: 1, ..PListEntry::default() }
+        PListEntry {
+            note: 1,
+            ..PListEntry::default()
+        }
     }
 
     fn cmd(fx: u8, param: u8) -> PListEntry {
-        PListEntry { fx: [fx, 0], fx_param: [param, 0], ..step() }
+        PListEntry {
+            fx: [fx, 0],
+            fx_param: [param, 0],
+            ..step()
+        }
     }
 
     fn plist(speed: u8, entries: Vec<PListEntry>) -> PList {
@@ -283,7 +324,9 @@ mod playhead {
 
     /// The row reported after each of `n` ticks, `-1` for none.
     fn rows(e: &mut AhxEngine, n: usize) -> Vec<i32> {
-        (0..n).map(|_| tick(e).map_or(-1, |(_, row)| row as i32)).collect()
+        (0..n)
+            .map(|_| tick(e).map_or(-1, |(_, row)| row as i32))
+            .collect()
     }
 
     fn five_rows() -> Vec<PListEntry> {
@@ -295,7 +338,11 @@ mod playhead {
         let mut e = live_engine(vec![plist(1, five_rows())], 0);
         assert_eq!(e.live_plist_state(), None, "no note yet");
         assert!(e.live_note_on(1, 30, 127));
-        assert_eq!(e.live_plist_state(), None, "the note-on waits for the next tick");
+        assert_eq!(
+            e.live_plist_state(),
+            None,
+            "the note-on waits for the next tick"
+        );
         // Rows 0..=4 on ticks 1..=5; the cursor is past the end after that, so
         // the last row that ran stays the answer.
         assert_eq!(rows(&mut e, 8), [0, 1, 2, 3, 4, 4, 4, 4]);
@@ -350,7 +397,10 @@ mod playhead {
 
     #[test]
     fn a_retrigger_restarts_at_row_0_and_stamps_the_instrument() {
-        let mut e = live_engine(vec![plist(1, vec![step(); 20]), plist(1, vec![step(); 3])], 0);
+        let mut e = live_engine(
+            vec![plist(1, vec![step(); 20]), plist(1, vec![step(); 3])],
+            0,
+        );
         e.live_note_on(1, 30, 127);
         assert_eq!(rows(&mut e, 5), [0, 1, 2, 3, 4]);
         assert_eq!(e.live_plist_state(), Some((1, 4)));
@@ -364,7 +414,11 @@ mod playhead {
         // Another instrument: the stamp changes with the row, its list is 3
         // rows long and parks on row 2.
         assert!(e.live_note_on(2, 30, 127));
-        assert_eq!(e.live_plist_state(), Some((1, 2)), "still the old note until the tick");
+        assert_eq!(
+            e.live_plist_state(),
+            Some((1, 2)),
+            "still the old note until the tick"
+        );
         assert_eq!(tick(&mut e), Some((2, 0)));
         assert_eq!(tick(&mut e), Some((2, 1)));
         assert_eq!(tick(&mut e), Some((2, 2)));
@@ -386,9 +440,19 @@ mod playhead {
             for (i, row) in after.iter().enumerate() {
                 if i + 1 < ticks_to_cut {
                     // Still releasing: the list carries on (tick 5 + i runs row 4 + i).
-                    assert_eq!(*row, 4 + i as i32, "release {r_frames}, tick {} after the note-off", i + 1);
+                    assert_eq!(
+                        *row,
+                        4 + i as i32,
+                        "release {r_frames}, tick {} after the note-off",
+                        i + 1
+                    );
                 } else {
-                    assert_eq!(*row, -1, "release {r_frames}, tick {} after the note-off", i + 1);
+                    assert_eq!(
+                        *row,
+                        -1,
+                        "release {r_frames}, tick {} after the note-off",
+                        i + 1
+                    );
                 }
             }
             assert_eq!(e.live_plist_state(), None);
@@ -461,15 +525,28 @@ mod playhead {
         let mut p = AhxPlayer::new(&song_bytes, RATE as u32, 2).unwrap();
         p.play();
         render(&mut p, 1.0);
-        assert_eq!((p.preview_plist_row(), p.preview_plist_instrument()), (-1, 0));
+        assert_eq!(
+            (p.preview_plist_row(), p.preview_plist_instrument()),
+            (-1, 0)
+        );
 
         // A preview player, idle and then playing.
         let mut p = preview_player("karma.ahx");
-        assert_eq!((p.preview_plist_row(), p.preview_plist_instrument()), (-1, 0));
+        assert_eq!(
+            (p.preview_plist_row(), p.preview_plist_instrument()),
+            (-1, 0)
+        );
         assert!(p.preview_note_on(instrument, 30, 127));
-        assert_eq!((p.preview_plist_row(), p.preview_plist_instrument()), (-1, 0), "not before the tick");
+        assert_eq!(
+            (p.preview_plist_row(), p.preview_plist_instrument()),
+            (-1, 0),
+            "not before the tick"
+        );
         render(&mut p, 0.001); // the first frame runs the tick
-        assert_eq!((p.preview_plist_row(), p.preview_plist_instrument()), (0, instrument as u32));
+        assert_eq!(
+            (p.preview_plist_row(), p.preview_plist_instrument()),
+            (0, instrument as u32)
+        );
         // Held long past any PList, it parks on the last row or loops within it.
         render(&mut p, 3.0);
         let (row, stamp) = (p.preview_plist_row(), p.preview_plist_instrument());
@@ -478,6 +555,9 @@ mod playhead {
         // Released and run dry: back to none.
         p.preview_note_off();
         render(&mut p, 6.0);
-        assert_eq!((p.preview_plist_row(), p.preview_plist_instrument()), (-1, 0));
+        assert_eq!(
+            (p.preview_plist_row(), p.preview_plist_instrument()),
+            (-1, 0)
+        );
     }
 }

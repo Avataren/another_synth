@@ -13,7 +13,12 @@ const RATE: u32 = 44100;
 const BLOCKS: [usize; 5] = [128, 1, 333, 882, 4096];
 
 fn bytes(name: &str) -> Vec<u8> {
-    fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/demos/ahx").join(name)).unwrap()
+    fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../public/demos/ahx")
+            .join(name),
+    )
+    .unwrap()
 }
 
 fn engine(name: &str) -> AhxEngine {
@@ -52,18 +57,30 @@ fn nothing_muted_or_soloed_is_bit_identical() {
         // Explicitly set to "nothing".
         let mut zero = engine(name);
         zero.set_mute_solo(0, 0);
-        assert_eq!(render(&mut zero, frames, &BLOCKS), plain, "{name}: explicit 0/0");
+        assert_eq!(
+            render(&mut zero, frames, &BLOCKS),
+            plain,
+            "{name}: explicit 0/0"
+        );
 
         // Bits above the song's channels change nothing either.
         let mut high = engine(name);
         high.set_mute_solo(0xffff_0000, 0);
-        assert_eq!(render(&mut high, frames, &BLOCKS), plain, "{name}: mute bits past the channels");
+        assert_eq!(
+            render(&mut high, frames, &BLOCKS),
+            plain,
+            "{name}: mute bits past the channels"
+        );
 
         // Set and cleared before the first sample.
         let mut cleared = engine(name);
         cleared.set_mute_solo(0xffff, 0xff);
         cleared.set_mute_solo(0, 0);
-        assert_eq!(render(&mut cleared, frames, &BLOCKS), plain, "{name}: set then cleared");
+        assert_eq!(
+            render(&mut cleared, frames, &BLOCKS),
+            plain,
+            "{name}: set then cleared"
+        );
     }
 }
 
@@ -75,9 +92,15 @@ fn muting_every_voice_is_digital_silence() {
         e.set_mute_solo(all, 0);
         e.enable_capture(true);
         let out = render(&mut e, RATE as usize * 4, &BLOCKS);
-        assert!(out.iter().all(|&s| s == 0), "{name}: mute-all is not silent");
+        assert!(
+            out.iter().all(|&s| s == 0),
+            "{name}: mute-all is not silent"
+        );
         for v in 0..e.channels() {
-            assert!(snapshot(&e, v).iter().all(|&s| s == 0), "{name}: voice {v} scope not flat");
+            assert!(
+                snapshot(&e, v).iter().all(|&s| s == 0),
+                "{name}: voice {v} scope not flat"
+            );
         }
     }
 }
@@ -126,21 +149,39 @@ fn solo_one_is_exactly_that_voices_captured_contribution() {
 
             // The soloed voice's trace is what it was with everyone playing;
             // every other voice's is flat.
-            assert_eq!(snapshot(&soloed, solo), snapshot(&plain, solo), "{name} solo {solo}: its capture");
+            assert_eq!(
+                snapshot(&soloed, solo),
+                snapshot(&plain, solo),
+                "{name} solo {solo}: its capture"
+            );
             for v in (0..n).filter(|&v| v != solo) {
-                assert!(snapshot(&soloed, v).iter().all(|&s| s == 0), "{name} solo {solo}: voice {v} not flat");
+                assert!(
+                    snapshot(&soloed, v).iter().all(|&s| s == 0),
+                    "{name} solo {solo}: voice {v} not flat"
+                );
             }
 
             // And the mix is that contribution, panned and gained, and nothing else.
             let snap = snapshot(&plain, solo);
-            let (panl, panr) = (plain.voice(solo).pan_mult_left, plain.voice(solo).pan_mult_right);
+            let (panl, panr) = (
+                plain.voice(solo).pan_mult_left,
+                plain.voice(solo).pan_mult_right,
+            );
             let g = plain.mix_gain();
             let tail = &solo_out[solo_out.len() - tick * 2..];
             let snap_tail = &snap[CAPTURE_FRAMES - tick..];
             for f in 0..tick {
                 let j = snap_tail[f] as i32;
-                assert_eq!(tail[f * 2] as i32, one_voice_mix(j, panl, g), "{name} solo {solo} L frame {f}");
-                assert_eq!(tail[f * 2 + 1] as i32, one_voice_mix(j, panr, g), "{name} solo {solo} R frame {f}");
+                assert_eq!(
+                    tail[f * 2] as i32,
+                    one_voice_mix(j, panl, g),
+                    "{name} solo {solo} L frame {f}"
+                );
+                assert_eq!(
+                    tail[f * 2 + 1] as i32,
+                    one_voice_mix(j, panr, g),
+                    "{name} solo {solo} R frame {f}"
+                );
             }
             assert_eq!(plain_out.len(), solo_out.len());
         }
@@ -193,10 +234,18 @@ fn unmuting_restores_identical_samples() {
         render(&mut e, 5000, &BLOCKS);
         assert_eq!(e.mute_solo(), (0, 0b0010));
         assert!(e.init_subsong(0));
-        assert_eq!(e.mute_solo(), (0, 0b0010), "{name}: a rewind keeps mute/solo");
+        assert_eq!(
+            e.mute_solo(),
+            (0, 0b0010),
+            "{name}: a rewind keeps mute/solo"
+        );
         e.set_mute_solo(0, 0);
         let restarted = render(&mut e, 30000, &BLOCKS);
-        assert_eq!(restarted[..], plain[..30000 * 2], "{name}: cleared after a rewind is a plain start");
+        assert_eq!(
+            restarted[..],
+            plain[..30000 * 2],
+            "{name}: cleared after a rewind is a plain start"
+        );
     }
 }
 

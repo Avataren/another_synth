@@ -66,8 +66,8 @@ impl AudioNode for Saturation {
         let [Some(out_left), Some(out_right)] = outs else {
             panic!("Missing stereo output buffers");
         };
-        let out_left: &mut [f32] = *out_left;
-        let out_right: &mut [f32] = *out_right;
+        let out_left: &mut [f32] = out_left;
+        let out_right: &mut [f32] = out_right;
 
         // Avoid division by zero: if drive is nearly zero, clamp it.
         let drive = if self.drive.abs() < 0.0001 {

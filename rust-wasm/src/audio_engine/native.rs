@@ -1,4 +1,6 @@
-use crate::audio_engine::patch::{GlideState, PatchFile, PatchNode, VoiceLayout as PatchVoiceLayout};
+use crate::audio_engine::patch::{
+    GlideState, PatchFile, PatchNode, VoiceLayout as PatchVoiceLayout,
+};
 use crate::audio_engine::patch_loader::for_each_node_in_creation_order;
 use crate::audio_engine::patch_loader::parse_node_id;
 use crate::automation::AutomationFrame;
@@ -581,11 +583,10 @@ impl AudioEngine {
         output_right: &mut [f32],
     ) {
         let voice_macro_span = self.voices.len().saturating_mul(MACRO_COUNT);
-        let macro_buffer_len = if voice_macro_span == 0 {
-            0
-        } else {
-            macro_values.len() / voice_macro_span
-        };
+        let macro_buffer_len = macro_values
+            .len()
+            .checked_div(voice_macro_span)
+            .unwrap_or(0);
         self.process_audio_internal(
             gates,
             frequencies,
@@ -616,7 +617,7 @@ impl AudioEngine {
             // Debug logging is expensive; keep it out of release builds.
             static CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
             let call_count = CALL_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
-            if call_count % 1000 == 0 {
+            if call_count.is_multiple_of(1000) {
                 eprintln!("ENGINE process_audio_internal call {}:", call_count);
                 eprintln!(
                     "  output_left.len()={}, output_right.len()={}",
@@ -738,8 +739,11 @@ impl AudioEngine {
             );
 
             // Mix voices together
-            for (sample_idx, (left, right)) in
-                self.voice_left.iter().zip(self.voice_right.iter()).enumerate()
+            for (sample_idx, (left, right)) in self
+                .voice_left
+                .iter()
+                .zip(self.voice_right.iter())
+                .enumerate()
             {
                 self.mix_left[sample_idx] += left * gain;
                 self.mix_right[sample_idx] += right * gain;
@@ -747,13 +751,12 @@ impl AudioEngine {
         }
 
         // Process effects with full block_size buffers
-        self.effect_stack
-            .process_audio(
-                &self.mix_left,
-                &self.mix_right,
-                &mut self.effect_left,
-                &mut self.effect_right,
-            );
+        self.effect_stack.process_audio(
+            &self.mix_left,
+            &self.mix_right,
+            &mut self.effect_left,
+            &mut self.effect_right,
+        );
 
         // Apply master gain
         if master_gain != 1.0 {
@@ -839,7 +842,12 @@ impl AudioEngine {
         self.set_effect_active(2, active);
     }
 
-    pub fn set_convolver_active(&mut self, node_id: usize, active: bool, wet_level: f32) -> Result<(), String> {
+    pub fn set_convolver_active(
+        &mut self,
+        node_id: usize,
+        active: bool,
+        wet_level: f32,
+    ) -> Result<(), String> {
         let effect_id = node_id
             .checked_sub(EFFECT_NODE_ID_OFFSET)
             .ok_or_else(|| "Invalid convolver node id".to_string())?;
@@ -860,11 +868,13 @@ impl AudioEngine {
     }
 
     pub fn generate_hall_impulse(&self, decay_time: f32, room_size: f32) -> Vec<f32> {
-        self.ir_generator.hall(decay_time.clamp(0.1, 10.0), room_size.clamp(0.0, 1.0))
+        self.ir_generator
+            .hall(decay_time.clamp(0.1, 10.0), room_size.clamp(0.0, 1.0))
     }
 
     pub fn generate_plate_impulse(&self, decay_time: f32, diffusion: f32) -> Vec<f32> {
-        self.ir_generator.plate(decay_time.clamp(0.1, 10.0), diffusion.clamp(0.0, 1.0))
+        self.ir_generator
+            .plate(decay_time.clamp(0.1, 10.0), diffusion.clamp(0.0, 1.0))
     }
 
     pub fn update_effect_impulse(
@@ -898,9 +908,8 @@ impl AudioEngine {
         js_config: &[u8],
         preview_duration: f32,
     ) -> Result<Vec<f32>, String> {
-        let config: crate::nodes::envelope::EnvelopeConfig =
-            serde_json::from_slice(js_config)
-                .map_err(|err| format!("Invalid envelope config: {err}"))?;
+        let config: crate::nodes::envelope::EnvelopeConfig = serde_json::from_slice(js_config)
+            .map_err(|err| format!("Invalid envelope config: {err}"))?;
 
         Ok(Envelope::new(self.sample_rate, config).preview(preview_duration))
     }
@@ -1179,7 +1188,9 @@ impl AudioEngine {
         self.ensure_global_nodes()?;
         let glide_id = NodeId::new();
         for voice in &mut self.voices {
-            voice.graph.add_node_with_id(glide_id, Box::new(Glide::new(self.sample_rate, glide_time)));
+            voice
+                .graph
+                .add_node_with_id(glide_id, Box::new(Glide::new(self.sample_rate, glide_time)));
             voice.graph.global_glide_node = Some(glide_id);
             if let Some(global_freq) = voice.graph.global_frequency_node {
                 voice.graph.add_connection(Connection {
@@ -1380,7 +1391,17 @@ impl AudioEngine {
         release_curve: f32,
         active: bool,
     ) -> Result<(), String> {
-        self.update_envelope_node(node_id, attack, decay, sustain, release, attack_curve, decay_curve, release_curve, active)
+        self.update_envelope_node(
+            node_id,
+            attack,
+            decay,
+            sustain,
+            release,
+            attack_curve,
+            decay_curve,
+            release_curve,
+            active,
+        )
     }
 
     pub fn update_envelope_by_index(
@@ -1466,7 +1487,18 @@ impl AudioEngine {
         filter_type: FilterType,
         filter_slope: FilterSlope,
     ) -> Result<(), String> {
-        self.update_filters(NodeId(Uuid::from_u128(filter_id as u128)), cutoff, resonance, gain, key_tracking, comb_frequency, comb_dampening, _oversampling, filter_type, filter_slope)
+        self.update_filters(
+            NodeId(Uuid::from_u128(filter_id as u128)),
+            cutoff,
+            resonance,
+            gain,
+            key_tracking,
+            comb_frequency,
+            comb_dampening,
+            _oversampling,
+            filter_type,
+            filter_slope,
+        )
     }
 
     pub fn update_filters(
@@ -1483,10 +1515,7 @@ impl AudioEngine {
         filter_slope: FilterSlope,
     ) -> Result<(), String> {
         for voice in &mut self.voices {
-            if let Some(node) = voice
-                .graph
-                .get_node_mut(filter_id)
-            {
+            if let Some(node) = voice.graph.get_node_mut(filter_id) {
                 if let Some(filter) = node.as_any_mut().downcast_mut::<FilterCollection>() {
                     filter.set_filter_type(filter_type);
                     filter.set_filter_slope(filter_slope);
@@ -1534,11 +1563,6 @@ unsafe impl Send for AudioEngine {}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::graph::{Connection, ModulationTransformation, ModulationType};
-    use crate::nodes::{AnalogOscillator, Mixer};
-    use crate::PortId;
-    use uuid::Uuid;
 
     #[cfg(not(feature = "wasm"))]
     #[test]

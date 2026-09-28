@@ -10,8 +10,8 @@
 //! after S2 is the proof that S2 left the 8580 path untouched.
 
 use super::chip::{REG_FC_HI, REG_FC_LO, REG_MODE_VOL, REG_RES_FILT};
-use super::waveform::{GATE, NOISE, PULSE, RING, SAW, SYNC, TEST, TRI};
 use super::revision::R4AR;
+use super::waveform::{GATE, NOISE, PULSE, RING, SAW, SYNC, TEST, TRI};
 use super::*;
 
 const V1: u8 = 0x00;
@@ -35,7 +35,7 @@ const PIN_STRIDE: usize = 826;
 const PIN_PROGRAM: &[(usize, u8, u8)] = &[
     (0, REG_MODE_VOL, 0x3F), // LP|BP, volume 15
     (0, REG_FC_LO, 0x05),
-    (0, REG_FC_HI, 0x60), // fc = 0x305
+    (0, REG_FC_HI, 0x60),    // fc = 0x305
     (0, REG_RES_FILT, 0xA3), // res 10, FILT1|FILT2
     (0, V1, 0x45),
     (0, V1 + 1, 0x1D), // 7493, A-4
@@ -87,7 +87,10 @@ fn render_pin_program(model: SidModel) -> Vec<f32> {
 /// FNV-1a 64 over every sample's f32 bit pattern.
 fn fnv1a(x: &[f32]) -> u64 {
     x.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, v| {
-        v.to_bits().to_le_bytes().iter().fold(h, |h, &b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3))
+        v.to_bits()
+            .to_le_bytes()
+            .iter()
+            .fold(h, |h, &b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3))
     })
 }
 
@@ -123,11 +126,11 @@ fn check_pin(model: SidModel, hash: u64, values: &[u32]) {
 /// back, the previous pin reproduced bit-exactly.
 const PIN_8580_HASH: u64 = 0x90e5_528f_4cec_f367;
 const PIN_8580_VALUES: [u32; 33] = [
-    0x3a29691d, 0xbda35198, 0x39be78be, 0x3e83b39b, 0x3e91955f, 0xbe075d23, 0xbe6b2b6a,
-    0x3e835faf, 0x3ee2b9c6, 0x3dac74b7, 0x3bc93b22, 0xbd050b5c, 0xbd3393fb, 0xbe24c18f,
-    0x3e72bbc0, 0x3e9a318a, 0xbbbae05b, 0x3e7fb744, 0x3d8127a3, 0xbdb4b7d8, 0x3e69c45d,
-    0xbdc93b0d, 0x3ddc051c, 0x3d15e992, 0x3c8f2d73, 0x3bb6c5d0, 0x3b241134, 0xbe9a91ea,
-    0xbdd652f6, 0xbdb64946, 0xbdb2fe7b, 0x3dc74b62, 0xbdc06f45,
+    0x3a29691d, 0xbda35198, 0x39be78be, 0x3e83b39b, 0x3e91955f, 0xbe075d23, 0xbe6b2b6a, 0x3e835faf,
+    0x3ee2b9c6, 0x3dac74b7, 0x3bc93b22, 0xbd050b5c, 0xbd3393fb, 0xbe24c18f, 0x3e72bbc0, 0x3e9a318a,
+    0xbbbae05b, 0x3e7fb744, 0x3d8127a3, 0xbdb4b7d8, 0x3e69c45d, 0xbdc93b0d, 0x3ddc051c, 0x3d15e992,
+    0x3c8f2d73, 0x3bb6c5d0, 0x3b241134, 0xbe9a91ea, 0xbdd652f6, 0xbdb64946, 0xbdb2fe7b, 0x3dc74b62,
+    0xbdc06f45,
 ];
 
 #[test]
@@ -150,11 +153,11 @@ fn pin_8580_render_is_bit_identical_to_s1() {
 /// change.
 const PIN_6581_HASH: u64 = 0x2d13_44bc_eadb_4e1f;
 const PIN_6581_VALUES: [u32; 33] = [
-    0x3dca67b2, 0x3befbbea, 0x3cddd8cd, 0x3e42cdc6, 0x3e68d0f0, 0xbdad0da8, 0xbe455549,
-    0x3d82138f, 0x3e990a41, 0x3da4a948, 0xbc0520f5, 0xbe04e05e, 0xbd01f36c, 0xbcbd8bb0,
-    0xbcbb2204, 0x3ce2f218, 0x3cc519f6, 0x3d089adc, 0xbc2d3190, 0x3d9109f0, 0x3c62e24a,
-    0x3d8f135a, 0x3e0556cb, 0x3cfaf9e0, 0x3c39bce7, 0x3b3f7d7a, 0x3a97a591, 0xbe5cf034,
-    0xbd200d68, 0xbc44d81b, 0xbbfaac70, 0xbbe32eac, 0xbbfa8232,
+    0x3dca67b2, 0x3befbbea, 0x3cddd8cd, 0x3e42cdc6, 0x3e68d0f0, 0xbdad0da8, 0xbe455549, 0x3d82138f,
+    0x3e990a41, 0x3da4a948, 0xbc0520f5, 0xbe04e05e, 0xbd01f36c, 0xbcbd8bb0, 0xbcbb2204, 0x3ce2f218,
+    0x3cc519f6, 0x3d089adc, 0xbc2d3190, 0x3d9109f0, 0x3c62e24a, 0x3d8f135a, 0x3e0556cb, 0x3cfaf9e0,
+    0x3c39bce7, 0x3b3f7d7a, 0x3a97a591, 0xbe5cf034, 0xbd200d68, 0xbc44d81b, 0xbbfaac70, 0xbbe32eac,
+    0xbbfa8232,
 ];
 
 #[test]
@@ -225,7 +228,11 @@ fn same_program_both_models_sane_and_different() {
         assert!(rms(o) > 0.02, "{m}: rms {}", rms(o));
     }
     let diff: Vec<f32> = o8.iter().zip(&o6).map(|(a, b)| a - b).collect();
-    assert!(rms(&diff) > 0.3 * rms(&o8), "models too alike: {}", rms(&diff));
+    assert!(
+        rms(&diff) > 0.3 * rms(&o8),
+        "models too alike: {}",
+        rms(&diff)
+    );
 }
 
 #[test]
@@ -331,7 +338,10 @@ fn combined_waveforms_6581_are_attenuated_through_osc3() {
     assert_eq!(osc3_at(m6, PULSE | SAW, 0x400, 0xFF0), 0xF0);
     // Single waveforms: identical on both models.
     for ctl in [SAW, TRI, PULSE] {
-        assert_eq!(osc3_at(m8, ctl, 0x400, 0x600), osc3_at(m6, ctl, 0x400, 0x600));
+        assert_eq!(
+            osc3_at(m8, ctl, 0x400, 0x600),
+            osc3_at(m6, ctl, 0x400, 0x600)
+        );
     }
 }
 
@@ -353,7 +363,11 @@ fn combined_waveform_6581_is_a_bit_subset_of_the_8580_every_cycle() {
             a.clock();
             b.clock();
             let (x, y) = (a.read(super::chip::REG_OSC3), b.read(super::chip::REG_OSC3));
-            assert_eq!(y & !x, 0, "ctl {ctl:#04x}: 6581 {y:#04x} not within 8580 {x:#04x}");
+            assert_eq!(
+                y & !x,
+                0,
+                "ctl {ctl:#04x}: 6581 {y:#04x} not within 8580 {x:#04x}"
+            );
             sa += x as u32;
             sb += y as u32;
         }
@@ -411,7 +425,11 @@ fn test_pulse_edge_into_waveform_zero() {
         c.clock_cycles(65_535);
         assert_eq!(c.read(r), 0xFF);
         c.clock();
-        assert_eq!(c.read(r), if m == SidModel::Sid6581 { 0 } else { 0xFF }, "{m:?}");
+        assert_eq!(
+            c.read(r),
+            if m == SidModel::Sid6581 { 0 } else { 0xFF },
+            "{m:?}"
+        );
     }
 }
 
@@ -451,7 +469,10 @@ fn attack_6581_follows_the_hand_derived_lag_curve() {
         c8.clock_cycles(cyc - c8.cycles());
         let a6 = c6.voice(0).envelope_amplitude();
         let a8 = c8.voice(0).envelope_amplitude();
-        assert!((a6 - want6).abs() < 5e-4, "cycle {cyc}: 6581 {a6} vs {want6}");
+        assert!(
+            (a6 - want6).abs() < 5e-4,
+            "cycle {cyc}: 6581 {a6} vs {want6}"
+        );
         assert!((a8 - want8).abs() < 1e-12, "cycle {cyc}: 8580 {a8}");
         // The digital counter is the same on both models.
         assert_eq!(c6.voice(0).envelope_level(), c8.voice(0).envelope_level());
@@ -573,7 +594,11 @@ fn volume_write_steps_the_6581_mixer_dc_and_not_the_8580() {
         }
         rms(&out)
     };
-    assert!(digi(SidModel::Sid6581) > 0.03, "{}", digi(SidModel::Sid6581));
+    assert!(
+        digi(SidModel::Sid6581) > 0.03,
+        "{}",
+        digi(SidModel::Sid6581)
+    );
     assert_eq!(digi(SidModel::Sid8580), 0.0);
 }
 
@@ -614,7 +639,10 @@ fn note_on_thump_from_the_6581_voice_dc() {
     for m in 400..3_000 {
         let diff = o6[m] as f64 / g6 - o8[m] as f64 / g8;
         let want = 0.25 * r.powf(m as f64 - 81.60);
-        assert!((diff - want).abs() < 0.01 * want + 2e-5, "m {m}: {diff} vs {want}");
+        assert!(
+            (diff - want).abs() < 0.01 * want + 2e-5,
+            "m {m}: {diff} vs {want}"
+        );
     }
     // Size in output units: 0.25 * G6 = 0.0494 at the rise (-26 dBFS of
     // low-frequency bump on every note-on from silence), decayed at

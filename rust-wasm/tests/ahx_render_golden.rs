@@ -9,9 +9,9 @@
 //! for a 50-frame chunk (one second at 50 Hz), so a single wrong sample
 //! anywhere in the 20-60 s of audio fails the chunk it lives in.
 //!
-//! The corpus is `tests/golden/cases.manifest`: every fixture in
-//! `public/demos/ahx/` (karma.ahx, the seven .hvl and the sixteen corpus .ahx
-//! songs the demo jukebox added) across sample rates
+//! The corpus is `tests/golden/cases.manifest`: 23 fixtures from
+//! `public/demos/ahx/` (karma.ahx, six .hvl and sixteen corpus .ahx songs;
+//! the jukebox has since grown past them without goldens) across sample rates
 //! (22050/44100/48000/96000), AHX stereo modes 0-4, and channel caps (native --
 //! the shipped default --, fixed-4 truncation, and a cap strictly between). Runs are 30-64 s. The same
 //! manifest drives `gen_goldens.sh`, so a row cannot exist on one side only;
@@ -87,7 +87,8 @@ fn load_golden(name: &str) -> Golden {
             ["panning", h] => g.panning = u64::from_str_radix(h, 16).unwrap(),
             ["channels", n, ..] => g.channels = n.parse().unwrap(),
             [frame, h] if frame.chars().all(|c| c.is_ascii_digit()) => {
-                g.chunks.push((frame.parse().unwrap(), u64::from_str_radix(h, 16).unwrap()));
+                g.chunks
+                    .push((frame.parse().unwrap(), u64::from_str_radix(h, 16).unwrap()));
             }
             ["case", fixture, freq, stereo, frames, chunk, cap] => {
                 g.case = Some((
@@ -99,7 +100,8 @@ fn load_golden(name: &str) -> Golden {
                     cap.parse().unwrap(),
                 ));
             }
-            ["coverage", "ring", r, "noise", ns, "filter", f, "square", q, "hardcut", h, "vibrato", v, "slide", sl, "plist", pl] => {
+            ["coverage", "ring", r, "noise", ns, "filter", f, "square", q, "hardcut", h, "vibrato", v, "slide", sl, "plist", pl] =>
+            {
                 let n = |x: &&str| x.parse::<u64>().unwrap();
                 g.coverage = Some([n(r), n(ns), n(f), n(q), n(h), n(v), n(sl), n(pl)]);
             }
@@ -133,12 +135,16 @@ struct Case {
 impl Case {
     fn golden(&self) -> String {
         let stem = self.fixture.rsplit_once('.').unwrap().0;
-        format!("{stem}.{}.s{}.cap{}.txt", self.freq, self.defstereo, self.cap)
+        format!(
+            "{stem}.{}.s{}.cap{}.txt",
+            self.freq, self.defstereo, self.cap
+        )
     }
 }
 
 fn manifest() -> Vec<Case> {
-    let text = fs::read_to_string(root().join("tests/golden/cases.manifest")).expect("reading cases.manifest");
+    let text = fs::read_to_string(root().join("tests/golden/cases.manifest"))
+        .expect("reading cases.manifest");
     let mut rows = Vec::new();
     for line in text.lines() {
         let line = line.trim();
@@ -160,7 +166,10 @@ fn manifest() -> Vec<Case> {
 }
 
 fn cases_for(fixture: &str) -> Vec<Case> {
-    let rows: Vec<Case> = manifest().into_iter().filter(|c| c.fixture == fixture).collect();
+    let rows: Vec<Case> = manifest()
+        .into_iter()
+        .filter(|c| c.fixture == fixture)
+        .collect();
     assert!(!rows.is_empty(), "no manifest rows for {fixture}");
     rows
 }
@@ -194,7 +203,11 @@ fn check(c: &Case, mode: Mode) {
     let native = s.channels;
     let mult = s.speed_multiplier as usize;
     // cap 0 = every native channel; otherwise the first `cap` of them.
-    let want_channels = if c.cap == 0 { native } else { native.min(c.cap) };
+    let want_channels = if c.cap == 0 {
+        native
+    } else {
+        native.min(c.cap)
+    };
     let mut engine = if c.cap == 0 {
         // The shipped constructor (song-driven channel count), so the default
         // stays covered by a golden.
@@ -229,7 +242,11 @@ fn check(c: &Case, mode: Mode) {
     }
     let name = format!("{name} ({label})");
     assert_eq!(engine.channels(), want_channels, "{name}: channel count");
-    assert_eq!(engine.dropped_channels(), native - want_channels, "{name}: dropped_channels");
+    assert_eq!(
+        engine.dropped_channels(),
+        native - want_channels,
+        "{name}: dropped_channels"
+    );
     assert_eq!(g.channels, want_channels, "{name}: reference channel count");
 
     // One hvl_DecodeFrame = `mult` ticks of `freq/50/mult` samples each.
@@ -410,26 +427,41 @@ fn wave_stepper_matches_reference() {
 
 #[test]
 fn manifest_covers_every_fixture() {
-    let mut on_disk: Vec<String> = fs::read_dir(root().join("../public/demos/ahx"))
-        .unwrap()
-        .map(|e| e.unwrap().file_name().into_string().unwrap())
-        .filter(|n| n.ends_with(".ahx") || n.ends_with(".hvl"))
-        .collect();
-    on_disk.sort();
-    assert_eq!(on_disk.len(), 24, "fixture corpus changed size: {on_disk:?}");
+    // The golden corpus is a fixed subset of the demo jukebox, which has grown
+    // past it; the vendored C reference that generates goldens is not in the
+    // tree any more, so new demos cannot be added here.
     let mut in_manifest: Vec<String> = manifest().into_iter().map(|c| c.fixture).collect();
     in_manifest.sort();
     in_manifest.dedup();
-    assert_eq!(in_manifest, on_disk, "every fixture needs manifest rows (and a check_fixture test)");
+    assert_eq!(
+        in_manifest.len(),
+        23,
+        "golden corpus changed size: {in_manifest:?}"
+    );
+    for f in &in_manifest {
+        assert!(
+            root().join("../public/demos/ahx").join(f).is_file(),
+            "{f}: manifest fixture missing from public/demos/ahx"
+        );
+    }
     // Every fixture has a native-channel row (the shipped default), and every
     // >4-channel one a cap-4 truncation row.
-    for f in &on_disk {
+    for f in &in_manifest {
         let rows = cases_for(f);
-        assert!(rows.iter().any(|c| c.cap == 0), "{f}: no native-channel row");
+        assert!(
+            rows.iter().any(|c| c.cap == 0),
+            "{f}: no native-channel row"
+        );
         if song(f).channels > 4 {
-            assert!(rows.iter().any(|c| c.cap == 4), "{f}: no cap-4 truncation row");
+            assert!(
+                rows.iter().any(|c| c.cap == 4),
+                "{f}: no cap-4 truncation row"
+            );
         }
-        assert!(rows.iter().any(|c| c.frames >= 1500), "{f}: no run of 30 s or more");
+        assert!(
+            rows.iter().any(|c| c.frames >= 1500),
+            "{f}: no run of 30 s or more"
+        );
     }
 }
 
@@ -448,13 +480,26 @@ fn manifest_and_goldens_agree() {
             "{}: golden's `case` line does not match its manifest row (regenerate with gen_goldens.sh)",
             c.golden()
         );
-        assert!(g.coverage.is_some(), "{}: no `coverage` line -- not harness output", c.golden());
-        assert_eq!(g.chunks.last().unwrap().0, c.frames, "{}: last chunk vs frames", c.golden());
+        assert!(
+            g.coverage.is_some(),
+            "{}: no `coverage` line -- not harness output",
+            c.golden()
+        );
+        assert_eq!(
+            g.chunks.last().unwrap().0,
+            c.frames,
+            "{}: last chunk vs frames",
+            c.golden()
+        );
     }
     names.sort();
     let before = names.len();
     names.dedup();
-    assert_eq!(names.len(), before, "two manifest rows map to the same golden file");
+    assert_eq!(
+        names.len(),
+        before,
+        "two manifest rows map to the same golden file"
+    );
     let mut on_disk: Vec<String> = fs::read_dir(root().join("tests/golden"))
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())
@@ -488,7 +533,10 @@ fn ahx_stereo_modes_produce_distinct_audio() {
         .collect();
     for i in 0..firsts.len() {
         for j in i + 1..firsts.len() {
-            assert_ne!(firsts[i], firsts[j], "stereo modes {i} and {j} rendered identically");
+            assert_ne!(
+                firsts[i], firsts[j],
+                "stereo modes {i} and {j} rendered identically"
+            );
         }
     }
 }
@@ -500,11 +548,16 @@ fn corpus_exercises_every_voice_feature() {
     // could pass unnoticed.
     let mut total = [0u64; 8];
     for c in manifest() {
-        for (t, v) in total.iter_mut().zip(load_golden(&c.golden()).coverage.unwrap()) {
+        for (t, v) in total
+            .iter_mut()
+            .zip(load_golden(&c.golden()).coverage.unwrap())
+        {
             *t += v;
         }
     }
-    let names = ["ring", "noise", "filter", "square", "hardcut", "vibrato", "slide", "plist"];
+    let names = [
+        "ring", "noise", "filter", "square", "hardcut", "vibrato", "slide", "plist",
+    ];
     for (n, t) in names.iter().zip(total) {
         assert!(t > 0, "no golden exercises {n}");
     }
@@ -516,7 +569,10 @@ fn corpus_reaches_both_song_end_paths() {
     // `pos_nr == position_nr`, `hvl_replay.c:1683-1688`; first hit at 57.6 s);
     // sunspots reaches song end through a Bxx loop-back (`:680-683`) and never
     // walks off the end.
-    for name in ["illuminated.44100.s2.cap4.txt", "sunspots.44100.s2.cap4.txt"] {
+    for name in [
+        "illuminated.44100.s2.cap4.txt",
+        "sunspots.44100.s2.cap4.txt",
+    ] {
         assert!(load_golden(name).end.0, "{name} must reach song end");
     }
 }
@@ -574,8 +630,16 @@ fn default_pan_repeats_left_right_right_left_per_group_of_four() {
     assert_eq!(e.channels(), 11);
     for i in 4..11 {
         assert_eq!(
-            (e.voice(i).pan, e.voice(i).pan_mult_left, e.voice(i).pan_mult_right),
-            (e.voice(i % 4).pan, e.voice(i % 4).pan_mult_left, e.voice(i % 4).pan_mult_right),
+            (
+                e.voice(i).pan,
+                e.voice(i).pan_mult_left,
+                e.voice(i).pan_mult_right
+            ),
+            (
+                e.voice(i % 4).pan,
+                e.voice(i % 4).pan_mult_left,
+                e.voice(i % 4).pan_mult_right
+            ),
             "voice {i}"
         );
     }
@@ -611,5 +675,8 @@ fn karma_first_row_is_audible_and_not_clipped_flat() {
     let mut out = vec![0i16; 44100 * 2 * 2];
     e.render_block(&mut out);
     assert!(out.iter().step_by(2).any(|&s| s != 0), "left silent");
-    assert!(out.iter().skip(1).step_by(2).any(|&s| s != 0), "right silent");
+    assert!(
+        out.iter().skip(1).step_by(2).any(|&s| s != 0),
+        "right silent"
+    );
 }

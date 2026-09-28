@@ -61,9 +61,17 @@ impl Resampler {
                 // Distance from input sample j of the window to the read point.
                 let d = j as f64 - (half - 1) as f64 - frac;
                 let x = d / half as f64;
-                let window = if x.abs() >= 1.0 { 0.0 } else { bessel_i0(KAISER_BETA * (1.0 - x * x).sqrt()) / norm };
+                let window = if x.abs() >= 1.0 {
+                    0.0
+                } else {
+                    bessel_i0(KAISER_BETA * (1.0 - x * x).sqrt()) / norm
+                };
                 let arg = std::f64::consts::PI * fc * d;
-                let sinc = if arg.abs() < 1e-12 { 1.0 } else { arg.sin() / arg };
+                let sinc = if arg.abs() < 1e-12 {
+                    1.0
+                } else {
+                    arg.sin() / arg
+                };
                 *c = fc * sinc * window;
                 sum += *c;
             }
@@ -72,7 +80,14 @@ impl Resampler {
                 *dst = (c / sum) as f32;
             }
         }
-        Resampler { taps, step: in_rate / out_rate, pos: 0.0, table, ring: vec![[0.0; 2]; 2 * taps], head: 0 }
+        Resampler {
+            taps,
+            step: in_rate / out_rate,
+            pos: 0.0,
+            table,
+            ring: vec![[0.0; 2]; 2 * taps],
+            head: 0,
+        }
     }
 
     fn push(&mut self, frame: [f32; 2]) {
@@ -92,7 +107,10 @@ impl Resampler {
         let p = (phase as usize).min(PHASES - 1);
         let t = (phase - p as f64) as f32;
         let n = self.taps;
-        let (a, b) = (&self.table[p * n..(p + 1) * n], &self.table[(p + 1) * n..(p + 2) * n]);
+        let (a, b) = (
+            &self.table[p * n..(p + 1) * n],
+            &self.table[(p + 1) * n..(p + 2) * n],
+        );
         let window = &self.ring[self.head..self.head + n];
         let (mut l, mut r) = (0f32, 0f32);
         for ((&x, &ca), &cb) in window.iter().zip(a).zip(b) {
@@ -146,7 +164,10 @@ mod tests {
             for freq in [100.0, 1000.0, 5000.0, top] {
                 let out = resample_tone(freq, out_rate, 40_000);
                 let db = 20.0 * level_at(&out, out_rate, freq).log10();
-                assert!(db.abs() < 0.1, "{out_rate} Hz out, {freq} Hz tone: {db:.3} dB");
+                assert!(
+                    db.abs() < 0.1,
+                    "{out_rate} Hz out, {freq} Hz tone: {db:.3} dB"
+                );
             }
         }
     }
@@ -159,7 +180,10 @@ mod tests {
             let out = resample_tone(freq, out_rate, 40_000);
             let alias = out_rate - freq;
             let db = 20.0 * level_at(&out, out_rate, alias).log10();
-            assert!(db < -70.0, "{freq} Hz into {out_rate} Hz: alias at {alias} Hz is {db:.1} dB");
+            assert!(
+                db < -70.0,
+                "{freq} Hz into {out_rate} Hz: alias at {alias} Hz is {db:.1} dB"
+            );
         }
     }
 
@@ -173,6 +197,9 @@ mod tests {
                 [0.0, 0.0]
             });
         }
-        assert!((pulled as f64 - NATIVE_RATE).abs() <= 2.0, "pulled {pulled} native frames for 1 s");
+        assert!(
+            (pulled as f64 - NATIVE_RATE).abs() <= 2.0,
+            "pulled {pulled} native frames for 1 s"
+        );
     }
 }

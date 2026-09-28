@@ -28,13 +28,7 @@ use base64::Engine as _;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    io::Cursor,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{cell::RefCell, collections::HashMap, io::Cursor, rc::Rc, sync::Arc};
 
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
@@ -342,10 +336,10 @@ impl AudioEngine {
             "INITIALIZING AUDIO ENGINE WITH {} VOICES",
             num_voices
         ));
-        log_console(&format!("Creating WavetableSynthBank"));
+        log_console("Creating WavetableSynthBank");
         let wavetable_synthbank = Rc::new(RefCell::new(WavetableSynthBank::new(sample_rate)));
         let mut banks = FxHashMap::default();
-        log_console(&format!("Creating Sine"));
+        log_console("Creating Sine");
         banks.insert(
             Waveform::Sine,
             Arc::new(
@@ -353,7 +347,7 @@ impl AudioEngine {
                     .expect("Failed to create Sine wavetable bank"),
             ),
         );
-        log_console(&format!("Creating Saw",));
+        log_console("Creating Saw");
         banks.insert(
             Waveform::Saw,
             Arc::new(
@@ -413,7 +407,7 @@ impl AudioEngine {
         self.add_saturation(2.0, 0.5, false).unwrap();
         self.add_bitcrusher(12, 4, 0.5, false).unwrap();
         //self.add_hall_reverb(2.0, 0.8, sample_rate).unwrap();
-        log_console(&format!("plate reverb added"));
+        log_console("plate reverb added");
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = initWithPatch))]
@@ -572,7 +566,7 @@ impl AudioEngine {
                 NodeId::from_string(&filter_id_str),
             ) {
                 (Ok(sampler_node_id), Ok(filter_node_id)) => {
-                    if let Some(voice0) = self.voices.get(0) {
+                    if let Some(voice0) = self.voices.first() {
                         let all_conns = voice0.graph.debug_connections();
                         log_console(&format!(
                             "[init_with_patch] Voice 0 has {} total connections",
@@ -584,14 +578,14 @@ impl AudioEngine {
                             {
                                 log_console(&format!(
                                     "[init_with_patch] Sampler conn: from={} to={} from_port={:?} to_port={:?} amount={} mod_type={:?} mod_transform={:?} (filter_id={})",
-                                    conn.from_node.to_string(),
-                                    conn.to_node.to_string(),
+                                    conn.from_node,
+                                    conn.to_node,
                                     conn.from_port,
                                     conn.to_port,
                                     conn.amount,
                                     conn.modulation_type,
                                     conn.modulation_transform,
-                                    filter_node_id.to_string(),
+                                    filter_node_id,
                                 ));
                             }
                         }
@@ -661,7 +655,7 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn get_current_state(&self) -> JsValue {
         // Use voice 0 as the canonical layout.
-        if let Some(voice) = self.voices.get(0) {
+        if let Some(voice) = self.voices.first() {
             let mut nodes: Vec<NodeState> = voice
                 .graph
                 .nodes
@@ -855,8 +849,11 @@ impl AudioEngine {
             );
 
             // Mix voice into main mix buffers with gain
-            for (i, (left, right)) in
-                self.voice_left.iter().zip(self.voice_right.iter()).enumerate()
+            for (i, (left, right)) in self
+                .voice_left
+                .iter()
+                .zip(self.voice_right.iter())
+                .enumerate()
             {
                 self.mix_left[i] += left * gain;
                 self.mix_right[i] += right * gain;
@@ -1207,7 +1204,7 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn get_gate_mixer_node_id(&mut self) -> Option<String> {
         self.voices
-            .get(0)
+            .first()
             .and_then(|voice| voice.graph.global_gatemixer_node)
             .map(|id| id.to_string())
     }
@@ -1336,8 +1333,7 @@ impl AudioEngine {
         let num_channels = spec.channels;
 
         // Read the samples in f32 form.
-        let samples =
-            read_wav_samples_f32(&mut reader).map_err(|e| JsValue::from_str(&e))?;
+        let samples = read_wav_samples_f32(&mut reader).map_err(|e| JsValue::from_str(&e))?;
 
         log_console(&format!("Read {} samples", samples.len()));
 
@@ -1961,8 +1957,7 @@ impl AudioEngine {
         ));
 
         // Read the samples in f32 form
-        let samples =
-            read_wav_samples_f32(&mut reader).map_err(|e| JsValue::from_str(&e))?;
+        let samples = read_wav_samples_f32(&mut reader).map_err(|e| JsValue::from_str(&e))?;
 
         log_console(&format!("Read {} samples", samples.len()));
 
@@ -2249,7 +2244,7 @@ impl AudioEngine {
 
         // Flatten the multi-channel IR into a single interleaved buffer
         // For stereo: [L0, R0, L1, R1, L2, R2, ...]
-        let ir_length = ir_channels.get(0).map_or(0, |ch| ch.len());
+        let ir_length = ir_channels.first().map_or(0, |ch| ch.len());
         let mut interleaved = Vec::with_capacity(ir_length * num_channels);
 
         for i in 0..ir_length {
@@ -2326,18 +2321,18 @@ impl AudioEngine {
         let node_id = NodeId::from_string(node_id)
             .map_err(|e| JsValue::from_str(&format!("Invalid node_id UUID: {}", e)))?;
 
-        for voice in &mut self.voices {
-            if let Some(node) = voice.graph.get_node_mut(node_id) {
-                if let Some(filter) = node.as_any_mut().downcast_mut::<FilterCollection>() {
-                    return Ok(filter.generate_frequency_response(waveform_length));
-                } else {
-                    return Err(JsValue::from_str("Node is not a Filter"));
-                }
-            } else {
-                return Err(JsValue::from_str("Node not found"));
-            }
-        }
-        Ok(vec![])
+        // Every voice holds the same patch, so the first one answers.
+        let Some(voice) = self.voices.first_mut() else {
+            return Ok(vec![]);
+        };
+        let node = voice
+            .graph
+            .get_node_mut(node_id)
+            .ok_or_else(|| JsValue::from_str("Node not found"))?;
+        node.as_any_mut()
+            .downcast_mut::<FilterCollection>()
+            .map(|filter| filter.generate_frequency_response(waveform_length))
+            .ok_or_else(|| JsValue::from_str("Node is not a Filter"))
     }
 
     /// Update all LFOs across all voices. This is called by the host when the user
@@ -2640,7 +2635,7 @@ impl AudioEngine {
                 });
                 log_console(&format!(
                     "[instantiate_node] Creating sampler node with id {}",
-                    node_id.to_string()
+                    node_id
                 ));
                 for voice in &mut self.voices {
                     let mut sampler = Sampler::new(self.sample_rate);
@@ -2717,7 +2712,7 @@ impl AudioEngine {
             // Determine the appropriate output port on the source node.
             let from_port = self
                 .voices
-                .get(0)
+                .first()
                 .and_then(|voice| {
                     NodeId::from_string(&connection.from_id)
                         .ok()
@@ -2737,7 +2732,8 @@ impl AudioEngine {
             let mut effective_from_port = from_port;
 
             if to_port == PortId::GlobalFrequency {
-                if let Some(glide_node) = self.voices.get(0).and_then(|v| v.graph.global_glide_node)
+                if let Some(glide_node) =
+                    self.voices.first().and_then(|v| v.graph.global_glide_node)
                 {
                     from_id = glide_node.to_string();
                     effective_from_port = PortId::AudioOutput0;

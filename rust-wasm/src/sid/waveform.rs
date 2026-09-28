@@ -166,7 +166,11 @@ pub fn waveform_output(
         out &= sawtooth(acc);
     }
     if sel & PULSE != 0 {
-        out &= if control & TEST != 0 { 0xFFF } else { pulse(acc, pw) };
+        out &= if control & TEST != 0 {
+            0xFFF
+        } else {
+            pulse(acc, pw)
+        };
     }
     if sel & NOISE != 0 {
         out &= noise_out;
@@ -330,7 +334,7 @@ mod tests {
         assert_eq!(triangle(0x00_0000), 0x000);
         assert_eq!(triangle(0x40_0000), 0x800);
         assert_eq!(triangle(0x7F_FFFF), 0xFFE); // peak, LSB always 0
-        // MSB set: 0x800000 ^ 0x7FFFFF = 0xFFFFFF -> bits 22..11 = 0xFFE.
+                                                // MSB set: 0x800000 ^ 0x7FFFFF = 0xFFFFFF -> bits 22..11 = 0xFFE.
         assert_eq!(triangle(0x80_0000), 0xFFE);
         // 0xC00000 ^ 0x7FFFFF = 0xBFFFFF -> (>>11) & 0xFFE = 0x7FE.
         assert_eq!(triangle(0xC0_0000), 0x7FE);
@@ -428,7 +432,10 @@ mod tests {
         }
         // Noise 0xFF0 AND saw 0x600 = 0x600; low nibble of noise is 0.
         assert_eq!(w(NOISE | SAW, 0x400), 0x600);
-        assert_eq!(waveform_output(M, NOISE | SAW, 0x60_F000, 0, 0, 0xFF0), Some(0x600));
+        assert_eq!(
+            waveform_output(M, NOISE | SAW, 0x60_F000, 0, 0, 0xFF0),
+            Some(0x600)
+        );
         // acc 0x7FF000: saw 0x7FF, tri 0xFFE, pulse(pw 0x400) high, so
         // saw & tri = 0x7FE. Bits 1 and 10: 1024 + 2 = 1026; bits 2..9:
         // at most 512 + 4 = 516. Every 8580 threshold is above 1026 -> 0x7FE.
@@ -445,8 +452,14 @@ mod tests {
     fn test_bit_forces_pulse_high_and_nothing_else() {
         // pw 0xFFF at acc 0: comparator low; TEST forces all ones.
         assert_eq!(waveform_output(M, PULSE, 0, 0, 0xFFF, 0), Some(0));
-        assert_eq!(waveform_output(M, PULSE | TEST, 0, 0, 0xFFF, 0), Some(0xFFF));
-        assert_eq!(waveform_output(M, SAW | TEST, 0x60_0000, 0, 0, 0), Some(0x600));
+        assert_eq!(
+            waveform_output(M, PULSE | TEST, 0, 0, 0xFFF, 0),
+            Some(0xFFF)
+        );
+        assert_eq!(
+            waveform_output(M, SAW | TEST, 0x60_0000, 0, 0, 0),
+            Some(0x600)
+        );
     }
 
     #[test]
@@ -469,9 +482,18 @@ mod tests {
         //         caught it)
         //  0x600: bit 10: zero 11 (1024) + zeros 8..0 at d 2..10 (1022) =
         //         2046 gone; bit 9: zeros 8..0 at d 1..9 (2044) gone -> 0
-        for (a, want) in [(0xFFFu16, 0xFFFu16), (0, 0), (0x400, 0), (0x800, 0),
-            (0xC00, 0x800), (0xE00, 0xC00), (0xFF0, 0xFE0), (0x7FE, 0x7FE),
-            (0x555, 0x001), (0x600, 0)] {
+        for (a, want) in [
+            (0xFFFu16, 0xFFFu16),
+            (0, 0),
+            (0x400, 0),
+            (0x800, 0),
+            (0xC00, 0x800),
+            (0xE00, 0xC00),
+            (0xFF0, 0xFE0),
+            (0x7FE, 0x7FE),
+            (0x555, 0x001),
+            (0x600, 0),
+        ] {
             assert_eq!(combined_6581(a), want, "{a:#05x}");
             assert_eq!(COMBINED_6581[a as usize], want);
         }

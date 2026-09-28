@@ -247,7 +247,11 @@ impl SidSong {
                     if !(1..=MAX_REPEAT).contains(&repeat) {
                         return err("an orderlist repeat is not 1-16");
                     }
-                    entries.push(OrderEntry { pattern, transpose, repeat });
+                    entries.push(OrderEntry {
+                        pattern,
+                        transpose,
+                        repeat,
+                    });
                 }
                 orderlists.push(Orderlist { entries, restart });
             }
@@ -309,7 +313,12 @@ impl SidSong {
             let n = r.byte(what)? as usize;
             let left: Vec<u8> = (0..n).map(|_| r.byte(what)).collect::<Result<_, _>>()?;
             left.into_iter()
-                .map(|l| Ok(TableRow { left: l, right: r.byte(what)? }))
+                .map(|l| {
+                    Ok(TableRow {
+                        left: l,
+                        right: r.byte(what)?,
+                    })
+                })
                 .collect()
         };
         let tables = Tables {
@@ -344,7 +353,11 @@ impl SidSong {
     fn check_references(&self) -> Result<(), SongError> {
         for s in &self.subsongs {
             for list in &s.orderlists {
-                if list.entries.iter().any(|e| e.pattern as usize >= self.patterns.len()) {
+                if list
+                    .entries
+                    .iter()
+                    .any(|e| e.pattern as usize >= self.patterns.len())
+                {
                     return err("an orderlist plays a pattern that does not exist");
                 }
             }
@@ -414,7 +427,9 @@ impl SidSong {
                 ins.ad(),
                 ins.sr(),
                 ins.first_wave,
-                if ins.hard_restart { 0x80 } else { 0 } | if ins.no_gate_off { 0x40 } else { 0 } | ins.gate_timer,
+                if ins.hard_restart { 0x80 } else { 0 }
+                    | if ins.no_gate_off { 0x40 } else { 0 }
+                    | ins.gate_timer,
                 ins.vibrato_delay,
                 ins.wave_ptr,
                 ins.pulse_ptr,
@@ -422,7 +437,12 @@ impl SidSong {
                 ins.speed_ptr,
             ]);
         }
-        for table in [&self.tables.wave, &self.tables.pulse, &self.tables.filter, &self.tables.speed] {
+        for table in [
+            &self.tables.wave,
+            &self.tables.pulse,
+            &self.tables.filter,
+            &self.tables.speed,
+        ] {
             out.push(table.len() as u8);
             out.extend(table.iter().map(|r| r.left));
             out.extend(table.iter().map(|r| r.right));

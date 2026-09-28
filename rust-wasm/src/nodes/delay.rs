@@ -118,8 +118,8 @@ impl AudioNode for Delay {
             panic!("Missing stereo output buffers");
         };
 
-        let out_left: &mut [f32] = *out_left;
-        let out_right: &mut [f32] = *out_right;
+        let out_left: &mut [f32] = out_left;
+        let out_right: &mut [f32] = out_right;
 
         let mut i = 0;
         while i < buffer_size {

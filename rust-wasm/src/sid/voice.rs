@@ -345,7 +345,18 @@ impl Voice {
     #[inline]
     fn select(&self, source_acc: u32) -> Option<u16> {
         // The noise taps only matter when noise is selected; skip gathering them.
-        let noise = if self.control & NOISE != 0 { self.noise.output() } else { 0 };
-        waveform_output(self.model, self.control, self.acc, source_acc, self.pw, noise)
+        let noise = if self.control & NOISE != 0 {
+            self.noise.output()
+        } else {
+            0
+        };
+        waveform_output(
+            self.model,
+            self.control,
+            self.acc,
+            source_acc,
+            self.pw,
+            noise,
+        )
     }
 }

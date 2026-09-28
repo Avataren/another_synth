@@ -18,15 +18,30 @@ use super::*;
 const SPF: usize = 880;
 
 fn ins(waveform: u8) -> Instrument {
-    Instrument { name: b"t".to_vec(), attack: 0, decay: 0, sustain: 15, release: 0, first_wave: waveform | GATE, ..Default::default() }
+    Instrument {
+        name: b"t".to_vec(),
+        attack: 0,
+        decay: 0,
+        sustain: 15,
+        release: 0,
+        first_wave: waveform | GATE,
+        ..Default::default()
+    }
 }
 
 fn row(note: u8, instrument: u8) -> Row {
-    Row { note, instrument, command: 0, param: 0 }
+    Row {
+        note,
+        instrument,
+        command: 0,
+        param: 0,
+    }
 }
 
 fn blank(rows: usize) -> Pattern {
-    Pattern { rows: vec![Row::default(); rows] }
+    Pattern {
+        rows: vec![Row::default(); rows],
+    }
 }
 
 /// Three voices: A-4 triangle, E-5 saw, C-4 pulse, one note each on row 0 of
@@ -40,7 +55,14 @@ fn chord() -> SidSong {
     p1.rows[0] = row(65, 2); // E-5 (index 64)
     let mut p2 = blank(8);
     p2.rows[0] = row(49, 3); // C-4 (index 48)
-    let list = |pattern: u8, repeat: u8| Orderlist { entries: vec![OrderEntry { pattern, transpose: 0, repeat }], restart: 0 };
+    let list = |pattern: u8, repeat: u8| Orderlist {
+        entries: vec![OrderEntry {
+            pattern,
+            transpose: 0,
+            repeat,
+        }],
+        restart: 0,
+    };
     SidSong {
         version: SONG_FILE_VERSION,
         model: SidModel::Sid8580,
@@ -50,12 +72,30 @@ fn chord() -> SidSong {
         name: b"s4".to_vec(),
         author: Vec::new(),
         copyright: Vec::new(),
-        subsongs: vec![Subsong { orderlists: vec![list(0, 2), list(1, 1), list(2, 1)] }],
+        subsongs: vec![Subsong {
+            orderlists: vec![list(0, 2), list(1, 1), list(2, 1)],
+        }],
         patterns: vec![p0, p1, p2],
-        instruments: vec![ins(0x10), ins(0x20), Instrument { pulse_ptr: 1, ..ins(0x40) }],
+        instruments: vec![
+            ins(0x10),
+            ins(0x20),
+            Instrument {
+                pulse_ptr: 1,
+                ..ins(0x40)
+            },
+        ],
         // The pulse voice's width, 0x800, from its pulse table.
         tables: Tables {
-            pulse: vec![TableRow { left: 0x88, right: 0x00 }, TableRow { left: 0xFF, right: 0x00 }],
+            pulse: vec![
+                TableRow {
+                    left: 0x88,
+                    right: 0x00,
+                },
+                TableRow {
+                    left: 0xFF,
+                    right: 0x00,
+                },
+            ],
             ..Default::default()
         },
     }
@@ -63,7 +103,8 @@ fn chord() -> SidSong {
 
 fn player(s: &SidSong) -> SidSongPlayer {
     let bytes = s.to_bytes();
-    SidSongPlayer::new(SidSong::parse(&bytes).expect("parses"), DEFAULT_SAMPLE_RATE).expect("player builds")
+    SidSongPlayer::new(SidSong::parse(&bytes).expect("parses"), DEFAULT_SAMPLE_RATE)
+        .expect("player builds")
 }
 
 /// Goertzel power of `x` at `hz`.
@@ -91,7 +132,10 @@ fn render_taps(p: &mut SidSongPlayer, frames: usize) -> (Vec<f32>, [Vec<f32>; 3]
     // Worklet-sized quanta, as the browser calls it.
     for start in (0..n).step_by(128) {
         let end = (start + 128).min(n);
-        p.render_taps(&mut out[start..end], [&mut a[start..end], &mut b[start..end], &mut c[start..end]]);
+        p.render_taps(
+            &mut out[start..end],
+            [&mut a[start..end], &mut b[start..end], &mut c[start..end]],
+        );
     }
     (out, [a, b, c])
 }
@@ -107,9 +151,18 @@ fn taps_leave_the_mix_bit_identical_to_render() {
     // Instrument 2's filter table: LP, res 8, every voice routed, cutoff 0x60<<3.
     s.instruments[1].filter_ptr = 1;
     s.tables.filter = vec![
-        TableRow { left: 0x90, right: 0x87 },
-        TableRow { left: 0x00, right: 0x60 },
-        TableRow { left: 0xFF, right: 0x00 },
+        TableRow {
+            left: 0x90,
+            right: 0x87,
+        },
+        TableRow {
+            left: 0x00,
+            right: 0x60,
+        },
+        TableRow {
+            left: 0xFF,
+            right: 0x00,
+        },
     ];
     s.model = SidModel::Sid6581;
     let mut plain = player(&s);
@@ -119,7 +172,12 @@ fn taps_leave_the_mix_bit_identical_to_render() {
         plain.render(chunk);
     }
     let (with_taps, _) = render_taps(&mut tapped, 60);
-    assert!(mix.iter().zip(&with_taps).all(|(a, b)| a.to_bits() == b.to_bits()), "render_taps mix == render mix, bit for bit");
+    assert!(
+        mix.iter()
+            .zip(&with_taps)
+            .all(|(a, b)| a.to_bits() == b.to_bits()),
+        "render_taps mix == render mix, bit for bit"
+    );
 }
 
 #[test]
@@ -133,16 +191,24 @@ fn each_tap_carries_its_own_voice() {
         let t = tail(&taps[i]);
         for (j, other) in [a4, e5, c4].into_iter().enumerate() {
             if i != j {
-                assert!(power(&t, own) > 100.0 * power(&t, other), "tap {i} is voice {i}, not voice {j}");
+                assert!(
+                    power(&t, own) > 100.0 * power(&t, other),
+                    "tap {i} is voice {i}, not voice {j}"
+                );
             }
         }
     }
     // No filter in play and an 8580 (no mixer DC): the mix is the three
     // voices summed, and each tap is its share through the same linear DC
     // blocker, so the taps add up to the mix (to f32 rounding).
-    let worst = (0..mix.len()).map(|k| (taps[0][k] + taps[1][k] + taps[2][k] - mix[k]).abs()).fold(0.0f32, f32::max);
+    let worst = (0..mix.len())
+        .map(|k| (taps[0][k] + taps[1][k] + taps[2][k] - mix[k]).abs())
+        .fold(0.0f32, f32::max);
     assert!(worst < 1e-5, "sum of taps == mix, worst {worst}");
-    assert!(mix.iter().chain(taps.iter().flatten()).all(|s| s.is_finite() && s.abs() <= 1.0));
+    assert!(mix
+        .iter()
+        .chain(taps.iter().flatten())
+        .all(|s| s.is_finite() && s.abs() <= 1.0));
 }
 
 #[test]
@@ -156,11 +222,19 @@ fn tap_full_scale_is_what_a_full_voice_reaches_in_its_tap() {
         s.model = model;
         let mut p = player(&s);
         let full = p.chip().tap_full_scale();
-        assert!(full > 0.0 && full < 1.0, "{model:?}: full scale {full} is a voice's share of the mix");
+        assert!(
+            full > 0.0 && full < 1.0,
+            "{model:?}: full scale {full} is a voice's share of the mix"
+        );
         let (_, taps) = render_taps(&mut p, 25);
-        let peak = taps[1][10 * SPF..].iter().fold(0.0f32, |m, s| m.max(s.abs())) as f64;
+        let peak = taps[1][10 * SPF..]
+            .iter()
+            .fold(0.0f32, |m, s| m.max(s.abs())) as f64;
         let ratio = peak / full;
-        assert!((0.9..=1.1).contains(&ratio), "{model:?}: saw tap peak {peak} vs full scale {full} (ratio {ratio})");
+        assert!(
+            (0.9..=1.1).contains(&ratio),
+            "{model:?}: saw tap peak {peak} vs full scale {full} (ratio {ratio})"
+        );
     }
 }
 
@@ -170,9 +244,15 @@ fn the_voice_mask_drops_a_voice_from_the_mix_and_its_tap() {
     assert_eq!(p.chip().voice_mask(), ALL_VOICES);
     p.chip_mut().set_voice_mask(0b101); // voice 2 (E-5 saw) muted
     let (mix, taps) = render_taps(&mut p, 25);
-    assert!(taps[1].iter().all(|&s| s == 0.0), "a masked voice's tap is silent");
+    assert!(
+        taps[1].iter().all(|&s| s == 0.0),
+        "a masked voice's tap is silent"
+    );
     let tail = &mix[10 * SPF..];
-    assert!(power(tail, hz(57)) > 100.0 * power(tail, hz(64)), "the mix lost E-5, kept A-4");
+    assert!(
+        power(tail, hz(57)) > 100.0 * power(tail, hz(64)),
+        "the mix lost E-5, kept A-4"
+    );
     // Every voice masked from the start: nothing at all reaches the output.
     let mut q = player(&chord());
     q.chip_mut().set_voice_mask(0);
@@ -225,7 +305,11 @@ fn seek_lands_on_the_registers_the_song_has_at_that_row() {
         assert_eq!(a.frequency(), b.frequency(), "voice {v} frequency");
         assert_eq!(a.pulse_width(), b.pulse_width(), "voice {v} pulse width");
         assert_eq!(a.control(), b.control(), "voice {v} control");
-        assert_eq!(natural.position(v), seeked.position(v), "voice {v} orderlist place");
+        assert_eq!(
+            natural.position(v),
+            seeked.position(v),
+            "voice {v} orderlist place"
+        );
     }
     assert_eq!(seeked.chip().voice(0).frequency(), gt_note_freq_reg(60));
 }
@@ -262,7 +346,10 @@ fn a_row_loop_plays_its_range_over_and_over() {
     // first (it starts at the top), then 8 takes it back to 4 every time.
     assert!(seen.iter().all(|&r| r < 8), "never reaches row 8");
     let after = &seen[8 * 6..];
-    assert!(after.iter().all(|&r| (4..8).contains(&r)), "loops 4..8: {after:?}");
+    assert!(
+        after.iter().all(|&r| (4..8).contains(&r)),
+        "loops 4..8: {after:?}"
+    );
     // An empty range is no loop.
     p.set_loop_rows(Some((5, 5)));
     for _ in 0..(10 * 6) {
@@ -289,7 +376,11 @@ fn preview_plays_an_instrument_without_the_sequencer() {
     assert!(power(tail, hz(57)) > 100.0 * power(tail, hz(64)));
     p.preview_note_off();
     p.frame();
-    assert_eq!(p.chip().voice(0).control() & GATE, 0, "note off clears the gate");
+    assert_eq!(
+        p.chip().voice(0).control() & GATE,
+        0,
+        "note off clears the gate"
+    );
 }
 
 #[test]
@@ -298,9 +389,18 @@ fn preview_routes_a_filter_meant_for_any_voice_to_voice_1() {
     let mut song = chord();
     song.instruments[0].filter_ptr = 1;
     song.tables.filter = vec![
-        TableRow { left: 0x90, right: 0x84 },
-        TableRow { left: 0x00, right: 0x40 },
-        TableRow { left: 0xFF, right: 0x00 },
+        TableRow {
+            left: 0x90,
+            right: 0x84,
+        },
+        TableRow {
+            left: 0x00,
+            right: 0x40,
+        },
+        TableRow {
+            left: 0xFF,
+            right: 0x00,
+        },
     ];
     let mut p = player(&song);
     p.set_preview(true);
@@ -330,7 +430,12 @@ fn sid_player_shell_plays_pauses_and_reports() {
     assert_eq!(p.channels(), 3);
     assert_eq!(p.song_rows(), 32);
     assert_eq!(p.instrument_count(), 3);
-    let (mut out, mut a, mut b, mut c) = (vec![1.0f32; 128], vec![1.0f32; 128], vec![1.0f32; 128], vec![1.0f32; 128]);
+    let (mut out, mut a, mut b, mut c) = (
+        vec![1.0f32; 128],
+        vec![1.0f32; 128],
+        vec![1.0f32; 128],
+        vec![1.0f32; 128],
+    );
     // Paused: silence everywhere, and the song does not move.
     assert_eq!(p.render(&mut out, &mut a, &mut b, &mut c), 128);
     assert!(out.iter().chain(&a).chain(&b).chain(&c).all(|&s| s == 0.0));
@@ -363,7 +468,12 @@ fn sid_player_shell_plays_pauses_and_reports() {
     q.play();
     r.play();
     r.set_gain(0.5);
-    let (mut o2, mut a2, mut b2, mut c2) = (vec![0.0f32; 128], vec![0.0f32; 128], vec![0.0f32; 128], vec![0.0f32; 128]);
+    let (mut o2, mut a2, mut b2, mut c2) = (
+        vec![0.0f32; 128],
+        vec![0.0f32; 128],
+        vec![0.0f32; 128],
+        vec![0.0f32; 128],
+    );
     for _ in 0..50 {
         q.render(&mut out, &mut a, &mut b, &mut c);
         r.render(&mut o2, &mut a2, &mut b2, &mut c2);
@@ -378,7 +488,12 @@ fn sid_player_preview_sounds_without_play() {
     let mut p = SidPlayer::new(&bytes, 44_100.0).unwrap();
     p.enable_preview();
     assert!(p.preview_note_on(3, 48));
-    let (mut out, mut a, mut b, mut c) = (vec![0.0f32; 128], vec![0.0f32; 128], vec![0.0f32; 128], vec![0.0f32; 128]);
+    let (mut out, mut a, mut b, mut c) = (
+        vec![0.0f32; 128],
+        vec![0.0f32; 128],
+        vec![0.0f32; 128],
+        vec![0.0f32; 128],
+    );
     let mut peak = 0.0f32;
     for _ in 0..100 {
         p.render(&mut out, &mut a, &mut b, &mut c);
@@ -396,7 +511,12 @@ fn sid_player_shell_switches_the_6581_revision_while_playing() {
     let mut p = SidPlayer::new(&bytes, 44_100.0).unwrap();
     assert_eq!(p.revision(), "gt");
     p.play();
-    let (mut out, mut a, mut b, mut c) = (vec![0.0; 4096], vec![0.0; 4096], vec![0.0; 4096], vec![0.0; 4096]);
+    let (mut out, mut a, mut b, mut c) = (
+        vec![0.0; 4096],
+        vec![0.0; 4096],
+        vec![0.0; 4096],
+        vec![0.0; 4096],
+    );
     p.render(&mut out, &mut a, &mut b, &mut c);
     for name in ["r2", "r3", "r4", "r4ar", "gt"] {
         assert!(p.set_revision(name), "{name}");

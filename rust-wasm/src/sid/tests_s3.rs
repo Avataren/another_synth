@@ -30,19 +30,38 @@ fn ins(waveform: u8) -> Instrument {
 }
 
 fn row(note: u8, instrument: u8, command: u8, param: u8) -> Row {
-    Row { note, instrument, command, param }
+    Row {
+        note,
+        instrument,
+        command,
+        param,
+    }
 }
 
 fn blank(rows: usize) -> Pattern {
-    Pattern { rows: vec![Row::default(); rows] }
+    Pattern {
+        rows: vec![Row::default(); rows],
+    }
 }
 
 /// A one-subsong song: channel c plays `lists[c]` (pattern, transpose, repeat).
-fn song(patterns: Vec<Pattern>, lists: [Vec<(u8, i8, u8)>; 3], instruments: Vec<Instrument>, tables: Tables) -> SidSong {
+fn song(
+    patterns: Vec<Pattern>,
+    lists: [Vec<(u8, i8, u8)>; 3],
+    instruments: Vec<Instrument>,
+    tables: Tables,
+) -> SidSong {
     let orderlists = lists
         .into_iter()
         .map(|l| Orderlist {
-            entries: l.into_iter().map(|(pattern, transpose, repeat)| OrderEntry { pattern, transpose, repeat }).collect(),
+            entries: l
+                .into_iter()
+                .map(|(pattern, transpose, repeat)| OrderEntry {
+                    pattern,
+                    transpose,
+                    repeat,
+                })
+                .collect(),
             restart: 0,
         })
         .collect();
@@ -140,10 +159,28 @@ fn full_song() -> SidSong {
     i1.speed_ptr = 1;
     let t = |l: u8, r: u8| TableRow { left: l, right: r };
     let mut s = song(
-        vec![Pattern { rows: vec![row(93, 1, 0xF, 0xFF), row(NOTE_KEY_OFF, 0, 0, 0), row(NOTE_KEY_ON, 0, 0, 0)] }, blank(128)],
-        [vec![(0, -64, 16)], vec![(1, 63, 1), (0, 0, 1)], vec![(1, 0, 1)]],
+        vec![
+            Pattern {
+                rows: vec![
+                    row(93, 1, 0xF, 0xFF),
+                    row(NOTE_KEY_OFF, 0, 0, 0),
+                    row(NOTE_KEY_ON, 0, 0, 0),
+                ],
+            },
+            blank(128),
+        ],
+        [
+            vec![(0, -64, 16)],
+            vec![(1, 63, 1), (0, 0, 1)],
+            vec![(1, 0, 1)],
+        ],
         vec![i1, Instrument::default()],
-        Tables { wave: vec![t(0x41, 0x80), t(0xFF, 1)], pulse: vec![t(0x88, 0)], filter: vec![t(0x90, 0xF1)], speed: vec![t(2, 3)] },
+        Tables {
+            wave: vec![t(0x41, 0x80), t(0xFF, 1)],
+            pulse: vec![t(0x88, 0)],
+            filter: vec![t(0x90, 0xF1)],
+            speed: vec![t(2, 3)],
+        },
     );
     s.model = SidModel::Sid6581;
     s.speed_multiplier = 16;
@@ -199,7 +236,12 @@ fn file_refuses_what_the_model_refuses() {
 fn solo_a4() -> SidSong {
     let mut p0 = blank(8);
     p0.rows[0] = row(58, 1, 0, 0); // row note 58 = index 57 = A-4
-    song(vec![p0, blank(8)], [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]], vec![ins(0x10)], Tables::default())
+    song(
+        vec![p0, blank(8)],
+        [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]],
+        vec![ins(0x10)],
+        Tables::default(),
+    )
 }
 
 #[test]
@@ -253,7 +295,10 @@ fn multispeed_ticks_on_gts_cia_period() {
     // GT's exported 2x tune: CIA latch $4CC7 / 2 = 9827, a period of 9828
     // cycles (half a PAL frame), 100.249 Hz: 439.9 samples a frame, so one
     // second of output starts 101 frames (was 100 at a flat 100 Hz).
-    assert_eq!(p.samples_per_frame(), 9828.0 * DEFAULT_SAMPLE_RATE / PAL_CLOCK_HZ);
+    assert_eq!(
+        p.samples_per_frame(),
+        9828.0 * DEFAULT_SAMPLE_RATE / PAL_CLOCK_HZ
+    );
     let mut out = vec![0.0f32; 44_100];
     p.render(&mut out);
     assert_eq!(p.frames(), 101);
@@ -275,7 +320,11 @@ fn the_frame_is_the_pal_vertical_blank_and_gts_cia_period() {
     assert_eq!(frame_cycles(5), 3_932);
     assert_eq!(frame_cycles(16), 1_229);
     let p = player(&solo_a4());
-    assert!((p.samples_per_frame() - 879.809).abs() < 1e-3, "{}", p.samples_per_frame());
+    assert!(
+        (p.samples_per_frame() - 879.809).abs() < 1e-3,
+        "{}",
+        p.samples_per_frame()
+    );
 }
 
 #[test]
@@ -285,7 +334,16 @@ fn orderlist_repeat_transpose_and_restart() {
     p0.rows[0] = row(58, 1, 0, 0);
     let mut p1 = blank(2);
     p1.rows[0] = row(58, 1, 0, 0);
-    let mut s = song(vec![p0, p1], [vec![(0, 12, 2), (1, -1, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]], vec![ins(0x10)], Tables::default());
+    let mut s = song(
+        vec![p0, p1],
+        [
+            vec![(0, 12, 2), (1, -1, 1)],
+            vec![(1, 0, 1)],
+            vec![(1, 0, 1)],
+        ],
+        vec![ins(0x10)],
+        Tables::default(),
+    );
     s.tempo = 1;
     s.subsongs[0].orderlists[0].restart = 1;
     let mut p = player(&s);
@@ -314,7 +372,10 @@ fn wave_table_is_waveform_and_arpeggio() {
         vec![p0, blank(8)],
         [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]],
         vec![i],
-        Tables { wave: vec![t(0x41, 0x00), t(0x41, 0x04), t(0x21, 0x07), t(0xFF, 0x01)], ..Default::default() },
+        Tables {
+            wave: vec![t(0x41, 0x00), t(0x41, 0x04), t(0x21, 0x07), t(0xFF, 0x01)],
+            ..Default::default()
+        },
     );
     let mut p = player(&s);
     let mut seen = Vec::new();
@@ -323,11 +384,26 @@ fn wave_table_is_waveform_and_arpeggio() {
         let v = p.chip().voice(0);
         seen.push((v.frequency(), v.control()));
     }
-    let (c, e, g) = (gt_note_freq_reg(48), gt_note_freq_reg(52), gt_note_freq_reg(55));
+    let (c, e, g) = (
+        gt_note_freq_reg(48),
+        gt_note_freq_reg(52),
+        gt_note_freq_reg(55),
+    );
     // The note's frame plays the first-frame byte and leaves the pitch to the
     // table (gplay.c:359-365, 509-512): no pitch yet on a fresh channel. Then
     // one table row a frame; the jump row costs no frame.
-    assert_eq!(seen, vec![(0, 0x11), (c, 0x41), (e, 0x41), (g, 0x21), (c, 0x41), (e, 0x41), (g, 0x21)]);
+    assert_eq!(
+        seen,
+        vec![
+            (0, 0x11),
+            (c, 0x41),
+            (e, 0x41),
+            (g, 0x21),
+            (c, 0x41),
+            (e, 0x41),
+            (g, 0x21)
+        ]
+    );
 }
 
 #[test]
@@ -342,7 +418,10 @@ fn pulse_table_sets_then_sweeps_the_width() {
         [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]],
         vec![i],
         // Set 0x400, then +0x10 for 3 frames, then -0x20 (0xE0) for 2, then stop.
-        Tables { pulse: vec![t(0x84, 0x00), t(0x03, 0x10), t(0x02, 0xE0)], ..Default::default() },
+        Tables {
+            pulse: vec![t(0x84, 0x00), t(0x03, 0x10), t(0x02, 0xE0)],
+            ..Default::default()
+        },
     );
     let mut p = player(&s);
     let widths: Vec<u16> = (0..8)
@@ -353,7 +432,10 @@ fn pulse_table_sets_then_sweeps_the_width() {
         .collect();
     // The note's frame skips the pulse table as GT's does (gplay.c:509-512;
     // S5.19): a fresh channel's width 0, then the table from frame 1.
-    assert_eq!(widths, vec![0, 0x400, 0x410, 0x420, 0x430, 0x410, 0x3F0, 0x3F0]);
+    assert_eq!(
+        widths,
+        vec![0, 0x400, 0x410, 0x420, 0x430, 0x410, 0x3F0, 0x3F0]
+    );
 }
 
 #[test]
@@ -374,7 +456,15 @@ fn each_instruments_filter_table_drives_the_chip_filter() {
         [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]],
         vec![i1, i2],
         Tables {
-            filter: vec![t(0x90, 0xA2), t(0x00, 0x40), t(0x02, 0x01), t(0xFF, 0x00), t(0xA0, 0x91), t(0x00, 0x24), t(0xFF, 0x00)],
+            filter: vec![
+                t(0x90, 0xA2),
+                t(0x00, 0x40),
+                t(0x02, 0x01),
+                t(0xFF, 0x00),
+                t(0xA0, 0x91),
+                t(0x00, 0x24),
+                t(0xFF, 0x00),
+            ],
             ..Default::default()
         },
     );
@@ -388,7 +478,10 @@ fn each_instruments_filter_table_drives_the_chip_filter() {
     assert_eq!((f.cutoff_reg(), f.resonance(), f.mode() & 0x70), (0, 0, 0));
     frame(&mut p); // row 1: instrument 1's table
     let f = p.chip().filter();
-    assert_eq!((f.cutoff_reg(), f.resonance(), f.mode() & 0x70), (0x120, 9, 0x20));
+    assert_eq!(
+        (f.cutoff_reg(), f.resonance(), f.mode() & 0x70),
+        (0x120, 9, 0x20)
+    );
     frame(&mut p); // row 2: instrument 2's table, heard from the next frame
     let mut cutoffs = Vec::new();
     for _ in 0..4 {
@@ -400,7 +493,15 @@ fn each_instruments_filter_table_drives_the_chip_filter() {
     // together (GT combines them on one frame, gplay.c:271-275; S5.16 -- this
     // used to be pinned a frame apart), so 0x200; then 0x208, 0x210; then the
     // table has ended and the cutoff holds.
-    assert_eq!(cutoffs, vec![(0x200, 10, 0x10), (0x208, 10, 0x10), (0x210, 10, 0x10), (0x210, 10, 0x10)]);
+    assert_eq!(
+        cutoffs,
+        vec![
+            (0x200, 10, 0x10),
+            (0x208, 10, 0x10),
+            (0x210, 10, 0x10),
+            (0x210, 10, 0x10)
+        ]
+    );
 }
 
 #[test]
@@ -416,8 +517,25 @@ fn key_off_releases_and_hard_restart_gates_off_before_the_next_note() {
     p0.rows[2] = row(NOTE_KEY_ON, 0, 0, 0);
     p0.rows[3] = row(49, 1, 0, 0);
     // Wave row 1: triangle and gate, then stop.
-    let wave = vec![TableRow { left: 0x11, right: 0x00 }, TableRow { left: 0xFF, right: 0x00 }];
-    let s = song(vec![p0, blank(4)], [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]], vec![i], Tables { wave, ..Default::default() });
+    let wave = vec![
+        TableRow {
+            left: 0x11,
+            right: 0x00,
+        },
+        TableRow {
+            left: 0xFF,
+            right: 0x00,
+        },
+    ];
+    let s = song(
+        vec![p0, blank(4)],
+        [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]],
+        vec![i],
+        Tables {
+            wave,
+            ..Default::default()
+        },
+    );
     let mut p = player(&s);
     // Frame 0: the first-frame waveform 0x09 (test + gate), then triangle + gate.
     frame(&mut p);
@@ -439,11 +557,19 @@ fn key_off_releases_and_hard_restart_gates_off_before_the_next_note() {
     for _ in 0..4 {
         frame(&mut p);
     }
-    assert_eq!(p.chip().voice(0).control(), 0x10, "frame 16: hard restart gate off");
+    assert_eq!(
+        p.chip().voice(0).control(),
+        0x10,
+        "frame 16: hard restart gate off"
+    );
     assert_eq!(p.chip().voice(0).envelope_stage(), Stage::Release);
     frame(&mut p);
     frame(&mut p);
-    assert_eq!(p.chip().voice(0).control(), 0x09, "frame 18: the new note's first frame");
+    assert_eq!(
+        p.chip().voice(0).control(),
+        0x09,
+        "frame 18: the new note's first frame"
+    );
 }
 
 #[test]
@@ -457,7 +583,10 @@ fn portamento_and_tone_portamento_use_the_speed_table() {
         vec![p0, blank(3)],
         [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]],
         vec![ins(0x10)],
-        Tables { speed: vec![t(0x01, 0x00), t(0x00, 0x50)], ..Default::default() },
+        Tables {
+            speed: vec![t(0x01, 0x00), t(0x00, 0x50)],
+            ..Default::default()
+        },
     );
     s.tempo = 3;
     let mut p = player(&s);
@@ -480,7 +609,11 @@ fn portamento_and_tone_portamento_use_the_speed_table() {
     assert_eq!(freqs[6], down);
     assert_eq!(freqs[7], (down + 0x50).min(cs4));
     assert_eq!(freqs[8], (down + 2 * 0x50).min(cs4));
-    assert_eq!(p.channel_note(0), 49, "the glide's note is the channel's note");
+    assert_eq!(
+        p.channel_note(0),
+        49,
+        "the glide's note is the channel's note"
+    );
 }
 
 #[test]
@@ -495,7 +628,10 @@ fn instrument_vibrato_waits_then_swings_around_the_note() {
         vec![p0, blank(8)],
         [vec![(0, 0, 1)], vec![(1, 0, 1)], vec![(1, 0, 1)]],
         vec![i],
-        Tables { speed: vec![t(4, 10)], ..Default::default() },
+        Tables {
+            speed: vec![t(4, 10)],
+            ..Default::default()
+        },
     );
     let mut p = player(&s);
     let a4 = gt_note_freq_reg(57) as i32;
@@ -519,12 +655,17 @@ fn the_songs_chip_model_is_the_players_and_both_models_play() {
     s.model = SidModel::Sid6581;
     let mut p6581 = player(&s);
     assert_eq!(p6581.chip().model(), SidModel::Sid6581);
-    let mut p8580 = SidSongPlayer::with_model(via_file(&s), SidModel::Sid8580, DEFAULT_SAMPLE_RATE, 0).unwrap();
+    let mut p8580 =
+        SidSongPlayer::with_model(via_file(&s), SidModel::Sid8580, DEFAULT_SAMPLE_RATE, 0).unwrap();
     let mut a = vec![0.0f32; 8820];
     let mut b = vec![0.0f32; 8820];
     p6581.render(&mut a);
     p8580.render(&mut b);
-    let rms = |x: &[f32]| (x.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / x.len() as f64).sqrt();
+    let rms =
+        |x: &[f32]| (x.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / x.len() as f64).sqrt();
     assert!(rms(&a) > 0.01 && rms(&b) > 0.01, "both audible");
-    assert!(a.iter().zip(&b).any(|(x, y)| (x - y).abs() > 1e-3), "the models differ");
+    assert!(
+        a.iter().zip(&b).any(|(x, y)| (x - y).abs() > 1e-3),
+        "the models differ"
+    );
 }

@@ -44,7 +44,7 @@ impl NodeId {
             let _ = fill_seed(&mut seed);
             let mut rng = StdRng::from_seed(seed);
             let random_u128: u128 = rng.random();
-            return NodeId(Uuid::from_u128(random_u128));
+            NodeId(Uuid::from_u128(random_u128))
         }
 
         #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
@@ -56,9 +56,11 @@ impl NodeId {
     pub fn from_string(s: &str) -> Result<Self, uuid::Error> {
         Ok(NodeId(Uuid::parse_str(s)?))
     }
+}
 
-    pub fn to_string(&self) -> String {
-        self.0.to_string()
+impl std::fmt::Display for NodeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 
@@ -86,6 +88,7 @@ impl WasmNodeId {
     }
 
     #[wasm_bindgen(js_name = toString)]
+    #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
         self.inner.to_string()
     }
@@ -111,16 +114,12 @@ pub struct ConnectionId(pub usize);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
+#[derive(Default)]
 pub enum ModulationType {
     VCA = 0,
     Bipolar = 1,
+    #[default]
     Additive = 2,
-}
-
-impl Default for ModulationType {
-    fn default() -> Self {
-        ModulationType::Additive
-    }
 }
 
 impl ModulationType {

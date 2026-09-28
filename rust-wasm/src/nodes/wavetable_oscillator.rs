@@ -530,7 +530,7 @@ impl WavetableOscillator {
         if let Some(gates) = inputs.get(&PortId::GlobalGate) {
             for src in gates {
                 Self::apply_add(
-                    &src.buffer,
+                    src.buffer,
                     &mut self.gate_buffer[..buffer_size],
                     src.amount,
                     src.transformation,

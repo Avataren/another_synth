@@ -24,6 +24,7 @@
 //!      because its MSB never presents as 1;
 //!   3. noise clock, envelope clock, waveform latch (ring mod reads the
 //!      source accumulator after step 2).
+//!
 //! TEST on a sync source holds it at 0, so its MSB never rises and its
 //! destination runs free (oscillator lockout). TEST on a destination holds
 //! it at 0, and sync resets are then no-ops.
@@ -199,7 +200,11 @@ impl Chip {
     /// A chip whose 6581 filter plays `profile` (the cutoff curve, resonance
     /// map and soft limit; DC, gain and the volume DAC are the default
     /// profile's, which every profile so far shares). An 8580 ignores it.
-    pub fn with_profile(model: SidModel, sample_rate: f64, profile: &'static RevisionProfile) -> Result<Chip, SidError> {
+    pub fn with_profile(
+        model: SidModel,
+        sample_rate: f64,
+        profile: &'static RevisionProfile,
+    ) -> Result<Chip, SidError> {
         if let Some(reason) = model.unimplemented_reason() {
             return Err(SidError::ModelNotImplemented { model, reason });
         }
@@ -482,7 +487,11 @@ impl Chip {
             for (i, s) in sum.iter().enumerate() {
                 let x = s / n.max(1) as f64;
                 if let Some(taps) = taps.as_mut() {
-                    let t = if mask & (1 << i) != 0 { x * tap_gain } else { 0.0 };
+                    let t = if mask & (1 << i) != 0 {
+                        x * tap_gain
+                    } else {
+                        0.0
+                    };
                     let y = t - self.tap_x[i] + self.dc_r * self.tap_y[i];
                     self.tap_x[i] = t;
                     self.tap_y[i] = y;
@@ -498,9 +507,17 @@ impl Chip {
                 }
             }
             let x = match self.model {
-                SidModel::Sid8580 => (self.filter_sign * self.filter.process(filt_in) + direct) * volume * self.base_gain * self.trim,
+                SidModel::Sid8580 => {
+                    (self.filter_sign * self.filter.process(filt_in) + direct)
+                        * volume
+                        * self.base_gain
+                        * self.trim
+                }
                 SidModel::Sid6581 => {
-                    (self.filter_sign * self.filter.process(filt_in) + direct + self.mix_dc) * volume * self.base_gain * self.trim
+                    (self.filter_sign * self.filter.process(filt_in) + direct + self.mix_dc)
+                        * volume
+                        * self.base_gain
+                        * self.trim
                 }
             };
             let y = x - self.dc_x + self.dc_r * self.dc_y;

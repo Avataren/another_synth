@@ -63,8 +63,9 @@ pub const RATE_PERIODS: [u16; 16] = [
 ];
 
 /// Datasheet attack times (ms) at 1 MHz, used only to cross-check the table.
-pub const DATASHEET_ATTACK_MS: [u32; 16] =
-    [2, 8, 16, 24, 38, 56, 68, 80, 100, 250, 500, 800, 1000, 3000, 5000, 8000];
+pub const DATASHEET_ATTACK_MS: [u32; 16] = [
+    2, 8, 16, 24, 38, 56, 68, 80, 100, 250, 500, 800, 1000, 3000, 5000, 8000,
+];
 
 const RATE_COUNTER_MASK: u16 = 0x7FFF;
 
@@ -240,7 +241,11 @@ mod tests {
         for _ in 0..100 {
             env.clock();
         }
-        assert_eq!(env.level(), 0, "the attack is still waiting on the counter's wrap");
+        assert_eq!(
+            env.level(),
+            0,
+            "the attack is still waiting on the counter's wrap"
+        );
         env.set_gate(false);
         for _ in 0..0x8000 {
             env.clock();
@@ -263,8 +268,20 @@ mod tests {
 
     #[test]
     fn exp_period_breakpoints() {
-        let want = [(255u8, 1u8), (94, 1), (93, 2), (55, 2), (54, 4), (27, 4), (26, 8), (15, 8),
-            (14, 16), (7, 16), (6, 30), (1, 30)];
+        let want = [
+            (255u8, 1u8),
+            (94, 1),
+            (93, 2),
+            (55, 2),
+            (54, 4),
+            (27, 4),
+            (26, 8),
+            (15, 8),
+            (14, 16),
+            (7, 16),
+            (6, 30),
+            (1, 30),
+        ];
         for (level, n) in want {
             assert_eq!(exp_period(level), n, "level {level}");
         }

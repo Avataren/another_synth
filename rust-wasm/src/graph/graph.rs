@@ -175,7 +175,7 @@ impl AudioGraph {
     pub fn add_node_with_id(&mut self, id: NodeId, node: Box<dyn AudioNode>) {
         // Allocate buffers for each port.
         let ports = node.get_ports();
-        for (port, _) in &ports {
+        for port in ports.keys() {
             let buffer_idx = self.buffer_pool.acquire(self.buffer_size);
             self.node_buffers.insert((id, *port), buffer_idx);
         }
@@ -293,7 +293,7 @@ impl AudioGraph {
         let to_node = connection.to_node;
         let amount = connection.amount;
 
-        self.connections.insert(key.clone(), connection.clone());
+        self.connections.insert(key, connection.clone());
 
         // Update input_connections with the source node included.
         self.input_connections.entry(to_node).or_default().push((
@@ -325,7 +325,7 @@ impl AudioGraph {
     pub fn debug_connections(&self) -> Vec<(ConnectionKey, Connection)> {
         self.connections
             .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .map(|(k, v)| (*k, v.clone()))
             .collect()
     }
 
@@ -351,7 +351,7 @@ impl AudioGraph {
             .filter(|(_, conn)| {
                 conn.from_node == from_node && conn.to_node == to_node && conn.to_port == to_port
             })
-            .map(|(k, _)| k.clone())
+            .map(|(k, _)| *k)
             .collect();
 
         for key in to_remove {
@@ -459,7 +459,7 @@ impl AudioGraph {
             connection.to_port,
         );
 
-        self.connections.insert(key.clone(), connection.clone());
+        self.connections.insert(key, connection.clone());
 
         let source_buffer_idx = self.node_buffers[&(connection.from_node, connection.from_port)];
         let inputs = self
@@ -535,8 +535,8 @@ impl AudioGraph {
         key
     }
 
-    pub fn get_node(&self, node_id: NodeId) -> Option<&Box<dyn AudioNode>> {
-        self.nodes.get(&node_id)
+    pub fn get_node(&self, node_id: NodeId) -> Option<&dyn AudioNode> {
+        self.nodes.get(&node_id).map(|node| node.as_ref())
     }
 
     pub fn get_node_mut(&mut self, node_id: NodeId) -> Option<&mut Box<dyn AudioNode>> {
@@ -804,7 +804,7 @@ impl AudioGraph {
             let output_node_active = self
                 .nodes
                 .get(&output_node_id)
-                .map_or(false, |n| n.is_active());
+                .is_some_and(|n| n.is_active());
 
             if output_node_active {
                 if let Some(&left_buffer_idx) = self

@@ -286,7 +286,7 @@ mod tests {
         let mut outputs: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
         outputs.insert(PortId::AudioOutput0, &mut out_buf[..]);
 
-        let mut gate_off_buf = vec![0.0; BUFFER_SIZE];
+        let mut gate_off_buf = [0.0; BUFFER_SIZE];
         let mut gate_off_outputs: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
         gate_off_outputs.insert(PortId::AudioOutput0, &mut gate_off_buf[..]);
         node.process(&inputs, &mut gate_off_outputs, BUFFER_SIZE);
@@ -322,7 +322,7 @@ mod tests {
                 transformation: ModulationTransformation::None,
             }],
         );
-        let mut out_buf = vec![0.0; BUFFER_SIZE];
+        let mut out_buf = [0.0; BUFFER_SIZE];
         let mut outputs: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
         outputs.insert(PortId::AudioOutput0, &mut out_buf[..]);
         node.process(&inputs, &mut outputs, BUFFER_SIZE);
@@ -347,7 +347,7 @@ mod tests {
                 transformation: ModulationTransformation::None,
             }],
         );
-        let mut out_buf2 = vec![0.0; BUFFER_SIZE];
+        let mut out_buf2 = [0.0; BUFFER_SIZE];
         let mut outputs2: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
         outputs2.insert(PortId::AudioOutput0, &mut out_buf2[..]);
         node.process(&inputs2, &mut outputs2, BUFFER_SIZE);

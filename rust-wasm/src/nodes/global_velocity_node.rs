@@ -42,10 +42,9 @@ impl GlobalVelocityNode {
         #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
         {
             if let Err(e) = fill(&mut buf) {
-                js_fallback_fill(&mut buf).expect(&format!(
-                    "Fallback for random number generation failed: {}",
-                    e
-                ));
+                js_fallback_fill(&mut buf).unwrap_or_else(|_| {
+                    panic!("Fallback for random number generation failed: {}", e)
+                });
             }
         }
         for i in 0..num_random {

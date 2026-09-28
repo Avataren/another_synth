@@ -319,7 +319,8 @@ impl SidSongPlayer {
             let list = &song.subsongs[subsong].orderlists[c];
             Self::enter_order(ch, list, 0, &song);
         }
-        let samples_per_frame = frame_cycles(song.speed_multiplier) as f64 * sample_rate / PAL_CLOCK_HZ;
+        let samples_per_frame =
+            frame_cycles(song.speed_multiplier) as f64 * sample_rate / PAL_CLOCK_HZ;
         let mult = song.speed_multiplier.max(1);
         let start = Self::start_tempo(&song);
         for ch in channels.iter_mut() {
@@ -337,7 +338,10 @@ impl SidSongPlayer {
             subsong,
             chip,
             channels,
-            funk: [9u8.wrapping_mul(mult).wrapping_sub(1), 6u8.wrapping_mul(mult).wrapping_sub(1)],
+            funk: [
+                9u8.wrapping_mul(mult).wrapping_sub(1),
+                6u8.wrapping_mul(mult).wrapping_sub(1),
+            ],
             ref_channel,
             row_ended: false,
             frames: 0,
@@ -420,7 +424,9 @@ impl SidSongPlayer {
     pub fn seek_row(&mut self, row: u64) {
         let sample_rate = self.chip.sample_rate();
         let model = self.chip.model();
-        let Ok(mut fresh) = SidSongPlayer::with_model(self.song.clone(), model, sample_rate, self.subsong) else {
+        let Ok(mut fresh) =
+            SidSongPlayer::with_model(self.song.clone(), model, sample_rate, self.subsong)
+        else {
             return;
         };
         while fresh.rows_played < row {
@@ -531,6 +537,7 @@ impl SidSongPlayer {
     }
 
     /// The frames the song row's current row lasts (funktempo alternates).
+    #[allow(clippy::misnamed_getters)]
     pub fn tempo(&self) -> u8 {
         self.channels[self.ref_channel].period
     }
@@ -696,7 +703,11 @@ impl SidSongPlayer {
 
     fn current_row(&self, c: usize) -> Row {
         let ch = &self.channels[c];
-        self.song.patterns[ch.pattern].rows.get(ch.row).copied().unwrap_or_default()
+        self.song.patterns[ch.pattern]
+            .rows
+            .get(ch.row)
+            .copied()
+            .unwrap_or_default()
     }
 
     /// The row channel `c` reads at the next row start, without moving it.
@@ -710,7 +721,11 @@ impl SidSongPlayer {
         let pattern = if ch.repeat_left > 1 {
             ch.pattern
         } else {
-            let next = if ch.order + 1 < list.entries.len() { ch.order + 1 } else { list.restart as usize };
+            let next = if ch.order + 1 < list.entries.len() {
+                ch.order + 1
+            } else {
+                list.restart as usize
+            };
             list.entries[next].pattern as usize
         };
         self.song.patterns[pattern.min(self.song.patterns.len() - 1)].rows[0]
@@ -863,7 +878,10 @@ impl SidSongPlayer {
     /// note, and the running command back to 0 with the instrument's speed
     /// row and vibrato delay.
     fn new_note(&mut self, c: usize, note: u8) {
-        let (speed_ptr, delay) = self.instrument(c).map(|i| (i.speed_ptr, i.vibrato_delay)).unwrap_or((0, 0));
+        let (speed_ptr, delay) = self
+            .instrument(c)
+            .map(|i| (i.speed_ptr, i.vibrato_delay))
+            .unwrap_or((0, 0));
         let ch = &mut self.channels[c];
         ch.base_note = note;
         ch.run_cmd = 0;
@@ -882,7 +900,7 @@ impl SidSongPlayer {
         // no wave table (none in GT) gets its pitch at once.
         ch.last_note = note & 0x7F;
         let gate_before = ch.gate;
-        if ins.as_ref().map_or(true, |i| i.wave_ptr == 0) {
+        if ins.as_ref().is_none_or(|i| i.wave_ptr == 0) {
             ch.freq = gt_note_freq_reg(note);
         }
         ch.gate = true;
@@ -932,19 +950,35 @@ impl SidSongPlayer {
     /// steps by 2; odd goes down, even up. A turn value k gives a first swing
     /// of k/2 + 1 frames, then k + 2 frames each way (even k).
     fn vibrato(&mut self, c: usize, ptr: u8) {
-        let (mut turn, mut step) = self.speed_row(ptr).map(|r| (r.left, r.right as u16)).unwrap_or((0, 0));
+        let (mut turn, mut step) = self
+            .speed_row(ptr)
+            .map(|r| (r.left, r.right as u16))
+            .unwrap_or((0, 0));
         let ch = &mut self.channels[c];
         if turn >= 0x80 {
             turn &= 0x7F;
             let at = |i: u8| if i < 0x80 { gt_note_freq_reg(i) } else { 0 };
-            let shift = self.song.tables.speed.get(ptr as usize - 1).map(|r| r.right).unwrap_or(0);
-            step = at(ch.last_note + 1).wrapping_sub(at(ch.last_note)).checked_shr(shift as u32).unwrap_or(0);
+            let shift = self
+                .song
+                .tables
+                .speed
+                .get(ptr as usize - 1)
+                .map(|r| r.right)
+                .unwrap_or(0);
+            step = at(ch.last_note + 1)
+                .wrapping_sub(at(ch.last_note))
+                .checked_shr(shift as u32)
+                .unwrap_or(0);
         }
         if ch.vib_time < 0x80 && ch.vib_time > turn {
             ch.vib_time ^= 0xFF;
         }
         ch.vib_time = ch.vib_time.wrapping_add(2);
-        ch.freq = if ch.vib_time & 1 != 0 { ch.freq.wrapping_sub(step) } else { ch.freq.wrapping_add(step) };
+        ch.freq = if ch.vib_time & 1 != 0 {
+            ch.freq.wrapping_sub(step)
+        } else {
+            ch.freq.wrapping_add(step)
+        };
     }
 
     /// A slide speed from speed-table row `ptr` (0: none), GT's (gplay.c:
@@ -962,7 +996,10 @@ impl SidSongPlayer {
         }
         let at = |i: u8| if i < 0x80 { gt_note_freq_reg(i) } else { 0 };
         let last = self.channels[c].last_note;
-        at(last.wrapping_add(1)).wrapping_sub(at(last)).checked_shr(r.right as u32).unwrap_or(0)
+        at(last.wrapping_add(1))
+            .wrapping_sub(at(last))
+            .checked_shr(r.right as u32)
+            .unwrap_or(0)
     }
 
     /// One tone-portamento frame toward the channel's note, GT's (gplay.c:
@@ -1191,7 +1228,11 @@ impl SidSongPlayer {
         if right == 0x80 {
             return false;
         }
-        let note = if right < 0x80 { ch.base_note.wrapping_add(right) } else { right } & 0x7F;
+        let note = if right < 0x80 {
+            ch.base_note.wrapping_add(right)
+        } else {
+            right
+        } & 0x7F;
         ch.freq = gt_note_freq_reg(note);
         ch.vib_time = 0;
         ch.last_note = note;
@@ -1272,7 +1313,13 @@ impl SidSongPlayer {
             return;
         }
         let table = &self.song.tables.filter;
-        let row_at = |ptr: u8| if ptr == 0 { TableRow::default() } else { table.get(ptr as usize - 1).copied().unwrap_or_default() };
+        let row_at = |ptr: u8| {
+            if ptr == 0 {
+                TableRow::default()
+            } else {
+                table.get(ptr as usize - 1).copied().unwrap_or_default()
+            }
+        };
         let jump = row_at(self.filter_ptr);
         if jump.left == 0xFF {
             self.filter_ptr = jump.right;
@@ -1390,7 +1437,12 @@ impl SidSongPlayer {
                 ch.waveform & if ch.gate { 0xFF } else { !GATE }
             };
             // GT writes the low byte with bit 0 clear (gplay.c:943).
-            put(&mut self.chip, base + 2, (ch.pulse_width & 0xFE) as u8, false);
+            put(
+                &mut self.chip,
+                base + 2,
+                (ch.pulse_width & 0xFE) as u8,
+                false,
+            );
             put(&mut self.chip, base + 3, (ch.pulse_width >> 8) as u8, false);
             put(&mut self.chip, base + 6, ch.sr, false);
             put(&mut self.chip, base + 5, ch.ad, false);

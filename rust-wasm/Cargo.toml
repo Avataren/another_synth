@@ -50,6 +50,14 @@ rayon = { version = "1.10.0", optional = true }
 fft-convolver = "0.2.0"
 rubato = "0.16.2"
 
+[lints.clippy]
+# Style lints that fight DSP code: per-sample loops index several buffers in
+# lockstep, and node constructors / render entry points take many parameters.
+needless_range_loop = "allow"
+too_many_arguments = "allow"
+type_complexity = "allow"
+module_inception = "allow"
+
 [profile.release]
 opt-level = 3
 lto = true
@@ -65,6 +73,14 @@ wasm-opt = ['-O1', '--enable-simd']
 wasm-opt = ['-O2', '--enable-simd']
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ['-O3', '--enable-simd']
+
+[[test]]
+name = "engine_node_integration"
+required-features = ["native-host"]
+
+[[test]]
+name = "envelope_preview"
+required-features = ["native-host"]
 
 [[bench]]
 name = "graph_benchmark"

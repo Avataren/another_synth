@@ -34,7 +34,7 @@ const PINK_W0: f32 = 0.0555179;
 const PINK_P1: f32 = 0.99332;
 const PINK_W1: f32 = 0.0750759;
 const PINK_P2: f32 = 0.96900;
-const PINK_W2: f32 = 0.1538520;
+const PINK_W2: f32 = 0.153_852;
 const PINK_P3: f32 = 0.86650;
 const PINK_W3: f32 = 0.3104856;
 const PINK_P4: f32 = 0.55000;
@@ -183,7 +183,7 @@ impl NoiseGenerator {
     #[inline(always)]
     fn next_rand_scalar(&mut self) -> f32 {
         let t = self.rng_state[1].wrapping_mul(5);
-        let tmp = (t << 7 | t >> 25).wrapping_mul(9);
+        let tmp = t.rotate_left(7).wrapping_mul(9);
         let shift = self.rng_state[1] << 9;
         self.rng_state[2] ^= self.rng_state[0];
         self.rng_state[3] ^= self.rng_state[1];

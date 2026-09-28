@@ -13,9 +13,9 @@ use super::voice::{panning_left, panning_right, Voice};
 /// `hvl_plist_command_parse`, `hvl_replay.c:981-1123`.
 pub fn process_command(voice: &mut Voice, fx: i32, fx_param: i32) {
     match fx {
-        0 => {
+        0
             // Set filter position (981-997).
-            if fx_param > 0 && fx_param < 0x40 {
+            if fx_param > 0 && fx_param < 0x40 => {
                 if voice.filter.ignore != 0 {
                     voice.filter.pos = voice.filter.ignore;
                     voice.filter.ignore = 0;
@@ -24,7 +24,6 @@ pub fn process_command(voice: &mut Voice, fx: i32, fx_param: i32) {
                 }
                 voice.new_waveform = true;
             }
-        }
         1 => {
             // PerfPortamento up (999-1002).
             voice.period_perf_slide_speed = fx_param;

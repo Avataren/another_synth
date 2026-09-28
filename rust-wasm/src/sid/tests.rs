@@ -96,7 +96,11 @@ fn model_flag_both_models_construct_per_instance() {
     assert_eq!(c.sample_rate(), 44_100.0);
     let c6 = Chip::new(SidModel::Sid6581).expect("6581 is implemented (S2)");
     assert_eq!(c6.model(), SidModel::Sid6581);
-    assert_eq!(c.model(), SidModel::Sid8580, "building a 6581 leaves the 8580 alone");
+    assert_eq!(
+        c.model(),
+        SidModel::Sid8580,
+        "building a 6581 leaves the 8580 alone"
+    );
     for m in [SidModel::Sid8580, SidModel::Sid6581] {
         assert_eq!(m.unimplemented_reason(), None);
         assert!(Chip::with_sample_rate(m, 48_000.0).is_ok());
@@ -658,11 +662,18 @@ fn ring_mod_follows_the_live_source_msb_every_cycle() {
             c.clock();
             let own = acc(&c, dest);
             let src_msb = acc(&c, source_of(dest)) & 0x80_0000 != 0;
-            let want = if src_msb { triangle(own) } else { triangle(own) ^ 0xFFE };
+            let want = if src_msb {
+                triangle(own)
+            } else {
+                triangle(own) ^ 0xFFE
+            };
             assert_eq!(c.voice(dest).waveform(), want);
             flips += (!src_msb) as u32;
         }
-        assert!(flips > 1000 && flips < 39_000, "both source halves seen: {flips}");
+        assert!(
+            flips > 1000 && flips < 39_000,
+            "both source halves seen: {flips}"
+        );
     }
 }
 
@@ -719,7 +730,14 @@ fn test_bit_resets_noise_and_its_phase_to_the_oscillator() {
     assert_eq!(c.voice(2).noise_register(), 0x7F_FFFF);
     assert_eq!(c.read(REG_OSC3), 0xFF);
     ctrl(&mut c, V3, NOISE);
-    let want = [(137u64, 0xFFu8), (138, 0xFE), (393, 0xFE), (394, 0xFE), (649, 0xFE), (650, 0xFC)];
+    let want = [
+        (137u64, 0xFFu8),
+        (138, 0xFE),
+        (393, 0xFE),
+        (394, 0xFE),
+        (649, 0xFE),
+        (650, 0xFC),
+    ];
     for (cycle, v) in want {
         run_to(&mut c, cycle);
         assert_eq!(c.read(REG_OSC3), v, "cycle {cycle}");
@@ -760,7 +778,11 @@ fn noise_combined_with_a_low_pulse_locks_up_until_test() {
         c.clock();
         seen.insert(c.read(REG_OSC3));
     }
-    assert!(seen.len() > 50, "noise alive again: {} distinct values", seen.len());
+    assert!(
+        seen.len() > 50,
+        "noise alive again: {} distinct values",
+        seen.len()
+    );
 }
 
 #[test]
@@ -901,7 +923,10 @@ fn filt_bits_route_voices_through_the_filter() {
     });
     assert!(direct > 0.05, "{direct}");
     assert!(lp < 0.02 * direct, "lp {lp} vs {direct}");
-    assert!(hp > 0.95 * direct && hp < 1.05 * direct, "hp {hp} vs {direct}");
+    assert!(
+        hp > 0.95 * direct && hp < 1.05 * direct,
+        "hp {hp} vs {direct}"
+    );
     assert!(none.iter().all(|&s| s == 0.0));
 }
 
@@ -957,7 +982,10 @@ fn voice3_off_mutes_only_the_direct_voice_3() {
         c.write(REG_MODE_VOL, VOICE3_OFF | LP | 0x0F);
         saw_a4(c, V3);
     }));
-    assert!(v3_filtered_off > 0.8 * v3_direct, "{v3_filtered_off} vs {v3_direct}");
+    assert!(
+        v3_filtered_off > 0.8 * v3_direct,
+        "{v3_filtered_off} vs {v3_direct}"
+    );
     let v1 = routed(|c| {
         c.write(REG_MODE_VOL, LP | 0x0F);
         saw_a4(c, V1);
@@ -1044,7 +1072,10 @@ fn saw_render() -> (Vec<f32>, f64) {
     saw_a4(&mut c, V1);
     // Same window as S0's analysis: 0.6 s .. 2.3 s (decay done, sustain F).
     let out = render(&mut c, 2.3);
-    (out[(0.6 * 44_100.0) as usize..].to_vec(), freq_reg_to_hz(A4))
+    (
+        out[(0.6 * 44_100.0) as usize..].to_vec(),
+        freq_reg_to_hz(A4),
+    )
 }
 
 fn boxcar_droop_db(k: usize, f0: f64) -> f64 {
@@ -1076,7 +1107,10 @@ fn saw_harmonics_match_ideal_minus_decimator_droop() {
     for k in 1..=10usize {
         let got = 10.0 * (hann_dft_power(&x, k as f64 * f0) / p1).log10();
         let want = -20.0 * (k as f64).log10() + boxcar_droop_db(k, f0);
-        assert!((got - want).abs() < 0.05, "k={k}: got {got:.3} want {want:.3}");
+        assert!(
+            (got - want).abs() < 0.05,
+            "k={k}: got {got:.3} want {want:.3}"
+        );
     }
 }
 
@@ -1093,7 +1127,12 @@ fn s0_bin_grid_estimator_reproduces_the_scalloping_first_cause() {
     let peak = |k: usize| {
         let c = (k as f64 * f0 / bin_hz).round() as i64;
         (c - 3..=c + 3)
-            .map(|b| frames.iter().map(|f| hann_dft_power(f, b as f64 * bin_hz)).sum::<f64>())
+            .map(|b| {
+                frames
+                    .iter()
+                    .map(|f| hann_dft_power(f, b as f64 * bin_hz))
+                    .sum::<f64>()
+            })
             .fold(0.0f64, f64::max)
     };
     let scallop = |k: usize| {
@@ -1106,7 +1145,10 @@ fn s0_bin_grid_estimator_reproduces_the_scalloping_first_cause() {
     for k in 1..=10usize {
         let got = 10.0 * (peak(k) / p1).log10() + 20.0 * (k as f64).log10();
         let predicted = 20.0 * (scallop(k) / scallop(1)).log10() + boxcar_droop_db(k, f0);
-        assert!((got - predicted).abs() < 0.05, "k={k}: got {got:.3} predicted {predicted:.3}");
+        assert!(
+            (got - predicted).abs() < 0.05,
+            "k={k}: got {got:.3} predicted {predicted:.3}"
+        );
     }
     // The S0 numbers themselves: k=4 misses -20log10(4) by ~1.2 dB.
     let k4 = 10.0 * (peak(4) / p1).log10() + 20.0 * 4f64.log10();

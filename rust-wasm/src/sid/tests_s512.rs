@@ -21,7 +21,12 @@ fn t(l: u8, r: u8) -> TableRow {
 }
 
 fn row(note: u8, instrument: u8, command: u8, param: u8) -> Row {
-    Row { note, instrument, command, param }
+    Row {
+        note,
+        instrument,
+        command,
+        param,
+    }
 }
 
 /// A sustaining triangle whose wave table sets the note on frame 1.
@@ -39,7 +44,14 @@ fn ins() -> Instrument {
 /// channels 2-3 are silent.
 fn song(rows: Vec<Row>, tempo: u8, speed: TableRow) -> SidSong {
     let n = rows.len();
-    let list = |pattern: u8| Orderlist { entries: vec![OrderEntry { pattern, transpose: 0, repeat: 1 }], restart: 0 };
+    let list = |pattern: u8| Orderlist {
+        entries: vec![OrderEntry {
+            pattern,
+            transpose: 0,
+            repeat: 1,
+        }],
+        restart: 0,
+    };
     let s = SidSong {
         version: SONG_FILE_VERSION,
         model: SidModel::Sid8580,
@@ -49,10 +61,21 @@ fn song(rows: Vec<Row>, tempo: u8, speed: TableRow) -> SidSong {
         name: b"s512".to_vec(),
         author: Vec::new(),
         copyright: Vec::new(),
-        subsongs: vec![Subsong { orderlists: vec![list(0), list(1), list(1)] }],
-        patterns: vec![Pattern { rows }, Pattern { rows: vec![Row::default(); n] }],
+        subsongs: vec![Subsong {
+            orderlists: vec![list(0), list(1), list(1)],
+        }],
+        patterns: vec![
+            Pattern { rows },
+            Pattern {
+                rows: vec![Row::default(); n],
+            },
+        ],
         instruments: vec![ins()],
-        tables: Tables { wave: vec![t(0x41, 0x00), t(0xFF, 0x00)], speed: vec![speed], ..Default::default() },
+        tables: Tables {
+            wave: vec![t(0x41, 0x00), t(0xFF, 0x00)],
+            speed: vec![speed],
+            ..Default::default()
+        },
     };
     SidSong::parse(&s.to_bytes()).expect("parses")
 }
@@ -86,7 +109,10 @@ fn slide_up_skips_tick_0_of_every_row() {
     let rows = vec![row(49, 1, 0, 0), row(0, 0, 1, 1), row(0, 0, 1, 1)];
     let f = freqs(&song(rows, TEMPO, t(0, 4)), 18);
     // Tick 0 of each row holds; ticks 1..5 step: 5*S per row, 10*S over two.
-    let gt: Vec<i32> = vec![0, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10].into_iter().map(|k| k * S).collect();
+    let gt: Vec<i32> = vec![0, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10]
+        .into_iter()
+        .map(|k| k * S)
+        .collect();
     assert_eq!(slide_deltas(&f), gt);
     assert_eq!(f[11] - f[5], 5 * S);
     assert_eq!(f[17] - f[5], 10 * S);
@@ -96,7 +122,10 @@ fn slide_up_skips_tick_0_of_every_row() {
 fn slide_down_skips_tick_0_of_every_row() {
     let rows = vec![row(49, 1, 0, 0), row(0, 0, 2, 1), row(0, 0, 2, 1)];
     let f = freqs(&song(rows, TEMPO, t(0, 4)), 18);
-    let gt: Vec<i32> = vec![0, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10].into_iter().map(|k| -k * S).collect();
+    let gt: Vec<i32> = vec![0, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10]
+        .into_iter()
+        .map(|k| -k * S)
+        .collect();
     assert_eq!(slide_deltas(&f), gt);
     assert_eq!(f[11] - f[5], -5 * S);
     assert_eq!(f[17] - f[5], -10 * S);
@@ -109,7 +138,10 @@ fn portamento_to_a_target_skips_tick_0_of_every_row() {
     // tick 0 neither triggers nor slides, and neither does row 2's.
     let rows = vec![row(49, 1, 0, 0), row(61, 0, 3, 1), row(0, 0, 3, 1)];
     let f = freqs(&song(rows, TEMPO, t(0, 4)), 18);
-    let gt: Vec<i32> = vec![0, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10].into_iter().map(|k| k * S).collect();
+    let gt: Vec<i32> = vec![0, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10]
+        .into_iter()
+        .map(|k| k * S)
+        .collect();
     assert_eq!(slide_deltas(&f), gt);
     assert_eq!(f[11] - f[5], 5 * S);
     assert_eq!(f[17] - f[5], 10 * S);
@@ -126,5 +158,9 @@ fn a_wave_table_slide_steps_on_tick_0_too() {
     s.tables.wave = vec![t(0x41, 0x00), t(0xF1, 0x01), t(0xFF, 0x02)];
     let f = freqs(&s, 14);
     let steps: Vec<i32> = f[2..14].windows(2).map(|w| w[1] - w[0]).collect();
-    assert_eq!(steps, vec![S; 11], "one step every frame, row starts included: {f:?}");
+    assert_eq!(
+        steps,
+        vec![S; 11],
+        "one step every frame, row starts included: {f:?}"
+    );
 }
