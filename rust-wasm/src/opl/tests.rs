@@ -153,3 +153,21 @@ fn throughput() {
     let elapsed = start.elapsed().as_secs_f64();
     println!("{seconds} s of audio in {elapsed:.3} s: {:.0}x real time ({acc})", seconds as f64 / elapsed);
 }
+
+/// Vibrato lifts a high FNUM past the 10-bit range; the chip does not wrap it
+/// (see `compute_phase_step`). ST3 puts G-4 at block 3, FNUM 1021.
+#[test]
+fn vibrato_does_not_wrap_a_high_fnum() {
+    use super::operator::compute_phase_step;
+    let block_freq = (3 << 10) | 1021;
+    let base = compute_phase_step(block_freq, 2, 0);
+    // The upper swing at either depth: PM_SCALE's +4 (0xBD bit 6 clear), +8 (set).
+    for pm in [4, 8] {
+        let up = compute_phase_step(block_freq, 2, pm);
+        assert!(up > base, "pm {pm}: step {up} fell below the unmodulated {base}");
+        assert!(up - base < base / 50, "pm {pm}: step {up} jumped from {base}");
+    }
+    // And the lower swing stays just under it.
+    let down = compute_phase_step(block_freq, 2, -8);
+    assert!(down < base && base - down < base / 50);
+}

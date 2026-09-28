@@ -81,11 +81,24 @@ impl Default for Operator {
 
 /// OPL phase step: FNUM as a 12-bit fraction, PM applied from its top 3
 /// bits, shifted by block, scaled by the multiple (ymfm `opl_compute_phase_step`).
+///
+/// One departure from ymfm: it keeps the vibrato-adjusted FNUM to 12 bits
+/// (`fnum &= 0xfff`), so a note near the top of the FNUM range wraps to almost
+/// nothing on vibrato's upper swing and stutters at the LFO rate (ST3 puts G-4
+/// at FNUM 1021: "authentic adlib attempt.s3m", order 0). The chip does not
+/// wrap. Nuked-OPL3 `OPL3_PhaseGenerate`, fetched 2026-09-28, adds the offset
+/// to a 16-bit FNUM with no mask:
+///
+///   uint16_t f_num; ... f_num += range;
+///   basefreq = (f_num << slot->channel->block) >> 1;
+///
+/// The offset can never take FNUM below zero: its magnitude is at most
+/// `7 * (fnum >> 7) / 2` in these quarter-FNUM units, well under `fnum << 2`.
 #[inline]
 pub fn compute_phase_step(block_freq: u32, multiple: u32, lfo_raw_pm: i32) -> u32 {
     let mut fnum = ((block_freq & 0x3ff) << 2) as i32;
     fnum += (lfo_raw_pm * ((block_freq >> 7) & 7) as i32) >> 1;
-    let fnum = (fnum as u32) & 0xfff;
+    let fnum = fnum as u32;
     let block = (block_freq >> 10) & 7;
     let step = (fnum << block) >> 2;
     (step * multiple) >> 1
