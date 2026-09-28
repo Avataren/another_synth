@@ -450,6 +450,25 @@ export interface FormatProfile {
   readonly patternDelayRepeatsTickZero?: boolean;
 
   /**
+   * Whether a finished pattern loop moves the loop start to the row after
+   * its loop command, so the next loop without its own start marker repeats
+   * only the rows since. ST3 does; ProTracker and FT2 leave the start where
+   * the last E60 put it. libopenmpt `Snd_fx.cpp` `PatternLoop`, fetched
+   * 2026-09-28:
+   *
+   *   // When finishing a pattern loop, the next loop without a dedicated SB0
+   *   // starts on the first row after the previous loop.
+   *   if(m_playBehaviour[kITPatternLoopTargetReset] || (GetType() == MOD_TYPE_S3M))
+   *     chn.nPatternLoop = state.m_nRow + 1;
+   *
+   * Without it a chain of SBx after one SB0 never ends: each SBx jumps back
+   * to the SB0, where the first SBx finds its counter spent and loads it
+   * again (Bisqwit's "sta pikku klooni.s3m", order 1 rows 16-41). Absent =
+   * the start stays.
+   */
+  readonly patternLoopEndResetsStart?: boolean;
+
+  /**
    * Command bytes whose zero parameter reuses the channel's last non-zero
    * parameter of *any* command, where the format keeps one shared memory
    * rather than one per effect. Absent = no shared memory (each effect's
@@ -792,6 +811,8 @@ export const S3M_PROFILE: FormatProfile = {
   pitchResetsAfterEffectlessRow: true,
   // A pattern-delay repeat re-runs docmd1 (tick-0 commands), not docmd2.
   patternDelayRepeatsTickZero: true,
+  // A finished SBx loop moves the start to the next row (see the field's docs).
+  patternLoopEndResetsStart: true,
   // GET_LAST_NFO: D E F I J K L Q R S (see the field's docs).
   // donewnote returns early on an SDx cell: its volume waits for the note.
   noteDelayDefersCell: true,

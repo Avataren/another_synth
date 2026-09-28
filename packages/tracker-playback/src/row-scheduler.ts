@@ -224,6 +224,12 @@ export function scheduleRow(
                 this.patternLoopCount--;
               }
               this.patternLoopPending = this.patternLoopCount > 0;
+              if (
+                !this.patternLoopPending &&
+                this.formatProfile.patternLoopEndResetsStart
+              ) {
+                this.patternLoopStart = row + 1;
+              }
             }
           } else if (step.effect.type === 'patDelay') {
             // EEx: Pattern delay - repeat this row x times

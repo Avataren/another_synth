@@ -102,7 +102,9 @@ function corpusFiles(): string[] {
       const abs = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(abs);
       else if (/\.(mod|xm|s3m)$/i.test(entry.name)) {
-        out.push(path.relative(DEMOS, abs));
+        // POSIX separators: the goldens record them, and on Windows
+        // `relative` would give backslashes.
+        out.push(path.relative(DEMOS, abs).split(path.sep).join('/'));
       }
     }
   };

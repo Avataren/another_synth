@@ -33,12 +33,13 @@ function stepWith(row: number, effect: Step['effect']): Step {
 function makeSong(
   patterns: Array<{ id: string; length: number; steps?: Step[] }>,
   sequence: string[],
+  moduleFormat: Song['moduleFormat'] = 'xm',
 ): Song {
   return {
     title: 'T',
     author: 'A',
     bpm: 125,
-    moduleFormat: 'xm',
+    moduleFormat,
     patterns: patterns.map((p) => ({
       id: p.id,
       length: p.length,
@@ -222,6 +223,36 @@ describe('E6x pattern loop', () => {
     );
 
     expect(rowsOf(walked, 1)).toEqual([0, 1, 2, 3]);
+  });
+
+  // One start marker, then a chain of loops (sta pikku klooni.s3m, order 1).
+  const chainedLoops = [
+    stepWith(0, patLoop(0)),
+    stepWith(1, patLoop(1)),
+    stepWith(3, patLoop(1)),
+  ];
+
+  it('starts the next S3M loop after the one that finished', () => {
+    // ST3: a finished SBx moves the start to the next row, so rows 0-1 and
+    // then 2-3 each play twice.
+    const walked = walk(
+      makeSong([{ id: 'p', length: 5, steps: chainedLoops }], ['p'], 's3m'),
+      500,
+    );
+
+    expect(rowsOf(walked, 0)).toEqual([0, 1, 0, 1, 2, 3, 2, 3, 4]);
+  });
+
+  it('keeps the XM loop start where E60 put it', () => {
+    // FT2 jumps back to row 0 from row 3 as well. (Chained like this, FT2
+    // never gets out: each loop's counter is spent when the other's jump
+    // lands, so it reloads. Only the first pass is checked.)
+    const walked = walk(
+      makeSong([{ id: 'p', length: 5, steps: chainedLoops }], ['p']),
+      8,
+    );
+
+    expect(rowsOf(walked, 0)).toEqual([0, 1, 0, 1, 2, 3, 0, 1]);
   });
 });
 
