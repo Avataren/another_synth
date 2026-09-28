@@ -102,6 +102,7 @@ vi.mock('src/stores/tracker-audio-store', () => {
     audioContext,
     output: {},
     setModuleFormat: () => {},
+    setFormatLevel: () => {},
     resetForNewSong: () => {},
     cancelAllScheduled: () => {},
     allNotesOff: () => {},

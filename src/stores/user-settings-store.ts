@@ -32,9 +32,9 @@ export interface UserSettings {
    */
   ahxScopeGain: number;
   /**
-   * 0.0 to 1.0. Defaults to half scale for headroom, not to taste: nothing in
-   * the tracker path limits, so a multi-channel module sums straight past full
-   * scale -- see the level meters beside the instrument list.
+   * 0.0 to 1.0. Defaults to full scale: the headroom lives upstream now, in
+   * the per-format trim (`format-output-gain.ts`, measured so a typical song
+   * of any format meets the limiter only on transients) and the limiter.
    */
   masterVolume: number;
   enableMidi: boolean;
@@ -194,9 +194,10 @@ export interface UserSettings {
  * (the engine's own HIFI switch is untouched and still defaults off), so the
  * stored key is dropped rather than left to be persisted forever.
  *
- * Note that the master-volume default moving from 0.75 to 0.5 deliberately did
- * *not* get a version bump: it is a starting point rather than a correction, so
- * anyone who has already set their own level keeps it.
+ * Note that the master-volume default moving (0.75 to 0.5, then to 1 with the
+ * per-format trim) deliberately did *not* get a version bump: it is a starting
+ * point rather than a correction, so anyone who has already set their own
+ * level keeps it.
  */
 export const SETTINGS_VERSION = 7;
 
@@ -212,7 +213,7 @@ export const defaultSettings: UserSettings = {
   showSpectrumAnalyzer: true,
   showWaveformVisualizers: true,
   ahxScopeGain: 1,
-  masterVolume: 0.5,
+  masterVolume: 1,
   enableMidi: false,
   showTrackerExtraEffectColumn: false,
   analyzerComplementColors: true,

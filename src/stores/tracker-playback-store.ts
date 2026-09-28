@@ -647,6 +647,13 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       return true;
     }
 
+    // Before the dispatch: every format, chip transports included, plays
+    // through the bank's output, so one master volume suits them all.
+    getSongBank().setFormatLevel(
+      song.moduleFormat,
+      Math.max(0, ...song.patterns.map((p) => p.tracks.length)),
+    );
+
     if (song.moduleFormat === 'ahx') {
       sid.leave();
       a2m.leave();

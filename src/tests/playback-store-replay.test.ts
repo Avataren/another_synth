@@ -171,6 +171,7 @@ const fakeSongBank = {
   setModuleFormat: () => {
     songBankCalls.push('setModuleFormat');
   },
+  setFormatLevel: () => {},
   cancelAllScheduled: () => {
     songBankCalls.push('cancelAllScheduled');
   },

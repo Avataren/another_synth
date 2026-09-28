@@ -92,20 +92,20 @@ describe('canvas pattern renderer default', () => {
 });
 
 /**
- * The master-volume default is headroom, not taste.
+ * The master volume defaults to full scale.
  *
- * Nothing in the tracker path limits -- FT2 sums into an accumulator and
- * clamps, Paula sums in analog -- so a multi-channel module runs past full
- * scale at unity. elw-sick.xm (24 channels) needs roughly half to stay under,
- * which is what the level meters beside the instrument list are for.
+ * A multi-channel module still sums past full scale at unity, but the
+ * per-format trim (`format-output-gain.ts`) takes that out before the
+ * limiter, measured across the demo corpus, so no format needs the slider
+ * turned down (.ai/format-gain-sweep.md).
  *
  * It is deliberately *not* version-gated: unlike the v1 rewrite above this is
  * a starting point rather than a correction, so a level someone has already
  * chosen is theirs to keep.
  */
 describe('master volume default', () => {
-  it('starts at half scale', () => {
-    expect(defaultSettings.masterVolume).toBe(0.5);
+  it('starts at full scale', () => {
+    expect(defaultSettings.masterVolume).toBe(1);
   });
 
   it('leaves an already-stored level alone', () => {

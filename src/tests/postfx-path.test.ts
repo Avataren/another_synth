@@ -164,10 +164,13 @@ describe('the one speaker feed runs through the rack', () => {
   it('the tracker bank feeds the rack through destinationNode', async () => {
     const { system, bank } = await freshGraph();
     const destinationNode = system.destinationNode as unknown as FakeGainNode;
-    // `output` is the bank's public accessor for masterGain.
+    // `output` is the bank's public accessor for masterGain; it reaches
+    // destinationNode through the format trim (`setFormatLevel`).
     const masterGain = bank.output as unknown as FakeGainNode;
+    const trim = connections.find((c) => c.from === masterGain)?.to;
+    expect(trim).toBeDefined();
     expect(
-      connections.some((c) => c.from === masterGain && c.to === destinationNode),
+      connections.some((c) => c.from === trim && c.to === destinationNode),
     ).toBe(true);
     // And destinationNode itself is the rack's input feed (pin above).
     expect(

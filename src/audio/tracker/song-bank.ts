@@ -31,6 +31,7 @@ import { TrackVoiceRegistry } from './track-voice-registry';
 import type { BankInstrument } from './bank-instrument';
 import { debugLog } from 'src/diagnostics/debug-log';
 import { OplOutput, type OplSongInfo } from './opl-output';
+import { formatOutputGain } from './format-output-gain';
 
 export interface SongBankSlot {
   instrumentId: string;
@@ -122,6 +123,13 @@ export class TrackerSongBank implements TrackerSink {
   private generation = 0;
   private readonly audioSystem: AudioSystem;
   private readonly masterGain: GainNode;
+  /**
+   * The loaded format's level trim (`formatOutputGain`), after both the
+   * master bus and the OPL chip: what they share on the way to the post-fx
+   * rack. Kept apart from masterGain so the user's volume and the song's
+   * Gxx ramps never have to know about it.
+   */
+  private readonly formatTrim: GainNode;
   private readonly desired: Map<string, Patch> = new Map();
   private readonly instruments: Map<string, ActiveInstrument> = new Map();
   private readonly activeNotes: Map<string, Map<number, Set<number>>> =
@@ -180,8 +188,11 @@ export class TrackerSongBank implements TrackerSink {
     this.audioSystem = audioSystem ?? getSharedAudioSystem();
     this.masterGain = this.audioSystem.audioContext.createGain();
     this.masterGain.gain.value = 1.0;
-    this.masterGain.connect(this.audioSystem.destinationNode);
-    this.opl = new OplOutput(this.audioSystem.audioContext, this.audioSystem.destinationNode);
+    this.formatTrim = this.audioSystem.audioContext.createGain();
+    this.formatTrim.gain.value = 1.0;
+    this.formatTrim.connect(this.audioSystem.destinationNode);
+    this.masterGain.connect(this.formatTrim);
+    this.opl = new OplOutput(this.audioSystem.audioContext, this.formatTrim);
 
     // Initialize WorkletPool for shared worklet management
     if (this.useWorkletPooling) {
@@ -534,6 +545,15 @@ export class TrackerSongBank implements TrackerSink {
     this.masterGain.gain.setValueAtTime(this.userMasterVolume, now);
   }
 
+  /**
+   * Trim the output to the level of the song about to play (see
+   * `formatOutputGain`): `trackCount` tells a multichannel MOD from an
+   * Amiga one. Set on load, never mid-song, so it needs no ramp.
+   */
+  setFormatLevel(format: ModuleFormat | undefined, trackCount: number): void {
+    this.formatTrim.gain.value = formatOutputGain(format, trackCount);
+  }
+
   /** Get the current master volume */
   getMasterVolume(): number {
     return this.masterGain.gain.value;
@@ -699,7 +719,7 @@ export class TrackerSongBank implements TrackerSink {
         console.error(
           '[SongBank] ❌ CRITICAL: Master gain disconnected from output! Reconnecting...',
         );
-        this.masterGain.connect(this.audioSystem.destinationNode);
+        this.masterGain.connect(this.formatTrim);
       } else {
         debugLog('[SongBank] ✅ Master gain connected to destination');
       }
@@ -741,6 +761,7 @@ export class TrackerSongBank implements TrackerSink {
     this.disposeInstruments();
     this.opl.dispose();
     this.masterGain.disconnect();
+    this.formatTrim.disconnect();
     this.recorder.dispose();
 
     // Dispose worklet pool and clean up all shared worklets
