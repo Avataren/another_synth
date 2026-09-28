@@ -19,6 +19,33 @@ export function ahxCorpus(): CorpusFile[] {
     .map((name) => ({ name, bytes: new Uint8Array(readFileSync(resolve(DEMOS, name))) }));
 }
 
+/**
+ * Corpus `.ahx` files whose unedited write is not their source bytes, each by
+ * a parse normalization the writer documents and does not undo (ahx-writer.ts
+ * header). Playback is unaffected: the loader reads both files the same way.
+ * [offset, source byte, written byte] edits, then trailing bytes the write drops.
+ */
+export const AHX_KNOWN_WRITE_DIFFS: Record<string, { edits: [number, number, number][]; droppedTail: number }> = {
+  // Instrument 6, PList entry 0: FX2 is 4 (toggle filter) with param $50 on a
+  // version-0 file; the loader keeps the low nibble only (hvl_load_ahx).
+  'movetron.ahx': { edits: [[7153, 0x50, 0x00]], droppedTail: 0 },
+  // One NUL past the last instrument name's terminator; nothing reads it.
+  'thanatos.ahx': { edits: [], droppedTail: 1 },
+};
+
+/** The bytes the writer emits for `file` unedited: the source, with its known differences applied. */
+export function expectedAhxWrite(file: CorpusFile): Uint8Array {
+  const known = AHX_KNOWN_WRITE_DIFFS[file.name];
+  if (known === undefined) return file.bytes;
+  const out = file.bytes.slice(0, file.bytes.length - known.droppedTail);
+  for (const [offset, from, to] of known.edits) {
+    if (file.bytes[offset] !== from) throw new Error(`${file.name}: byte ${offset} is not 0x${from.toString(16)}`);
+    out[offset] = to;
+  }
+  if (file.bytes.subarray(out.length).some((v) => v !== 0)) throw new Error(`${file.name}: the dropped tail is not NUL`);
+  return out;
+}
+
 /** The slots the importer builds: instrument `n` in slot `n`. */
 export const slotsOf = (song: AhxSong): AhxFileSlot[] =>
   buildAhxSlots(song).map((slot) => ({ ahxData: slot.ahxData }));

@@ -14,8 +14,8 @@ import { formatEntryCells } from 'src/components/tracker/pattern-canvas/format-e
 
 /**
  * T1: the projection of an instrument's PList onto a one-track pattern is a
- * complete picture of the data. The bar is the whole demo corpus (103 `.ahx` +
- * 22 `.hvl`, 2007 instruments): every entry, read back from the text the canvas
+ * complete picture of the data. The bar is the whole demo corpus (105 `.ahx` +
+ * 22 `.hvl`, 2029 instruments): every entry, read back from the text the canvas
  * would draw, is the entry it came from.
  */
 const DEMOS = resolve(__dirname, '../../public/demos/ahx');
@@ -86,13 +86,13 @@ describe('the PList projection over the demo corpus', () => {
   // re-measured 2026-09-23: corpus 84→100 files (curated HVL batch, corpus commit 2344594e),
   // then 100→99 files / 1542→1531 instruments (chiprolled.hvl removed — byte-identical
   // to Xeron's "never gonna give you up.hvl", md5 0af72bfe, user decision),
-  // then 99→125 files / 1531→2007 instruments (2026-09-28: +26 classic .ahx demos)
-  it('covers all 2007 instruments of the 125 demo files', () => {
-    expect(new Set(all.map((i) => i.name)).size).toBe(125);
-    expect(all).toHaveLength(2007);
+  // then 99→127 files / 1531→2029 instruments (2026-09-28: +28 classic .ahx demos)
+  it('covers all 2029 instruments of the 127 demo files', () => {
+    expect(new Set(all.map((i) => i.name)).size).toBe(127);
+    expect(all).toHaveLength(2029);
   });
 
-  it('is lossless: 2007/2007 instruments read back to their own entries', () => {
+  it('is lossless: 2029/2029 instruments read back to their own entries', () => {
     const bad: string[] = [];
     let rows = 0;
     for (const { name, index, instrument } of all) {

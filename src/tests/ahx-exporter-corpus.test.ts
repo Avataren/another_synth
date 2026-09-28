@@ -6,6 +6,7 @@ import { useTrackerStore } from 'src/stores/tracker-store';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import { ahxSourceInfoOf, setCurrentAhxSource, snapshotEditorSong } from 'src/audio/tracker/ahx-source';
 import { ahxExporter, hvlExporter } from 'src/audio/tracker/song-export';
+import { expectedAhxWrite } from './helpers/ahx-doc-fixtures';
 
 /**
  * T1(C): the whole app-side path, over the demo corpus. An unedited song
@@ -16,6 +17,8 @@ import { ahxExporter, hvlExporter } from 'src/audio/tracker/song-export';
  * track 4, so the AHX exporter refuses them; ring_modulation_test_song fits 4
  * tracks but uses the second effect column, which AHX has no room for.
  * (chiprolled.hvl was removed 2026-09-23 — byte-identical dupe, user decision.)
+ * movetron.ahx and thanatos.ahx export as their source with a documented
+ * difference each (AHX_KNOWN_WRITE_DIFFS).
  */
 const DEMOS = resolve(__dirname, '../../public/demos/ahx');
 const corpus = readdirSync(DEMOS)
@@ -45,12 +48,13 @@ describe('the AHX exporter over the demo corpus, through the store', () => {
       const song = snapshotEditorSong(store);
       expect(ahxExporter.check(song), name).toEqual({ ok: true });
       const out = ahxExporter.serialize(song);
-      if (out.length !== bytes.length || out.some((v, i) => v !== bytes[i])) differing.push(name);
+      const expected = expectedAhxWrite({ name, bytes });
+      if (out.length !== expected.length || out.some((v, i) => v !== expected[i])) differing.push(name);
       checked++;
     }
     expect(differing).toEqual([]);
-    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 103 .ahx files, 2026-09-28)
-    expect(checked).toBe(103);
+    // corpus-size constant — re-measure when public/demos/ahx grows (last updated at 105 .ahx files, 2026-09-28)
+    expect(checked).toBe(105);
   });
 
   it('exports every unedited .hvl song byte-identically to its source', () => {
