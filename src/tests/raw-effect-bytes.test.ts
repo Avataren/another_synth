@@ -159,13 +159,23 @@ function scheduleEverything(song: ReturnType<ReturnType<typeof useTrackerSongBui
 /**
  * The same imported song, with every raw byte field stripped so the builder
  * falls back to the pre-P1 text path (`parseEffectCommand` on the macros).
+ *
+ * Except where the text cannot say it: XM commands 0x16..0x19 print as
+ * M/N/O/P, which the text dialect reads as the app's macro 0..3 shorthands.
+ * 0x19 is FT2's pan slide and 0x16..0x18 are no-ops in FT2; only the raw byte
+ * carries that (see the P40 case above), so those cells keep it and the
+ * identity covers every command the text dialect states unambiguously.
+ * Measured on aa_essol/existing/r-light.xm (Pxy) and dreams.xm (one M00).
  */
+const TEXT_COLLIDING_XM_COMMANDS = new Set([0x16, 0x17, 0x18, 0x19]);
+
 function stripRawFields(
   file: ReturnType<typeof importXmToTrackerSong> | ReturnType<typeof importModToTrackerSong>,
 ) {
   for (const pattern of file.data.patterns) {
     for (const track of pattern.tracks) {
       for (const entry of track.entries) {
+        if (entry.effectCommand !== undefined && TEXT_COLLIDING_XM_COMMANDS.has(entry.effectCommand)) continue;
         delete (entry as Partial<TrackerEntryData>).effectCommand;
         delete (entry as Partial<TrackerEntryData>).effectParam;
       }

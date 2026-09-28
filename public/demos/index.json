@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-28T17:13:34.888Z",
+  "generated": "2026-09-28T17:19:41.024Z",
   "collections": [
     {
       "id": "a2m",
@@ -4335,6 +4335,15 @@
           "bytes": 420327
         },
         {
+          "title": "Essence of Life",
+          "format": "XM",
+          "channels": 16,
+          "patterns": 28,
+          "instruments": 127,
+          "file": "ft2/aa_essol.xm",
+          "bytes": 544063
+        },
+        {
           "title": "The Fiddle - Remix",
           "format": "XM",
           "channels": 20,
@@ -4524,6 +4533,15 @@
           "bytes": 368691
         },
         {
+          "title": "*** Dreams ***",
+          "format": "XM",
+          "channels": 18,
+          "patterns": 38,
+          "instruments": 30,
+          "file": "ft2/dreams.xm",
+          "bytes": 524149
+        },
+        {
           "title": "*** Dreams 2 ***",
           "format": "XM",
           "channels": 26,
@@ -4567,6 +4585,15 @@
           "instruments": 30,
           "file": "ft2/elw-sick.xm",
           "bytes": 802116
+        },
+        {
+          "title": "Existing, by MickRip",
+          "format": "XM",
+          "channels": 16,
+          "patterns": 42,
+          "instruments": 22,
+          "file": "ft2/existing.xm",
+          "bytes": 482806
         },
         {
           "title": "Experience",
@@ -4864,6 +4891,15 @@
           "instruments": 48,
           "file": "ft2/phantasmagoria.xm",
           "bytes": 2045801
+        },
+        {
+          "title": "Lightspeed Travel",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 55,
+          "instruments": 28,
+          "file": "ft2/r-light.xm",
+          "bytes": 982910
         },
         {
           "title": "unreal superhero",
