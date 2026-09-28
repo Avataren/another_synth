@@ -10,7 +10,7 @@ import type { Song, Step } from '../types';
  * volume on tick 0 and delays only the trigger. See
  * `FormatProfile.noteDelayDefersCell`.
  */
-function volumes(moduleFormat: 'mod' | 's3m', row1: Step): Array<[number, number]> {
+function volumes(moduleFormat: 'protracker' | 's3m', row1: Step): Array<[number, number]> {
   const song: Song = {
     title: 'note delay',
     author: '',
@@ -55,7 +55,7 @@ describe('note delay and the row volume', () => {
   });
 
   it('ProTracker: the volume applies on tick 0', () => {
-    expect(volumes('mod', { row: 1, instrumentId: '01', midi: 62, velocity: 128, effect: delay2 })[0]).toEqual([0, 32]);
+    expect(volumes('protracker', { row: 1, instrumentId: '01', midi: 62, velocity: 128, effect: delay2 })[0]).toEqual([0, 32]);
   });
 });
 

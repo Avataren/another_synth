@@ -180,7 +180,7 @@ describe('PlaybackEngine pattern delay (EEx)', () => {
  * pass (`docmd1`), where an ordinary Dxy does nothing.
  */
 describe('PlaybackEngine pattern delay repeats', () => {
-  function play(moduleFormat: 'mod' | 's3m', slide: EffectCommand) {
+  function play(moduleFormat: 'protracker' | 's3m', slide: EffectCommand) {
     const song: Song = {
       title: 'pattern delay repeats',
       author: '',
@@ -232,7 +232,7 @@ describe('PlaybackEngine pattern delay repeats', () => {
   }
 
   it('ProTracker: notes play once; the slide runs on every tick of each repeat', () => {
-    const { noteOns, slides, lastVolume } = play('mod', { type: 'volSlide', paramX: 0, paramY: 1 });
+    const { noteOns, slides, lastVolume } = play('protracker', { type: 'volSlide', paramX: 0, paramY: 1 });
     expect(noteOns).toEqual([0, 1]);
     // Ticks 1..5 of the first play, then ticks 0..5 of both repeats.
     expect(slides).toBe(5 + 6 + 6);
