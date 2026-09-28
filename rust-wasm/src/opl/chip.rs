@@ -21,6 +21,7 @@ pub const NATIVE_RATE: f64 = OPL3_CLOCK / OPL3_CLOCK_DIVIDER;
 
 pub const CHANNELS: usize = 18;
 pub const OPERATORS: usize = 36;
+const ALL_OPS: u64 = (1 << OPERATORS) - 1;
 
 /// Register offset of channel `ch` (0..17).
 #[inline]
@@ -120,6 +121,10 @@ pub struct Chip {
     waveforms: Box<[[u16; WAVEFORM_LENGTH]; 8]>,
     env_counter: u32,
     modified: bool,
+    /// Bit per operator whose registers or key-on changed since the last
+    /// prepare. ymfm re-prepares every operator after any write; the others
+    /// would recompute what they already hold.
+    dirty_ops: u64,
     prepare_count: u32,
     lfo_am_counter: u16,
     lfo_pm_counter: u16,
@@ -148,6 +153,7 @@ impl Chip {
             waveforms: build_waveforms(),
             env_counter: 0,
             modified: true,
+            dirty_ops: ALL_OPS,
             prepare_count: 0,
             lfo_am_counter: 0,
             lfo_pm_counter: 0,
@@ -172,6 +178,7 @@ impl Chip {
             reg &= 0xff;
         }
         self.modified = true;
+        self.dirty_ops |= self.ops_touched_by(reg);
         // The mode register ignores its low bits when bit 7 (IRQ reset) is set.
         if reg == 0x04 && val & 0x80 != 0 {
             self.regs[reg] |= 0x80;
@@ -190,6 +197,36 @@ impl Chip {
             let ch = (reg & 0x0f) + 9 * (reg >> 8);
             let states = if val & 0x20 != 0 { 0xf } else { 0 };
             self.key_channel(ch, states, KEYON_NORMAL);
+        }
+    }
+
+    /// Operators whose `prepare` a write to `reg` can change: an operator
+    /// register reaches its operator, a channel's frequency and key-on its
+    /// operators, 0xBD the rhythm channels' key-ons. The mode registers
+    /// (0x08 NTS, 0x104 four-op, 0x105 NEW) and anything unclassified reach
+    /// them all. C0 is read live at output and reaches none.
+    fn ops_touched_by(&self, reg: usize) -> u64 {
+        let (bank, lo) = (reg >> 8, reg & 0xff);
+        let channel_ops = |ch: usize| {
+            self.op_map[ch]
+                .as_slice()
+                .iter()
+                .fold(0u64, |mask, &op| mask | 1 << op)
+        };
+        match lo {
+            0x20..=0x9f | 0xe0..=0xff => {
+                // Slots 0..5, 8..13, 16..21 are operators 0..17 of the bank.
+                let slot = lo & 0x1f;
+                if slot % 8 < 6 && slot < 22 {
+                    1 << (slot - 2 * (slot / 8) + 18 * bank)
+                } else {
+                    0
+                }
+            }
+            0xa0..=0xa8 | 0xb0..=0xb8 => channel_ops((lo & 0x0f) + 9 * bank),
+            0xc0..=0xc8 => 0,
+            0xbd if bank == 0 => channel_ops(6) | channel_ops(7) | channel_ops(8),
+            _ => ALL_OPS,
         }
     }
 
@@ -270,30 +307,43 @@ impl Chip {
             // ymfm reads 0x104 whatever NEW says; it is only writable with NEW=1,
             // but the mask outlives clearing NEW.
             self.op_map = operator_map(self.regs[0x104] & 0x3f);
+            let dirty = self.dirty_ops;
             for ch in 0..CHANNELS {
                 let mut active = false;
                 let list = self.op_map[ch];
                 for &op in list.as_slice() {
-                    let r = self.op_regs(ch, op);
-                    active |= self.ops[op].prepare(&r);
+                    active |= if dirty & (1 << op) != 0 {
+                        let r = self.op_regs(ch, op);
+                        self.ops[op].prepare(&r)
+                    } else {
+                        self.ops[op].is_sounding()
+                    };
                 }
                 self.chans[ch].active = active;
             }
             self.modified = false;
+            self.dirty_ops = 0;
             self.prepare_count = 0;
         }
 
         self.env_counter = self.env_counter.wrapping_add(4);
         let lfo_raw_pm = self.clock_noise_and_lfo();
 
-        for ch in 0..CHANNELS {
-            let c = &mut self.chans[ch];
+        for c in &mut self.chans {
             c.feedback[0] = c.feedback[1];
             c.feedback[1] = c.feedback_in;
-            let list = self.op_map[ch];
-            for &op in list.as_slice() {
-                self.ops[op].clock(self.env_counter >> 2, lfo_raw_pm);
+        }
+        // Every operator belongs to exactly one channel's list, so this
+        // clocks the same set ymfm does. A dormant operator's envelope
+        // cannot move and its phase is never read until a key-on resets
+        // it, except operators 13 and 17, whose phases pick the rhythm
+        // voices' metallic phases whatever their own envelopes are doing.
+        let env_counter = self.env_counter >> 2;
+        for (i, op) in self.ops.iter_mut().enumerate() {
+            if op.is_dormant() && i != 13 && i != 17 {
+                continue;
             }
+            op.clock(env_counter, lfo_raw_pm);
         }
     }
 

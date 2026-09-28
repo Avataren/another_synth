@@ -8,7 +8,8 @@
 //! folded back. 64 taps when the rates are close, scaled up as the output
 //! rate drops so the transition band keeps its width relative to the output
 //! (66 at 48 kHz, 72 at 44.1 kHz, 144 at 22.05 kHz: about the same
-//! multiply-adds per second at every rate). Latency is half the taps
+//! multiply-adds per second at every rate), then zero-padded to a multiple
+//! of 8 so the dot products vectorise. Latency is half the kernel
 //! (≈ 0.7 ms at 48 kHz, 1.4 ms at 22.05 kHz).
 
 const BASE_TAPS: f64 = 64.0;
@@ -30,32 +31,44 @@ fn bessel_i0(x: f64) -> f64 {
 }
 
 pub struct Resampler {
+    /// Kernel length, padded up to a multiple of `LANES` with leading zero
+    /// coefficients (they weight the oldest frames, so latency is unchanged).
     taps: usize,
     /// Input samples advanced per output sample.
     step: f64,
     /// Read position past the window's centre, 0 ≤ pos < 1 after refilling.
     pos: f64,
-    /// (PHASES + 1) rows of `taps` coefficients; row p is the kernel at
-    /// fractional offset p / PHASES, the extra row lets phases interpolate.
+    /// PHASES rows of `taps` coefficients; row p is the kernel at
+    /// fractional offset p / PHASES.
     table: Vec<f32>,
-    /// Ring of the last `taps` input frames, stored twice so every window is
-    /// contiguous.
-    ring: Vec<[f32; 2]>,
+    /// Row p + 1 minus row p, so a phase between rows interpolates with one
+    /// multiply-add per tap.
+    delta: Vec<f32>,
+    /// Rings of the last `taps` input samples per side, stored twice so
+    /// every window is contiguous.
+    left: Vec<f32>,
+    right: Vec<f32>,
     head: usize,
 }
+
+/// Accumulator lanes of the dot products: independent sums the compiler
+/// can keep in SIMD registers.
+const LANES: usize = 8;
 
 impl Resampler {
     pub fn new(in_rate: f64, out_rate: f64) -> Resampler {
         let ratio = (out_rate / in_rate).min(1.0);
         let fc = CUTOFF * ratio;
         let half = ((BASE_TAPS / ratio) / 2.0).ceil() as usize;
-        let taps = 2 * half;
+        let kernel = 2 * half;
+        let taps = kernel.div_ceil(LANES) * LANES;
+        let pad = taps - kernel;
         let norm = bessel_i0(KAISER_BETA);
-        let mut table = vec![0f32; (PHASES + 1) * taps];
-        let mut coeffs = vec![0f64; taps];
+        let mut rows = vec![0f32; (PHASES + 1) * taps];
+        let mut coeffs = vec![0f64; kernel];
         for p in 0..=PHASES {
             let frac = p as f64 / PHASES as f64;
-            let row = &mut table[p * taps..(p + 1) * taps];
+            let row = &mut rows[p * taps + pad..(p + 1) * taps];
             let mut sum = 0.0;
             for (j, c) in coeffs.iter_mut().enumerate() {
                 // Distance from input sample j of the window to the read point.
@@ -80,20 +93,31 @@ impl Resampler {
                 *dst = (c / sum) as f32;
             }
         }
+        let table = rows[..PHASES * taps].to_vec();
+        let delta = rows[..PHASES * taps]
+            .iter()
+            .zip(&rows[taps..])
+            .map(|(a, b)| b - a)
+            .collect();
         Resampler {
             taps,
             step: in_rate / out_rate,
             pos: 0.0,
             table,
-            ring: vec![[0.0; 2]; 2 * taps],
+            delta,
+            left: vec![0.0; 2 * taps],
+            right: vec![0.0; 2 * taps],
             head: 0,
         }
     }
 
     fn push(&mut self, frame: [f32; 2]) {
-        self.ring[self.head] = frame;
-        self.ring[self.head + self.taps] = frame;
-        self.head = (self.head + 1) % self.taps;
+        let (h, n) = (self.head, self.taps);
+        self.left[h] = frame[0];
+        self.left[h + n] = frame[0];
+        self.right[h] = frame[1];
+        self.right[h + n] = frame[1];
+        self.head = if h + 1 == n { 0 } else { h + 1 };
     }
 
     /// One output frame, pulling native frames from `source` as needed.
@@ -107,17 +131,24 @@ impl Resampler {
         let p = (phase as usize).min(PHASES - 1);
         let t = (phase - p as f64) as f32;
         let n = self.taps;
-        let (a, b) = (
-            &self.table[p * n..(p + 1) * n],
-            &self.table[(p + 1) * n..(p + 2) * n],
-        );
-        let window = &self.ring[self.head..self.head + n];
-        let (mut l, mut r) = (0f32, 0f32);
-        for ((&x, &ca), &cb) in window.iter().zip(a).zip(b) {
-            let c = ca + (cb - ca) * t;
-            l += x[0] * c;
-            r += x[1] * c;
+        let row = p * n..(p + 1) * n;
+        let (a, d) = (&self.table[row.clone()], &self.delta[row]);
+        let window = self.head..self.head + n;
+        let (wl, wr) = (&self.left[window.clone()], &self.right[window]);
+        let (mut l, mut r) = ([0f32; LANES], [0f32; LANES]);
+        for (((a, d), wl), wr) in a
+            .chunks_exact(LANES)
+            .zip(d.chunks_exact(LANES))
+            .zip(wl.chunks_exact(LANES))
+            .zip(wr.chunks_exact(LANES))
+        {
+            for k in 0..LANES {
+                let c = a[k] + d[k] * t;
+                l[k] += wl[k] * c;
+                r[k] += wr[k] * c;
+            }
         }
+        let (l, r) = (l.iter().sum(), r.iter().sum());
         self.pos += self.step;
         [l, r]
     }

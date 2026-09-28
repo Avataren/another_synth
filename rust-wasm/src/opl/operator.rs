@@ -121,6 +121,12 @@ impl Operator {
     pub fn prepare(&mut self, r: &OpRegs) -> bool {
         self.cache_registers(r);
         self.clock_keystate((self.keyon_live != 0) as u32);
+        self.is_sounding()
+    }
+
+    /// What `prepare` reports: not yet released below `EG_QUIET`.
+    #[inline]
+    pub fn is_sounding(&self) -> bool {
         self.env_state != EnvState::Release || self.env_attenuation < EG_QUIET
     }
 
@@ -200,6 +206,13 @@ impl Operator {
         if self.cache.eg_rate[EnvState::Attack as usize] >= 62 {
             self.env_attenuation = 0;
         }
+    }
+
+    /// Released all the way to silence: `clock` would leave the envelope
+    /// where it is, and only a key-on (which resets the phase) wakes it.
+    #[inline]
+    pub fn is_dormant(&self) -> bool {
+        self.env_state == EnvState::Release && self.env_attenuation == 0x3ff
     }
 
     /// One sample: envelope (env_counter is the x.2 counter already shifted
