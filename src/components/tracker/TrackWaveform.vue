@@ -60,9 +60,15 @@ let floatData: Float32Array | null = null;
 let unregisterAnimation: (() => void) | null = null;
 let currentConnectedNode: AudioNode | null = null;
 
-// Cached canvas dimensions - only update on resize
+/** Trace stroke width in CSS pixels. */
+const TRACE_LINE_WIDTH = 2.5;
+
+// Cached canvas dimensions (CSS pixels) - only update on resize. The bitmap is
+// `pixelRatio` times that, so a HiDPI screen gets a sharp line instead of an
+// upscaled one; drawing stays in CSS pixels through the context transform.
 let canvasWidth = 0;
 let canvasHeight = 0;
+let pixelRatio = 1;
 
 // Cached theme colors - updated only when theme changes
 // The waveform draws in the theme's complement, like the spectrum strips it
@@ -98,11 +104,13 @@ function updateCanvasSize() {
   if (!canvas) return;
 
   const rect = canvas.getBoundingClientRect();
-  if (rect.width !== canvasWidth || rect.height !== canvasHeight) {
+  const ratio = Math.max(1, window.devicePixelRatio || 1);
+  if (rect.width !== canvasWidth || rect.height !== canvasHeight || ratio !== pixelRatio) {
     canvasWidth = rect.width;
     canvasHeight = rect.height;
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
+    pixelRatio = ratio;
+    canvas.width = Math.round(canvasWidth * ratio);
+    canvas.height = Math.round(canvasHeight * ratio);
   }
 }
 
@@ -167,7 +175,7 @@ function startVisualization() {
   // `centered`: draw around the window's midrange (a DC-blocked source).
   const drawScope = (data: ArrayLike<number> | null, fullScale: number, centered = false) => {
     ctx.strokeStyle = cachedWaveformColor;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = TRACE_LINE_WIDTH;
     ctx.beginPath();
     if (!data || data.length < 4) {
       ctx.moveTo(0, canvasHeight / 2);
@@ -214,6 +222,13 @@ function startVisualization() {
       }
     }
 
+    // Resizing the bitmap resets the transform, so set it every frame: the
+    // rest of the draw works in CSS pixels. Round joins and caps keep the
+    // thicker line from spiking at sharp corners of the trace.
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
     // Clear and draw background
     ctx.fillStyle = cachedBgColor;
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
@@ -239,7 +254,7 @@ function startVisualization() {
 
     // Draw waveform
     ctx.strokeStyle = cachedWaveformColor;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = TRACE_LINE_WIDTH;
     ctx.beginPath();
 
     const sliceWidth = canvasWidth / analyserData.length;
