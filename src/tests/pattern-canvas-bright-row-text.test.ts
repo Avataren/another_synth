@@ -676,11 +676,14 @@ describe('canvas playing-row text trail', () => {
 
     const frame = overlayCtx.calls.slice(before);
     // Nothing is recoloured on the overlay: the tint lives in the bake, so a
-    // playback frame is blits and nothing else. This is the regression that
-    // matters — recolouring here with `source-atop` stained the playing row's
-    // PILL as a solid block, because the pill's translucent fill covers the
-    // whole row and source-atop paints wherever the destination has alpha.
-    expect(frame.filter((c) => c.op === 'fillRect')).toHaveLength(0);
+    // playback frame is the band, its two hairlines and blits. This is the
+    // regression that matters — recolouring here with `source-atop` stained
+    // the playing row's band as a solid block, because the band's translucent
+    // fill covers the whole row and source-atop paints wherever the
+    // destination has alpha. The band's own fills are plain source-over.
+    const fills = frame.filter((c): c is RectCall => c.op === 'fillRect');
+    expect(fills).toHaveLength(3);
+    for (const fill of fills) expect(fill.composite).not.toBe('source-atop');
 
     // The playing row blits the tinted state outright, at full alpha across
     // the whole row (gutter included) — it is the peak the trail fades from.

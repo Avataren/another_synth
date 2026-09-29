@@ -53,8 +53,7 @@ export interface BandRect {
 }
 
 /**
- * Margin added around indicator geometry: the playback pills stroke 2px
- * wide (1px outside their path) and anti-aliased edges bleed under a
+ * Margin added around indicator geometry: anti-aliased edges bleed under a
  * device-pixel boundary.
  */
 export const BAND_PAD_PX = 2;
@@ -83,9 +82,9 @@ function footprintBands(
 ): BandRect[] {
   const bands: BandRect[] = [];
   if (f.barRow >= 0) {
-    // Both pills scroll with the content (the gutter pill rides the same
-    // −viewLeft translate as the tracks pill), so the band is still the
-    // whole row: one rect covers whatever remains visible at any origin.
+    // The playback band scrolls with the content (its gutter part rides the
+    // same −viewLeft translate as its tracks part), so the clear band is still
+    // the whole row: one rect covers whatever remains visible at any origin.
     // The trail rows sit directly above the bar row, so one taller rect
     // covers bar + trail rather than one band per row.
     const topRow = Math.max(0, f.barRow - (f.trailRows ?? 0));

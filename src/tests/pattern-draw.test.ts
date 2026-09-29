@@ -7,9 +7,9 @@ import {
   drawRowNumbers,
   drawSelectionBar,
   drawStaticGrid,
-  PLAYBACK_BAR_BORDER_PX,
+  PLAYBACK_BAR_EDGE_ALPHA,
+  PLAYBACK_BAR_EDGE_PX,
   PLAYBACK_BAR_FILL_ALPHA,
-  PLAYBACK_BAR_RADIUS_PX,
   rowType,
   trackAccent,
 } from 'src/components/tracker/pattern-canvas/pattern-draw';
@@ -526,91 +526,70 @@ describe('buildTrailSpanIndex', () => {
 
 describe('drawActiveRowBar', () => {
   const layout4 = layout(4, false, 32);
+  const rowFill = (ctx: MockCtx) => fills(ctx).filter((c) => c.height === 30);
+  const edgeFills = (ctx: MockCtx) => fills(ctx).filter((c) => c.height === PLAYBACK_BAR_EDGE_PX);
 
-  it('paints the tracks pill with the DOM fill/stroke values and 3px border', () => {
+  it('paints one flat band across the gutter and the tracks', () => {
     const ctx = makeMockCtx();
     drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7, mode: 'pattern' });
-    // Two rounded pills (tracks + row-number gutter), both carrying the
-    // DOM's exact values: fill = accentPrimary at PLAYBACK_BAR_FILL_ALPHA,
-    // stroke var(--tracker-accent-primary) at PLAYBACK_BAR_BORDER_PX —
-    // .playback-pattern's styles.
-    const pills = paths(ctx);
-    expect(pills).toHaveLength(2);
-    for (const pill of pills) {
-      expect(pill.y).toBe(7 * 36);
-      expect(pill.height).toBe(30);
-      expect(pill.fillStyle).toBe(withAlpha(theme.accentPrimary, PLAYBACK_BAR_FILL_ALPHA));
-      expect(pill.strokeStyle).toBe(theme.accentPrimary);
-      expect(pill.radius).toBe(PLAYBACK_BAR_RADIUS_PX); // the DOM's border-radius
+    // One square-cornered rect, no rounded pill and no stroked border.
+    expect(paths(ctx)).toHaveLength(0);
+    expect(strokes(ctx)).toHaveLength(0);
+    const band = rowFill(ctx);
+    expect(band).toHaveLength(1);
+    expect(band[0]!.y).toBe(7 * 36);
+    expect(band[0]!.x).toBe(-GUTTER_WIDTH_PX);
+    expect(band[0]!.width).toBe(GUTTER_WIDTH_PX + activeRowBarWidthPx(4, STD)!);
+    expect(band[0]!.fillStyle).toBe(withAlpha(theme.accentPrimary, PLAYBACK_BAR_FILL_ALPHA));
+  });
+
+  it('defines the band with a hairline along its top and bottom edge', () => {
+    const ctx = makeMockCtx();
+    drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7, mode: 'pattern' });
+    const band = rowFill(ctx)[0]!;
+    const edges = edgeFills(ctx);
+    expect(edges).toHaveLength(2);
+    expect(edges.map((e) => e.y)).toEqual([band.y, band.y + band.height - PLAYBACK_BAR_EDGE_PX]);
+    for (const edge of edges) {
+      expect(edge.x).toBe(band.x);
+      expect(edge.width).toBe(band.width);
+      expect(edge.fillStyle).toBe(withAlpha(theme.accentPrimary, PLAYBACK_BAR_EDGE_ALPHA));
     }
-    const tracksPill = pills.find((c) => c.width === activeRowBarWidthPx(4, STD)!);
-    expect(tracksPill).toBeDefined();
-    // Border is PLAYBACK_BAR_BORDER_PX per .row-playback-bar, recorded at trace time.
-    expect(pills.every((p) => p.lineWidth === PLAYBACK_BAR_BORDER_PX)).toBe(true);
   });
 
-  it('pins the pop-more geometry: 3px border, 0.34 fill alpha', () => {
-    // Regression for the 2026-09-11 report ("barely visible, make it pop
-    // more"): the border went 2px → 3px and the fill alpha 0.14 → 0.28,
-    // mirroring TrackerPattern.vue's .active-row-bar/.row-playback-bar.
-    // 2026-09-12 ("make the active row pop even more"): 0.28 → 0.34, the
-    // pill's share of that pass — the rest is the text trail behind it.
-    expect(PLAYBACK_BAR_BORDER_PX).toBe(3);
-    expect(PLAYBACK_BAR_FILL_ALPHA).toBe(0.34);
+  it('stays inside its own row so the overlay clear band always covers it', () => {
+    const ctx = makeMockCtx();
+    drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7, mode: 'pattern' });
+    for (const rect of fills(ctx)) {
+      expect(rect.y).toBeGreaterThanOrEqual(7 * 36);
+      expect(rect.y + rect.height).toBeLessThanOrEqual(7 * 36 + 30);
+    }
   });
 
-  it('uses the song-mode colors the DOM computes for .playback-song', () => {
+  it('uses the song-mode accent under song playback', () => {
     const ctx = makeMockCtx();
     drawActiveRowBar(ctx, layout4, theme, { playbackRow: 0, mode: 'song' });
     expect(theme.accentSecondary).toBe('rgb(88, 176, 255)');
-    for (const pill of paths(ctx)) {
-      expect(pill.strokeStyle).toBe(theme.accentSecondary);
-      expect(pill.fillStyle).toBe('rgba(88, 176, 255, 0.34)');
-    }
+    expect(rowFill(ctx)[0]!.fillStyle).toBe('rgba(88, 176, 255, 0.34)');
+    expect(edgeFills(ctx)[0]!.fillStyle).toBe(withAlpha(theme.accentSecondary, PLAYBACK_BAR_EDGE_ALPHA));
   });
 
-  it('draws the gutter pill on the row-number column, scrolling with the pattern', () => {
-    const ctx = makeMockCtx();
-    drawActiveRowBar(ctx, layout4, theme, { playbackRow: 3, mode: 'pattern' });
-    // The pill rides the row-number column's own pattern-space rect
-    // [-78, 0): the overlay layer's translate (GUTTER − viewLeft) then puts
-    // it exactly over the labels the static bitmap paints at x [0, 78),
-    // which the blit pans by −viewLeft. The DOM grid scrolls its row column
-    // with the tracks on the phone layout (TrackerPattern.vue's ≤900px
-    // media query), so the pill must pan away with them — a viewport-edge
-    // pin parked it over track content the gutter had scrolled past
-    // (Morten, 2026-09-04).
-    const gutter = paths(ctx).find((c) => c.width === 78);
-    expect(gutter).toBeDefined();
-    expect(gutter!.x).toBe(-78);
-    expect(gutter!.y).toBe(3 * 36);
-    expect(gutter!.height).toBe(30);
-  });
-
-  it('keeps the two pills edge-adjacent at every pan position (gutter drift report)', () => {
-    // Regression for the 2026-09-04 phone report: panning right used to pin
-    // the gutter pill to the viewport edge while the tracks pill slid left
-    // under it, so the pills overlapped and the pill clung over content the
-    // labels had scrolled away from. The pill and the labels share one x at
-    // every pan position, and the pills never overlap.
+  it('starts at the row-number column, scrolling with the pattern', () => {
+    // The band rides pattern x [-78, …): the overlay layer's translate
+    // (GUTTER − viewLeft) then puts its gutter part exactly over the labels
+    // the static bitmap paints at x [0, 78), which the blit pans by
+    // −viewLeft. The DOM grid scrolls its row column with the tracks on the
+    // phone layout, so a viewport-edge pin would park the band over track
+    // content the gutter had scrolled past (Morten, 2026-09-04).
     for (const viewLeft of [0, 200, 2480]) {
       const ctx = makeMockCtx();
-      drawActiveRowBar(ctx, layout(16, false, 64), theme, {
-        playbackRow: 3,
-        mode: 'pattern',
-      });
+      drawActiveRowBar(ctx, layout(16, false, 64), theme, { playbackRow: 3, mode: 'pattern' });
       const translateX = GUTTER_WIDTH_PX - viewLeft; // paintOverlay's shift
-      const pills = paths(ctx).filter((c) => c.y === 3 * 36);
-      const gutter = pills.find((c) => c.width === GUTTER_WIDTH_PX);
-      const tracks = pills.find((c) => c.width === activeRowBarWidthPx(16, STD));
-      expect(gutter).toBeDefined();
-      expect(tracks).toBeDefined();
-      // Static-bitmap labels live at bitmap x [0, 78) → screen x [-viewLeft,
-      // 78 − viewLeft). The gutter pill must land on exactly that rect.
-      expect(gutter!.x + translateX).toBe(0 - viewLeft);
-      // Edge-adjacent to the tracks pill (pattern x 0), like the DOM's two
-      // grid columns — adjacent, never overlapping, at any scroll origin.
-      expect(gutter!.x + GUTTER_WIDTH_PX).toBe(tracks!.x);
+      const band = rowFill(ctx)[0]!;
+      expect(band.y).toBe(3 * 36);
+      expect(band.x + translateX).toBe(0 - viewLeft);
+      // Its tracks part ends where the tracks do.
+      expect(band.x + band.width).toBe(activeRowBarWidthPx(16, STD));
     }
   });
 
@@ -622,8 +601,7 @@ describe('drawActiveRowBar', () => {
       trackCount: 0,
     });
     // totalPatternWidth(4 tracks) = 3 pitches + one width, no trailing gap.
-    const tracksPill = paths(ctx).find((c) => c.width === 3 * (180 + 10) + 180);
-    expect(tracksPill).toBeDefined();
+    expect(rowFill(ctx)[0]!.width).toBe(GUTTER_WIDTH_PX + 3 * (180 + 10) + 180);
   });
 });
 

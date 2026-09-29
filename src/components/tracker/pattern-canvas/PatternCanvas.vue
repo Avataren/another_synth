@@ -1019,8 +1019,11 @@ function paintOverlay(vt: number, vl: number): boolean {
   const l = layout.value;
   const barRow =
     props.playbackRow >= 0 && props.playbackRow < l.rowCount ? props.playbackRow : -1;
+  // No cursor rectangle while the song plays: the playing row's band is the
+  // one marker then, and a box left on the edit position would fight it.
+  // Stopping repaints the overlay (the isPlaying watcher), bringing it back.
   const cursorRect =
-    props.activeTrack >= 0 && props.activeColumn >= 0
+    !props.isPlaying && props.activeTrack >= 0 && props.activeColumn >= 0
       ? cursorCellRect(l, props.tracks, {
           trackIndex: props.activeTrack,
           row: props.selectedRow,
@@ -1064,17 +1067,14 @@ function paintOverlay(vt: number, vl: number): boolean {
       playbackRow: barRow,
       mode: props.playbackMode as PlaybackBarMode,
       trackCount: l.trackCount,
-      // No gutter pin: the gutter pill scrolls with the pattern, staying on
-      // the row-number labels the static bitmap paints at its x [0, 78) —
-      // labels this same frame's blit pans by −vl. The DOM grid scrolls its
-      // row column with the tracks on the phone layout this renderer mostly
-      // serves, and Morten's phone check confirmed the old viewport-edge pin
-      // clung over scrolled-away content.
+      // No gutter pin: the band's gutter part scrolls with the pattern,
+      // staying on the row-number labels the static bitmap paints at its x
+      // [0, 78) — labels this same frame's blit pans by −vl.
     });
   }
   // Bright playing-row TEXT: only on the playing row, only during playback.
   // One drawImage of the pre-baked bright strip over the row the bar sits on
-  // — the pill fill/border stay exactly as drawActiveRowBar left them, only
+  // — the band stays exactly as drawActiveRowBar left it, only
   // the glyphs on top brighten. The bar's clear band (pattern-bands) already
   // spans this whole row, so a moving playhead leaves no stale bright text.
   if (props.isPlaying && barRow >= 0 && bitmap) {

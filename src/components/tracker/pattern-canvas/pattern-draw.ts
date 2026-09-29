@@ -676,69 +676,38 @@ export interface DrawActiveRowBarData {
   trackCount?: number;
 }
 
-/** Corner radius of the DOM playback pills (.active-row-bar/.row-playback-bar). */
-export const PLAYBACK_BAR_RADIUS_PX = 10;
-
 /**
- * Border width of the DOM playback pills (.active-row-bar/.row-playback-bar).
- * Bumped from 2px (Morten, 2026-09-11: "barely visible, make it pop more").
- */
-export const PLAYBACK_BAR_BORDER_PX = 3;
-
-/**
- * Fill alpha of the DOM playback pills' translucent tint (0.14 → 0.28 → this).
- * Mixed with the mode's own accent color — not a flat constant color — so the
- * fill always matches the border's hue on every built-in theme. Static; no
- * glow, no animation (Morten reverted the v0.3.35 row-glow in 3 minutes), so
- * "pop more" is spent on the pill's own contrast, plus the text trail behind
- * it (PLAYBACK_TRAIL_ALPHAS) which leaves the playing row the only fully-lit
- * row on screen.
+ * Fill alpha of the playing row's band, mixed with the mode's own accent so the
+ * band's hue tracks pattern vs song mode on every built-in theme. Flat and
+ * static: no glow, no animation (Morten reverted the v0.3.35 row-glow in 3
+ * minutes), so contrast is spent on the band's own brightness plus the text
+ * trail behind it (PLAYBACK_TRAIL_ALPHAS).
  */
 export const PLAYBACK_BAR_FILL_ALPHA = 0.34;
 
 /**
- * Trace a DOM-style rounded rect (`border-radius` pill) at `radius` px.
- * Uses the native roundRect when the context has one; otherwise the same
- * four arcTo corners, so pre-roundRect browsers still get the pill.
+ * Height of the solid accent line along the band's top and bottom edge. Inside
+ * the row rect, so the band never paints outside the rows the overlay clears.
  */
-function roundRectPath(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-): void {
-  ctx.beginPath();
-  const r = Math.min(radius, width / 2, height / 2);
-  const native = (ctx as unknown as { roundRect?: unknown }).roundRect;
-  if (typeof native === 'function') {
-    (ctx as unknown as { roundRect: (x: number, y: number, w: number, h: number, r: number) => void }).roundRect(
-      x,
-      y,
-      width,
-      height,
-      r,
-    );
-    return;
-  }
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + width, y, x + width, y + height, r);
-  ctx.arcTo(x + width, y + height, x, y + height, r);
-  ctx.arcTo(x, y + height, x, y, r);
-  ctx.arcTo(x, y, x + width, y, r);
-  ctx.closePath();
-}
+export const PLAYBACK_BAR_EDGE_PX = 1;
+
+/** Alpha of those edge lines: enough to define the band, less than a border. */
+export const PLAYBACK_BAR_EDGE_ALPHA = 0.7;
 
 /**
- * The active-row (playback) indicator, matching the DOM grid's two pills:
- * one across the tracks (`.active-row-bar`, activeRowBarWidthPx wide) and
- * one over the 78px row-number gutter (`.row-playback-bar`), both 10px
- * rounded, rowHeightPx tall, with a `PLAYBACK_BAR_BORDER_PX` mode-colored
- * border over a translucent fill at `PLAYBACK_BAR_FILL_ALPHA` of that same
- * color — pattern mode `--tracker-accent-primary` (#4df2c5), song mode
- * `--tracker-accent-secondary` (rgb(88, 176, 255)). No gradient or shadow in
- * the DOM styling, so none here either.
+ * The active-row (playback) indicator: one flat, square-cornered band across
+ * the row-number gutter and the tracks, `rowHeightPx` tall. Its fill is the
+ * mode accent — pattern mode `--tracker-accent-primary` (#4df2c5), song mode
+ * `--tracker-accent-secondary` (rgb(88, 176, 255)) — at
+ * `PLAYBACK_BAR_FILL_ALPHA`, brightening the row's background, with a hairline
+ * of the same accent along the top and bottom edge.
+ *
+ * It replaces two rounded, 3px-bordered pills (Morten, 2026-09-29: "rather
+ * ugly ... the pillboxes we currently have don't work too well"). The band
+ * spans pattern x [-GUTTER_WIDTH_PX, width): the gutter part sits on the
+ * row-number labels the static bitmap paints there and scrolls with them, and
+ * it meets the tracks part at pattern x 0 so the two can never overlap or leave
+ * a seam at any scroll origin.
  */
 export function drawActiveRowBar(
   ctx: CanvasRenderingContext2D,
@@ -746,38 +715,20 @@ export function drawActiveRowBar(
   theme: PatternTheme,
   data: DrawActiveRowBarData,
 ): void {
-  const borderColor =
-    data.mode === 'pattern' ? theme.accentPrimary : theme.accentSecondary;
-  const bgColor = withAlpha(borderColor, PLAYBACK_BAR_FILL_ALPHA);
+  const accent = data.mode === 'pattern' ? theme.accentPrimary : theme.accentSecondary;
 
   const trackCount = data.trackCount ?? layout.trackCount;
   const barWidth = activeRowBarWidthPx(trackCount, layout.columns);
   const width = barWidth ?? totalPatternWidth(layout);
   const y = rowY(data.playbackRow);
+  const x = -GUTTER_WIDTH_PX;
+  const bandWidth = GUTTER_WIDTH_PX + width;
 
-  ctx.fillStyle = bgColor;
-  ctx.strokeStyle = borderColor;
-  ctx.lineWidth = PLAYBACK_BAR_BORDER_PX;
-  // The tracks pill scrolls with the pattern horizontally, exactly like the
-  // DOM's .active-row-bar inside the scrolling tracks-wrapper.
-  roundRectPath(ctx, 0, y, width, rowHeightPx, PLAYBACK_BAR_RADIUS_PX);
-  ctx.fill();
-  ctx.stroke();
-  // The gutter pill scrolls with the pattern too, drawn at the row-number
-  // column's own pattern-space rect [-GUTTER_WIDTH_PX, 0) so it stays on the
-  // labels the static bitmap paints there. The DOM grid is the spec, and it
-  // scrolls its row column with the tracks on exactly the surface where this
-  // renderer is most used (TrackerPattern.vue's ≤900px media query turns
-  // .row-column into an overflow-x:auto strip), so the pill must pan away
-  // with them — pinning it to the viewport edge parked it over track content
-  // the gutter had already scrolled past (Morten, 2026-09-04: the indicator
-  // "clings to the left side of screen" while panning right). Edge-adjacent
-  // to the tracks pill at pattern x 0, the same adjacency the DOM's two grid
-  // columns paint, so the pills can never overlap at any scroll origin.
-  roundRectPath(ctx, -GUTTER_WIDTH_PX, y, GUTTER_WIDTH_PX, rowHeightPx, PLAYBACK_BAR_RADIUS_PX);
-  ctx.fill();
-  ctx.stroke();
-  ctx.lineWidth = 1;
+  ctx.fillStyle = withAlpha(accent, PLAYBACK_BAR_FILL_ALPHA);
+  ctx.fillRect(x, y, bandWidth, rowHeightPx);
+  ctx.fillStyle = withAlpha(accent, PLAYBACK_BAR_EDGE_ALPHA);
+  ctx.fillRect(x, y, bandWidth, PLAYBACK_BAR_EDGE_PX);
+  ctx.fillRect(x, y + rowHeightPx - PLAYBACK_BAR_EDGE_PX, bandWidth, PLAYBACK_BAR_EDGE_PX);
 }
 
 /**

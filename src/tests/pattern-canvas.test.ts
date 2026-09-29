@@ -124,8 +124,8 @@ function makeRecordingCtx(): RecordingCtx {
       tx += dx;
       ty += dy;
     },
-    // Recorded as a path op so tests can assert the rounded playback pill's
-    // geometry (translated into viewport space like fillRect above).
+    // Recorded as a path op so tests can assert nothing rounded is traced
+    // on the overlay (the playback band is a flat fillRect).
     roundRect(
       x: number,
       y: number,
@@ -492,8 +492,18 @@ const fillsOn = (ctx: RecordingCtx) =>
   ctx.calls.filter(
     (call): call is RectCall => call.op === 'fillRect',
   );
-const pathsOn = (ctx: RecordingCtx) =>
-  ctx.calls.filter((call): call is PathCall => call.op === 'path');
+/**
+ * The playback band's row-height fill rects on `ctx`, oldest first. One rect
+ * spans the gutter and the 2-track pattern; the cursor cell and the edge
+ * hairlines are different sizes, so the width picks the band out.
+ */
+const barBandsOn = (ctx: RecordingCtx) =>
+  ctx.calls.filter(
+    (call): call is RectCall =>
+      call.op === 'fillRect' &&
+      call.height === rowHeightPx &&
+      call.width === GUTTER_WIDTH_PX + (activeRowBarWidthPx(2, STD) ?? 0),
+  );
 
 function mockCanvasRect(el: HTMLCanvasElement): void {
   vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
@@ -787,6 +797,38 @@ describe('cursor follow (keyboard navigation while stopped)', () => {
     wrapper.unmount();
   });
 
+  it('hides the cursor cell while playing and restores it on stop', async () => {
+    const wrapper = mountCanvas({ playbackRow: 2 });
+    await setCanvasProps(wrapper, { activeTrack: 0, activeColumn: 0 });
+    pumpFrame();
+    const { overlay } = layerCanvases(wrapper);
+    const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
+    // The cursor is the only thing the overlay strokes (the band is fills).
+    const strokesSince = (from: number) =>
+      overlayCtx.calls.slice(from).filter((c) => c.op === 'strokeRect').length;
+
+    let mark = overlayCtx.calls.length;
+    await setCanvasProps(wrapper, { selectedRow: 3 });
+    pumpFrame();
+    expect(strokesSince(mark)).toBe(1);
+
+    mark = overlayCtx.calls.length;
+    await setCanvasProps(wrapper, { isPlaying: true });
+    pumpFrame();
+    expect(strokesSince(mark)).toBe(0);
+    // Still hidden as the playhead moves.
+    mark = overlayCtx.calls.length;
+    await setCanvasProps(wrapper, { playbackRow: 5 });
+    pumpFrame();
+    expect(strokesSince(mark)).toBe(0);
+
+    mark = overlayCtx.calls.length;
+    await setCanvasProps(wrapper, { isPlaying: false });
+    pumpFrame();
+    expect(strokesSince(mark)).toBe(1);
+    wrapper.unmount();
+  });
+
   it('does not scroll when auto-scroll is off', async () => {
     const wrapper = mountCanvas({ autoScroll: false, isPlaying: false, rows: 64 });
     pumpFrame();
@@ -1000,16 +1042,16 @@ describe('overlay on playbackRow change', () => {
     const { overlay } = layerCanvases(wrapper);
     const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
     const staticFillsBefore = fillsOn(bitmap).length;
-    const overlayPathsBefore = pathsOn(overlayCtx).length;
-    expect(overlayPathsBefore).toBeGreaterThan(0); // the two playback pills
+    const overlayBandsBefore = barBandsOn(overlayCtx).length;
+    expect(overlayBandsBefore).toBeGreaterThan(0); // the playback band
 
     await wrapper.setProps({ playbackRow: 4 });
     await nextTick();
     pumpFrame();
 
     expect(fillsOn(bitmap).length).toBe(staticFillsBefore);
-    // The pills were cleared and redrawn on the new row.
-    expect(pathsOn(overlayCtx).length).toBeGreaterThan(overlayPathsBefore);
+    // The band was cleared and redrawn on the new row.
+    expect(barBandsOn(overlayCtx).length).toBeGreaterThan(overlayBandsBefore);
     wrapper.unmount();
   });
 
@@ -1021,14 +1063,12 @@ describe('overlay on playbackRow change', () => {
     const { overlay } = layerCanvases(wrapper);
     const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
 
-    const bar = pathsOn(overlayCtx)
-      .filter((c) => c.height === rowHeightPx)
-      .find((c) => c.width === activeRowBarWidthPx(2, STD));
+    const bar = barBandsOn(overlayCtx)[0];
     expect(bar).toBeDefined();
-    // rowY(2) − scrollTop, not rowY(2): the bar lands in viewport space,
-    // pinned past the gutter minus the horizontal scroll.
+    // rowY(2) − scrollTop, not rowY(2): the bar lands in viewport space. It
+    // starts on the gutter, so x is the horizontal scroll and nothing else.
     expect(bar!.y).toBeCloseTo(2 * rowPitchPx - scrollTop, 5);
-    expect(bar!.x).toBeCloseTo(GUTTER_WIDTH_PX - scrollLeft, 5);
+    expect(bar!.x).toBeCloseTo(-scrollLeft, 5);
     wrapper.unmount();
   });
 
@@ -1046,11 +1086,8 @@ describe('overlay on playbackRow change', () => {
 
     // Without the overlay in the scroll schedule the bar would still sit at
     // its pattern-space y and drift off the visible rows. (Calls accumulate
-    // across frames — take the newest pill, painted after the scroll.)
-    const bar = pathsOn(overlayCtx)
-      .filter((c) => c.height === rowHeightPx)
-      .filter((c) => c.width === activeRowBarWidthPx(2, STD))
-      .at(-1);
+    // across frames — take the newest band, painted after the scroll.)
+    const bar = barBandsOn(overlayCtx).at(-1);
     expect(bar).toBeDefined();
     expect(bar!.y).toBeCloseTo(2 * rowPitchPx - 180, 5);
     wrapper.unmount();
@@ -1096,7 +1133,7 @@ describe('playback follow: one coalesced frame per row advance', () => {
       // Overlay: bands only — every clear covers the bar row plus the text
       // trail above it and no more, never the whole layer (VIEWPORT_H = 400
       // would be a full clear). The trail rows are overlay pixels like the
-      // pills, so the band spans them; that is 4 row pitches, not 10.
+      // band, so the clear spans them; that is 4 row pitches, not 10.
       const bandHeight =
         PLAYBACK_TRAIL_ALPHAS.length * rowPitchPx + rowHeightPx + 2 * BAND_PAD_PX;
       const clears = overlayCtx.calls
@@ -1107,8 +1144,8 @@ describe('playback follow: one coalesced frame per row advance', () => {
         expect(clear.height).toBeLessThanOrEqual(bandHeight + 0.5);
         expect(clear.height).toBeLessThan(VIEWPORT_H);
       }
-      // And the pills were repainted on the new row, once.
-      expect(newestPills(overlayCtx, overlayFrameStart)).toHaveLength(2);
+      // And the band was repainted on the new row, once.
+      expect(newestBands(overlayCtx, overlayFrameStart)).toHaveLength(1);
     }
     wrapper.unmount();
   });
@@ -1635,74 +1672,49 @@ describe('selection drag', () => {
 // ---------------------------------------------------------------------
 
 describe('playback bar accents', () => {
-  it('paints the pattern-mode pills with #4df2c5 at playbackRow', async () => {
+  it('paints the pattern-mode band with #4df2c5 at playbackRow', async () => {
     const wrapper = mountCanvas({ playbackRow: 2, playbackMode: 'pattern' });
     pumpFrame();
     const { overlay } = layerCanvases(wrapper);
     const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
-    // Two rounded pills at the playback row (tracks + row-number gutter),
-    // translated into viewport space (− scrollTop).
-    const pills = overlayCtx.calls.filter(
-      (call): call is PathCall =>
-        call.op === 'path' &&
-        Math.abs(call.y - (2 * rowPitchPx - 0)) < 0.5 &&
-        call.height === rowHeightPx,
-    );
-    expect(pills).toHaveLength(2);
-    expect(pills.every((p) => p.radius === 10)).toBe(true);
-    expect(overlayCtx.props.get('strokeStyle')).toBe('#4df2c5');
-    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(77, 242, 197, 0.34)');
+    // One flat band at the playback row across the gutter and tracks,
+    // translated into viewport space (− scrollTop). No rounded path.
+    const bands = barBandsOn(overlayCtx).filter((b) => Math.abs(b.y - 2 * rowPitchPx) < 0.5);
+    expect(bands).toHaveLength(1);
+    expect(overlayCtx.calls.some((call) => call.op === 'path')).toBe(false);
+    // The last style set is the edge hairline's: the same accent, stronger.
+    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(77, 242, 197, 0.7)');
     wrapper.unmount();
   });
 
-  it('paints the song-mode pills with rgb(88, 176, 255) at playbackRow', async () => {
+  it('paints the song-mode band with rgb(88, 176, 255) at playbackRow', async () => {
     const wrapper = mountCanvas({ playbackRow: 2, playbackMode: 'song' });
     pumpFrame();
     const { overlay } = layerCanvases(wrapper);
     const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
-    const pills = overlayCtx.calls.filter(
-      (call): call is PathCall =>
-        call.op === 'path' &&
-        Math.abs(call.y - 2 * rowPitchPx) < 0.5 &&
-        call.height === rowHeightPx,
-    );
-    expect(pills).toHaveLength(2);
-    expect(overlayCtx.props.get('strokeStyle')).toBe('rgb(88, 176, 255)');
-    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(88, 176, 255, 0.34)');
+    const bands = barBandsOn(overlayCtx).filter((b) => Math.abs(b.y - 2 * rowPitchPx) < 0.5);
+    expect(bands).toHaveLength(1);
+    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(88, 176, 255, 0.7)');
     wrapper.unmount();
   });
 
-  it('keeps the gutter pill on the row-number labels under horizontal scroll', async () => {
+  it('keeps the band on the row-number labels under horizontal scroll', async () => {
     // Regression for the 2026-09-04 phone report (round 2): the old pin
-    // glued the gutter pill to the viewport's left edge while the static
-    // bitmap's row-number labels panned away with the content, so the pill
-    // clung over scrolled-away track content and slid under the tracks
-    // pill. The pill must share the labels' screen x at every pan
-    // position: the blit pans the bitmap by −viewLeft (drawImage sx =
-    // viewLeft·scale), and the overlay layer translates by (gutter −
-    // viewLeft), so the pill drawn at pattern x −78 must land at screen x
-    // −viewLeft — exactly the labels' rect.
+    // glued the gutter part to the viewport's left edge while the static
+    // bitmap's row-number labels panned away with the content, so it clung
+    // over scrolled-away track content. The band must share the labels'
+    // screen x at every pan position: the blit pans the bitmap by −viewLeft
+    // (drawImage sx = viewLeft·scale), and the overlay layer translates by
+    // (gutter − viewLeft), so the band drawn from pattern x −78 must start at
+    // screen x −viewLeft — exactly the labels' rect.
     const scrollLeft = 30;
     const wrapper = mountCanvas({ playbackRow: 2, scrollLeft, playbackMode: 'pattern' });
     pumpFrame();
     const { overlay } = layerCanvases(wrapper);
     const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
-    const pills = overlayCtx.calls.filter(
-      (call): call is PathCall =>
-        call.op === 'path' &&
-        Math.abs(call.y - 2 * rowPitchPx) < 0.5 &&
-        call.height === rowHeightPx,
-    );
-    expect(pills).toHaveLength(2);
-    // Gutter pill: drawn at pattern x −78, layer translate 78 − 30 →
-    // screen x −30 — where the blit just put the bitmap's x-[0,78) labels.
-    const gutterPill = pills.find((p) => p.width === GUTTER_WIDTH_PX);
-    expect(gutterPill!.x).toBe(-scrollLeft);
-    // Tracks pill stays at pattern-space 0 → screen 78 − 30. Edge-adjacent
-    // to the gutter pill (78 − 30 = −30 + 78), never overlapping it.
-    const tracksPill = pills.find((p) => p.width === activeRowBarWidthPx(2, STD));
-    expect(tracksPill!.x).toBe(GUTTER_WIDTH_PX - scrollLeft);
-    expect(gutterPill!.x + GUTTER_WIDTH_PX).toBe(tracksPill!.x);
+    const bands = barBandsOn(overlayCtx).filter((b) => Math.abs(b.y - 2 * rowPitchPx) < 0.5);
+    expect(bands).toHaveLength(1);
+    expect(bands[0]!.x).toBe(-scrollLeft);
     wrapper.unmount();
   });
 });
@@ -2186,10 +2198,10 @@ describe('upcoming-pattern pre-render (§3.2)', () => {
 // against a different scroll state than the grid blit. These tests pin
 // the band-repaint contract: pan frames clear only row bands, every
 // cleared band covers the bar band the previous frame painted (no
-// trails), and the blit + pills of one frame agree on the view origin.
+// trails), and the blit + band of one frame agree on the view origin.
 // ---------------------------------------------------------------------
 
-/** Band coverage with the pill-stroke pad: does `band` overlap the row? */
+/** Band coverage with the anti-aliasing pad: does `band` overlap the row? */
 function bandOverlapsRow(
   band: { y: number; height: number },
   screenRowY: number,
@@ -2200,13 +2212,9 @@ function bandOverlapsRow(
   );
 }
 
-/** The two playback pills of the newest paint, newest first. */
-function newestPills(ctx: RecordingCtx, from: number): PathCall[] {
-  return pathsOn(ctx)
-    .slice()
-    .reverse()
-    .filter((p) => p.height === rowHeightPx)
-    .filter((p) => ctx.calls.indexOf(p) >= from);
+/** The playback band(s) painted at or after call index `from`. */
+function newestBands(ctx: RecordingCtx, from: number): RectCall[] {
+  return barBandsOn(ctx).filter((b) => ctx.calls.indexOf(b) >= from);
 }
 
 describe('touch-pan band repaint (pan-jitter)', () => {
@@ -2262,25 +2270,18 @@ describe('touch-pan band repaint (pan-jitter)', () => {
         expect(clears.some((clear) => bandOverlapsRow(clear, prevBarY))).toBe(true);
       }
 
-      // Single-frame composition: the blit and the pills of this frame
+      // Single-frame composition: the blit and the band of this frame
       // speak the same view state.
       const blit = drawImageOn(viewCtx).at(-1)!;
       expect(blit.sy).toBeCloseTo(view.top, 5);
-      const pills = newestPills(overlayCtx, frameStart);
-      expect(pills).toHaveLength(2);
+      const bands = newestBands(overlayCtx, frameStart);
+      expect(bands).toHaveLength(1);
       const barY = 2 * rowPitchPx - view.top;
-      for (const pill of pills) expect(pill.y).toBeCloseTo(barY, 5);
-      const gutterPill = pills.find((p) => p.width === GUTTER_WIDTH_PX)!;
-      // The pill rides the row-number labels: the blit pans the bitmap by
-      // −view.left and the pill shares that origin, so it is NEVER glued to
+      expect(bands[0]!.y).toBeCloseTo(barY, 5);
+      // The band rides the row-number labels: the blit pans the bitmap by
+      // −view.left and the band shares that origin, so it is NEVER glued to
       // the viewport edge (the 2026-09-04 drift report).
-      expect(gutterPill.x + view.left).toBe(0);
-      const tracksPill = pills.find(
-        (p) => p.width === activeRowBarWidthPx(2, STD),
-      )!;
-      expect(tracksPill.x).toBeCloseTo(GUTTER_WIDTH_PX - view.left, 5);
-      // Edge-adjacent to the tracks pill — never sliding under it.
-      expect(gutterPill.x + GUTTER_WIDTH_PX).toBeCloseTo(tracksPill.x, 5);
+      expect(bands[0]!.x + view.left).toBe(0);
 
       prevBarY = barY;
     }
@@ -2308,13 +2309,13 @@ describe('touch-pan band repaint (pan-jitter)', () => {
       .filter((call): call is RectCall => call.op === 'clearRect');
     expect(clears.length).toBeGreaterThan(0);
     expect(clears.some((clear) => bandOverlapsRow(clear, 4 * rowPitchPx))).toBe(true);
-    // And nothing was redrawn: no new pill ops.
-    expect(newestPills(overlayCtx, frameStart)).toHaveLength(0);
+    // And nothing was redrawn: no new band ops.
+    expect(newestBands(overlayCtx, frameStart)).toHaveLength(0);
     wrapper.unmount();
   });
 });
 
-describe('gutter pill tracks the gutter under programmatic pan', () => {
+describe('playback band tracks the gutter under programmatic pan', () => {
   it('stays on the row-number labels in every pan direction, including beyond-origin values', async () => {
     const wrapper = mountCanvas({ playbackRow: 3, scrollLeft: 0 });
     pumpFrame();
@@ -2323,9 +2324,9 @@ describe('gutter pill tracks the gutter under programmatic pan', () => {
     const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
     const hscroll = wrapper.find('.canvas-hscroll').element as HTMLElement;
 
-    // Right/down, left/up, and past both origin and extent — the pill must
+    // Right/down, left/up, and past both origin and extent — the band must
     // stay on the gutter labels everywhere, never drifting toward the
-    // screen edge or under the tracks pill. (No identity state first: an
+    // screen edge or off the labels. (No identity state first: an
     // unchanged scroll early-returns and runs no frame.)
     const views = [
       { top: 180, left: 45 },
@@ -2349,21 +2350,14 @@ describe('gutter pill tracks the gutter under programmatic pan', () => {
       const frameStart = overlayCtx.calls.length;
       pumpFrame();
 
-      const pills = newestPills(overlayCtx, frameStart);
-      expect(pills).toHaveLength(2);
-      const gutterPill = pills.find((p) => p.width === GUTTER_WIDTH_PX)!;
+      const bands = newestBands(overlayCtx, frameStart);
+      expect(bands).toHaveLength(1);
       // On the labels' screen rect — x −view.left — at every origin,
       // including out-of-range scroll values (over-scroll shifts the blit's
-      // destination and the pill by the same dx). The old viewport-edge pin
+      // destination and the band by the same dx). The old viewport-edge pin
       // (screen x 0) is the bug this asserts against.
-      expect(gutterPill.x + view.left).toBe(0);
-      expect(gutterPill.y).toBeCloseTo(3 * rowPitchPx - view.top, 5);
-      const tracksPill = pills.find(
-        (p) => p.width === activeRowBarWidthPx(2, STD),
-      )!;
-      expect(tracksPill.x).toBeCloseTo(GUTTER_WIDTH_PX - view.left, 5);
-      // Edge-adjacent, never overlapping, at any origin.
-      expect(gutterPill.x + GUTTER_WIDTH_PX).toBeCloseTo(tracksPill.x, 5);
+      expect(bands[0]!.x + view.left).toBe(0);
+      expect(bands[0]!.y).toBeCloseTo(3 * rowPitchPx - view.top, 5);
     }
     wrapper.unmount();
   });
