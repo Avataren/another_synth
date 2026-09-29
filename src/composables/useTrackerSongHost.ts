@@ -15,6 +15,7 @@ import { Notify } from 'quasar';
 import { useTrackerFileIO } from 'src/composables/useTrackerFileIO';
 import type { TrackerFileIOContext } from 'src/composables/useTrackerFileIO';
 import { useMobileLayout } from 'src/composables/useMobileLayout';
+import { useVisualizationMode } from 'src/composables/useVisualizationMode';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 
 export interface TrackerSongHostOptions {
@@ -136,11 +137,14 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
    * The bank is told to stop building them at all.
    */
   const isMobileLayout = useMobileLayout();
+  // Any view but the default draws from the taps whatever the two toggles say.
+  const { mode: visualizationMode } = useVisualizationMode();
   const trackMonitoringWanted = computed(
     () =>
       !isMobileLayout.value &&
       (userSettingsStore.settings.showWaveformVisualizers ||
-        userSettingsStore.settings.showSpectrumAnalyzer),
+        userSettingsStore.settings.showSpectrumAnalyzer ||
+        visualizationMode.value !== 'pattern'),
   );
 
   watch(

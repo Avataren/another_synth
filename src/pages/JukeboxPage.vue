@@ -120,6 +120,7 @@
       </div>
 
       <PostFxFilterControl />
+      <VisualizationPicker v-if="!isMobileLayout" />
 
       <label class="bar-toggle" title="Scroll one row per playback step instead of paging">
         <input v-model="userSettings.granularPlaybackScroll" type="checkbox" />
@@ -156,7 +157,20 @@
 
     <div class="jukebox-body">
       <div class="stage">
-        <div v-if="trackCount > 0 && !isMobileLayout" class="scope-row">
+        <ScopeWall
+          v-if="scopeWallVisible"
+          :track-count="trackCount"
+          :audio-nodes="trackAudioNodes"
+          :audio-context="audioContext"
+          :scope-source="isAhxSong ? playbackStore.getAhxChannelWaveform : null"
+          :analyser-full-scale="scopeFullScaleFor"
+          :scope-gain="userSettings.ahxScopeGain"
+          :is-audible="playbackStore.isTrackAudible"
+          @toggle-mute="toggleMute"
+          @toggle-solo="toggleSolo"
+        />
+
+        <div v-if="!scopeWallVisible && trackCount > 0 && !isMobileLayout" class="scope-row">
           <div
             v-for="index in trackCount"
             :key="`scope-${index - 1}`"
@@ -177,7 +191,7 @@
           </div>
         </div>
 
-        <div class="pattern-area-wrapper">
+        <div v-if="!scopeWallVisible" class="pattern-area-wrapper">
           <TrackerSpectrumAnalyzer
             v-if="spectrumAnalyzerVisible"
             :node="masterOutputNode"
@@ -279,7 +293,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
@@ -289,6 +303,9 @@ import { selectUpcomingPattern } from 'src/components/tracker/pattern-buffering'
 import { songTrackColumns } from 'src/components/tracker/track-metrics';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
+import ScopeWall from 'src/components/tracker/ScopeWall.vue';
+import VisualizationPicker from 'src/components/VisualizationPicker.vue';
+import { useVisualizationMode } from 'src/composables/useVisualizationMode';
 import JukeboxPanel from 'src/components/tracker/JukeboxPanel.vue';
 import FormatBadge from 'src/components/FormatBadge.vue';
 import { brandIdForDemoLabel } from 'src/branding/format-brands';
@@ -535,6 +552,19 @@ function toggleMute(trackIndex: number): void {
   playbackStore.toggleMute(trackIndex, trackCount.value);
 }
 
+function toggleSolo(trackIndex: number): void {
+  playbackStore.toggleSolo(trackIndex, trackCount.value);
+}
+
+/** The triggered-scope scale of one channel: SID and OPL voices run below full scale. */
+function scopeFullScaleFor(index: number): (() => number | null) | null {
+  if (trackerStore.isSidSong) return playbackStore.getSidVoiceFullScale;
+  if (trackerStore.isA2mSong || trackerStore.oplChannels[index] != null) {
+    return playbackStore.getOplVoiceFullScale;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------
 // The pattern view, which virtualises against its own scroll box
 // ---------------------------------------------------------------
@@ -566,6 +596,26 @@ watch(
 const spectrumAnalyzerVisible = computed(
   () => userSettings.value.showSpectrumAnalyzer && !isMobileLayout.value,
 );
+
+/**
+ * The visualization picker's choice. The scope wall stands in for the scope
+ * row *and* the pattern grid; the phone layout has neither the room nor the
+ * taps for it, so it keeps the pattern whatever was picked.
+ */
+const { mode: visualizationMode } = useVisualizationMode();
+const scopeWallVisible = computed(
+  () => visualizationMode.value === 'scopes' && !isMobileLayout.value,
+);
+
+// The pattern area is unmounted while the wall shows, so it comes back as a
+// fresh element: measure it, and start its scroll state from the top again.
+watch(scopeWallVisible, async (wall) => {
+  if (wall) return;
+  patternAreaScrollTop.value = 0;
+  patternAreaScrollLeft.value = 0;
+  await nextTick();
+  updatePatternAreaHeight();
+});
 
 /**
  * Canvas renderer on until the page's own copy proves it cannot run here.

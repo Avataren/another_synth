@@ -8,6 +8,10 @@ import {
 } from 'src/audio/device-profile';
 import { setSampleQuality } from 'src/audio/sample-quality';
 import type { Sid6581Revision } from 'src/audio/worklets/sid-core';
+import {
+  DEFAULT_VISUALIZATION_MODE,
+  type VisualizationMode,
+} from 'src/components/tracker/visualization-modes';
 
 /**
  * User settings interface
@@ -24,6 +28,13 @@ export interface UserSettings {
   uiFont: string;
   showSpectrumAnalyzer: boolean;
   showWaveformVisualizers: boolean;
+  /**
+   * What the tracker and the jukebox show under their toolbar (the picker
+   * beside the LIM button). Shared by both pages; `pattern` is the original
+   * scope row over the pattern grid. Read through `useVisualizationMode`,
+   * which falls back to the default for a value this build does not know.
+   */
+  visualizationMode: VisualizationMode;
   /**
    * Fixed display gain (1, 2 or 4) for the AHX/HVL per-channel scopes, so a
    * quiet voice is readable. Display only, and clipped at the scope's edge
@@ -212,6 +223,7 @@ export const defaultSettings: UserSettings = {
   uiFont: 'Inter',
   showSpectrumAnalyzer: true,
   showWaveformVisualizers: true,
+  visualizationMode: DEFAULT_VISUALIZATION_MODE,
   ahxScopeGain: 1,
   masterVolume: 1,
   enableMidi: false,

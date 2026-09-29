@@ -267,6 +267,7 @@
             Jukebox
           </button>
           <PostFxFilterControl />
+          <VisualizationPicker />
           <label class="toggle toolbar-toggle">
             <input
               v-model="autoScroll"
@@ -797,6 +798,19 @@
         </div>
       </div>
 
+      <ScopeWall
+        v-if="scopeWallVisible"
+        :track-count="trackCount"
+        :audio-nodes="trackAudioNodes"
+        :audio-context="audioContext"
+        :scope-source="isAhxSong ? playbackStore.getAhxChannelWaveform : null"
+        :analyser-full-scale="scopeFullScaleFor"
+        :scope-gain="userSettings.ahxScopeGain"
+        :is-audible="playbackStore.isTrackAudible"
+        @toggle-mute="toggleMute"
+        @toggle-solo="toggleSolo"
+      />
+
       <div
         v-if="waveformVisualizersVisible"
         ref="visualizerRowRef"
@@ -856,7 +870,9 @@
         </div>
       </div>
 
-      <div class="pattern-area-wrapper" ref="patternAreaWrapperRef">
+      <!-- Hidden, not unmounted, while the scope wall shows: the scroll sync,
+           selection and editing state all hang off this subtree. -->
+      <div v-show="!scopeWallVisible" class="pattern-area-wrapper" ref="patternAreaWrapperRef">
         <TrackerSpectrumAnalyzer
           v-if="spectrumAnalyzerVisible"
           :node="masterOutputNode"
@@ -1056,6 +1072,9 @@ import { visiblePageWindow } from 'src/components/tracker/page-window';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import { ahxTransposeLabel, ahxTransposeTitle } from 'src/audio/tracker/ahx-position-display';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
+import ScopeWall from 'src/components/tracker/ScopeWall.vue';
+import VisualizationPicker from 'src/components/VisualizationPicker.vue';
+import { useVisualizationMode } from 'src/composables/useVisualizationMode';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
 import FormatBadge from 'src/components/FormatBadge.vue';
@@ -1615,7 +1634,8 @@ function onPatternAreaScroll(event: Event) {
 
 // Update pattern area height on mount and resize
 function updatePatternAreaHeight() {
-  if (patternAreaRef.value) {
+  // Hidden (the scope wall is showing) reads as 0 x 0; keep the last real size.
+  if (patternAreaRef.value && patternAreaRef.value.clientHeight > 0) {
     patternAreaHeight.value = patternAreaRef.value.clientHeight;
     patternAreaWidth.value = patternAreaRef.value.clientWidth;
   }
@@ -1666,20 +1686,51 @@ watch(
  * feeding them) and the least affordable there. The song host reads the same
  * condition to stop the bank building per-track taps at all.
  */
+/**
+ * The visualization picker's choice. The scope wall stands in for the channel
+ * row *and* the pattern grid (and the spectrum strips beside it), so those go
+ * quiet while it shows. Like the rest, it is a desktop-only view.
+ */
+const { mode: visualizationMode } = useVisualizationMode();
+const scopeWallVisible = computed(
+  () => visualizationMode.value === 'scopes' && !isMobileLayout.value,
+);
+
 const spectrumAnalyzerVisible = computed(
-  () => userSettings.value.showSpectrumAnalyzer && !isMobileLayout.value,
+  () =>
+    userSettings.value.showSpectrumAnalyzer && !isMobileLayout.value && !scopeWallVisible.value,
 );
 const waveformVisualizersVisible = computed(
-  () => userSettings.value.showWaveformVisualizers && !isMobileLayout.value,
+  () =>
+    userSettings.value.showWaveformVisualizers && !isMobileLayout.value && !scopeWallVisible.value,
 );
 
 // An AHX/HVL song's visualizers are fed by the worklet's per-voice capture,
 // which records nothing unless asked: on while they are showing, off otherwise.
 watch(
-  () => waveformVisualizersVisible.value && isAhxSong.value,
+  () => (waveformVisualizersVisible.value || scopeWallVisible.value) && isAhxSong.value,
   (wanted) => playbackStore.setAhxScopesEnabled(wanted),
   { immediate: true },
 );
+
+/** The triggered-scope scale of one channel: SID and OPL voices run below full scale. */
+function scopeFullScaleFor(index: number): (() => number | null) | null {
+  if (isSidSong.value) return playbackStore.getSidVoiceFullScale;
+  if (trackerStore.isA2mSong || trackerStore.oplChannels[index] != null) {
+    return playbackStore.getOplVoiceFullScale;
+  }
+  return null;
+}
+
+// The pattern area is hidden while the wall shows, and a hidden element
+// measures as zero: `updatePatternAreaHeight` skips those, so this measures it
+// again once it is back.
+watch(scopeWallVisible, async (wall) => {
+  if (wall) return;
+  await nextTick();
+  updatePatternAreaHeight();
+  refreshVisualizerAlignment();
+});
 
 // ---------------------------------------------------------------
 // Canvas renderer wiring (mirrors JukeboxPage)

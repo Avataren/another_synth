@@ -47,7 +47,9 @@ describe('isReadOnly audit (B2a)', () => {
   it('the "is AHX" questions ask isAhxSong', () => {
     const page = src('pages/TrackerPage.vue');
     expect(page).toContain(':scope-source="isAhxSong ? playbackStore.getAhxChannelWaveform : null"');
-    expect(page).toContain('waveformVisualizersVisible.value && isAhxSong.value');
+    expect(page).toContain(
+      '(waveformVisualizersVisible.value || scopeWallVisible.value) && isAhxSong.value',
+    );
     expect(page).toContain('if (!isPlaying.value || isAhxSong.value) return;');
     expect(page).toContain('if (paused && isAhxSong.value) activeRow.value = playbackRow.value;');
     expect(src('pages/JukeboxPage.vue')).toContain('const isAhxSong = computed(() => trackerStore.isAhxSong);');
