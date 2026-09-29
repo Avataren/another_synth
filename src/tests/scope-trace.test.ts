@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SCOPE_ANALYSER_MAX_SIZE,
+  SCOPE_ANALYSER_MIN_SIZE,
+  scopeAnalyserSize,
   scopeFullScale,
   scopeMidrange,
   scopePolyline,
@@ -104,5 +107,28 @@ describe('scope centring for a DC-blocked source', () => {
 
   it('scopeTriggerStart triggers on a rising crossing of the given level', () => {
     expect(scopeTriggerStart([1, 0.5, 0.9, 2, 1, 1, 1, 1], 0.8)).toBe(2);
+  });
+});
+
+describe('scopeAnalyserSize', () => {
+  it('gives a wide scope about one drawn point per pixel', () => {
+    // Half the window is drawn (scopeVisiblePoints): 2048 -> 1024 points.
+    expect(scopeAnalyserSize(960)).toBe(2048);
+    expect(scopeVisiblePoints(scopeAnalyserSize(960))).toBeGreaterThanOrEqual(960 * 0.75);
+    expect(scopeAnalyserSize(1500)).toBe(4096);
+  });
+
+  it('keeps a narrow scope short, and stays inside its bounds', () => {
+    expect(scopeAnalyserSize(180)).toBe(SCOPE_ANALYSER_MIN_SIZE);
+    expect(scopeAnalyserSize(0)).toBe(SCOPE_ANALYSER_MIN_SIZE);
+    expect(scopeAnalyserSize(-5)).toBe(SCOPE_ANALYSER_MIN_SIZE);
+    expect(scopeAnalyserSize(100000)).toBe(SCOPE_ANALYSER_MAX_SIZE);
+  });
+
+  it('always returns a power of two (an analyser FFT size)', () => {
+    for (let width = 0; width <= 3000; width += 37) {
+      const size = scopeAnalyserSize(width);
+      expect(Math.log2(size) % 1).toBe(0);
+    }
   });
 });

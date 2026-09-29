@@ -37,6 +37,25 @@ export function scopeMidrange(data: ArrayLike<number>): number {
   return (lo + hi) / 2;
 }
 
+/** Bounds of the analyser window `scopeAnalyserSize` picks. */
+export const SCOPE_ANALYSER_MIN_SIZE = 512;
+export const SCOPE_ANALYSER_MAX_SIZE = 4096;
+
+/**
+ * The analyser window (an FFT size: a power of two) for a scope `width` CSS
+ * pixels wide, so the trace has about one point per pixel: `scopeVisiblePoints`
+ * of the window is what gets drawn, and 0.75 samples per pixel is what a wide
+ * cell needs to look like a curve rather than a polygon. A narrow cell keeps a
+ * short window (its notes would otherwise pack into mush), a wide one gets a
+ * long one that also shows a whole period of a low note.
+ */
+export function scopeAnalyserSize(width: number): number {
+  const wanted = 2 * Math.max(0, width) * 0.75;
+  let size = SCOPE_ANALYSER_MIN_SIZE;
+  while (size < wanted && size < SCOPE_ANALYSER_MAX_SIZE) size *= 2;
+  return size;
+}
+
 /** Points `drawScopeTrace` plots from a snapshot of `length` points. */
 export function scopeVisiblePoints(length: number): number {
   return length >> 1;

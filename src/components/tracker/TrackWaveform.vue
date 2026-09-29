@@ -14,6 +14,7 @@ import {
   scopeMidrange,
   scopeTriggerStart,
   scopeVisiblePoints,
+  scopeAnalyserSize,
 } from 'src/components/tracker/scope-trace';
 
 interface Props {
@@ -43,8 +44,11 @@ interface Props {
 
 const props = defineProps<Props>();
 
-/** Analyser window of the plain trace, and of the triggered one (as AHX_SCOPE_WINDOW_FRAMES). */
-const TRACE_FFT_SIZE = 256;
+/**
+ * Analyser window of the triggered scope of a source with a known full scale
+ * (SID, OPL; as AHX_SCOPE_WINDOW_FRAMES). The plain trace of a sampled format
+ * sizes its own to the cell (`scopeAnalyserSize`).
+ */
 const SCOPE_FFT_SIZE = 2048;
 /**
  * Headroom over `analyserFullScale` in the triggered scope. A DC blocker lets
@@ -55,13 +59,18 @@ const ANALYSER_SCOPE_HEADROOM = 1.15;
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let analyser: AnalyserNode | null = null;
-let dataArray: Uint8Array | null = null;
 let floatData: Float32Array | null = null;
 let unregisterAnimation: (() => void) | null = null;
 let currentConnectedNode: AudioNode | null = null;
 
 /** Trace stroke width in CSS pixels. */
 const TRACE_LINE_WIDTH = 2.5;
+/**
+ * The glow under the trace: the same path stroked wider and faint first, so
+ * the sharp line sits in a soft halo like a phosphor scope's.
+ */
+const GLOW_LINE_WIDTH = 7;
+const GLOW_ALPHA = 0.2;
 
 // Cached canvas dimensions (CSS pixels) - only update on resize. The bitmap is
 // `pixelRatio` times that, so a HiDPI screen gets a sharp line instead of an
@@ -133,8 +142,7 @@ function setupAnalyser() {
   // Create analyser if we don't have one yet
   if (!analyser) {
     analyser = context.createAnalyser();
-    analyser.fftSize = TRACE_FFT_SIZE;
-    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    analyser.fftSize = SCOPE_FFT_SIZE;
   }
 
   // Always disconnect the current node first when the prop changes
@@ -156,8 +164,8 @@ function setupAnalyser() {
 }
 
 function startVisualization() {
-  // A scope source needs no analyser; the node path needs both.
-  if (!canvasRef.value || (!props.scopeSource && (!analyser || !dataArray))) return;
+  // A scope source needs no analyser; the node path does.
+  if (!canvasRef.value || (!props.scopeSource && !analyser)) return;
 
   const canvas = canvasRef.value;
   const ctx = canvas.getContext('2d');
@@ -168,14 +176,17 @@ function startVisualization() {
 
   // Store references for the draw callback
   const localAnalyser = analyser;
-  const localDataArray = dataArray;
   // Reused every frame by the scope path.
   let polyline = new Float32Array(0);
 
   // `centered`: draw around the window's midrange (a DC-blocked source).
-  const drawScope = (data: ArrayLike<number> | null, fullScale: number, centered = false) => {
-    ctx.strokeStyle = cachedWaveformColor;
-    ctx.lineWidth = TRACE_LINE_WIDTH;
+  // `gain`: the display gain; the sampled formats' plain trace takes none.
+  const drawScope = (
+    data: ArrayLike<number> | null,
+    fullScale: number,
+    centered = false,
+    gain: number | undefined = props.scopeGain,
+  ) => {
     ctx.beginPath();
     if (!data || data.length < 4) {
       ctx.moveTo(0, canvasHeight / 2);
@@ -190,7 +201,7 @@ function startVisualization() {
         count,
         canvasWidth,
         canvasHeight,
-        scopeFullScale(fullScale, props.scopeGain),
+        scopeFullScale(fullScale, gain),
         polyline,
         center,
       );
@@ -201,6 +212,13 @@ function startVisualization() {
         else ctx.lineTo(x, y);
       }
     }
+    // Glow first, then the line itself over it.
+    ctx.strokeStyle = cachedWaveformColor;
+    ctx.globalAlpha = GLOW_ALPHA;
+    ctx.lineWidth = GLOW_LINE_WIDTH;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = TRACE_LINE_WIDTH;
     ctx.stroke();
   };
 
@@ -208,18 +226,15 @@ function startVisualization() {
     const source = props.scopeSource ?? null;
     const analyserFullScale = props.analyserFullScale ?? null;
     if (!ctx || canvasWidth === 0) return;
-    if (!source && (!localAnalyser || !localDataArray)) return;
+    if (!source && !localAnalyser) return;
 
-    // The triggered scope wants a longer window than the plain trace.
+    // Both analyser paths read floats through the triggered scope; only the
+    // window differs (fixed for a known full scale, one point per pixel else).
     if (!source && localAnalyser) {
-      const size = analyserFullScale ? SCOPE_FFT_SIZE : TRACE_FFT_SIZE;
+      const size = analyserFullScale ? SCOPE_FFT_SIZE : scopeAnalyserSize(canvasWidth);
       if (localAnalyser.fftSize !== size) localAnalyser.fftSize = size;
-      if (analyserFullScale) {
-        if (floatData?.length !== size) floatData = new Float32Array(size);
-        localAnalyser.getFloatTimeDomainData(floatData);
-      } else {
-        localAnalyser.getByteTimeDomainData(localDataArray!);
-      }
+      if (floatData?.length !== size) floatData = new Float32Array(size);
+      localAnalyser.getFloatTimeDomainData(floatData);
     }
 
     // Resizing the bitmap resets the transform, so set it every frame: the
@@ -250,34 +265,9 @@ function startVisualization() {
       drawScope(floatData, (fullScale && fullScale > 0 ? fullScale : 1) * ANALYSER_SCOPE_HEADROOM, true);
       return;
     }
-    const analyserData = localDataArray!;
-
-    // Draw waveform
-    ctx.strokeStyle = cachedWaveformColor;
-    ctx.lineWidth = TRACE_LINE_WIDTH;
-    ctx.beginPath();
-
-    const sliceWidth = canvasWidth / analyserData.length;
-    let x = 0;
-
-    for (let i = 0; i < analyserData.length; i++) {
-      const sample = analyserData[i] ?? 128;
-      // Convert from 0-255 range to -1 to +1 range (128 is center/silence)
-      const v = (sample - 128) / 128.0;
-      // Map to canvas: 0 is top, canvasHeight is bottom, center is canvasHeight/2
-      // v=-1 should be at bottom (canvasHeight), v=+1 should be at top (0)
-      const y = canvasHeight / 2 - (v * canvasHeight / 2);
-
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-
-      x += sliceWidth;
-    }
-
-    ctx.stroke();
+    // A sampled format's track: full scale is 1.0, drawn about zero, with no
+    // display gain (that setting is for the AHX/HVL scopes).
+    drawScope(floatData, 1, false, 1);
   };
 
   // Register with shared animation loop
@@ -297,7 +287,6 @@ function cleanup() {
     analyser = null;
   }
 
-  dataArray = null;
   floatData = null;
   canvasWidth = 0;
   canvasHeight = 0;
