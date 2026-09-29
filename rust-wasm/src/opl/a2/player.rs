@@ -598,4 +598,30 @@ mod tests {
         }
         assert!(any, "no track tap moved");
     }
+
+    /// AMEGAS's tracks 0 and 1 are one 4-op voice (instruments 1 and 9); the
+    /// chip outputs it from the second track's channel, so soloing the first
+    /// track used to be silent.
+    #[test]
+    fn either_track_of_a_four_op_pair_solos_the_voice() {
+        let bytes = corpus("Encore/karsten obarski - amegas.a2m");
+        let rms = |solo: u32| {
+            let mut p = A2Player::new(&bytes, 48_000.0).unwrap();
+            p.set_mute_solo(0, solo);
+            p.play();
+            let pcm = render(&mut p, 48_000 * 3);
+            (pcm.iter().map(|v| v * v).sum::<f32>() / pcm.len() as f32).sqrt()
+        };
+        assert_eq!(
+            p_channels(&bytes, 0),
+            p_channels(&bytes, 1),
+            "both tracks of the pair report the channel the voice is heard on"
+        );
+        assert!(rms(1 << 0) > 0.01, "soloing track 0 is silent");
+        assert!(rms(1 << 1) > 0.01, "soloing track 1 is silent");
+    }
+
+    fn p_channels(bytes: &[u8], t: usize) -> usize {
+        A2Player::new(bytes, 48_000.0).unwrap().track_channel(t)
+    }
 }

@@ -526,11 +526,13 @@ impl A2Engine {
         self.tracks_in_use()
     }
 
-    /// The OPL channel (0..17) whose operators and key track `t` uses (in a
-    /// 4-op pair each track has its own channel; the pair keys on the
-    /// second's).
+    /// The OPL channel (0..17) track `t` is heard on. In a 4-op pair the
+    /// registers are per track, but the chip outputs the whole voice from
+    /// the second track's channel and nothing from the first's, so both
+    /// tracks report that one (mute, solo and scope taps follow it).
     pub fn track_channel(&self, t: usize) -> usize {
-        self.channel(t.min(19))
+        let t = t.min(19);
+        self.channel(self.pair(t).map_or(t, |(_, second)| second))
     }
 
     pub fn ended(&self) -> bool {
