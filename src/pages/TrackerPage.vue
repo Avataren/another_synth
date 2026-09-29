@@ -2806,6 +2806,8 @@ const exportContext: TrackerExportContext = {
   playbackMode,
   activeRow,
   playbackRow,
+  getLoopSong: () => playbackStore.loopSong,
+  setLoopSong: (loop) => playbackStore.setLoopSong(loop),
   syncSongBankFromSlots,
   initializePlayback,
 };

@@ -33,6 +33,12 @@ export interface TrackerExportContext {
   activeRow: Ref<number>;
   playbackRow: Ref<number>;
 
+  // Loop flag as the playback store holds it. The store re-applies its value
+  // to the engine on every song load, so setting the engine alone is undone by
+  // `initializePlayback`.
+  getLoopSong: () => boolean;
+  setLoopSong: (loop: boolean) => void;
+
   // Functions
   syncSongBankFromSlots: () => Promise<void>;
   initializePlayback: (mode: PlaybackMode) => Promise<boolean>;
@@ -167,6 +173,7 @@ export function useTrackerExport(context: TrackerExportContext) {
     exportProgress.value = 0;
 
     let unsubscribeExportPosition: (() => void) | null = null;
+    const previousLoopSong = context.getLoopSong();
 
     try {
       const playbackEngine = context.getPlaybackEngine();
@@ -174,9 +181,11 @@ export function useTrackerExport(context: TrackerExportContext) {
         throw new Error('Playback engine not initialized');
       }
 
-      // For export, we want a single pass through the song,
-      // not continuous looping.
-      playbackEngine.setLoopSong(false);
+      // For export, we want a single pass through the song, not continuous
+      // looping. Through the store: loading the song below re-applies the
+      // store's flag to the engine, so an engine-only call was overridden and
+      // the recording ran on into a second pass.
+      context.setLoopSong(false);
 
       await context.syncSongBankFromSlots();
       const initialized = await context.initializePlayback('song');
@@ -276,9 +285,8 @@ export function useTrackerExport(context: TrackerExportContext) {
       exportStage.value = 'error';
     } finally {
       unsubscribeExportPosition?.();
-      // Restore looping behavior for normal playback.
-      const playbackEngine = context.getPlaybackEngine();
-      playbackEngine?.setLoopSong(true);
+      // Restore the user's loop setting for normal playback.
+      context.setLoopSong(previousLoopSong);
       isExporting.value = false;
     }
   }
