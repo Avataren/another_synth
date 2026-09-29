@@ -1672,30 +1672,20 @@ describe('selection drag', () => {
 // ---------------------------------------------------------------------
 
 describe('playback bar accents', () => {
-  it('paints the pattern-mode band with #4df2c5 at playbackRow', async () => {
-    const wrapper = mountCanvas({ playbackRow: 2, playbackMode: 'pattern' });
-    pumpFrame();
-    const { overlay } = layerCanvases(wrapper);
-    const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
-    // One flat band at the playback row across the gutter and tracks,
-    // translated into viewport space (− scrollTop). No rounded path.
-    const bands = barBandsOn(overlayCtx).filter((b) => Math.abs(b.y - 2 * rowPitchPx) < 0.5);
-    expect(bands).toHaveLength(1);
-    expect(overlayCtx.calls.some((call) => call.op === 'path')).toBe(false);
-    // The last style set is the edge hairline's: the same accent, stronger.
-    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(77, 242, 197, 0.7)');
-    wrapper.unmount();
-  });
-
-  it('paints the song-mode band with rgb(88, 176, 255) at playbackRow', async () => {
-    const wrapper = mountCanvas({ playbackRow: 2, playbackMode: 'song' });
-    pumpFrame();
-    const { overlay } = layerCanvases(wrapper);
-    const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
-    const bands = barBandsOn(overlayCtx).filter((b) => Math.abs(b.y - 2 * rowPitchPx) < 0.5);
-    expect(bands).toHaveLength(1);
-    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(88, 176, 255, 0.7)');
-    wrapper.unmount();
+  it('paints one white band at playbackRow, in pattern and song mode alike', async () => {
+    for (const playbackMode of ['pattern', 'song'] as const) {
+      const wrapper = mountCanvas({ playbackRow: 2, playbackMode });
+      pumpFrame();
+      const { overlay } = layerCanvases(wrapper);
+      const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
+      // One flat band at the playback row across the gutter and tracks,
+      // translated into viewport space (− scrollTop). No rounded path.
+      const bands = barBandsOn(overlayCtx).filter((b) => Math.abs(b.y - 2 * rowPitchPx) < 0.5);
+      expect(bands).toHaveLength(1);
+      expect(overlayCtx.calls.some((call) => call.op === 'path')).toBe(false);
+      expect(overlayCtx.props.get('fillStyle')).toBe('rgba(255, 255, 255, 0.2)');
+      wrapper.unmount();
+    }
   });
 
   it('keeps the band on the row-number labels under horizontal scroll', async () => {

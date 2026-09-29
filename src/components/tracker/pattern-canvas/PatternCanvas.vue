@@ -117,7 +117,6 @@ import {
   isRowSelected,
   trackAccent,
   type InterpolatedRows,
-  type PlaybackBarMode,
 } from './pattern-draw';
 import {
   overlayClearBands,
@@ -1065,7 +1064,6 @@ function paintOverlay(vt: number, vl: number): boolean {
   if (barRow >= 0) {
     drawActiveRowBar(ctx, l, theme, {
       playbackRow: barRow,
-      mode: props.playbackMode as PlaybackBarMode,
       trackCount: l.trackCount,
       // No gutter pin: the band's gutter part scrolls with the pattern,
       // staying on the row-number labels the static bitmap paints at its x

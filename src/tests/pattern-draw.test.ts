@@ -7,13 +7,10 @@ import {
   drawRowNumbers,
   drawSelectionBar,
   drawStaticGrid,
-  PLAYBACK_BAR_EDGE_ALPHA,
-  PLAYBACK_BAR_EDGE_PX,
   PLAYBACK_BAR_FILL_ALPHA,
   rowType,
   trackAccent,
 } from 'src/components/tracker/pattern-canvas/pattern-draw';
-import { withAlpha } from 'src/utils/color';
 import {
   columnFractionOffsets,
   entryHorizontalInsetPx,
@@ -526,52 +523,36 @@ describe('buildTrailSpanIndex', () => {
 
 describe('drawActiveRowBar', () => {
   const layout4 = layout(4, false, 32);
-  const rowFill = (ctx: MockCtx) => fills(ctx).filter((c) => c.height === 30);
-  const edgeFills = (ctx: MockCtx) => fills(ctx).filter((c) => c.height === PLAYBACK_BAR_EDGE_PX);
 
-  it('paints one flat band across the gutter and the tracks', () => {
+  it('paints one flat white band across the gutter and the tracks', () => {
     const ctx = makeMockCtx();
-    drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7, mode: 'pattern' });
-    // One square-cornered rect, no rounded pill and no stroked border.
+    drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7 });
+    // One square-cornered rect: no rounded path, no stroke, no edge lines.
     expect(paths(ctx)).toHaveLength(0);
     expect(strokes(ctx)).toHaveLength(0);
-    const band = rowFill(ctx);
+    const band = fills(ctx);
     expect(band).toHaveLength(1);
     expect(band[0]!.y).toBe(7 * 36);
+    expect(band[0]!.height).toBe(30);
     expect(band[0]!.x).toBe(-GUTTER_WIDTH_PX);
     expect(band[0]!.width).toBe(GUTTER_WIDTH_PX + activeRowBarWidthPx(4, STD)!);
-    expect(band[0]!.fillStyle).toBe(withAlpha(theme.accentPrimary, PLAYBACK_BAR_FILL_ALPHA));
+    expect(band[0]!.fillStyle).toBe('rgba(255, 255, 255, 0.2)');
   });
 
-  it('defines the band with a hairline along its top and bottom edge', () => {
+  it('is white at 0.2 whatever the theme accent is', () => {
+    expect(PLAYBACK_BAR_FILL_ALPHA).toBe(0.2);
     const ctx = makeMockCtx();
-    drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7, mode: 'pattern' });
-    const band = rowFill(ctx)[0]!;
-    const edges = edgeFills(ctx);
-    expect(edges).toHaveLength(2);
-    expect(edges.map((e) => e.y)).toEqual([band.y, band.y + band.height - PLAYBACK_BAR_EDGE_PX]);
-    for (const edge of edges) {
-      expect(edge.x).toBe(band.x);
-      expect(edge.width).toBe(band.width);
-      expect(edge.fillStyle).toBe(withAlpha(theme.accentPrimary, PLAYBACK_BAR_EDGE_ALPHA));
-    }
+    drawActiveRowBar(ctx, layout4, { ...theme, accentPrimary: '#ff0000' }, { playbackRow: 0 });
+    expect(fills(ctx)[0]!.fillStyle).toBe('rgba(255, 255, 255, 0.2)');
   });
 
   it('stays inside its own row so the overlay clear band always covers it', () => {
     const ctx = makeMockCtx();
-    drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7, mode: 'pattern' });
+    drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7 });
     for (const rect of fills(ctx)) {
       expect(rect.y).toBeGreaterThanOrEqual(7 * 36);
       expect(rect.y + rect.height).toBeLessThanOrEqual(7 * 36 + 30);
     }
-  });
-
-  it('uses the song-mode accent under song playback', () => {
-    const ctx = makeMockCtx();
-    drawActiveRowBar(ctx, layout4, theme, { playbackRow: 0, mode: 'song' });
-    expect(theme.accentSecondary).toBe('rgb(88, 176, 255)');
-    expect(rowFill(ctx)[0]!.fillStyle).toBe('rgba(88, 176, 255, 0.34)');
-    expect(edgeFills(ctx)[0]!.fillStyle).toBe(withAlpha(theme.accentSecondary, PLAYBACK_BAR_EDGE_ALPHA));
   });
 
   it('starts at the row-number column, scrolling with the pattern', () => {
@@ -583,9 +564,9 @@ describe('drawActiveRowBar', () => {
     // content the gutter had scrolled past (Morten, 2026-09-04).
     for (const viewLeft of [0, 200, 2480]) {
       const ctx = makeMockCtx();
-      drawActiveRowBar(ctx, layout(16, false, 64), theme, { playbackRow: 3, mode: 'pattern' });
+      drawActiveRowBar(ctx, layout(16, false, 64), theme, { playbackRow: 3 });
       const translateX = GUTTER_WIDTH_PX - viewLeft; // paintOverlay's shift
-      const band = rowFill(ctx)[0]!;
+      const band = fills(ctx)[0]!;
       expect(band.y).toBe(3 * 36);
       expect(band.x + translateX).toBe(0 - viewLeft);
       // Its tracks part ends where the tracks do.
@@ -595,13 +576,9 @@ describe('drawActiveRowBar', () => {
 
   it('falls back to the full pattern width when trackCount is 0', () => {
     const ctx = makeMockCtx();
-    drawActiveRowBar(ctx, layout(4, false, 32), theme, {
-      playbackRow: 1,
-      mode: 'pattern',
-      trackCount: 0,
-    });
+    drawActiveRowBar(ctx, layout(4, false, 32), theme, { playbackRow: 1, trackCount: 0 });
     // totalPatternWidth(4 tracks) = 3 pitches + one width, no trailing gap.
-    expect(rowFill(ctx)[0]!.width).toBe(GUTTER_WIDTH_PX + 3 * (180 + 10) + 180);
+    expect(fills(ctx)[0]!.width).toBe(GUTTER_WIDTH_PX + 3 * (180 + 10) + 180);
   });
 });
 

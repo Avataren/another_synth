@@ -93,7 +93,6 @@ function paint(): void {
   drawStaticGrid(ctx, PREVIEW_LAYOUT, theme, { tracks: PREVIEW_TRACKS });
   drawActiveRowBar(ctx, PREVIEW_LAYOUT, theme, {
     playbackRow: PREVIEW_PLAYBACK_ROW,
-    mode: 'pattern',
   });
   drawCursorCell(ctx, PREVIEW_LAYOUT, PREVIEW_TRACKS, theme, PREVIEW_CURSOR);
   ctx.restore();

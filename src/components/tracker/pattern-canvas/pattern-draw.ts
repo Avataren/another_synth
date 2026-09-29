@@ -667,68 +667,48 @@ function totalPatternWidth(layout: PatternLayout): number {
   );
 }
 
-export type PlaybackBarMode = 'pattern' | 'song';
-
 export interface DrawActiveRowBarData {
   playbackRow: number;
-  mode: PlaybackBarMode;
   /** Track count the bar spans (activeRowBarWidthPx input). */
   trackCount?: number;
 }
 
 /**
- * Fill alpha of the playing row's band, mixed with the mode's own accent so the
- * band's hue tracks pattern vs song mode on every built-in theme. Flat and
- * static: no glow, no animation (Morten reverted the v0.3.35 row-glow in 3
- * minutes), so contrast is spent on the band's own brightness plus the text
- * trail behind it (PLAYBACK_TRAIL_ALPHAS).
+ * Fill alpha of the playing row's band. The band is plain white, not the mode
+ * accent (Morten, 2026-09-29: "just white with opacity around 0.2"): a white
+ * wash lifts the row on every theme without fighting the accent-coloured text
+ * on top of it, and it has no hue to clash with a track's own colours. Flat
+ * and static: no glow, no animation (Morten reverted the v0.3.35 row-glow in 3
+ * minutes).
  */
-export const PLAYBACK_BAR_FILL_ALPHA = 0.34;
+export const PLAYBACK_BAR_FILL_ALPHA = 0.2;
 
-/**
- * Height of the solid accent line along the band's top and bottom edge. Inside
- * the row rect, so the band never paints outside the rows the overlay clears.
- */
-export const PLAYBACK_BAR_EDGE_PX = 1;
-
-/** Alpha of those edge lines: enough to define the band, less than a border. */
-export const PLAYBACK_BAR_EDGE_ALPHA = 0.7;
+/** The band's colour before alpha. */
+const PLAYBACK_BAR_COLOR = '#ffffff';
 
 /**
  * The active-row (playback) indicator: one flat, square-cornered band across
- * the row-number gutter and the tracks, `rowHeightPx` tall. Its fill is the
- * mode accent — pattern mode `--tracker-accent-primary` (#4df2c5), song mode
- * `--tracker-accent-secondary` (rgb(88, 176, 255)) — at
- * `PLAYBACK_BAR_FILL_ALPHA`, brightening the row's background, with a hairline
- * of the same accent along the top and bottom edge.
+ * the row-number gutter and the tracks, `rowHeightPx` tall, filled white at
+ * `PLAYBACK_BAR_FILL_ALPHA`. Nothing else: no border, no edge lines.
  *
  * It replaces two rounded, 3px-bordered pills (Morten, 2026-09-29: "rather
  * ugly ... the pillboxes we currently have don't work too well"). The band
  * spans pattern x [-GUTTER_WIDTH_PX, width): the gutter part sits on the
  * row-number labels the static bitmap paints there and scrolls with them, and
- * it meets the tracks part at pattern x 0 so the two can never overlap or leave
- * a seam at any scroll origin.
+ * it meets the tracks part at pattern x 0 so there is never a seam at any
+ * scroll origin.
  */
 export function drawActiveRowBar(
   ctx: CanvasRenderingContext2D,
   layout: PatternLayout,
-  theme: PatternTheme,
+  _theme: PatternTheme,
   data: DrawActiveRowBarData,
 ): void {
-  const accent = data.mode === 'pattern' ? theme.accentPrimary : theme.accentSecondary;
-
   const trackCount = data.trackCount ?? layout.trackCount;
   const barWidth = activeRowBarWidthPx(trackCount, layout.columns);
   const width = barWidth ?? totalPatternWidth(layout);
-  const y = rowY(data.playbackRow);
-  const x = -GUTTER_WIDTH_PX;
-  const bandWidth = GUTTER_WIDTH_PX + width;
-
-  ctx.fillStyle = withAlpha(accent, PLAYBACK_BAR_FILL_ALPHA);
-  ctx.fillRect(x, y, bandWidth, rowHeightPx);
-  ctx.fillStyle = withAlpha(accent, PLAYBACK_BAR_EDGE_ALPHA);
-  ctx.fillRect(x, y, bandWidth, PLAYBACK_BAR_EDGE_PX);
-  ctx.fillRect(x, y + rowHeightPx - PLAYBACK_BAR_EDGE_PX, bandWidth, PLAYBACK_BAR_EDGE_PX);
+  ctx.fillStyle = withAlpha(PLAYBACK_BAR_COLOR, PLAYBACK_BAR_FILL_ALPHA);
+  ctx.fillRect(-GUTTER_WIDTH_PX, rowY(data.playbackRow), GUTTER_WIDTH_PX + width, rowHeightPx);
 }
 
 /**
