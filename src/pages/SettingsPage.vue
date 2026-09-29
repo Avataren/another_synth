@@ -140,6 +140,13 @@
                         >
                           {{ font.name }}
                         </span>
+                        <span class="font-style-tag">{{ font.style }}</span>
+                        <span
+                          class="font-sample"
+                          :style="{ fontFamily: `'${font.id}', sans-serif` }"
+                        >
+                          Filter Cutoff 1240 Hz
+                        </span>
                         <div
                           v-if="currentUiFont === font.id"
                           class="font-check"
@@ -177,6 +184,13 @@
                         >
                           {{ font.name }}
                         </span>
+                        <span class="font-style-tag">{{ font.style }}</span>
+                        <span
+                          class="font-sample mono"
+                          :style="{ fontFamily: `'${font.id}', monospace` }"
+                        >
+                          C-4 01 40 0A7 D#5 1F
+                        </span>
                         <div
                           v-if="currentTrackerFont === font.id"
                           class="font-check"
@@ -185,6 +199,7 @@
                         </div>
                       </div>
                     </div>
+                    <TrackerFontPreview :font-id="currentTrackerFont" />
                   </div>
                 </div>
               </div>
@@ -639,6 +654,7 @@ import {
   defaultAudioSampleRate,
 } from 'src/audio/device-profile';
 import AppVersion from 'src/components/AppVersion.vue';
+import TrackerFontPreview from 'src/components/settings/TrackerFontPreview.vue';
 
 const themeStore = useThemeStore();
 const {
@@ -657,7 +673,11 @@ const {
   monospaceFonts,
   setCustomTheme,
   getThemeById,
+  loadPickerFonts,
 } = themeStore;
+
+// Every card is drawn in its own face, so all of them have to be loaded.
+loadPickerFonts();
 
 const userSettingsStore = useUserSettingsStore();
 const { settings } = storeToRefs(userSettingsStore);
@@ -1037,7 +1057,7 @@ const latencyNeedsReload = computed(
 
 .theme-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 12px;
 }
 
@@ -1152,13 +1172,15 @@ const latencyNeedsReload = computed(
 
 .font-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 10px;
 }
 
 .font-card {
   position: relative;
-  padding: 12px 14px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 14px 12px;
   background: var(--panel-background-alt, rgba(255, 255, 255, 0.03));
   border: 2px solid var(--panel-border, rgba(255, 255, 255, 0.08));
   border-radius: 8px;
@@ -1183,6 +1205,22 @@ const latencyNeedsReload = computed(
   font-size: 14px;
   color: var(--text-primary, #e8f3ff);
   text-align: center;
+}
+
+.font-style-tag {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tracker-accent-primary, rgb(77, 242, 197));
+  opacity: 0.8;
+}
+
+.font-sample {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted, #a7bcd8);
+  text-align: center;
+  white-space: nowrap;
 }
 
 .font-check {

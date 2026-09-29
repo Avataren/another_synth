@@ -4,33 +4,44 @@ import { useUserSettingsStore } from './user-settings-store';
 import { buildComplementPalette } from 'src/utils/theme-palette';
 import { deriveBrightText } from 'src/utils/color';
 
-// Monospace fonts for tracker matrix
-export const monospaceFonts = [
-  { id: 'JetBrains Mono', name: 'JetBrains Mono', googleFont: 'JetBrains+Mono:wght@400;500;600;700;800' },
-  { id: 'Fira Code', name: 'Fira Code', googleFont: 'Fira+Code:wght@400;500;600;700' },
-  { id: 'Source Code Pro', name: 'Source Code Pro', googleFont: 'Source+Code+Pro:wght@400;500;600;700' },
-  { id: 'IBM Plex Mono', name: 'IBM Plex Mono', googleFont: 'IBM+Plex+Mono:wght@400;500;600;700' },
-  { id: 'Roboto Mono', name: 'Roboto Mono', googleFont: 'Roboto+Mono:wght@400;500;600;700' },
-  { id: 'Space Mono', name: 'Space Mono', googleFont: 'Space+Mono:wght@400;700' },
-  { id: 'Inconsolata', name: 'Inconsolata', googleFont: 'Inconsolata:wght@400;500;600;700' },
-  { id: 'Ubuntu Mono', name: 'Ubuntu Mono', googleFont: 'Ubuntu+Mono:wght@400;700' },
-  { id: 'Anonymous Pro', name: 'Anonymous Pro', googleFont: 'Anonymous+Pro:wght@400;700' },
-  { id: 'Cousine', name: 'Cousine', googleFont: 'Cousine:wght@400;700' }
+export interface FontOption {
+  id: string;
+  name: string;
+  /** One or two words on what sets it apart, shown on its picker card. */
+  style: string;
+  /** Family + weights, as the Google Fonts css2 `family=` value. */
+  googleFont: string;
+}
+
+// Monospace fonts for tracker matrix. Six that look unlike one another rather
+// than ten flavours of the same coding font; the first is the default.
+export const monospaceFonts: FontOption[] = [
+  { id: 'JetBrains Mono', name: 'JetBrains Mono', style: 'Modern', googleFont: 'JetBrains+Mono:wght@400;500;600;700;800' },
+  { id: 'Share Tech Mono', name: 'Share Tech Mono', style: 'Sci-fi', googleFont: 'Share+Tech+Mono' },
+  { id: 'Kode Mono', name: 'Kode Mono', style: 'Angular', googleFont: 'Kode+Mono:wght@400;500;600;700' },
+  { id: 'Space Mono', name: 'Space Mono', style: 'Retro-futuristic', googleFont: 'Space+Mono:wght@400;700' },
+  { id: 'Syne Mono', name: 'Syne Mono', style: 'Art deco', googleFont: 'Syne+Mono' },
+  { id: 'Courier Prime', name: 'Courier Prime', style: 'Typewriter', googleFont: 'Courier+Prime:wght@400;700' }
 ];
 
-// UI fonts for general text
-export const uiFonts = [
-  { id: 'Inter', name: 'Inter', googleFont: 'Inter:wght@400;500;600;700' },
-  { id: 'Roboto', name: 'Roboto', googleFont: 'Roboto:wght@400;500;700' },
-  { id: 'Open Sans', name: 'Open Sans', googleFont: 'Open+Sans:wght@400;500;600;700' },
-  { id: 'Lato', name: 'Lato', googleFont: 'Lato:wght@400;700' },
-  { id: 'Poppins', name: 'Poppins', googleFont: 'Poppins:wght@400;500;600;700' },
-  { id: 'Nunito', name: 'Nunito', googleFont: 'Nunito:wght@400;500;600;700' },
-  { id: 'Work Sans', name: 'Work Sans', googleFont: 'Work+Sans:wght@400;500;600;700' },
-  { id: 'DM Sans', name: 'DM Sans', googleFont: 'DM+Sans:wght@400;500;600;700' },
-  { id: 'Outfit', name: 'Outfit', googleFont: 'Outfit:wght@400;500;600;700' },
-  { id: 'Manrope', name: 'Manrope', googleFont: 'Manrope:wght@400;500;600;700' }
+// UI fonts for general text; the first is the default.
+export const uiFonts: FontOption[] = [
+  { id: 'Inter', name: 'Inter', style: 'Clean', googleFont: 'Inter:wght@400;500;600;700' },
+  { id: 'Orbitron', name: 'Orbitron', style: 'Sci-fi', googleFont: 'Orbitron:wght@400;500;600;700' },
+  { id: 'Space Grotesk', name: 'Space Grotesk', style: 'Techy', googleFont: 'Space+Grotesk:wght@400;500;600;700' },
+  { id: 'Syne', name: 'Syne', style: 'Avant-garde', googleFont: 'Syne:wght@400;500;600;700' },
+  { id: 'Nunito', name: 'Nunito', style: 'Rounded', googleFont: 'Nunito:wght@400;500;600;700' },
+  { id: 'Playfair Display', name: 'Playfair Display', style: 'Elegant serif', googleFont: 'Playfair+Display:wght@400;500;600;700' }
 ];
+
+/**
+ * The font a saved id names, or the list's default when the id is no longer
+ * offered (the lists were trimmed; a saved 'Fira Code' must not leave the
+ * picker with nothing highlighted).
+ */
+export function resolveFont(fonts: readonly FontOption[], id: string): FontOption {
+  return fonts.find((f) => f.id === id) ?? fonts[0]!;
+}
 
 export interface ThemeColors {
   // App-wide colors
@@ -711,12 +722,47 @@ function loadGoogleFont(fontId: string, googleFont: string) {
   loadedFonts.add(fontId);
 }
 
+/**
+ * Load every font the picker offers, so each card can be drawn in its own
+ * face. Only the selected fonts were ever loaded before, which left every
+ * other card in the browser's fallback font and made the whole list look alike.
+ */
+export function loadPickerFonts(): void {
+  for (const font of [...uiFonts, ...monospaceFonts]) {
+    loadGoogleFont(font.id, font.googleFont);
+  }
+}
+
+let trackerFontRevision = 0;
+
+/**
+ * Once the tracker font's files have arrived, touch the root style so the
+ * canvas pattern (which repaints on a root `style` mutation, and can only
+ * draw a font that is already loaded) redraws in the real face instead of
+ * staying on the fallback it was first painted with.
+ */
+function repaintWhenTrackerFontLoads(fontId: string) {
+  if (typeof document === 'undefined' || !document.fonts) return;
+  Promise.all([
+    document.fonts.load(`12px '${fontId}'`),
+    document.fonts.load(`700 12px '${fontId}'`)
+  ])
+    .then(() => {
+      document.documentElement.style.setProperty(
+        '--font-tracker-rev',
+        String(++trackerFontRevision)
+      );
+    })
+    .catch(() => {
+      // Offline or blocked: the fallback stack stays, nothing to repaint.
+    });
+}
+
 function applyFonts(uiFontId: string, trackerFontId: string) {
   const root = document.documentElement;
 
-  // Find font definitions
-  const uiFont = uiFonts.find((f) => f.id === uiFontId) ?? uiFonts[0]!;
-  const trackerFont = monospaceFonts.find((f) => f.id === trackerFontId) ?? monospaceFonts[0]!;
+  const uiFont = resolveFont(uiFonts, uiFontId);
+  const trackerFont = resolveFont(monospaceFonts, trackerFontId);
 
   // Load fonts from Google Fonts
   loadGoogleFont(uiFont.id, uiFont.googleFont);
@@ -725,6 +771,7 @@ function applyFonts(uiFontId: string, trackerFontId: string) {
   // Apply CSS variables
   root.style.setProperty('--font-ui', `'${uiFont.id}', sans-serif`);
   root.style.setProperty('--font-tracker', `'${trackerFont.id}', monospace`);
+  repaintWhenTrackerFontLoads(trackerFont.id);
 }
 
 export const useThemeStore = defineStore('theme', () => {
@@ -763,14 +810,14 @@ export const useThemeStore = defineStore('theme', () => {
 
   // Get current fonts from user settings
   const currentUiFont = computed({
-    get: () => userSettings.settings.uiFont,
+    get: () => resolveFont(uiFonts, userSettings.settings.uiFont).id,
     set: (value: string) => {
       userSettings.updateSetting('uiFont', value);
     }
   });
 
   const currentTrackerFont = computed({
-    get: () => userSettings.settings.trackerFont,
+    get: () => resolveFont(monospaceFonts, userSettings.settings.trackerFont).id,
     set: (value: string) => {
       userSettings.updateSetting('trackerFont', value);
     }
@@ -954,6 +1001,7 @@ export const useThemeStore = defineStore('theme', () => {
     copyThemeToCustom,
     getThemeById,
     setUiFont,
-    setTrackerFont
+    setTrackerFont,
+    loadPickerFonts
   };
 });
