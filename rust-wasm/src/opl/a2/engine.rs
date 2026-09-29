@@ -1297,8 +1297,29 @@ impl A2Engine {
     /// A volume write to operator `op` (0 modulator, 1 carrier) of track
     /// `t` at register offset `r`.
     fn put_level(&mut self, t: usize, op: usize, r: u16, v: u8, out: &mut impl RegisterSink) {
+        // AT2's "OPL3 emulation workaround" (`set_ins_volume.c`): with the
+        // channel's ADSR empty and no FM macro, both levels go to 63. Without
+        // it, a key-on with attack rate 0 freezes the envelope where the
+        // previous note left it, so that note hangs at full level. AdPlug
+        // lacks it, so the register gate keeps it off.
+        let v = if !self.adplug_quirks && self.adsr_empty_no_macro(t) {
+            (v & 0xc0) | 0x3f
+        } else {
+            v
+        };
         self.tracks[t].loud[op] = 63 - (v & 0x3f);
         out.write(0x40 + r, v);
+    }
+
+    /// AT2 `is_chan_adsr_data_empty` on the track's current registers, and
+    /// its instrument has no FM macro.
+    fn adsr_empty_no_macro(&self, t: usize) -> bool {
+        self.tracks[t].fm[4..8].iter().all(|&b| b == 0)
+            && self
+                .song
+                .fm_macros
+                .get(self.voice(t).wrapping_sub(1))
+                .is_none_or(|m| m.length == 0)
     }
 
     fn write_volume(&mut self, t: usize, out: &mut impl RegisterSink) {
