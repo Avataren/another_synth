@@ -17,6 +17,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ScopeWall from 'src/components/tracker/ScopeWall.vue';
 import { registerAnimationCallback } from 'src/composables/useAnimationLoop';
 import { Bars3dRenderer } from 'src/components/tracker/bars3d-renderer';
+import { RaymarchRenderer } from 'src/components/tracker/raymarch-renderer';
 import { webgl2Available } from 'src/components/tracker/glow-scope-renderer';
 import { SpectrumFeed } from 'src/components/tracker/spectrum-feed';
 
@@ -29,9 +30,11 @@ interface Props {
   /** The final mix, or null while nothing is loaded. */
   audioNode: AudioNode | null;
   audioContext: AudioContext | null;
+  /** Trace the scene per pixel instead of rasterising it: prettier, and far heavier. */
+  raymarched?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), { raymarched: false });
 
 /** Bars across the scene. */
 const BANDS = 40;
@@ -44,7 +47,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 
 const spectrum = new SpectrumFeed({ curve: 1.5 });
 
-let renderer: Bars3dRenderer | null = null;
+let renderer: Bars3dRenderer | RaymarchRenderer | null = null;
 let unregisterAnimation: (() => void) | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let cssWidth = 0;
@@ -81,7 +84,7 @@ function draw(time: number): void {
 function start(): void {
   const canvas = canvasRef.value;
   if (renderer || !canvas || !glSupported.value) return;
-  const created = new Bars3dRenderer(canvas);
+  const created = props.raymarched ? new RaymarchRenderer(canvas) : new Bars3dRenderer(canvas);
   if (!created.ok) {
     created.dispose();
     return;
@@ -106,7 +109,7 @@ function stop(): void {
 }
 
 onMounted(start);
-watch(glSupported, async () => {
+watch([glSupported, () => props.raymarched], async () => {
   stop();
   await nextTick();
   start();

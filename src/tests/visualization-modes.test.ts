@@ -35,6 +35,7 @@ describe('visualization modes', () => {
     expect(ids).toContain('stereo');
     expect(ids).toContain('equalizer');
     expect(ids).toContain('bars3d');
+    expect(ids).toContain('raymarch');
   });
 
   it('reads an unknown stored value as the default', () => {

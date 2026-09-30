@@ -176,6 +176,13 @@
           :audio-context="audioContext"
         />
 
+        <Bars3dWall
+          v-if="scopeWallVisible && visualizationMode === 'raymarch'"
+          :audio-node="masterOutputNode"
+          :audio-context="audioContext"
+          raymarched
+        />
+
         <EqualizerWall
           v-if="scopeWallVisible && visualizationMode === 'equalizer'"
           :track-count="trackCount"
