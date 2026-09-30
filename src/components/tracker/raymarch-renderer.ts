@@ -11,6 +11,8 @@ import {
   RAYMARCH_FRAGMENT_SHADER,
   RAYMARCH_VERTEX_SHADER,
 } from 'src/components/tracker/raymarch-shader';
+import { BALL_RADIUS, ballState, bounceSeconds } from 'src/components/tracker/ball-motion';
+import { skyState } from 'src/components/tracker/sky-cycle';
 import { BLUR_FRAGMENT_SHADER, BLUR_VERTEX_SHADER } from 'src/components/tracker/glow-scope-shader';
 
 const FOV_Y = (34 * Math.PI) / 180;
@@ -21,12 +23,48 @@ const FOV_Y = (34 * Math.PI) / 180;
  */
 const ROW_WIDTH = 11.2;
 const VIEW_WIDTH = 5.6;
-const MAX_HEIGHT = 1.9;
+const MAX_HEIGHT = 2.85;
 const MAX_BARS = 128;
 /** How much of the canvas width the row may fill (1 = edge to edge). */
 const ROW_FILL = 0.97;
+/**
+ * The camera backs away as the canvas gets wider, so a very wide strip shows a
+ * scene with much the same composition as a squarer one (more of the row, more
+ * sky and floor) instead of a close-up slice of it. At ASPECT_REF the camera is
+ * DISTANCE_REF away; beyond that the distance grows as aspect ** ASPECT_POWER
+ * (1 would keep the picture's height constant in proportion, 0 would not back
+ * off at all). Narrower than that, the row's width sets the distance, as before.
+ */
+const ASPECT_REF = 2.3;
+const DISTANCE_REF = 6.2;
+const ASPECT_POWER = 0.35;
+/** Where the camera looks and how high it sits, tied to how tall the bars get. */
+const LOOK_HEIGHT = MAX_HEIGHT * 0.26;
+const EYE_HEIGHT = 1.25;
 const BLOOM_STRENGTH = 0.15;
 const REFLECTION_STRENGTH = 0.85;
+/** Scene exposure ahead of the ACES curve, which otherwise reads a touch dark. */
+const EXPOSURE = 1.35;
+
+/**
+ * How far sideways (world x) a sphere of radius `radius` at `depth` in front of
+ * the camera must be to be entirely off a canvas whose half-width is `tanHalf`
+ * times the depth. The sphere's edge is an angle `asin(radius / distance)` from
+ * its centre, and at a wide view angle that is a lot of sideways travel, so this
+ * is found in angles, not by adding a margin to the screen edge. A little extra
+ * covers the camera's sideways drift.
+ */
+export function ballOffscreenX(depth: number, tanHalf: number, radius: number): number {
+  const half = Math.atan(tanHalf);
+  let x = depth * tanHalf;
+  for (let i = 0; i < 4; i++) {
+    const rho = Math.hypot(x, depth);
+    const edge = Math.asin(Math.min(radius / rho, 0.99));
+    // A little over the ball's own angular size: its reflection in the floor and its shadow reach a bit further.
+    x = depth * Math.tan(Math.min(half + edge * 1.3, 1.5));
+  }
+  return x + 1.5;
+}
 
 function norm(v: readonly [number, number, number]): [number, number, number] {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
@@ -113,8 +151,10 @@ export class RaymarchRenderer {
   private readonly bars = new Float32Array(MAX_BARS * 2);
   private readonly rect = new Float32Array(4);
 
+  private bounces = 0;
   private scale = 0.75;
   private lastTime = 0;
+  private lastBounceMs = 0;
   private smoothedMs = 16.7;
   private frames = 0;
   private raisedAt = -Infinity;
@@ -181,6 +221,20 @@ export class RaymarchRenderer {
       'uMaxH',
       'uLoud',
       'uBars',
+      'uSunDir',
+      'uMoonDir',
+      'uSunColor',
+      'uMoonColor',
+      'uKeyDir',
+      'uKeyColor',
+      'uAmbient',
+      'uDay',
+      'uNight',
+      'uAurora',
+      'uSunE',
+      'uBall',
+      'uBallRot',
+      'uBallOn',
     ]);
     this.blurUniforms = uniformLocations(gl, this.blurProgram, ['uSrc', 'uStep']);
     this.combineUniforms = uniformLocations(gl, this.combineProgram, [
@@ -189,6 +243,7 @@ export class RaymarchRenderer {
       'uBlur',
       'uBaseV',
       'uStrength',
+      'uExposure',
     ]);
     this.emptyVao = gl.createVertexArray();
     this.gl = gl;
@@ -254,12 +309,18 @@ export class RaymarchRenderer {
     const height = this.canvas.height;
     const bands = Math.max(1, Math.min(MAX_BARS, frame.bands));
     this.adapt(frame.timeMs);
+    // Count bounces at the song's tempo: a running count, so a tempo change bends the rate without a jump.
+    const frameSeconds = Math.min(0.1, Math.max(0, (frame.timeMs - this.lastBounceMs) / 1000));
+    this.lastBounceMs = frame.timeMs;
+    this.bounces += frameSeconds / bounceSeconds(frame.bpm ?? 0);
 
     // The camera: low and wide, drifting a little so the depth reads.
     const aspect = width / Math.max(1, height);
     const t = frame.timeMs / 1000;
-    const distance = Math.max(4.6, ((VIEW_WIDTH / 2) / ROW_FILL) / (Math.tan(FOV_Y / 2) * aspect));
-    const eye = [Math.sin(t * 0.17) * 0.9, 1.0 + Math.sin(t * 0.11) * 0.05, distance] as const;
+    const fitWidth = (VIEW_WIDTH / 2 / ROW_FILL) / (Math.tan(FOV_Y / 2) * aspect);
+    const backOff = DISTANCE_REF * Math.pow(Math.max(aspect, ASPECT_REF) / ASPECT_REF, ASPECT_POWER);
+    const distance = Math.max(fitWidth, backOff);
+    const eye = [Math.sin(t * 0.17) * 0.9, EYE_HEIGHT + Math.sin(t * 0.11) * 0.05, distance] as const;
 
     const pitch = ROW_WIDTH / bands;
     let loud = 0;
@@ -273,7 +334,7 @@ export class RaymarchRenderer {
 
     // Where the floor line under the bars lands on the screen (v, 0 at the bottom).
     const focal = 1 / Math.tan(FOV_Y / 2);
-    const look = [0, 0.45, 0] as const;
+    const look = [0, LOOK_HEIGHT, 0] as const;
     const f = norm([look[0] - eye[0], look[1] - eye[1], look[2] - eye[2]]);
     const right = norm([f[2], 0, -f[0]]); // cross(f, up)
     const up: [number, number, number] = [f[1] * right[2] - f[2] * right[1], f[2] * right[0] - f[0] * right[2], f[0] * right[1] - f[1] * right[0]];
@@ -293,7 +354,7 @@ export class RaymarchRenderer {
     const u = this.uniforms;
     gl.uniform2f(u.uRes ?? null, rw, rh);
     gl.uniform3f(u.uEye ?? null, eye[0], eye[1], eye[2]);
-    gl.uniform3f(u.uTarget ?? null, 0, 0.45, 0);
+    gl.uniform3f(u.uTarget ?? null, look[0], look[1], look[2]);
     gl.uniform1f(u.uFocal ?? null, focal);
     gl.uniform1f(u.uTime ?? null, t);
     gl.uniform1i(u.uBands ?? null, bands);
@@ -303,6 +364,23 @@ export class RaymarchRenderer {
     gl.uniform1f(u.uMaxH ?? null, MAX_HEIGHT);
     gl.uniform1f(u.uLoud ?? null, Math.min(1, loud / bands / 0.4));
     gl.uniform2fv(u.uBars ?? null, this.bars);
+    const tanHalf = Math.tan(FOV_Y / 2);
+    const ball = ballState(t, (z) => ballOffscreenX(Math.max(distance - z, 0.1), tanHalf * aspect, BALL_RADIUS), this.bounces);
+    gl.uniform4f(u.uBall ?? null, ball.x, ball.y, ball.z, ball.radius);
+    gl.uniformMatrix3fv(u.uBallRot ?? null, false, ball.rotation);
+    gl.uniform1f(u.uBallOn ?? null, ball.visible ? 1 : 0);
+    const sky = skyState(t);
+    gl.uniform3fv(u.uSunDir ?? null, sky.sunDir);
+    gl.uniform3fv(u.uMoonDir ?? null, sky.moonDir);
+    gl.uniform3fv(u.uSunColor ?? null, sky.sunColor);
+    gl.uniform3fv(u.uMoonColor ?? null, sky.moonColor);
+    gl.uniform3fv(u.uKeyDir ?? null, sky.keyDir);
+    gl.uniform3fv(u.uKeyColor ?? null, sky.keyColor);
+    gl.uniform3fv(u.uAmbient ?? null, sky.ambient);
+    gl.uniform1f(u.uDay ?? null, sky.day);
+    gl.uniform1f(u.uNight ?? null, sky.night);
+    gl.uniform1f(u.uAurora ?? null, sky.aurora);
+    gl.uniform1f(u.uSunE ?? null, sky.sunElevation);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
 
@@ -335,6 +413,7 @@ export class RaymarchRenderer {
     gl.uniform1i(this.combineUniforms.uBlur ?? null, 2);
     gl.uniform1f(this.combineUniforms.uBaseV ?? null, baseV);
     gl.uniform1f(this.combineUniforms.uStrength ?? null, REFLECTION_STRENGTH);
+    gl.uniform1f(this.combineUniforms.uExposure ?? null, EXPOSURE);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.activeTexture(gl.TEXTURE0);
 

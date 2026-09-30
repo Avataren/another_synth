@@ -32,9 +32,11 @@ interface Props {
   audioContext: AudioContext | null;
   /** Trace the scene per pixel instead of rasterising it: prettier, and far heavier. */
   raymarched?: boolean;
+  /** The song's tempo: the raytraced ball bounces in time with it. */
+  bpm?: number;
 }
 
-const props = withDefaults(defineProps<Props>(), { raymarched: false });
+const props = withDefaults(defineProps<Props>(), { raymarched: false, bpm: 120 });
 
 /** Bars across the scene: the raytraced view can afford a denser row. */
 const bands = computed(() => (props.raymarched ? 80 : 40));
@@ -78,6 +80,7 @@ function draw(time: number): void {
     peaks: spectrum.peaks,
     bands: bands.value,
     timeMs: time,
+    bpm: props.bpm,
   });
 }
 

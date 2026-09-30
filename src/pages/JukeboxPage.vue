@@ -181,6 +181,7 @@
           :audio-node="masterOutputNode"
           :audio-context="audioContext"
           raymarched
+          :bpm="trackerStore.currentSong.bpm"
         />
 
         <EqualizerWall

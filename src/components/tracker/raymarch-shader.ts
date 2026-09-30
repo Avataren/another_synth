@@ -45,6 +45,24 @@ uniform float uMaxH;           // the tallest a bar gets
 uniform float uLoud;           // 0..1 how loud the mix is
 uniform vec2 uBars[MAX_BARS];  // x: bar height, y: peak marker height
 
+// The sky's clock (see sky-cycle.ts): directions and light colours of the sun and moon, etc.
+uniform vec3 uSunDir;
+uniform vec3 uMoonDir;
+uniform vec3 uSunColor;        // light from the sun, reddened by its air path; 0 below the horizon
+uniform vec3 uMoonColor;
+uniform vec3 uKeyDir;          // the brighter of the two: what the clouds are lit by
+uniform vec3 uKeyColor;
+uniform vec3 uAmbient;         // sky light in the shade
+uniform float uDay;            // 0 night .. 1 day
+uniform float uNight;          // 1 when dark enough for stars
+uniform float uAurora;         // 0..1
+uniform float uSunE;           // sine of the sun's elevation
+
+// The bouncing ball: centre and radius, its orientation (ball axes to world), and whether it is on.
+uniform vec4 uBall;
+uniform mat3 uBallRot;
+uniform float uBallOn;
+
 layout(location = 0) out vec4 outColor;   // the scene, without the floor's reflection
 layout(location = 1) out vec4 outRefl;    // just the floor's reflection, to be blurred
 
@@ -119,7 +137,7 @@ bool rowBox(vec3 ro, vec3 rd, out float t0, out float t1) {
 
 struct Hit {
   float t;
-  int mat;       // 0 sky, 1 floor, 2 bar, 3 peak cap
+  int mat;       // 0 sky, 1 floor, 2 bar, 3 peak cap, 4 the ball
   int bar;
 };
 
@@ -129,6 +147,16 @@ Hit trace(vec3 ro, vec3 rd, int steps) {
   if (rd.y < -1e-4) {
     float tf = -ro.y / rd.y;
     if (tf > 0.0) h = Hit(tf, 1, 0);
+  }
+  // The ball is a sphere: no marching either.
+  if (uBallOn > 0.5) {
+    vec3 oc = ro - uBall.xyz;
+    float b = dot(oc, rd);
+    float disc = b * b - (dot(oc, oc) - uBall.w * uBall.w);
+    if (disc > 0.0) {
+      float tb = -b - sqrt(disc);
+      if (tb > 1e-3 && tb < h.t) h = Hit(tb, 4, 0);
+    }
   }
   float t0, t1;
   if (!rowBox(ro, rd, t0, t1)) return h;
@@ -179,7 +207,9 @@ float softShadow(vec3 ro, vec3 rd, float mint, float k) {
   }
   float w = 0.004 + 0.11 * tMid * k / 12.0;
   float res = smoothstep(-w, w, dmin);
-  return res;
+  // A shadow this far from its caster is a long smear, not a shadow: let it fade out
+  // with the distance the light travels to the bars, so it stays near their feet.
+  return 1.0 - (1.0 - res) * exp(-tMid * 0.5);
 }
 
 /** Five taps along the normal (iq). The floor counts as an occluder. */
@@ -224,15 +254,30 @@ vec3 floorGlow(vec3 p) {
 
 // -------------------------------------------------------------------- sky --
 
-// Low in the sky and behind the row, so the clouds are backlit and the disc is in view.
-const vec3 SKY_SUN = normalize(vec3(-0.45, 0.2, -0.87));
 const float CLOUD_LO = 30.0;
 const float CLOUD_HI = 52.0;
+const vec3 BETA_R = vec3(0.037, 0.087, 0.212);   // Rayleigh scattering per air mass: blue scatters most
+
+float luma(vec3 c) {
+  return dot(c, vec3(0.2126, 0.7152, 0.0722));
+}
 
 float hash21(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
   p += dot(p, p + 45.32);
   return fract(p.x * p.y);
+}
+
+float hash31(vec3 p) {
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yxz + 33.33);
+  return fract((p.x + p.y) * p.z);
+}
+
+vec3 hash33(vec3 p) {
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yxz + 33.33);
+  return fract((p.xxy + p.yxx) * p.zyx);
 }
 
 float valueNoise(vec2 p) {
@@ -254,39 +299,198 @@ float fbm(vec2 p) {
   return sum;
 }
 
+/**
+ * Single scattering of light \`e\` (already reddened on its way in) from direction
+ * \`l\`, seen along \`rd\`: Rayleigh (blue sky, more of it along a long air path),
+ * Mie haze round the light, and a cheat for multiple scattering, which whitens
+ * the sky towards the horizon. Away from the light the colour of the light is
+ * closer to its unreddened self, which is what puts blue on the far side of a sunset.
+ */
+vec3 scatter(vec3 rd, vec3 l, vec3 e) {
+  float up = max(rd.y, 0.0);
+  float am = min(1.0 / (up + 0.1), 10.0);
+  vec3 fex = exp(-BETA_R * am * 0.6);
+  float mu = dot(rd, l);
+  float phaseR = 0.4 + 0.45 * (1.0 + mu * mu);
+  float g = 0.76;
+  float phaseM = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * mu, 1.5) * 0.018;
+  vec3 white = vec3(dot(e, vec3(0.3, 0.5, 0.2))) * vec3(1.0, 0.96, 0.9);
+  vec3 eff = mix(white, e, pow(clamp(0.5 + 0.5 * mu, 0.0, 1.0), 3.0));
+  vec3 col = eff * (1.0 - fex) * phaseR * 0.5;
+  col += e * phaseM * exp(-up * 4.0);
+  float hazeWhite = smoothstep(0.0, 1.0, am / 10.0) * 0.55;
+  return mix(col, vec3(luma(col)) * vec3(1.0, 0.97, 0.92), hazeWhite) * 0.22;
+}
+
+/** The moon's disc, with its dark seas, lit face on. */
+vec3 moonDisc(vec3 rd) {
+  float c = dot(rd, uMoonDir);
+  vec3 col = uMoonColor * (pow(max(c, 0.0), 220.0) * 0.12 + pow(max(c, 0.0), 24.0) * 0.008);
+  if (c > 0.9994) {
+    vec3 right = normalize(cross(uMoonDir, vec3(0.0, 1.0, 0.0)));
+    vec3 up = cross(right, uMoonDir);
+    vec2 uv = vec2(dot(rd, right), dot(rd, up)) / 0.034;
+    float seas = fbm(uv * 2.2 + 3.0);
+    float craters = valueNoise(uv * 14.0);
+    vec3 surface = mix(vec3(0.85, 0.87, 0.92), vec3(0.42, 0.45, 0.52), smoothstep(0.42, 0.62, seas));
+    surface *= 0.85 + 0.3 * craters;
+    surface *= 0.55 + 0.45 * sqrt(max(1.0 - dot(uv, uv), 0.0));
+    col += uMoonColor * 2.6 * surface * smoothstep(0.9994, 0.99965, c);
+  }
+  return col;
+}
+
+/** Sky, sun, moon and twilight, without clouds, stars or aurora. */
+vec3 skyBase(vec3 rd) {
+  float up = clamp(rd.y, 0.0, 1.0);
+  // What is left of the light after the sun has gone: a deep blue, brighter low down.
+  vec3 col = uAmbient * vec3(0.55, 0.75, 1.3) * (0.5 + 0.5 * pow(1.0 - up, 2.0));
+  col += scatter(rd, uSunDir, uSunColor);
+  col += scatter(rd, uMoonDir, uMoonColor) * 0.035;
+
+  // Twilight: an orange-to-violet band on the horizon, strongest towards the sun.
+  float tw = smoothstep(-0.25, 0.0, uSunE) * (1.0 - smoothstep(0.0, 0.25, uSunE));
+  float toward = pow(max(dot(normalize(rd.xz + 1e-4), normalize(uSunDir.xz)), 0.0), 2.0);
+  col += vec3(1.0, 0.36, 0.12) * exp(-up * 7.0) * toward * tw * 0.55;
+  col += vec3(0.30, 0.10, 0.38) * exp(-up * 3.0) * tw * 0.22;
+
+  // The sun: a disc, a corona and a glare.
+  float mu = dot(rd, uSunDir);
+  col += uSunColor * (pow(max(mu, 0.0), 12.0) * 0.012 + pow(max(mu, 0.0), 200.0) * 0.06);
+  col += uSunColor * 1.6 * smoothstep(0.9994, 0.9998, mu);
+  col += moonDisc(rd);
+  return col;
+}
+
+/** Points of light on a sphere: one star, or none, per cell of a 3D lattice. */
+vec3 stars(vec3 rd) {
+  float a = uTime * 0.006;
+  rd.xz = mat2(cos(a), sin(a), -sin(a), cos(a)) * rd.xz;
+  vec3 q = rd * 70.0;
+  vec3 id = floor(q);
+  float h = hash31(id);
+  if (h > 0.07) return vec3(0.0);
+  vec3 off = (hash33(id) - 0.5) * 0.5;
+  float d = length(fract(q) - 0.5 - off);
+  float mag = pow(hash31(id + 7.1), 3.0);
+  float twinkle = 0.75 + 0.25 * sin(uTime * (2.0 + h * 90.0) + h * 600.0);
+  float s = smoothstep(0.2, 0.0, d) * (0.8 + 6.0 * mag) * twinkle;
+  vec3 tint = mix(vec3(1.0, 0.78, 0.6), vec3(0.7, 0.82, 1.0), hash31(id + 3.3));
+  return tint * s;
+}
+
+/**
+ * A shooting star now and then: every few seconds a slot may hold one, a short
+ * bright streak (thin, brightest at the head) crossing a patch of sky in about a second.
+ */
+vec3 meteors(vec3 rd) {
+  const float period = 7.0;
+  float slot = floor(uTime / period);
+  float life = uTime - slot * period;
+  vec3 h = hash33(vec3(slot, 12.7, 3.1));
+  if (h.x > 0.6 || life > 1.1) return vec3(0.0);
+  vec3 h2 = hash33(vec3(slot, 91.3, 7.7));
+  vec3 s0 = normalize(vec3(mix(-0.7, 0.7, h.y), mix(0.08, 0.3, h.z), -1.0));
+  vec3 vel = normalize(vec3(mix(-1.0, 1.0, h2.x), -mix(0.25, 0.7, h2.y), 0.0));
+  vec3 head = normalize(s0 + vel * life * 0.45);
+  vec3 tail = normalize(s0 + vel * max(life - 0.3, 0.0) * 0.45);
+  vec3 pa = rd - tail;
+  vec3 ba = head - tail;
+  float along = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
+  float d = length(pa - ba * along);
+  float fade = smoothstep(0.0, 0.15, life) * (1.0 - smoothstep(0.8, 1.1, life));
+  float width = 0.0008 + 0.0014 * along;
+  float streak = smoothstep(width, 0.0, d) * along * along;
+  return vec3(1.0, 0.95, 0.85) * streak * fade * 7.0;
+}
+
+float tri(float x) {
+  return clamp(abs(fract(x) - 0.5), 0.01, 0.49);
+}
+
+vec2 tri2(vec2 p) {
+  return vec2(tri(p.x) + tri(p.y), tri(p.y + tri(p.x)));
+}
+
+mat2 rot(float a) {
+  float c = cos(a);
+  float s = sin(a);
+  return mat2(c, s, -s, c);
+}
+
+/** Folded triangle-wave noise that draws the aurora's curtains (nimitz). */
+float curtainNoise(vec2 p, float speed) {
+  float z = 1.8;
+  float z2 = 2.5;
+  float rz = 0.0;
+  p *= rot(p.x * 0.06);
+  vec2 bp = p;
+  for (int i = 0; i < 5; i++) {
+    vec2 dg = tri2(bp * 1.85) * 0.75;
+    dg *= rot(uTime * speed);
+    p -= dg / z2;
+    bp *= 1.3;
+    z2 *= 0.45;
+    z *= 0.42;
+    p *= 1.21 + (rz - 1.0) * 0.02;
+    rz += tri(p.x + tri(p.y)) * z;
+    p *= -mat2(0.95534, 0.29552, -0.29552, 0.95534);
+  }
+  return clamp(1.0 / pow(rz * 29.0, 1.3), 0.0, 0.55);
+}
+
+/** Aurora: stacked layers of the noise, green at the foot shading to violet above. */
+vec3 aurora(vec3 rd, int steps) {
+  vec4 col = vec4(0.0);
+  vec4 avg = vec4(0.0);
+  float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  float scale = 12.0 / float(steps);
+  for (int i = 0; i < 12; i++) {
+    if (i >= steps) break;
+    float fi = float(i) * scale;
+    float pt = ((0.8 + pow(fi, 1.4) * 0.002)) / (rd.y * 2.0 + 0.4);
+    pt -= jitter * 0.006 * smoothstep(0.0, 15.0, fi);
+    vec2 p = (pt * rd).zx;
+    float rzt = curtainNoise(p, 0.06);
+    vec4 layer = vec4((sin(1.0 - vec3(2.15, -0.5, 1.2) + fi * 0.043) * 0.5 + 0.5) * rzt, rzt);
+    avg = mix(avg, layer, 0.5);
+    col += avg * exp2(-fi * 0.065 - 2.5) * smoothstep(0.0, 5.0, fi) * scale;
+  }
+  return col.rgb * clamp(rd.y * 15.0 + 0.4, 0.0, 1.0) * 1.0;
+}
+
 /** Cloud density in a slab: noise thresholded into puffs, rounded off top and bottom. */
 float cloudDensity(vec3 p) {
   float h = (p.y - CLOUD_LO) / (CLOUD_HI - CLOUD_LO);
   float profile = smoothstep(0.0, 0.25, h) * (1.0 - smoothstep(0.5, 1.0, h));
   vec2 wind = vec2(uTime * 0.35, uTime * 0.12);
   float n = fbm(p.xz * 0.011 + wind * 0.05 + p.y * 0.004);
-  return clamp((n - (0.56 - 0.05 * uLoud)) * 3.6, 0.0, 1.0) * profile;
-}
-
-/** The sky without clouds: a blue gradient warming to the horizon, and the sun. */
-vec3 skyBase(vec3 rd) {
-  float up = clamp(rd.y, 0.0, 1.0);
-  vec3 zenith = vec3(0.004, 0.018, 0.10);
-  vec3 horizon = vec3(0.07, 0.12, 0.26);
-  vec3 col = mix(horizon, zenith, pow(up, 0.45));
-  float sun = max(dot(rd, SKY_SUN), 0.0);
-  col += vec3(1.0, 0.75, 0.45) * (pow(sun, 10.0) * 0.06 + pow(sun, 80.0) * 0.25);
-  col += vec3(1.2, 1.0, 0.8) * smoothstep(0.9994, 0.9998, sun);   // the disc
-  return col;
+  return clamp((n - (0.56 + 0.05 * uNight - 0.05 * uLoud)) * 3.6, 0.0, 1.0) * profile;
 }
 
 /**
- * Clouds against the blue: march a slab at altitude, a few steps each (fewer for
- * reflections, which are blurred anyway), lit from the sun side by comparing the
- * density here with a little towards the sun (iq's cheap directional light).
+ * The whole sky: scattering, sun and moon, then stars and aurora on the night
+ * side, then clouds marched through a slab, a few steps each (fewer for
+ * reflections, which are blurred anyway), lit from the brighter of sun and moon
+ * by comparing the density here with a little towards the light (iq's cheap
+ * directional light).
  */
 vec3 background(vec3 rd, int steps) {
   vec3 col = skyBase(rd);
-  if (rd.y < 0.015) return col;
+  if (rd.y < 0.0) return col;
+  if (uNight > 0.02) {
+    float moonGlare = 1.0 - 0.85 * pow(max(dot(rd, uMoonDir), 0.0), 6.0) * smoothstep(-0.05, 0.1, uMoonDir.y);
+    float fade = uNight * smoothstep(0.0, 0.12, rd.y) * moonGlare;
+    col += (stars(rd) + meteors(rd)) * fade;
+    if (uAurora > 0.02) col += aurora(rd, steps > 8 ? 10 : 4) * uAurora * uNight;
+  }
+  if (rd.y < 0.015) return col;   // clouds are too far to march this close to the horizon
   float t0 = (CLOUD_LO - 1.0) / rd.y;
   float t1 = (CLOUD_HI - 1.0) / rd.y;
   float dt = (t1 - t0) / float(steps);
   float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  vec3 litCloud = uSunColor * 0.28 + uMoonColor * 0.06 + uAmbient * 0.6;
+  vec3 shadedCloud = uAmbient * vec3(0.8, 0.95, 1.25);
   vec3 acc = vec3(0.0);
   float trans = 1.0;
   for (int i = 0; i < 16; i++) {
@@ -295,18 +499,16 @@ vec3 background(vec3 rd, int steps) {
     vec3 p = vec3(0.0, 1.0, 0.0) + rd * t;
     float d = cloudDensity(p);
     if (d > 0.01) {
-      float ds = cloudDensity(p + SKY_SUN * 3.0);
+      float ds = cloudDensity(p + uKeyDir * 3.0);
       float lit = clamp((d - ds) * 2.0 + 0.55, 0.0, 1.0);
-      vec3 cloud = mix(vec3(0.05, 0.08, 0.17), vec3(0.75, 0.50, 0.40), lit);   // shadowed blue-grey to sunlit cream
       float a = clamp(d * dt * 0.03, 0.0, 1.0);
-      acc += trans * a * cloud;
+      acc += trans * a * mix(shadedCloud, litCloud, lit);
       trans *= 1.0 - a;
     }
   }
   // Far clouds melt into the haze at the horizon.
   float haze = exp(-t0 * 0.0018);
-  vec3 sky = col;
-  return sky * mix(1.0, trans, haze) + acc * haze;
+  return col * mix(1.0, trans, haze) + acc * haze;
 }
 
 vec3 background(vec3 rd) {
@@ -314,20 +516,59 @@ vec3 background(vec3 rd) {
 }
 
 /**
- * What a mirror sees that is not geometry: the dark backdrop plus a studio of
- * soft boxes (warm key, cool strip, rim behind), so a glossy surface has
- * something to reflect. The camera never sees these, only reflections do.
+ * What a mirror sees that is not geometry: the sky, plus a dim studio of soft
+ * boxes (warm key, cool strip, rim behind) so a glossy surface always has
+ * something to catch. The camera never sees these, only reflections do.
  */
 vec3 environment(vec3 rd) {
-  vec3 softKey = vec3(1.0, 0.92, 0.8) * pow(max(dot(rd, normalize(vec3(-0.5, 0.75, 0.35))), 0.0), 7.0) * 2.4;
-  vec3 strip = vec3(0.6, 0.8, 1.0) * pow(max(dot(rd, normalize(vec3(0.75, 0.35, 0.55))), 0.0), 14.0) * 1.6;
-  vec3 rim = vec3(0.9, 0.9, 1.0) * pow(max(dot(rd, normalize(vec3(0.0, 0.35, -1.0))), 0.0), 30.0) * 0.8;
-  return background(rd, 4) + softKey * 0.5 + strip + rim;
+  vec3 softKey = vec3(1.0, 0.92, 0.8) * pow(max(dot(rd, normalize(vec3(-0.5, 0.75, 0.35))), 0.0), 7.0) * 1.2;
+  vec3 strip = vec3(0.6, 0.8, 1.0) * pow(max(dot(rd, normalize(vec3(0.75, 0.35, 0.55))), 0.0), 14.0) * 0.8;
+  vec3 rim = vec3(0.9, 0.9, 1.0) * pow(max(dot(rd, normalize(vec3(0.0, 0.35, -1.0))), 0.0), 30.0) * 0.4;
+  return background(rd, 4) + (softKey + strip + rim) * (0.3 + 0.7 * uDay);
 }
 
-const vec3 KEY = normalize(vec3(-0.55, 0.6, -0.55));
 const vec3 FILL = normalize(vec3(0.5, 0.35, 0.8));
 const vec3 RIM = normalize(vec3(0.1, 0.45, -1.0));
+
+/** Soft shadow of a sphere (iq): the penumbra comes from how near the ray passes to it. */
+float sphereShadow(vec3 ro, vec3 rd, vec4 sph, float k) {
+  vec3 oc = ro - sph.xyz;
+  float b = dot(oc, rd);
+  float c = dot(oc, oc) - sph.w * sph.w;
+  float h = b * b - c;
+  float d = sqrt(max(0.0, sph.w * sph.w - h)) - sph.w;
+  float t = -b - sqrt(max(h, 0.0));
+  return t < 0.0 ? 1.0 : smoothstep(0.0, 1.0, 2.5 * k * d / t);
+}
+
+/**
+ * Light from the sun and from the moon on a surface point: each one's colour
+ * times n.l times its own shadow (a light that is down, or facing away, costs
+ * nothing). \`shadowMix\` is the shadow averaged over the two by how much light
+ * each brings, and \`spec\` their Blinn highlights.
+ */
+vec3 bodyLight(vec3 p, vec3 n, vec3 v, bool full, float offset, float mint, float k, bool ballShadow,
+               out float shadowMix, out vec3 spec) {
+  vec3 sum = vec3(0.0);
+  spec = vec3(0.0);
+  float weights = 0.0;
+  float shadowed = 0.0;
+  for (int i = 0; i < 2; i++) {
+    vec3 l = i == 0 ? uSunDir : uMoonDir;
+    vec3 e = i == 0 ? uSunColor : uMoonColor;
+    float nl = max(dot(n, l), 0.0);
+    float lum = luma(e);
+    if (nl <= 0.0 || lum < 0.003) continue;
+    float s = full ? softShadow(p + n * offset, l, mint, k) : 1.0;
+    if (full && ballShadow && uBallOn > 0.5) s *= sphereShadow(p + n * offset, l, uBall, 7.0);
+    sum += e * nl * s;
+    spec += e * pow(max(dot(n, normalize(l + v)), 0.0), 70.0) * 0.25 * s;
+    weights += lum * nl;
+    shadowed += lum * nl * s;
+  }
+  shadowMix = weights > 0.0 ? shadowed / weights : 1.0;
+  return sum;
+}
 
 /**
  * The lit colour of a surface point, and how mirror-like it is (refl, 0..1).
@@ -337,6 +578,8 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
   vec3 v = -rd;
   vec3 col;
   float ao = 1.0;
+  float shadow;
+  vec3 spec;
   if (h.mat == 1) {
     n = vec3(0.0, 1.0, 0.0);
     float r = length(p.xz * vec2(0.45, 1.0));
@@ -346,16 +589,37 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
     float w = 0.012 + 0.0025 * h.t;
     float line = 1.0 - smoothstep(0.0, w * 2.0, min(g.x, g.y));
     vec3 albedo = vec3(0.012, 0.015, 0.024) * (1.0 + 0.6 * pool) + vec3(0.010, 0.014, 0.026) * line * pool;
-    float shadow = full ? softShadow(p + n * 0.002, KEY, 0.01, 10.0) : 1.0;
+    vec3 irradiance = bodyLight(p, n, v, full, 0.002, 0.01, 10.0, true, shadow, spec);
     ao = full ? ambientOcclusion(p, n) : 1.0;
-    float key = max(dot(n, KEY), 0.0) * shadow;
-    col = albedo * (0.1 * ao + 3.2 * key * vec3(1.0, 0.95, 0.9)) + vec3(0.001, 0.0012, 0.002) * pool * ao;
+    col = albedo * (uAmbient * ao + irradiance) + uAmbient * 0.01 * pool * ao;
     col += floorGlow(p) * ao * 0.9;
     // A shadow reads as a shadow only if the glow does not wash it out: dim all of it.
-    if (full) { gShadow = shadow; col *= mix(0.35, 1.0, shadow); }
-    col = mix(col, background(rd), 1.0 - exp(-h.t * h.t * 0.0012));
+    if (full) { gShadow = shadow; col *= mix(0.25, 1.0, shadow); }
+    // Far floor melts into the sky just above the horizon, whatever is there (aurora, haze, clouds).
+    // By how close the ray runs to the horizon, not by distance: distance fog is a set of circles
+    // round the camera, which show up as big arcs on the floor when the camera is far back.
+    float fog = 1.0 - smoothstep(0.0, 0.07, -rd.y);
+    fog *= fog;
+    if (fog > 0.05) col = mix(col, background(normalize(vec3(rd.x, abs(rd.y) + 0.012, rd.z)), 4), fog);
     float f = pow(1.0 - max(dot(n, v), 0.0), 5.0);
-    refl = mix(0.22, 1.0, f) * 0.85 * (1.0 - smoothstep(6.0, 15.0, length(p.xz)));
+    refl = mix(0.22, 1.0, f) * 0.85 * (1.0 - fog);   // by the horizon the floor is simply the sky
+    return col;
+  }
+
+  if (h.mat == 4) {
+    n = normalize(p - uBall.xyz);
+    // The classic chequer: 16 segments round and 8 from pole to pole, so the squares are square at the equator.
+    vec3 local = n * uBallRot;
+    float lon = atan(local.z, local.x) * (16.0 / 6.2831853);
+    float lat = asin(clamp(local.y, -1.0, 1.0)) * (8.0 / 3.14159265);
+    float edge = sin(3.14159265 * lon) * sin(3.14159265 * lat);
+    float chequer = 0.5 + 0.5 * clamp(edge / (0.12 + 0.012 * h.t), -1.0, 1.0);
+    vec3 albedo = mix(vec3(0.8, 0.004, 0.004), vec3(0.85), chequer);
+    vec3 irradiance = bodyLight(p, n, v, full, 0.01, 0.05, 12.0, false, shadow, spec);
+    col = albedo * (uAmbient * (0.9 + 0.4 * n.y) + irradiance * 0.55 + 0.05);
+    col += spec * 2.0;
+    // A glossy coat: it mirrors the scene, more at a glancing angle.
+    refl = mix(0.28, 0.9, pow(1.0 - max(dot(n, v), 0.0), 4.0));
     return col;
   }
 
@@ -363,18 +627,16 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
   bool cap = h.mat == 3;
   vec3 albedo = barColour(h.bar);
   if (full) ao = ambientOcclusion(p, n);
-  float shadow = full ? softShadow(p + n * 0.01, KEY, 0.04, 12.0) : 1.0;
-  float key = max(dot(n, KEY), 0.0) * shadow;
-  float fill = max(dot(n, FILL), 0.0);
-  float rim = max(dot(n, RIM), 0.0);
-  vec3 hv = normalize(KEY + v);
-  float spec = pow(max(dot(n, hv), 0.0), 70.0) * 0.8 * shadow;
+  vec3 irradiance = bodyLight(p, n, v, full, 0.01, 0.04, 12.0, true, shadow, spec);
+  float dayFill = mix(0.25, 1.0, uDay);
+  float fill = max(dot(n, FILL), 0.0) * dayFill;
+  float rim = max(dot(n, RIM), 0.0) * dayFill;
   float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
   float height = clamp(p.y / uMaxH, 0.0, 1.0);
 
-  col = albedo * (0.07 * ao + 1.25 * key * ao * vec3(1.0, 0.96, 0.92)
+  col = albedo * (uAmbient * 0.7 * ao + irradiance * 0.4 * ao
                   + 0.6 * fill * vec3(0.75, 0.88, 1.0) * ao + 0.3 * rim * ao);
-  col += vec3(spec);
+  col += spec;
   // Self-light, so a colour is never dead, brighter towards the tip.
   col += albedo * (0.10 + 0.22 * height) * (cap ? 2.5 : 1.0);
   col += albedo * fres * 0.25;
@@ -413,7 +675,7 @@ vec3 render(vec3 ro, vec3 rd) {
       col += through * local * (1.0 - refl);
       float td;
       vec3 seen = secondary(p + n * 0.003, reflect(rd, n), td);
-      gRefl = refl * exp(-min(td, 12.0) * 0.02) * seen * mix(0.45, 1.0, gShadow);
+      gRefl = refl * exp(-min(td, 12.0) * 0.02) * seen * mix(0.2, 1.0, gShadow);
       break;
     }
     if (bounce == 1) refl = 0.0;
@@ -427,6 +689,10 @@ vec3 render(vec3 ro, vec3 rd) {
   return col;
 }
 
+vec3 encodeHdr(vec3 x) {
+  return pow(max(x, 0.0) / (1.0 + max(x, 0.0)), vec3(1.0 / 2.2));
+}
+
 void main() {
   vec2 frag = gl_FragCoord.xy;
   vec2 uv = (2.0 * frag - uRes) / uRes.y;
@@ -437,15 +703,10 @@ void main() {
 
   vec3 col = render(uEye, rd);
 
-  // Soft shoulder, vignette, gamma, and a little noise against banding in the dark.
-  vec2 q = frag / uRes;
-  float vignette = 0.55 + 0.45 * pow(16.0 * q.x * q.y * (1.0 - q.x) * (1.0 - q.y), 0.25);
-  col = pow(max(col / (1.0 + col * 0.18) * vignette, 0.0), vec3(1.0 / 2.2));
-  vec3 refl = pow(max(gRefl / (1.0 + gRefl * 0.18) * vignette, 0.0), vec3(1.0 / 2.2));
-  float n = fract(sin(dot(frag, vec2(12.9898, 78.233))) * 43758.5453);
-  col += (n - 0.5) / 255.0;
-  outColor = vec4(col, 1.0);
-  outRefl = vec4(refl, 1.0);
+  // Both targets are 8 bit, so keep the wide range in them: a Reinhard curve
+  // under a gamma (dark values keep their precision); the combine pass undoes it.
+  outColor = vec4(encodeHdr(col), 1.0);
+  outRefl = vec4(encodeHdr(gRefl), 1.0);
 }
 `;
 
@@ -462,11 +723,40 @@ uniform sampler2D uSharp;
 uniform sampler2D uBlur;
 uniform float uBaseV;
 uniform float uStrength;
+uniform float uExposure;
 out vec4 outColor;
+
+vec3 decodeHdr(vec3 y) {
+  vec3 t = pow(y, vec3(2.2));
+  return t / max(1.0 - t, 1.0 / 64.0);
+}
+
+// ACES filmic (Stephen Hill's fit of the RRT and ODT): a soft shoulder, a little
+// contrast in the mids, and bright colours drifting to white instead of clipping.
+const mat3 ACES_IN = mat3(0.59719, 0.07600, 0.02840, 0.35458, 0.90834, 0.13383, 0.04823, 0.01566, 0.83777);
+const mat3 ACES_OUT = mat3(1.60475, -0.10208, -0.00327, -0.53108, 1.10813, -0.07276, -0.07367, -0.00605, 1.07602);
+
+vec3 aces(vec3 color) {
+  vec3 v = ACES_IN * color;
+  vec3 a = v * (v + 0.0245786) - 0.000090537;
+  vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;
+  return clamp(ACES_OUT * (a / b), 0.0, 1.0);
+}
+
 void main() {
-  vec3 scene = texture(uScene, vUv).rgb;
+  vec3 scene = decodeHdr(texture(uScene, vUv).rgb);
   float below = max(0.0, uBaseV - vUv.y);
-  vec3 refl = mix(texture(uSharp, vUv).rgb, texture(uBlur, vUv).rgb, smoothstep(0.0, 0.3, below) * 0.9 + 0.1);
-  outColor = vec4(scene + refl * uStrength * exp(-below * 2.5), 1.0);
+  vec3 sharp = decodeHdr(texture(uSharp, vUv).rgb);
+  vec3 blur = decodeHdr(texture(uBlur, vUv).rgb);
+  vec3 refl = mix(sharp, blur, smoothstep(0.0, 0.3, below) * 0.9 + 0.1);
+  vec3 col = scene + refl * uStrength * exp(-below * 2.5);
+
+  float vignette = 0.55 + 0.45 * pow(16.0 * vUv.x * vUv.y * (1.0 - vUv.x) * (1.0 - vUv.y), 0.25);
+  col = aces(col * uExposure * vignette);
+  col = pow(col, vec3(1.0 / 2.2));
+  // A little noise against banding in the dark gradients.
+  float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+  col += (n - 0.5) / 255.0;
+  outColor = vec4(col, 1.0);
 }
 `;

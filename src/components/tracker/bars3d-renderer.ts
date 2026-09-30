@@ -34,6 +34,8 @@ export interface Bars3dFrame {
   peaks: ArrayLike<number>;
   bands: number;
   timeMs: number;
+  /** The song's tempo, for views that keep time with it. */
+  bpm?: number;
 }
 
 /** Unit box: 24 vertices (position, normal) and 36 indices. */
