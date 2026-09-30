@@ -26,9 +26,9 @@ import {
 import {
   ledBarCapacity,
   ledBarSegments,
-  spectrumBands,
   type LedBarLayout,
 } from 'src/components/tracker/glow-scope-geometry';
+import { MAX_SPECTRUM_BANDS, SpectrumFeed } from 'src/components/tracker/spectrum-feed';
 import {
   scopeFullScale,
   scopeMidrange,
@@ -60,19 +60,8 @@ const props = withDefaults(defineProps<Props>(), {
   scopeGain: 1,
 });
 
-const FFT_SIZE = 8192;
-const MIN_HZ = 35;
-const MAX_HZ = 16000;
-const MIN_DB = -95;
-const MAX_DB = -12;
-/** dB per octave added above 1 kHz, and the response curve (quiet bands stay low). */
-const TILT_DB = 3;
-const LEVEL_CURVE = 1.8;
 /** Bar slot width target, CSS pixels. */
 const BAR_SLOT = 26;
-/** Per frame: how fast a bar falls, and how fast its peak marker does. */
-const BAR_FALL = 0.88;
-const PEAK_FALL = 0.012;
 /** Channel lines swing this fraction of the area's half-height at full scale... */
 const WAVE_SWING = 0.3;
 /** ...about this fraction of the height from the top, so they cross the bars. */
@@ -85,6 +74,7 @@ const areaRef = ref<HTMLElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 
 const feed = new ChannelScopeFeed(() => props);
+const spectrum = new SpectrumFeed();
 
 let renderer: GlowScopeRenderer | null = null;
 let unregisterAnimation: (() => void) | null = null;
@@ -94,43 +84,9 @@ let pixelRatio = 1;
 let cssWidth = 0;
 let cssHeight = 0;
 
-let analyser: AnalyserNode | null = null;
-let connected: AudioNode | null = null;
-let freqDb = new Float32Array(FFT_SIZE / 2);
-const MAX_BANDS = 64;
-const raw = new Float32Array(MAX_BANDS);
-const levels = new Float32Array(MAX_BANDS);
-const peaks = new Float32Array(MAX_BANDS);
 let barSegments = new Float32Array(0);
 let barWeights = new Float32Array(0);
 const polylines: Float32Array[] = [];
-
-function disconnectTap(): void {
-  if (connected && analyser) {
-    try {
-      connected.disconnect(analyser);
-    } catch {
-      // Already disconnected.
-    }
-  }
-  analyser?.disconnect();
-  analyser = connected = null;
-}
-
-function connectTap(): void {
-  const node = props.masterNode;
-  if (node === connected) return;
-  disconnectTap();
-  if (!node) return;
-  analyser = (props.audioContext ?? node.context).createAnalyser();
-  analyser.fftSize = FFT_SIZE;
-  analyser.smoothingTimeConstant = 0.6;
-  analyser.minDecibels = -100;
-  analyser.maxDecibels = -10;
-  freqDb = new Float32Array(analyser.frequencyBinCount);
-  node.connect(analyser);
-  connected = node;
-}
 
 function syncCanvasSize(): void {
   const canvas = canvasRef.value;
@@ -159,32 +115,9 @@ function draw(time: number): void {
   if (cssWidth === 0 || cssHeight === 0) return;
 
   // --- the bars ---
-  connectTap();
-  const bands = Math.max(12, Math.min(MAX_BANDS, Math.floor(cssWidth / BAR_SLOT)));
-  if (analyser) {
-    analyser.getFloatFrequencyData(freqDb);
-    spectrumBands(
-      freqDb,
-      analyser.context.sampleRate / analyser.fftSize,
-      bands,
-      MIN_HZ,
-      MAX_HZ,
-      MIN_DB,
-      MAX_DB,
-      raw,
-      TILT_DB,
-      LEVEL_CURVE,
-    );
-  } else {
-    raw.fill(0);
-  }
-  for (let b = 0; b < bands; b++) {
-    const now = raw[b] ?? 0;
-    const fallen = (levels[b] ?? 0) * BAR_FALL;
-    levels[b] = now > fallen ? now : fallen;
-    const peak = Math.max(levels[b] ?? 0, (peaks[b] ?? 0) - PEAK_FALL);
-    peaks[b] = peak;
-  }
+  const bands = Math.max(12, Math.min(MAX_SPECTRUM_BANDS, Math.floor(cssWidth / BAR_SLOT)));
+  spectrum.update(props.masterNode, props.audioContext, bands);
+  const { levels, peaks } = spectrum;
 
   const baseline = cssHeight * 0.72;
   const barsHeight = baseline - cssHeight * 0.08;
@@ -306,7 +239,7 @@ function stop(): void {
   themeObserver = null;
   renderer?.dispose();
   renderer = null;
-  disconnectTap();
+  spectrum.dispose();
   feed.releaseAll();
 }
 

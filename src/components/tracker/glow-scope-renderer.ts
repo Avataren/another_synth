@@ -7,9 +7,12 @@ import {
   type GlowCell,
 } from 'src/components/tracker/glow-scope-geometry';
 import {
-  BLOOM_FRAGMENT_SHADER,
-  BLUR_FRAGMENT_SHADER,
-  BLUR_VERTEX_SHADER,
+  BloomChain,
+  RenderTarget,
+  linkProgram as link,
+  uniformLocations as locations,
+} from 'src/components/tracker/glow-gl';
+import {
   CRT_FRAGMENT_SHADER,
   CRT_VERTEX_SHADER,
   GLOW_FRAGMENT_SHADER,
@@ -83,87 +86,6 @@ export function readScopeColor(): [number, number, number] {
   return raw ? parseCssColor(raw, FALLBACK_COLOR) : [...FALLBACK_COLOR];
 }
 
-function compile(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
-  const shader = gl.createShader(type);
-  if (!shader) throw new Error('createShader failed');
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(shader);
-    gl.deleteShader(shader);
-    throw new Error(`glow scope shader: ${log ?? 'compile failed'}`);
-  }
-  return shader;
-}
-
-function link(gl: WebGL2RenderingContext, vertex: string, fragment: string): WebGLProgram {
-  const vs = compile(gl, gl.VERTEX_SHADER, vertex);
-  const fs = compile(gl, gl.FRAGMENT_SHADER, fragment);
-  const program = gl.createProgram();
-  if (!program) throw new Error('createProgram failed');
-  gl.attachShader(program, vs);
-  gl.attachShader(program, fs);
-  gl.linkProgram(program);
-  gl.deleteShader(vs);
-  gl.deleteShader(fs);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    throw new Error(`glow scope program: ${gl.getProgramInfoLog(program) ?? 'link failed'}`);
-  }
-  return program;
-}
-
-function locations(
-  gl: WebGL2RenderingContext,
-  program: WebGLProgram,
-  names: string[],
-): Record<string, WebGLUniformLocation | null> {
-  const out: Record<string, WebGLUniformLocation | null> = {};
-  for (const name of names) out[name] = gl.getUniformLocation(program, name);
-  return out;
-}
-
-/** A texture with a framebuffer on it, resized on demand. */
-class RenderTarget {
-  readonly texture: WebGLTexture;
-  readonly framebuffer: WebGLFramebuffer;
-  width = 0;
-  height = 0;
-
-  constructor(gl: WebGL2RenderingContext) {
-    const texture = gl.createTexture();
-    const framebuffer = gl.createFramebuffer();
-    if (!texture || !framebuffer) throw new Error('render target allocation failed');
-    this.texture = texture;
-    this.framebuffer = framebuffer;
-  }
-
-  /** Makes it `width` x `height` and binds it for drawing. */
-  use(gl: WebGL2RenderingContext, width: number, height: number): void {
-    const w = Math.max(1, width);
-    const h = Math.max(1, height);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
-    if (this.width !== w || this.height !== h) {
-      this.width = w;
-      this.height = h;
-      gl.bindTexture(gl.TEXTURE_2D, this.texture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.texture, 0);
-    }
-    gl.viewport(0, 0, w, h);
-  }
-
-  dispose(gl: WebGL2RenderingContext): void {
-    gl.deleteTexture(this.texture);
-    gl.deleteFramebuffer(this.framebuffer);
-  }
-}
-
-/** Blur levels of the bloom, each half the size of the one before. */
-const BLOOM_LEVELS = 4;
 const BLOOM_STRENGTH = 1.1;
 /** The halo the sharp pass keeps under a bloom: the bloom supplies the rest. */
 const BLOOM_SHARP_GLOW = { radius: 4, strength: 0.12 };
@@ -195,13 +117,7 @@ export class GlowScopeRenderer {
   private instanceBuffer: WebGLBuffer | null = null;
   private cellBuffer: WebGLBuffer | null = null;
   private scene: RenderTarget | null = null;
-  private bloomTmp: RenderTarget[] = [];
-  private bloomBlur: RenderTarget[] = [];
-  private blurProgram: WebGLProgram | null = null;
-  private bloomProgram: WebGLProgram | null = null;
-  private blurUniforms: Record<string, WebGLUniformLocation | null> = {};
-  private bloomUniforms: Record<string, WebGLUniformLocation | null> = {};
-  private emptyVao: WebGLVertexArrayObject | null = null;
+  private bloomChain: BloomChain | null = null;
   private instanceData = new Float32Array(0);
   private cellRects = new Float32Array(0);
 
@@ -240,8 +156,6 @@ export class GlowScopeRenderer {
       this.needleProgram = link(gl, GLOW_VERTEX_SHADER, NEEDLE_FRAGMENT_SHADER);
       this.barsProgram = link(gl, GLOW_VERTEX_SHADER, BARS_FRAGMENT_SHADER);
       this.crtProgram = link(gl, CRT_VERTEX_SHADER, CRT_FRAGMENT_SHADER);
-      this.blurProgram = link(gl, BLUR_VERTEX_SHADER, BLUR_FRAGMENT_SHADER);
-      this.bloomProgram = link(gl, CRT_VERTEX_SHADER, BLOOM_FRAGMENT_SHADER);
     } catch (error) {
       console.error(error);
       return false;
@@ -278,17 +192,6 @@ export class GlowScopeRenderer {
       'uTime',
       'uRatio',
       'uCorner',
-    ]);
-
-    this.blurUniforms = locations(gl, this.blurProgram, ['uSrc', 'uStep']);
-    this.bloomUniforms = locations(gl, this.bloomProgram, [
-      'uScene',
-      'uBloom0',
-      'uBloom1',
-      'uBloom2',
-      'uBloom3',
-      'uResolution',
-      'uStrength',
     ]);
 
     const buffer = (data?: Float32Array): WebGLBuffer => {
@@ -329,14 +232,8 @@ export class GlowScopeRenderer {
     gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 16, 0);
     gl.vertexAttribDivisor(1, 1);
 
-    this.emptyVao = gl.createVertexArray();
     this.scene = new RenderTarget(gl);
-    this.bloomTmp = [];
-    this.bloomBlur = [];
-    for (let i = 0; i < BLOOM_LEVELS; i++) {
-      this.bloomTmp.push(new RenderTarget(gl));
-      this.bloomBlur.push(new RenderTarget(gl));
-    }
+    this.bloomChain = new BloomChain(gl);
 
     gl.clearColor(0, 0, 0, 0);
     this.gl = gl;
@@ -353,21 +250,15 @@ export class GlowScopeRenderer {
       if (this.needleProgram) gl.deleteProgram(this.needleProgram);
       if (this.barsProgram) gl.deleteProgram(this.barsProgram);
       if (this.crtProgram) gl.deleteProgram(this.crtProgram);
-      if (this.blurProgram) gl.deleteProgram(this.blurProgram);
-      if (this.bloomProgram) gl.deleteProgram(this.bloomProgram);
-      if (this.emptyVao) gl.deleteVertexArray(this.emptyVao);
       this.scene?.dispose(gl);
-      for (const target of [...this.bloomTmp, ...this.bloomBlur]) target.dispose(gl);
+      this.bloomChain?.dispose(gl);
     }
     this.buffers = [];
     this.glowVao = this.crtVao = null;
     this.glowProgram = this.crtProgram = this.needleProgram = this.barsProgram = null;
     this.instanceBuffer = this.cellBuffer = null;
     this.scene = null;
-    this.bloomTmp = [];
-    this.bloomBlur = [];
-    this.blurProgram = this.bloomProgram = null;
-    this.emptyVao = null;
+    this.bloomChain = null;
     this.gl = null;
   }
 
@@ -515,11 +406,7 @@ export class GlowScopeRenderer {
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, cells.length);
   }
 
-  /**
-   * Blurs the scene down a chain of half-size targets and adds the levels back
-   * over each cell: horizontal then vertical gaussian at every level, each
-   * reading the last, so the radii double.
-   */
+  /** Blurs the scene and adds it back over each cell; see `BloomChain`. */
   private compositeBloom(
     gl: WebGL2RenderingContext,
     cells: readonly GlowRenderCell[],
@@ -528,38 +415,7 @@ export class GlowScopeRenderer {
     strength: number,
   ): void {
     const scene = this.scene;
-    if (!scene || !this.blurProgram || !this.bloomProgram) return;
-    gl.disable(gl.BLEND);
-    gl.useProgram(this.blurProgram);
-    gl.bindVertexArray(this.emptyVao);
-    gl.uniform1i(this.blurUniforms.uSrc ?? null, 0);
-    gl.activeTexture(gl.TEXTURE0);
-    let source = scene;
-    let sw = width;
-    let sh = height;
-    for (let i = 0; i < BLOOM_LEVELS; i++) {
-      const tmp = this.bloomTmp[i];
-      const blur = this.bloomBlur[i];
-      if (!tmp || !blur) return;
-      const dw = Math.max(1, sw >> 1);
-      const dh = Math.max(1, sh >> 1);
-      tmp.use(gl, dw, dh);
-      gl.bindTexture(gl.TEXTURE_2D, source.texture);
-      gl.uniform2f(this.blurUniforms.uStep ?? null, 1.5 / sw, 0);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-      blur.use(gl, dw, dh);
-      gl.bindTexture(gl.TEXTURE_2D, tmp.texture);
-      gl.uniform2f(this.blurUniforms.uStep ?? null, 0, 1.5 / dh);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-      source = blur;
-      sw = dw;
-      sh = dh;
-    }
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, width, height);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    if (cells.length === 0) return;
+    if (!scene || !this.bloomChain) return;
     if (this.cellRects.length < cells.length * 4) this.cellRects = new Float32Array(cells.length * 4);
     cells.forEach((cell, i) => {
       this.cellRects[i * 4] = cell.x;
@@ -567,21 +423,7 @@ export class GlowScopeRenderer {
       this.cellRects[i * 4 + 2] = cell.width;
       this.cellRects[i * 4 + 3] = cell.height;
     });
-    gl.useProgram(this.bloomProgram);
-    gl.bindVertexArray(this.crtVao);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.cellBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, this.cellRects.subarray(0, cells.length * 4), gl.DYNAMIC_DRAW);
-    const textures = [scene, ...this.bloomBlur];
-    const names = ['uScene', 'uBloom0', 'uBloom1', 'uBloom2', 'uBloom3'];
-    textures.forEach((target, unit) => {
-      gl.activeTexture(gl.TEXTURE0 + unit);
-      gl.bindTexture(gl.TEXTURE_2D, target.texture);
-      gl.uniform1i(this.bloomUniforms[names[unit] as string] ?? null, unit);
-    });
-    gl.uniform2f(this.bloomUniforms.uResolution ?? null, width, height);
-    gl.uniform1f(this.bloomUniforms.uStrength ?? null, strength);
-    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, cells.length);
-    gl.activeTexture(gl.TEXTURE0);
+    this.bloomChain.apply(gl, scene, width, height, this.cellRects, cells.length, strength);
   }
 }
 

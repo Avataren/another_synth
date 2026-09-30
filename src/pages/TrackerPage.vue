@@ -811,6 +811,12 @@
         @toggle-solo="toggleSolo"
       />
 
+      <Bars3dWall
+        v-if="scopeWallVisible && visualizationMode === 'bars3d'"
+        :audio-node="masterOutputNode"
+        :audio-context="audioContext"
+      />
+
       <EqualizerWall
         v-if="scopeWallVisible && visualizationMode === 'equalizer'"
         :track-count="trackCount"
@@ -1110,6 +1116,7 @@ import VisualizationPicker from 'src/components/VisualizationPicker.vue';
 import { useVisualizationMode } from 'src/composables/useVisualizationMode';
 import { isGlowWallMode, isScopeWallMode } from 'src/components/tracker/visualization-modes';
 import GlowScopeWall from 'src/components/tracker/GlowScopeWall.vue';
+import Bars3dWall from 'src/components/tracker/Bars3dWall.vue';
 import EqualizerWall from 'src/components/tracker/EqualizerWall.vue';
 import StereoSpikesWall from 'src/components/tracker/StereoSpikesWall.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
