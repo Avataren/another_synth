@@ -8,6 +8,9 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { registerAnimationCallback } from 'src/composables/useAnimationLoop';
 import { AHX_SCOPE_FULL_SCALE } from 'src/audio/worklets/ahx-core';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
+import { sharedGlowRenderer } from 'src/components/tracker/glow-scope-renderer';
+import { parseCssColor } from 'src/components/tracker/glow-scope-geometry';
 import {
   scopePolyline,
   scopeFullScale,
@@ -44,6 +47,14 @@ interface Props {
 
 const props = defineProps<Props>();
 
+// A preview mounted without the app's store just gets the default (WebGL).
+let settingsStore: ReturnType<typeof useUserSettingsStore> | null = null;
+try {
+  settingsStore = useUserSettingsStore();
+} catch {
+  settingsStore = null;
+}
+
 /**
  * Analyser window of the triggered scope of a source with a known full scale
  * (SID, OPL; as AHX_SCOPE_WINDOW_FRAMES). The plain trace of a sampled format
@@ -64,13 +75,13 @@ let unregisterAnimation: (() => void) | null = null;
 let currentConnectedNode: AudioNode | null = null;
 
 /** Trace stroke width in CSS pixels. */
-const TRACE_LINE_WIDTH = 2.5;
+const TRACE_LINE_WIDTH = 1.4;
 /**
  * The glow under the trace: the same path stroked wider and faint first, so
  * the sharp line sits in a soft halo like a phosphor scope's.
  */
-const GLOW_LINE_WIDTH = 7;
-const GLOW_ALPHA = 0.2;
+const GLOW_LINE_WIDTH = 4;
+const GLOW_ALPHA = 0.16;
 
 // Cached canvas dimensions (CSS pixels) - only update on resize. The bitmap is
 // `pixelRatio` times that, so a HiDPI screen gets a sharp line instead of an
@@ -83,6 +94,7 @@ let pixelRatio = 1;
 // The waveform draws in the theme's complement, like the spectrum strips it
 // sits with (see theme-palette.ts); fallback is the default theme's.
 let cachedWaveformColor = 'rgb(254, 65, 116)';
+let cachedColorRgb = parseCssColor(cachedWaveformColor);
 let cachedBgColor = '#0b111a';
 let themeObserver: MutationObserver | null = null;
 // The box can change size without the window doing so (a flex band reflowing).
@@ -92,6 +104,7 @@ function updateCachedColors() {
   const style = getComputedStyle(document.documentElement);
   cachedWaveformColor =
     style.getPropertyValue('--tracker-accent-complement').trim() || 'rgb(254, 65, 116)';
+  cachedColorRgb = parseCssColor(cachedWaveformColor);
   cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
 }
 
@@ -179,6 +192,34 @@ function startVisualization() {
   // Reused every frame by the scope path.
   let polyline = new Float32Array(0);
 
+  const flatPoints = new Float32Array(4);
+
+  /**
+   * The WebGL glow line, when it is on and available: rendered on the shared
+   * offscreen context and copied over what the 2D pass has drawn. False means
+   * draw the canvas line instead.
+   */
+  const drawGlow = (pts: Float32Array, count: number): boolean => {
+    if (settingsStore && !settingsStore.settings.webglScopes) return false;
+    const shared = sharedGlowRenderer();
+    if (!shared) return false;
+    const w = canvas.width;
+    const h = canvas.height;
+    if (w === 0 || h === 0) return false;
+    if (shared.canvas.width !== w) shared.canvas.width = w;
+    if (shared.canvas.height !== h) shared.canvas.height = h;
+    shared.renderer.color = cachedColorRgb;
+    shared.renderer.render(
+      [{ x: 0, y: 0, width: w, height: h, brightness: 1, polyline: pts, count }],
+      { pixelRatio, crt: false, timeMs: 0 },
+    );
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(shared.canvas, 0, 0);
+    ctx.restore();
+    return true;
+  };
+
   // `centered`: draw around the window's midrange (a DC-blocked source).
   // `gain`: the display gain; the sampled formats' plain trace takes none.
   const drawScope = (
@@ -187,15 +228,18 @@ function startVisualization() {
     centered = false,
     gain: number | undefined = props.scopeGain,
   ) => {
-    ctx.beginPath();
+    let points = 2;
+    let pts: Float32Array = flatPoints;
     if (!data || data.length < 4) {
-      ctx.moveTo(0, canvasHeight / 2);
-      ctx.lineTo(canvasWidth, canvasHeight / 2);
+      flatPoints[0] = 0;
+      flatPoints[1] = canvasHeight / 2;
+      flatPoints[2] = canvasWidth;
+      flatPoints[3] = canvasHeight / 2;
     } else {
       const count = scopeVisiblePoints(data.length);
       const center = centered ? scopeMidrange(data) : 0;
       if (polyline.length < count * 2) polyline = new Float32Array(count * 2);
-      const n = scopePolyline(
+      points = scopePolyline(
         data,
         scopeTriggerStart(data, center),
         count,
@@ -205,12 +249,15 @@ function startVisualization() {
         polyline,
         center,
       );
-      for (let k = 0; k < n; k++) {
-        const x = polyline[2 * k] ?? 0;
-        const y = polyline[2 * k + 1] ?? 0;
-        if (k === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
+      pts = polyline;
+    }
+    if (drawGlow(pts, points)) return;
+    ctx.beginPath();
+    for (let k = 0; k < points; k++) {
+      const x = pts[2 * k] ?? 0;
+      const y = pts[2 * k + 1] ?? 0;
+      if (k === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
     }
     // Glow first, then the line itself over it.
     ctx.strokeStyle = cachedWaveformColor;

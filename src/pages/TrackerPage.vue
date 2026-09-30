@@ -799,7 +799,40 @@
       </div>
 
       <ScopeWall
-        v-if="scopeWallVisible"
+        v-if="scopeWallVisible && visualizationMode === 'scopes'"
+        :track-count="trackCount"
+        :audio-nodes="trackAudioNodes"
+        :audio-context="audioContext"
+        :scope-source="isAhxSong ? playbackStore.getAhxChannelWaveform : null"
+        :analyser-full-scale="scopeFullScaleFor"
+        :scope-gain="userSettings.ahxScopeGain"
+        :is-audible="playbackStore.isTrackAudible"
+        @toggle-mute="toggleMute"
+        @toggle-solo="toggleSolo"
+      />
+
+      <EqualizerWall
+        v-if="scopeWallVisible && visualizationMode === 'equalizer'"
+        :track-count="trackCount"
+        :audio-nodes="trackAudioNodes"
+        :audio-context="audioContext"
+        :master-node="masterOutputNode"
+        :scope-source="isAhxSong ? playbackStore.getAhxChannelWaveform : null"
+        :analyser-full-scale="scopeFullScaleFor"
+        :scope-gain="userSettings.ahxScopeGain"
+      />
+
+      <StereoSpikesWall
+        v-if="scopeWallVisible && visualizationMode === 'stereo'"
+        :audio-node="masterOutputNode"
+        :audio-context="audioContext"
+      />
+
+      <GlowScopeWall
+        v-if="scopeWallVisible && isGlowWallMode(visualizationMode)"
+        :crt="visualizationMode === 'crt'"
+        :bloom="visualizationMode === 'bloom'"
+        :needles="visualizationMode === 'spikes'"
         :track-count="trackCount"
         :audio-nodes="trackAudioNodes"
         :audio-context="audioContext"
@@ -1075,6 +1108,10 @@ import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import ScopeWall from 'src/components/tracker/ScopeWall.vue';
 import VisualizationPicker from 'src/components/VisualizationPicker.vue';
 import { useVisualizationMode } from 'src/composables/useVisualizationMode';
+import { isGlowWallMode, isScopeWallMode } from 'src/components/tracker/visualization-modes';
+import GlowScopeWall from 'src/components/tracker/GlowScopeWall.vue';
+import EqualizerWall from 'src/components/tracker/EqualizerWall.vue';
+import StereoSpikesWall from 'src/components/tracker/StereoSpikesWall.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
 import FormatBadge from 'src/components/FormatBadge.vue';
@@ -1693,7 +1730,7 @@ watch(
  */
 const { mode: visualizationMode } = useVisualizationMode();
 const scopeWallVisible = computed(
-  () => visualizationMode.value === 'scopes' && !isMobileLayout.value,
+  () => isScopeWallMode(visualizationMode.value) && !isMobileLayout.value,
 );
 
 const spectrumAnalyzerVisible = computed(

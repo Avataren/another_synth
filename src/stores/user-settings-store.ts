@@ -36,6 +36,13 @@ export interface UserSettings {
    */
   visualizationMode: VisualizationMode;
   /**
+   * Draw the Pattern view's channel scopes and the Scopes wall with the WebGL
+   * glow shader. Off uses the canvas 2D scopes there, for a machine where the
+   * shader is slow or WebGL misbehaves. The views that are WebGL by nature
+   * (Glow, CRT) ignore it.
+   */
+  webglScopes: boolean;
+  /**
    * Fixed display gain (1, 2 or 4) for the AHX/HVL per-channel scopes, so a
    * quiet voice is readable. Display only, and clipped at the scope's edge
    * rather than rescaled per frame: the trace stays comparable between
@@ -224,6 +231,7 @@ export const defaultSettings: UserSettings = {
   showSpectrumAnalyzer: true,
   showWaveformVisualizers: true,
   visualizationMode: DEFAULT_VISUALIZATION_MODE,
+  webglScopes: true,
   ahxScopeGain: 1,
   masterVolume: 1,
   enableMidi: false,

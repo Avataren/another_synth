@@ -15,6 +15,7 @@ import { Notify } from 'quasar';
 import { useTrackerFileIO } from 'src/composables/useTrackerFileIO';
 import type { TrackerFileIOContext } from 'src/composables/useTrackerFileIO';
 import { useMobileLayout } from 'src/composables/useMobileLayout';
+import { usesTrackTaps } from 'src/components/tracker/visualization-modes';
 import { useVisualizationMode } from 'src/composables/useVisualizationMode';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 
@@ -144,7 +145,7 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
       !isMobileLayout.value &&
       (userSettingsStore.settings.showWaveformVisualizers ||
         userSettingsStore.settings.showSpectrumAnalyzer ||
-        visualizationMode.value !== 'pattern'),
+        usesTrackTaps(visualizationMode.value)),
   );
 
   watch(

@@ -256,6 +256,25 @@
                     </div>
                   </label>
 
+                  <label class="toggle-setting">
+                    <input
+                      type="checkbox"
+                      :checked="settings.webglScopes"
+                      data-testid="setting-webgl-scopes"
+                      @change="
+                        updateSetting('webglScopes', ($event.target as HTMLInputElement).checked)
+                      "
+                    />
+                    <div class="toggle-info">
+                      <span class="toggle-label">WebGL scopes</span>
+                      <span class="toggle-description"
+                        >Draw the Pattern and Scopes views with a glow shader. Turn off to use
+                        plain canvas scopes there if this is slow on your system. The Glow and
+                        CRT views always use WebGL</span
+                      >
+                    </div>
+                  </label>
+
                   <div class="select-setting">
                     <label class="select-label" for="ahx-scope-gain">
                       AHX/HVL and SID scope gain

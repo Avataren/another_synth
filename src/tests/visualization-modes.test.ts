@@ -28,6 +28,12 @@ describe('visualization modes', () => {
     expect(ids[0]).toBe('pattern');
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toContain('scopes');
+    expect(ids).toContain('glow');
+    expect(ids).toContain('crt');
+    expect(ids).toContain('bloom');
+    expect(ids).toContain('spikes');
+    expect(ids).toContain('stereo');
+    expect(ids).toContain('equalizer');
   });
 
   it('reads an unknown stored value as the default', () => {
