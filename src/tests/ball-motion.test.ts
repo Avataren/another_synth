@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BACK_LANE_Z,
+  BALL_DIP,
   BALL_RADIUS,
   BOUNCE_SECONDS,
   SEA_LIFT,
@@ -50,9 +51,9 @@ describe('bouncing ball', () => {
   it('bounces: never below the floor, and back on it every bounce', () => {
     for (let i = 0; i < 200; i++) {
       const s = ballState((i / 200) * passSeconds(6), halfWidth);
-      expect(s.y).toBeGreaterThanOrEqual(SEA_LIFT + BALL_RADIUS - 1e-6);
+      expect(s.y).toBeGreaterThanOrEqual(SEA_LIFT + BALL_RADIUS - BALL_DIP - 1e-6);
     }
-    expect(ballState(BOUNCE_SECONDS * 2, halfWidth).y).toBeCloseTo(SEA_LIFT + BALL_RADIUS, 4);
+    expect(ballState(BOUNCE_SECONDS * 2, halfWidth).y).toBeCloseTo(SEA_LIFT + BALL_RADIUS - BALL_DIP, 4);
     expect(ballState(BOUNCE_SECONDS * 2.5, halfWidth).y).toBeGreaterThan(SEA_LIFT + BALL_RADIUS + 1.5);
   });
 
@@ -73,8 +74,25 @@ describe('bouncing ball', () => {
   });
 
   it('bounces at the count it is given: on the floor at whole numbers, at the top between', () => {
-    expect(ballState(3, halfWidth, 7).y).toBeCloseTo(SEA_LIFT + BALL_RADIUS, 6);
+    expect(ballState(3, halfWidth, 7).y).toBeCloseTo(SEA_LIFT + BALL_RADIUS - BALL_DIP, 6);
     expect(ballState(3, halfWidth, 7.5).y).toBeGreaterThan(SEA_LIFT + BALL_RADIUS + 1.5);
+  });
+
+  it('sinks into the water at the bottom of a bounce and leaves the top of it where it was', () => {
+    const bottom = ballState(3, halfWidth, 7).y;
+    expect(bottom).toBeLessThan(SEA_LIFT + BALL_RADIUS - 0.3);
+    // The bottom of the sphere is below the sea level, the top of the bounce well above it.
+    expect(bottom - BALL_RADIUS).toBeLessThan(SEA_LIFT);
+    expect(ballState(3, halfWidth, 7.5).y).toBeCloseTo(SEA_LIFT + BALL_RADIUS + 2.1, 6);
+  });
+
+  it('turns smoothly at the bottom: no sharp V where it reverses', () => {
+    const e = 0.01;
+    const below = ballState(3, halfWidth, 7 - e).y;
+    const at = ballState(3, halfWidth, 7).y;
+    const after = ballState(3, halfWidth, 7 + e).y;
+    // Near the lowest point the height changes by far less than a straight-sided bounce would.
+    expect(Math.abs(after - at) + Math.abs(below - at)).toBeLessThan(0.05);
   });
 
   it('uses both lanes, in front of the bars and behind them, across passes', () => {

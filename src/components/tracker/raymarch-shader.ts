@@ -207,17 +207,39 @@ float barLevel(int i) {
   return (i < 0 || i >= uBands) ? 0.0 : uBars[i].x / uMaxH;
 }
 
+/**
+ * How near the ball is to the water (1 when it is in it, 0 from about a unit above), and
+ * the distance from a point of the water to the ring where the ball meets it.
+ */
+float ballWaterline(vec2 xz, out float near) {
+  near = 0.0;
+  if (uBallOn < 0.5) return 1e3;
+  float centre = uBall.y - uSeaLift;
+  near = 1.0 - smoothstep(0.0, 1.2, centre - uBall.w);
+  if (near <= 0.0) return 1e3;
+  // Radius of the circle the sphere cuts out of the water (zero while it is still above).
+  float cut = sqrt(max(uBall.w * uBall.w - max(centre, 0.0) * max(centre, 0.0), 0.0));
+  return max(length(xz - uBall.xz) - cut, 0.0);
+}
+
 /** Height of the ripples at a point of the water. */
 float barRipple(vec2 xz) {
+  // The ball's own rings, as it goes in and out of the water.
+  float ballNear;
+  float dBall = ballWaterline(xz, ballNear);
+  float height = 0.0;
+  if (ballNear > 0.0) {
+    height = 0.06 * ballNear * exp(-dBall * 1.5) * smoothstep(0.0, 0.05, dBall) * sin(24.0 * dBall - uTime * 16.0);
+  }
   float rowHalf = float(uBands) * uPitch * 0.5;
-  if (abs(xz.y) > 3.0 || abs(xz.x) > rowHalf + 3.0) return 0.0;
+  if (abs(xz.y) > 3.0 || abs(xz.x) > rowHalf + 3.0) return height;
   float d = max(mapBars(vec3(xz.x, 0.0, xz.y)).x, 0.0);
   // The level of the bar the point is beside, eased between neighbours so the rings do not jump at cell borders.
   float g = xz.x / uPitch + float(uBands) * 0.5 - 0.5;
   int i0 = int(floor(g));
   float level = mix(barLevel(i0), barLevel(i0 + 1), smoothstep(0.0, 1.0, fract(g)));
   float env = exp(-d * RIPPLE_DECAY) * smoothstep(0.0, 0.05, d);
-  return RIPPLE_AMP * level * level * env * sin(RIPPLE_K * d - uTime * RIPPLE_SPEED);
+  return height + RIPPLE_AMP * level * level * env * sin(RIPPLE_K * d - uTime * RIPPLE_SPEED);
 }
 
 /** Height of the surface at a point, with few octaves (for finding where a ray meets it). */
@@ -711,6 +733,14 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
     col += floorGlow(p) * ao * 0.9;
     // A shadow reads as a shadow only if the glow does not wash it out: dim all of it.
     if (full) { gShadow = shadow; col *= mix(0.25, 1.0, shadow); }
+    // Foam where the ball goes into the water: broken up by noise, aqua rather than white, and
+    // only as bright as the light on it (dim at night).
+    if (full) {
+      float ballNear;
+      float dBall = ballWaterline(p.xz, ballNear);
+      float foam = ballNear * exp(-dBall * 26.0) * (0.25 + 0.75 * valueNoise(p.xz * 24.0 + vec2(uTime * 0.9, 0.0)));
+      col += vec3(0.42, 0.68, 0.82) * foam * 0.16 * (0.2 + 0.8 * uDay);
+    }
     // A ring of the bar's own colour where it meets the water, brighter for a taller bar.
     if (full && abs(p.z) < 1.0) {
       vec2 near = mapBars(vec3(p.x, 0.0, p.z));
