@@ -36,8 +36,8 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), { raymarched: false });
 
-/** Bars across the scene. */
-const BANDS = 40;
+/** Bars across the scene: the raytraced view can afford a denser row. */
+const bands = computed(() => (props.raymarched ? 80 : 40));
 /** Cap the resolution: the scene is soft, and it redraws every frame. */
 const MAX_PIXEL_RATIO = 1.5;
 
@@ -72,11 +72,11 @@ function draw(time: number): void {
   if (!area || !renderer) return;
   if (area.clientWidth !== cssWidth || area.clientHeight !== cssHeight) syncCanvasSize();
   if (cssWidth === 0 || cssHeight === 0) return;
-  spectrum.update(props.audioNode, props.audioContext, BANDS);
+  spectrum.update(props.audioNode, props.audioContext, bands.value);
   renderer.render({
     levels: spectrum.levels,
     peaks: spectrum.peaks,
-    bands: BANDS,
+    bands: bands.value,
     timeMs: time,
   });
 }

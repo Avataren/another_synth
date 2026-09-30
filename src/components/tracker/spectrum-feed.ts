@@ -1,7 +1,7 @@
 import { spectrumBands } from 'src/components/tracker/glow-scope-geometry';
 
 /** The most bars a feed produces. */
-export const MAX_SPECTRUM_BANDS = 64;
+export const MAX_SPECTRUM_BANDS = 128;
 
 export interface SpectrumFeedOptions {
   fftSize?: number;

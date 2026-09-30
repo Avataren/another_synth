@@ -14,10 +14,17 @@ import {
 import { BLUR_FRAGMENT_SHADER, BLUR_VERTEX_SHADER } from 'src/components/tracker/glow-scope-shader';
 
 const FOV_Y = (34 * Math.PI) / 180;
-/** Width of the row of bars, world units, and the tallest a bar gets. */
-const ROW_WIDTH = 5.6;
+/**
+ * Width of the row of bars, world units, and the tallest a bar gets. The
+ * camera is framed on VIEW_WIDTH, so the row (twice that) runs past both
+ * edges of the canvas: the bars are big, and the ends are out of sight.
+ */
+const ROW_WIDTH = 11.2;
+const VIEW_WIDTH = 5.6;
 const MAX_HEIGHT = 1.9;
-const MAX_BARS = 64;
+const MAX_BARS = 128;
+/** How much of the canvas width the row may fill (1 = edge to edge). */
+const ROW_FILL = 0.97;
 const BLOOM_STRENGTH = 0.15;
 const REFLECTION_STRENGTH = 0.85;
 
@@ -170,6 +177,7 @@ export class RaymarchRenderer {
       'uBands',
       'uPitch',
       'uHalf',
+      'uHalfZ',
       'uMaxH',
       'uLoud',
       'uBars',
@@ -250,7 +258,7 @@ export class RaymarchRenderer {
     // The camera: low and wide, drifting a little so the depth reads.
     const aspect = width / Math.max(1, height);
     const t = frame.timeMs / 1000;
-    const distance = Math.max(4.6, ((ROW_WIDTH / 2) * 1.12) / (Math.tan(FOV_Y / 2) * aspect));
+    const distance = Math.max(4.6, ((VIEW_WIDTH / 2) / ROW_FILL) / (Math.tan(FOV_Y / 2) * aspect));
     const eye = [Math.sin(t * 0.17) * 0.9, 1.0 + Math.sin(t * 0.11) * 0.05, distance] as const;
 
     const pitch = ROW_WIDTH / bands;
@@ -290,7 +298,8 @@ export class RaymarchRenderer {
     gl.uniform1f(u.uTime ?? null, t);
     gl.uniform1i(u.uBands ?? null, bands);
     gl.uniform1f(u.uPitch ?? null, pitch);
-    gl.uniform1f(u.uHalf ?? null, pitch * 0.62 * 0.5);
+    gl.uniform1f(u.uHalf ?? null, pitch * 0.6 * 0.5);
+    gl.uniform1f(u.uHalfZ ?? null, pitch * 0.6 * 0.5);
     gl.uniform1f(u.uMaxH ?? null, MAX_HEIGHT);
     gl.uniform1f(u.uLoud ?? null, Math.min(1, loud / bands / 0.4));
     gl.uniform2fv(u.uBars ?? null, this.bars);

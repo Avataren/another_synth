@@ -15,9 +15,9 @@ void main() {
 `;
 
 /**
- * The classic Inigo Quilez kit, on a row of rounded boxes above a glossy floor:
+ * The classic Inigo Quilez kit, on a row of rounded cylinders above a glossy floor:
  *
- *  - an exact rounded-box distance, evaluated for the cell under the point and
+ *  - an exact rounded-cylinder distance, evaluated for the cell under the point and
  *    its nearest neighbour only (domain repetition), so cost does not grow with
  *    the number of bars;
  *  - normals from the tetrahedron trick (4 taps);
@@ -30,7 +30,7 @@ void main() {
 export const RAYMARCH_FRAGMENT_SHADER = `#version 300 es
 precision highp float;
 
-#define MAX_BARS 64
+#define MAX_BARS 128
 
 uniform vec2 uRes;
 uniform vec3 uEye;
@@ -39,7 +39,8 @@ uniform float uFocal;          // 1 / tan(fov / 2)
 uniform float uTime;
 uniform int uBands;
 uniform float uPitch;          // centre to centre
-uniform float uHalf;           // half the width (and depth) of a bar
+uniform float uHalf;           // half the width of a bar
+uniform float uHalfZ;          // half its depth
 uniform float uMaxH;           // the tallest a bar gets
 uniform float uLoud;           // 0..1 how loud the mix is
 uniform vec2 uBars[MAX_BARS];  // x: bar height, y: peak marker height
@@ -50,8 +51,8 @@ layout(location = 1) out vec4 outRefl;    // just the floor's reflection, to be 
 vec3 gRefl = vec3(0.0);
 float gShadow = 1.0;   // the floor's shadow term at the primary hit
 
-const float CAP_HALF = 0.0175;
-const float CAP_GAP = 0.05;
+const float CAP_HALF = 0.03;
+const float CAP_GAP = 0.07;
 const vec3 BG = vec3(0.0006, 0.0008, 0.0016);
 
 // ---------------------------------------------------------------- geometry --
@@ -63,6 +64,12 @@ float cellX(int i) {
 float sdRoundBox(vec3 p, vec3 b, float r) {
   vec3 q = abs(p) - b + r;
   return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
+}
+
+/** Upright cylinder of radius r and half-height hh, edges rounded by rb (iq). */
+float sdRoundCylinder(vec3 p, float r, float hh, float rb) {
+  vec2 d = vec2(length(p.xz) - r + rb, abs(p.y) - hh + rb);
+  return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - rb;
 }
 
 /** Distance to the bars and their peak caps: (distance, 2 * bar + (cap ? 1 : 0)). */
@@ -78,14 +85,17 @@ vec2 mapBars(vec3 p) {
     vec3 q = p - vec3(cellX(i), 0.0, 0.0);
     // The box runs a little below the floor so its rounded foot is hidden.
     float h = hp.x;
-    float db = sdRoundBox(
+    float hh = (h + 0.05) * 0.5;
+    float db = sdRoundCylinder(
       q - vec3(0.0, (h - 0.05) * 0.5, 0.0),
-      vec3(uHalf, (h + 0.05) * 0.5, uHalf),
-      min(0.03, uHalf * 0.5));
-    float dc = sdRoundBox(
+      uHalf,
+      hh,
+      min(0.03, min(uHalf, hh) * 0.5));
+    float dc = sdRoundCylinder(
       q - vec3(0.0, hp.y + CAP_GAP, 0.0),
-      vec3(uHalf, CAP_HALF, uHalf),
-      0.012);
+      uHalf,
+      CAP_HALF,
+      0.02);
     if (db < best.x) best = vec2(db, float(i * 2));
     if (dc < best.x) best = vec2(dc, float(i * 2 + 1));
   }
@@ -95,8 +105,8 @@ vec2 mapBars(vec3 p) {
 /** The row's bounding box; false when the ray misses it. */
 bool rowBox(vec3 ro, vec3 rd, out float t0, out float t1) {
   float w = float(uBands) * uPitch * 0.5 + 0.1;
-  vec3 lo = vec3(-w, -0.1, -uHalf - 0.1);
-  vec3 hi = vec3(w, uMaxH + 0.25, uHalf + 0.1);
+  vec3 lo = vec3(-w, -0.1, -uHalfZ - 0.1);
+  vec3 hi = vec3(w, uMaxH + 0.25, uHalfZ + 0.1);
   vec3 inv = 1.0 / rd;
   vec3 a = (lo - ro) * inv;
   vec3 b = (hi - ro) * inv;
@@ -162,7 +172,7 @@ float softShadow(vec3 ro, vec3 rd, float mint, float k) {
   float dmin = 1e5;
   float tMid = max(-ro.z / rd.z, 0.0);
   for (int i = 0; i < 9; i++) {
-    float z = mix(-uHalf, uHalf, float(i) / 8.0);
+    float z = mix(-uHalfZ, uHalfZ, float(i) / 8.0);
     float t = (z - ro.z) / rd.z;
     if (t < mint) continue;
     dmin = min(dmin, mapBars(ro + rd * t).x);
@@ -200,8 +210,8 @@ vec3 floorGlow(vec3 p) {
   float fi = p.x / uPitch + float(uBands) * 0.5;
   int i0 = int(floor(fi));
   vec3 sum = vec3(0.0);
-  float dz = max(abs(p.z) - uHalf, 0.0);
-  for (int k = -3; k <= 3; k++) {
+  float dz = max(abs(p.z) - uHalfZ, 0.0);
+  for (int k = -5; k <= 5; k++) {
     int i = i0 + k;
     if (i < 0 || i >= uBands) continue;
     float level = uBars[i].x / uMaxH;
@@ -209,13 +219,110 @@ vec3 floorGlow(vec3 p) {
     float d2 = dx * dx + dz * dz;
     sum += barColour(i) * level * (0.55 * exp(-d2 * 14.0) + 0.25 * exp(-d2 * 3.0));
   }
+  return sum * (40.0 / float(uBands));   // the same light however many bars share it
+}
+
+// -------------------------------------------------------------------- sky --
+
+// Low in the sky and behind the row, so the clouds are backlit and the disc is in view.
+const vec3 SKY_SUN = normalize(vec3(-0.45, 0.2, -0.87));
+const float CLOUD_LO = 30.0;
+const float CLOUD_HI = 52.0;
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float valueNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
+             mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+float fbm(vec2 p) {
+  float a = 0.5;
+  float sum = 0.0;
+  for (int i = 0; i < 4; i++) {
+    sum += a * valueNoise(p);
+    p = p * 2.03 + 17.1;
+    a *= 0.5;
+  }
   return sum;
 }
 
-vec3 background(vec3 rd) {
+/** Cloud density in a slab: noise thresholded into puffs, rounded off top and bottom. */
+float cloudDensity(vec3 p) {
+  float h = (p.y - CLOUD_LO) / (CLOUD_HI - CLOUD_LO);
+  float profile = smoothstep(0.0, 0.25, h) * (1.0 - smoothstep(0.5, 1.0, h));
+  vec2 wind = vec2(uTime * 0.35, uTime * 0.12);
+  float n = fbm(p.xz * 0.011 + wind * 0.05 + p.y * 0.004);
+  return clamp((n - (0.56 - 0.05 * uLoud)) * 3.6, 0.0, 1.0) * profile;
+}
+
+/** The sky without clouds: a blue gradient warming to the horizon, and the sun. */
+vec3 skyBase(vec3 rd) {
   float up = clamp(rd.y, 0.0, 1.0);
-  vec3 horizon = vec3(0.0025, 0.0035, 0.008) * (0.6 + 0.8 * uLoud);
-  return BG + horizon * exp(-up * 6.0) * 0.8;
+  vec3 zenith = vec3(0.004, 0.018, 0.10);
+  vec3 horizon = vec3(0.07, 0.12, 0.26);
+  vec3 col = mix(horizon, zenith, pow(up, 0.45));
+  float sun = max(dot(rd, SKY_SUN), 0.0);
+  col += vec3(1.0, 0.75, 0.45) * (pow(sun, 10.0) * 0.06 + pow(sun, 80.0) * 0.25);
+  col += vec3(1.2, 1.0, 0.8) * smoothstep(0.9994, 0.9998, sun);   // the disc
+  return col;
+}
+
+/**
+ * Clouds against the blue: march a slab at altitude, a few steps each (fewer for
+ * reflections, which are blurred anyway), lit from the sun side by comparing the
+ * density here with a little towards the sun (iq's cheap directional light).
+ */
+vec3 background(vec3 rd, int steps) {
+  vec3 col = skyBase(rd);
+  if (rd.y < 0.015) return col;
+  float t0 = (CLOUD_LO - 1.0) / rd.y;
+  float t1 = (CLOUD_HI - 1.0) / rd.y;
+  float dt = (t1 - t0) / float(steps);
+  float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  vec3 acc = vec3(0.0);
+  float trans = 1.0;
+  for (int i = 0; i < 16; i++) {
+    if (i >= steps || trans < 0.02) break;
+    float t = t0 + dt * (float(i) + jitter);
+    vec3 p = vec3(0.0, 1.0, 0.0) + rd * t;
+    float d = cloudDensity(p);
+    if (d > 0.01) {
+      float ds = cloudDensity(p + SKY_SUN * 3.0);
+      float lit = clamp((d - ds) * 2.0 + 0.55, 0.0, 1.0);
+      vec3 cloud = mix(vec3(0.05, 0.08, 0.17), vec3(0.75, 0.50, 0.40), lit);   // shadowed blue-grey to sunlit cream
+      float a = clamp(d * dt * 0.03, 0.0, 1.0);
+      acc += trans * a * cloud;
+      trans *= 1.0 - a;
+    }
+  }
+  // Far clouds melt into the haze at the horizon.
+  float haze = exp(-t0 * 0.0018);
+  vec3 sky = col;
+  return sky * mix(1.0, trans, haze) + acc * haze;
+}
+
+vec3 background(vec3 rd) {
+  return background(rd, 14);
+}
+
+/**
+ * What a mirror sees that is not geometry: the dark backdrop plus a studio of
+ * soft boxes (warm key, cool strip, rim behind), so a glossy surface has
+ * something to reflect. The camera never sees these, only reflections do.
+ */
+vec3 environment(vec3 rd) {
+  vec3 softKey = vec3(1.0, 0.92, 0.8) * pow(max(dot(rd, normalize(vec3(-0.5, 0.75, 0.35))), 0.0), 7.0) * 2.4;
+  vec3 strip = vec3(0.6, 0.8, 1.0) * pow(max(dot(rd, normalize(vec3(0.75, 0.35, 0.55))), 0.0), 14.0) * 1.6;
+  vec3 rim = vec3(0.9, 0.9, 1.0) * pow(max(dot(rd, normalize(vec3(0.0, 0.35, -1.0))), 0.0), 30.0) * 0.8;
+  return background(rd, 4) + softKey * 0.5 + strip + rim;
 }
 
 const vec3 KEY = normalize(vec3(-0.55, 0.6, -0.55));
@@ -272,7 +379,7 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
   col += albedo * (0.10 + 0.22 * height) * (cap ? 2.5 : 1.0);
   col += albedo * fres * 0.25;
   if (cap) col = mix(col * 1.5, vec3(1.0), 0.1) + albedo * 0.35;   // bright, but still the bar's colour
-  refl = cap ? 0.0 : mix(0.05, 0.4, fres);
+  refl = cap ? mix(0.3, 0.6, fres) : mix(0.14, 0.6, fres);
   return col;
 }
 
@@ -280,7 +387,7 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
 vec3 secondary(vec3 ro, vec3 rd, out float t) {
   Hit h = trace(ro, rd, 56);
   t = h.t;
-  if (h.mat == 0) return background(rd);
+  if (h.mat == 0) return background(rd, 5);
   vec3 n;
   float refl;
   vec3 local = shade(ro + rd * h.t, rd, h, false, n, refl);
@@ -293,7 +400,7 @@ vec3 render(vec3 ro, vec3 rd) {
   for (int bounce = 0; bounce < 2; bounce++) {
     Hit h = trace(ro, rd, bounce == 0 ? 96 : 56);
     if (h.mat == 0) {
-      col += through * background(rd);
+      col += through * (bounce == 0 ? background(rd) : environment(rd));
       break;
     }
     vec3 p = ro + rd * h.t;
