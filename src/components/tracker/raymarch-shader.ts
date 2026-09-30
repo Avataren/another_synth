@@ -15,9 +15,9 @@ void main() {
 `;
 
 /**
- * The classic Inigo Quilez kit, on a row of rounded cylinders above a glossy floor:
+ * The classic Inigo Quilez kit, on a row of rounded octagonal prisms above a glossy floor:
  *
- *  - an exact rounded-cylinder distance, evaluated for the cell under the point and
+ *  - an octagonal-prism distance, evaluated for the cell under the point and
  *    its nearest neighbour only (domain repetition), so cost does not grow with
  *    the number of bars;
  *  - normals from the tetrahedron trick (4 taps);
@@ -43,6 +43,7 @@ uniform float uHalf;           // half the width of a bar
 uniform float uHalfZ;          // half its depth
 uniform float uMaxH;           // the tallest a bar gets
 uniform float uLoud;           // 0..1 how loud the mix is
+uniform float uSeaLift;        // how far above y = 0 the sea's mean level sits
 uniform vec2 uBars[MAX_BARS];  // x: bar height, y: peak marker height
 
 // The sky's clock (see sky-cycle.ts): directions and light colours of the sun and moon, etc.
@@ -69,6 +70,7 @@ layout(location = 1) out vec4 outRefl;    // just the floor's reflection, to be 
 vec3 gRefl = vec3(0.0);
 float gShadow = 1.0;   // the floor's shadow term at the primary hit
 
+const float FOOT = 0.7;
 const float CAP_HALF = 0.03;
 const float CAP_GAP = 0.07;
 const vec3 BG = vec3(0.0006, 0.0008, 0.0016);
@@ -84,9 +86,19 @@ float sdRoundBox(vec3 p, vec3 b, float r) {
   return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
 }
 
-/** Upright cylinder of radius r and half-height hh, edges rounded by rb (iq). */
-float sdRoundCylinder(vec3 p, float r, float hh, float rb) {
-  vec2 d = vec2(length(p.xz) - r + rb, abs(p.y) - hh + rb);
+/** 2D octagon of apothem r (the distance to a flat side), flats facing the axes (iq). */
+float sdOctagon(vec2 p, float r) {
+  const vec3 k = vec3(-0.9238795325, 0.3826834323, 0.4142135623);
+  p = abs(p);
+  p -= 2.0 * min(dot(vec2(k.x, k.y), p), 0.0) * vec2(k.x, k.y);
+  p -= 2.0 * min(dot(vec2(-k.x, k.y), p), 0.0) * vec2(-k.x, k.y);
+  p -= vec2(clamp(p.x, -k.z * r, k.z * r), r);
+  return length(p) * sign(p.y);
+}
+
+/** Upright octagonal prism of apothem r and half-height hh, edges rounded by rb: eight flat faces to mirror things in. */
+float sdRoundOctagonPrism(vec3 p, float r, float hh, float rb) {
+  vec2 d = vec2(sdOctagon(p.xz, r - rb), abs(p.y) - hh + rb);
   return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - rb;
 }
 
@@ -103,13 +115,13 @@ vec2 mapBars(vec3 p) {
     vec3 q = p - vec3(cellX(i), 0.0, 0.0);
     // The box runs a little below the floor so its rounded foot is hidden.
     float h = hp.x;
-    float hh = (h + 0.05) * 0.5;
-    float db = sdRoundCylinder(
-      q - vec3(0.0, (h - 0.05) * 0.5, 0.0),
+    float hh = (h + FOOT) * 0.5;   // the feet run down below the deepest trough
+    float db = sdRoundOctagonPrism(
+      q - vec3(0.0, (h - FOOT) * 0.5, 0.0),
       uHalf,
       hh,
-      min(0.03, min(uHalf, hh) * 0.5));
-    float dc = sdRoundCylinder(
+      min(0.02, min(uHalf, hh) * 0.5));
+    float dc = sdRoundOctagonPrism(
       q - vec3(0.0, hp.y + CAP_GAP, 0.0),
       uHalf,
       CAP_HALF,
@@ -135,17 +147,109 @@ bool rowBox(vec3 ro, vec3 rd, out float t0, out float t1) {
   return t1 > t0;
 }
 
+// ------------------------------------------------------------------ ocean --
+
+// Waves after afl_ext (MIT): a sum of exp(sin) ridges in pseudo-random directions, each
+// octave a little finer and faster, every ridge dragging the next octave's coordinates
+// along with it (which is what makes the crests sharp and the troughs wide). Here the
+// gradient comes out of the same loop, so a normal costs no extra samples.
+const float WAVE_AMP = 1.0;       // height of the surface per unit of the normalised sum
+const float WAVE_MEAN = 0.37;     // what that sum averages (for this SHARP), so the sea sits on its mean level
+const float SHARP = 1.5;          // >1 narrows the crests and widens the troughs: crisper waves
+const float WAVE_SPEED = 1.4;
+const float DRAG = 0.38;
+const float WAVE_FREQ = 0.9;
+
+float oceanWaves(vec2 position, int iterations, out vec2 grad) {
+  float phase = length(position) * 0.1;
+  float iter = 0.0;
+  float frequency = WAVE_FREQ;
+  float timeMul = WAVE_SPEED;   // fixed: scaling the phase by anything that moves with the music makes the waves jump
+  float weight = 1.0;
+  float sumValues = 0.0;
+  float sumWeights = 0.0;
+  grad = vec2(0.0);
+  for (int i = 0; i < 20; i++) {
+    if (i >= iterations) break;
+    vec2 dir = vec2(sin(iter), cos(iter));
+    float x = dot(dir, position) * frequency + uTime * timeMul + phase;
+    float wave = exp(SHARP * (sin(x) - 1.0));
+    float dx = SHARP * wave * cos(x);
+    position += dir * (-dx) * weight * DRAG;
+    sumValues += wave * weight;
+    sumWeights += weight;
+    grad += dir * dx * frequency * weight;
+    weight = mix(weight, 0.0, 0.2);
+    frequency *= 1.18;
+    timeMul *= 1.07;
+    iter += 1232.399963;
+  }
+  grad /= sumWeights;
+  return sumValues / sumWeights;
+}
+
+/** How much of the wave height is left at this distance: the far sea goes flat, which also stops it shimmering. */
+float oceanFade(float dist) {
+  return 1.0 - smoothstep(10.0, 40.0, dist);
+}
+
+// Rings the bars push out across the water. The phase is the distance to the nearest
+// bar at the waterline, straight from the bars' own distance field, so the rings take
+// their shape from the bars (octagons near the feet, rounding off further out) and move
+// away from them; the height follows how tall the bar is, so a quiet bar leaves the
+// water alone and a loud one sets off rings that run into its neighbours'.
+const float RIPPLE_AMP = 0.03;
+const float RIPPLE_K = 38.0;       // radians per unit: the rings are about 0.17 apart
+const float RIPPLE_SPEED = 30.0;   // so they travel about 0.8 units a second
+const float RIPPLE_DECAY = 2.4;    // they die away over about a unit
+
+float barLevel(int i) {
+  return (i < 0 || i >= uBands) ? 0.0 : uBars[i].x / uMaxH;
+}
+
+/** Height of the ripples at a point of the water. */
+float barRipple(vec2 xz) {
+  float rowHalf = float(uBands) * uPitch * 0.5;
+  if (abs(xz.y) > 3.0 || abs(xz.x) > rowHalf + 3.0) return 0.0;
+  float d = max(mapBars(vec3(xz.x, 0.0, xz.y)).x, 0.0);
+  // The level of the bar the point is beside, eased between neighbours so the rings do not jump at cell borders.
+  float g = xz.x / uPitch + float(uBands) * 0.5 - 0.5;
+  int i0 = int(floor(g));
+  float level = mix(barLevel(i0), barLevel(i0 + 1), smoothstep(0.0, 1.0, fract(g)));
+  float env = exp(-d * RIPPLE_DECAY) * smoothstep(0.0, 0.05, d);
+  return RIPPLE_AMP * level * level * env * sin(RIPPLE_K * d - uTime * RIPPLE_SPEED);
+}
+
+/** Height of the surface at a point, with few octaves (for finding where a ray meets it). */
+float oceanHeight(vec2 xz, float dist) {
+  vec2 g;
+  float w = oceanWaves(xz, dist < 14.0 ? 8 : 6, g);
+  return uSeaLift + (w - WAVE_MEAN) * WAVE_AMP * oceanFade(dist) + barRipple(xz);
+}
+
+/** Where a descending ray meets the waves: a few steps of Newton's method from the mean plane. */
+float oceanHit(vec3 ro, vec3 rd) {
+  float t = (uSeaLift - ro.y) / rd.y;
+  if (t > 160.0) return t;   // the horizon: flat
+  for (int i = 0; i < 5; i++) {
+    vec3 p = ro + rd * t;
+    float h = oceanHeight(p.xz, t);
+    t += 0.85 * (p.y - h) / -rd.y;
+  }
+  return max(t, 0.0);
+}
+
 struct Hit {
   float t;
   int mat;       // 0 sky, 1 floor, 2 bar, 3 peak cap, 4 the ball
   int bar;
 };
 
-Hit trace(vec3 ro, vec3 rd, int steps) {
+Hit trace(vec3 ro, vec3 rd, int steps, bool waves) {
   Hit h = Hit(1e4, 0, 0);
-  // The floor is a plane: no marching.
+  // The sea is a few Newton steps; what a mirror looks at (waves false) gets the flat plane.
   if (rd.y < -1e-4) {
-    float tf = -ro.y / rd.y;
+    float tf = waves ? oceanHit(ro, rd) : (uSeaLift - ro.y) / rd.y;
     if (tf > 0.0) h = Hit(tf, 1, 0);
   }
   // The ball is a sphere: no marching either.
@@ -581,28 +685,48 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
   float shadow;
   vec3 spec;
   if (h.mat == 1) {
+    // The sea: a wave normal (flat for what only a mirror sees), flattened with distance.
     n = vec3(0.0, 1.0, 0.0);
-    float r = length(p.xz * vec2(0.45, 1.0));
-    float pool = exp(-r * r * 0.05) * (0.6 + 0.8 * uLoud);
-    // Faint tiles, so the mirror has something to show perspective with.
-    vec2 g = abs(fract(p.xz * 0.5 + 0.5) - 0.5);
-    float w = 0.012 + 0.0025 * h.t;
-    float line = 1.0 - smoothstep(0.0, w * 2.0, min(g.x, g.y));
-    vec3 albedo = vec3(0.012, 0.015, 0.024) * (1.0 + 0.6 * pool) + vec3(0.010, 0.014, 0.026) * line * pool;
+    float crest = 0.4;
+    {
+      vec2 g;
+      // Full detail only for what the camera looks at; a mirror off a bar gets the broad shape of the waves, which reads as a gradient, not noise.
+      float w = oceanWaves(p.xz, !full ? 6 : (h.t < 18.0 ? 18 : 10), g);
+      float fade = oceanFade(h.t);
+      n = normalize(vec3(-g.x * WAVE_AMP * fade, 1.0, -g.y * WAVE_AMP * fade));
+      n = normalize(mix(n, vec3(0.0, 1.0, 0.0), 0.8 * min(1.0, sqrt(h.t * 0.01) * 1.1)));
+      crest = clamp((w - 0.25) * 2.4, 0.0, 1.0);
+      // The bars' rings tilt the surface too (forward differences of their height).
+      const float e = 0.012;
+      float r0 = barRipple(p.xz);
+      vec2 rg = vec2(barRipple(p.xz + vec2(e, 0.0)) - r0, barRipple(p.xz + vec2(0.0, e)) - r0) / e;
+      n = normalize(vec3(n.x - rg.x, n.y, n.z - rg.y));
+    }
     vec3 irradiance = bodyLight(p, n, v, full, 0.002, 0.01, 10.0, true, shadow, spec);
-    ao = full ? ambientOcclusion(p, n) : 1.0;
-    col = albedo * (uAmbient * ao + irradiance) + uAmbient * 0.01 * pool * ao;
+    ao = full ? ambientOcclusion(p, vec3(0.0, 1.0, 0.0)) : 1.0;
+    // Water's own colour (sky light scattered back up; brighter in the crests) plus the
+    // sun and moon on the wave faces. The mirror part is added separately, from the reflection.
+    vec3 body = uAmbient * vec3(0.15, 0.4, 0.6) * (0.3 + 0.9 * crest);
+    col = body * ao + vec3(0.02, 0.05, 0.08) * irradiance * 0.3;
     col += floorGlow(p) * ao * 0.9;
     // A shadow reads as a shadow only if the glow does not wash it out: dim all of it.
     if (full) { gShadow = shadow; col *= mix(0.25, 1.0, shadow); }
-    // Far floor melts into the sky just above the horizon, whatever is there (aurora, haze, clouds).
+    // A ring of the bar's own colour where it meets the water, brighter for a taller bar.
+    if (full && abs(p.z) < 1.0) {
+      vec2 near = mapBars(vec3(p.x, 0.0, p.z));
+      int bar = int(near.y * 0.5);
+      float wet = exp(-max(near.x, 0.0) * 55.0) * (0.15 + barLevel(bar));
+      col += barColour(bar) * wet * 1.4;
+    }
+    // Far water melts into the sky just above the horizon, whatever is there (aurora, haze, clouds).
     // By how close the ray runs to the horizon, not by distance: distance fog is a set of circles
     // round the camera, which show up as big arcs on the floor when the camera is far back.
     float fog = 1.0 - smoothstep(0.0, 0.07, -rd.y);
     fog *= fog;
     if (fog > 0.05) col = mix(col, background(normalize(vec3(rd.x, abs(rd.y) + 0.012, rd.z)), 4), fog);
+    // Schlick fresnel with water's 2% at normal incidence: looking down you see into it, at a glance a mirror.
     float f = pow(1.0 - max(dot(n, v), 0.0), 5.0);
-    refl = mix(0.22, 1.0, f) * 0.85 * (1.0 - fog);   // by the horizon the floor is simply the sky
+    refl = (0.02 + 0.98 * f) * (1.0 - fog);   // by the horizon the water is simply the sky
     return col;
   }
 
@@ -641,13 +765,13 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
   col += albedo * (0.10 + 0.22 * height) * (cap ? 2.5 : 1.0);
   col += albedo * fres * 0.25;
   if (cap) col = mix(col * 1.5, vec3(1.0), 0.1) + albedo * 0.35;   // bright, but still the bar's colour
-  refl = cap ? mix(0.3, 0.6, fres) : mix(0.14, 0.6, fres);
+  refl = cap ? mix(0.4, 0.75, fres) : mix(0.32, 0.8, fres);
   return col;
 }
 
 /** What a ray sees after a mirror: the lit surface it lands on, without shadows or occlusion. */
 vec3 secondary(vec3 ro, vec3 rd, out float t) {
-  Hit h = trace(ro, rd, 56);
+  Hit h = trace(ro, rd, 56, false);
   t = h.t;
   if (h.mat == 0) return background(rd, 5);
   vec3 n;
@@ -660,7 +784,7 @@ vec3 render(vec3 ro, vec3 rd) {
   vec3 col = vec3(0.0);
   vec3 through = vec3(1.0);
   for (int bounce = 0; bounce < 2; bounce++) {
-    Hit h = trace(ro, rd, bounce == 0 ? 96 : 56);
+    Hit h = trace(ro, rd, bounce == 0 ? 96 : 56, true);   // the sea is real for mirrors off the bars too
     if (h.mat == 0) {
       col += through * (bounce == 0 ? background(rd) : environment(rd));
       break;
@@ -674,11 +798,21 @@ vec3 render(vec3 ro, vec3 rd) {
       // the further it is from the contact line) and adds it back.
       col += through * local * (1.0 - refl);
       float td;
-      vec3 seen = secondary(p + n * 0.003, reflect(rd, n), td);
+      vec3 mirror = reflect(rd, n);
+      mirror.y = abs(mirror.y);   // a steep wave can turn a reflection into the water; keep it going up
+      vec3 seen = secondary(p + n * 0.003, mirror, td);
       gRefl = refl * exp(-min(td, 12.0) * 0.02) * seen * mix(0.2, 1.0, gShadow);
       break;
     }
-    if (bounce == 1) refl = 0.0;
+    if (bounce == 1) {
+      // A mirror off a bar that lands on the sea sees the sea's own reflection of the sky too.
+      if (h.mat == 1) {
+        vec3 m = reflect(rd, n);
+        m.y = abs(m.y);
+        local += refl * background(m, 3);
+      }
+      refl = 0.0;
+    }
     col += through * local * (1.0 - refl);
     if (refl < 0.01) break;
     // What the mirror shows fades with the distance it travelled.
@@ -748,8 +882,8 @@ void main() {
   float below = max(0.0, uBaseV - vUv.y);
   vec3 sharp = decodeHdr(texture(uSharp, vUv).rgb);
   vec3 blur = decodeHdr(texture(uBlur, vUv).rgb);
-  vec3 refl = mix(sharp, blur, smoothstep(0.0, 0.3, below) * 0.9 + 0.1);
-  vec3 col = scene + refl * uStrength * exp(-below * 2.5);
+  vec3 refl = mix(sharp, blur, smoothstep(0.0, 0.3, below) * 0.45 + 0.05);
+  vec3 col = scene + refl * uStrength * exp(-below * 1.4);
 
   float vignette = 0.55 + 0.45 * pow(16.0 * vUv.x * vUv.y * (1.0 - vUv.x) * (1.0 - vUv.y), 0.25);
   col = aces(col * uExposure * vignette);

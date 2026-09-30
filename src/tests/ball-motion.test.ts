@@ -3,6 +3,7 @@ import {
   BACK_LANE_Z,
   BALL_RADIUS,
   BOUNCE_SECONDS,
+  SEA_LIFT,
   FRONT_LANE_Z,
   PASS_PERIOD,
   passSeconds,
@@ -49,10 +50,10 @@ describe('bouncing ball', () => {
   it('bounces: never below the floor, and back on it every bounce', () => {
     for (let i = 0; i < 200; i++) {
       const s = ballState((i / 200) * passSeconds(6), halfWidth);
-      expect(s.y).toBeGreaterThanOrEqual(BALL_RADIUS - 1e-6);
+      expect(s.y).toBeGreaterThanOrEqual(SEA_LIFT + BALL_RADIUS - 1e-6);
     }
-    expect(ballState(BOUNCE_SECONDS * 2, halfWidth).y).toBeCloseTo(BALL_RADIUS, 4);
-    expect(ballState(BOUNCE_SECONDS * 2.5, halfWidth).y).toBeGreaterThan(BALL_RADIUS + 1.5);
+    expect(ballState(BOUNCE_SECONDS * 2, halfWidth).y).toBeCloseTo(SEA_LIFT + BALL_RADIUS, 4);
+    expect(ballState(BOUNCE_SECONDS * 2.5, halfWidth).y).toBeGreaterThan(SEA_LIFT + BALL_RADIUS + 1.5);
   });
 
   it('follows the tempo with a bounce every beat or a simple multiple of it', () => {
@@ -72,8 +73,8 @@ describe('bouncing ball', () => {
   });
 
   it('bounces at the count it is given: on the floor at whole numbers, at the top between', () => {
-    expect(ballState(3, halfWidth, 7).y).toBeCloseTo(BALL_RADIUS, 6);
-    expect(ballState(3, halfWidth, 7.5).y).toBeGreaterThan(BALL_RADIUS + 1.5);
+    expect(ballState(3, halfWidth, 7).y).toBeCloseTo(SEA_LIFT + BALL_RADIUS, 6);
+    expect(ballState(3, halfWidth, 7.5).y).toBeGreaterThan(SEA_LIFT + BALL_RADIUS + 1.5);
   });
 
   it('uses both lanes, in front of the bars and behind them, across passes', () => {

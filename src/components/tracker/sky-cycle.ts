@@ -5,7 +5,7 @@
  */
 
 /** A whole day, sunrise to sunrise, in seconds. */
-export const CYCLE_SECONDS = 150;
+export const CYCLE_SECONDS = 225;
 /** The scene opens just after sunrise. */
 export const START_PHASE = 0.015;
 

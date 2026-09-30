@@ -11,7 +11,7 @@ import {
   RAYMARCH_FRAGMENT_SHADER,
   RAYMARCH_VERTEX_SHADER,
 } from 'src/components/tracker/raymarch-shader';
-import { BALL_RADIUS, ballState, bounceSeconds } from 'src/components/tracker/ball-motion';
+import { BALL_RADIUS, SEA_LIFT, ballState, bounceSeconds } from 'src/components/tracker/ball-motion';
 import { skyState } from 'src/components/tracker/sky-cycle';
 import { BLUR_FRAGMENT_SHADER, BLUR_VERTEX_SHADER } from 'src/components/tracker/glow-scope-shader';
 
@@ -25,6 +25,8 @@ const ROW_WIDTH = 11.2;
 const VIEW_WIDTH = 5.6;
 const MAX_HEIGHT = 2.85;
 const MAX_BARS = 128;
+/** A regular octagon reaches this much further at its corners than at its flats (1 / cos 22.5 degrees). */
+const OCTAGON_CORNER = 1.0824;
 /** How much of the canvas width the row may fill (1 = edge to edge). */
 const ROW_FILL = 0.97;
 /**
@@ -235,6 +237,7 @@ export class RaymarchRenderer {
       'uBall',
       'uBallRot',
       'uBallOn',
+      'uSeaLift',
     ]);
     this.blurUniforms = uniformLocations(gl, this.blurProgram, ['uSrc', 'uStep']);
     this.combineUniforms = uniformLocations(gl, this.combineProgram, [
@@ -360,7 +363,7 @@ export class RaymarchRenderer {
     gl.uniform1i(u.uBands ?? null, bands);
     gl.uniform1f(u.uPitch ?? null, pitch);
     gl.uniform1f(u.uHalf ?? null, pitch * 0.6 * 0.5);
-    gl.uniform1f(u.uHalfZ ?? null, pitch * 0.6 * 0.5);
+    gl.uniform1f(u.uHalfZ ?? null, pitch * 0.6 * 0.5 * OCTAGON_CORNER);
     gl.uniform1f(u.uMaxH ?? null, MAX_HEIGHT);
     gl.uniform1f(u.uLoud ?? null, Math.min(1, loud / bands / 0.4));
     gl.uniform2fv(u.uBars ?? null, this.bars);
@@ -369,6 +372,7 @@ export class RaymarchRenderer {
     gl.uniform4f(u.uBall ?? null, ball.x, ball.y, ball.z, ball.radius);
     gl.uniformMatrix3fv(u.uBallRot ?? null, false, ball.rotation);
     gl.uniform1f(u.uBallOn ?? null, ball.visible ? 1 : 0);
+    gl.uniform1f(u.uSeaLift ?? null, SEA_LIFT);
     const sky = skyState(t);
     gl.uniform3fv(u.uSunDir ?? null, sky.sunDir);
     gl.uniform3fv(u.uMoonDir ?? null, sky.moonDir);
@@ -394,10 +398,10 @@ export class RaymarchRenderer {
       gl.uniform2f(this.blurUniforms.uStep ?? null, dx / rw, dy / rh);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
-    smear(target.refl, reflTmp, 1.2, 0);
-    smear(reflTmp, reflBlur, 0, 4);
-    smear(reflBlur, reflTmp, 2.2, 0);
-    smear(reflTmp, reflBlur, 0, 7);
+    smear(target.refl, reflTmp, 0.8, 0);
+    smear(reflTmp, reflBlur, 0, 2);
+    smear(reflBlur, reflTmp, 1.4, 0);
+    smear(reflTmp, reflBlur, 0, 3);
 
     // Scene plus reflection, then the bloom onto the canvas.
     combined.use(gl, rw, rh);

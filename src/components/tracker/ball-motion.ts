@@ -33,6 +33,8 @@ export function bounceSeconds(bpm: number): number {
   return period;
 }
 export const BALL_RADIUS = 0.9;
+/** How far the sea's mean level sits above y = 0 (the shader gets the same number), so the ball lands on it. */
+export const SEA_LIFT = 0.14;
 /** Height of the top of a bounce above the floor, to the ball's centre: lower in front, where the ball is close to the camera and would leave the frame. */
 const BOUNCE_HEIGHT = { front: 1.1, back: 2.1 };
 /** Lanes, in world z: the bars stand at z = 0, the camera is at +z. */
@@ -107,7 +109,7 @@ export function ballState(
 
   const x = direction * (-reach + 2 * reach * Math.min(Math.max(u, 0), 1));
   const b = bounces - Math.floor(bounces);
-  const y = BALL_RADIUS + BOUNCE_HEIGHT[lane] * 4 * b * (1 - b);
+  const y = SEA_LIFT + BALL_RADIUS + BOUNCE_HEIGHT[lane] * 4 * b * (1 - b);
   return {
     visible,
     x,
