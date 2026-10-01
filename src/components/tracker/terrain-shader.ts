@@ -44,7 +44,17 @@ out vec4 outColor;
 const float FAR = 160.0;
 // The sea: a plane at this height. Ground below it is seabed.
 const float SEA = 0.0;
+const float FOG_START = 0.55;
 const mat2 M2 = mat2(0.8, -0.6, 0.6, 0.8);
+
+float sceneEnd() {
+  return min(FAR, uRows * uDz - uZ0);
+}
+
+float horizonDistance() {
+  // The middle of the fade is where the ocean visually gives way to the sky.
+  return 0.5 * (FOG_START + 1.0) * sceneEnd();
+}
 
 float hash21(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -213,7 +223,7 @@ bool march(vec3 ro, vec3 rd, out float tHit) {
   tHit = 0.0;
   // Beyond this distance fogAt() is exactly one. The heightfield remains intact; tracing it farther cannot
   // change a visible pixel, and uncapped mountains otherwise make low sky rays pay for a long empty march.
-  float fogEnd = min(FAR, uRows * uDz - uZ0);
+  float fogEnd = sceneEnd();
   for (int i = 0; i < 200; i++) {
     vec3 p = ro + rd * t;
     if (p.y > uHeightBound && rd.y >= 0.0) return false;
@@ -272,6 +282,18 @@ float shadow(vec3 p, vec3 l, float lod) {
 }
 
 // The sky without clouds: also what the fog fades into.
+// Put the sky's equator at the sea's visible fog band, rather than at an infinite flat-world horizon.
+// A dome centred at sea level also keeps the sun, moon and their reflections aligned as the camera moves.
+vec3 skyDirection(vec3 ro, vec3 rd) {
+  float distance = horizonDistance();
+  float cameraHeight = uEye.y - SEA;
+  float radius2 = max(distance * distance - cameraHeight * cameraHeight, 1.0);
+  vec3 origin = ro - vec3(uEye.x, SEA, uEye.z);
+  float b = dot(origin, rd);
+  float reach = -b + sqrt(max(b * b - dot(origin, origin) + radius2, 0.0));
+  return normalize(origin + rd * reach);
+}
+
 vec3 skyBase(vec3 rd) {
   float y = max(rd.y, 0.0);
   vec3 zenith = mix(vec3(0.003, 0.005, 0.02), vec3(0.10, 0.24, 0.55), uDay);
@@ -283,11 +305,13 @@ vec3 skyBase(vec3 rd) {
 }
 
 vec3 sky(vec3 ro, vec3 rd) {
+  rd = skyDirection(ro, rd);
   vec3 c = skyBase(rd);
+  float aboveSea = smoothstep(-0.001, 0.001, rd.y);
   float sd = max(dot(rd, uSunDir), 0.0);
-  c += uSunColor * 10.0 * smoothstep(0.9994, 0.9998, sd);
+  c += aboveSea * uSunColor * 10.0 * smoothstep(0.9994, 0.9998, sd);
   float md = max(dot(rd, uMoonDir), 0.0);
-  c += uMoonColor * (0.04 * pow(md, 24.0) + 6.0 * smoothstep(0.9996, 0.9998, md));
+  c += uMoonColor * (0.04 * pow(md, 24.0) + aboveSea * 6.0 * smoothstep(0.9996, 0.9998, md));
   if (uNight > 0.0 && rd.y > 0.0) {
     vec3 g = floor(rd * 190.0);
     float star = step(0.9965, hash31(g)) * (0.5 + 0.5 * hash31(g + 7.0));
@@ -475,8 +499,16 @@ float flowNoise(vec2 p) {
 // Haze by distance. Fully fogged by the far limit, so ground the marcher gave up on meets the sky without a seam, and
 // thick where the history ends, so the land goes into the fog instead of sinking away.
 float fogAt(float t) {
-  float dataEnd = uRows * uDz - uZ0;
-  return max(1.0 - exp(-pow(t * 0.011, 1.5)), max(smoothstep(0.5 * FAR, FAR, t), smoothstep(0.55 * dataEnd, 1.0 * dataEnd, t)));
+  float dataEnd = sceneEnd();
+  return max(1.0 - exp(-pow(t * 0.011, 1.5)), max(smoothstep(0.5 * FAR, FAR, t), smoothstep(FOG_START * dataEnd, dataEnd, t)));
+}
+
+// Fade a whole distant column together, before its sea-level base passes behind the visible horizon.
+// Ray distance varies with altitude and otherwise leaves floating peaks after their bases disappear.
+float landFog(vec3 p) {
+  float distance = length(p.xz - uEye.xz);
+  float horizon = sqrt(max(pow(horizonDistance(), 2.0) - pow(uEye.y - SEA, 2.0), 1.0));
+  return smoothstep(FOG_START * horizon, horizon, distance);
 }
 
 // Cool quickly after the breach, then leave a long dim tail. Ease the remaining glow to zero at the old boundary.
@@ -586,7 +618,7 @@ vec3 shadeLand(vec3 p, vec3 rd, float t, int mode) {
 }
 
 vec3 shade(vec3 p, vec3 rd, float t) {
-  return mix(shadeLand(p, rd, t, 0), skyBase(normalize(vec3(rd.x, max(rd.y, 0.02), rd.z))), fogAt(t));
+  return mix(shadeLand(p, rd, t, 0), sky(uEye, rd), landFog(p));
 }
 
 // ---- The sea. Waves after afl_ext (shadertoy MdXyzX): a sum of exp(sin) waves, each one dragging the next, so the
@@ -651,7 +683,7 @@ vec3 reflectedWorld(vec3 ro, vec3 rd, float tCam) {
     vec3 q = ro + rd * t;
     float d = q.y - height(q.xz, 4, 0.0);
     if (d < 0.003 * t + 0.002) {
-      return mix(shadeLand(q, rd, tCam + t, 1), skyBase(normalize(vec3(rd.x, max(rd.y, 0.02), rd.z))), fogAt(tCam + t));
+      return mix(shadeLand(q, rd, tCam + t, 1), sky(ro, rd), landFog(q));
     }
     if (q.y > uHeightBound) break;
     t += clamp(d * 0.5, 0.05 + 0.01 * t, 2.0);
@@ -718,7 +750,7 @@ vec3 shadeWater(vec3 p, vec3 rd, float t) {
   vec3 R = reflect(rd, n);
   R.y = abs(R.y);
   vec3 refl = reflectedWorld(p + vec3(0.0, 0.01, 0.0), R, t);
-  refl += uSunColor * pow(max(dot(R, uSunDir), 0.0), 300.0) * 3.0;
+  refl += uSunColor * pow(max(dot(skyDirection(p, R), uSunDir), 0.0), 300.0) * 3.0;
 
   float depth;
   vec3 T = refract(rd, n, 0.75);
@@ -738,28 +770,31 @@ vec3 shadeWater(vec3 p, vec3 rd, float t) {
     vec3 foamCol = vec3(0.92, 0.94, 0.97) * (uKeyColor * 0.3 + uAmbient * 3.5 + 0.3);
     col = mix(col, foamCol, clamp(fringe * 0.4 + fleck * 0.45, 0.0, 0.6));
   }
-  return mix(col, skyBase(normalize(vec3(rd.x, max(rd.y, 0.02), rd.z))), fogAt(t));
+  return mix(col, sky(uEye, rd), fogAt(t));
 }
 
 // ---- Steam. Where the lava meets the sea it boils the water off: a plume that rises from the waterline under hot lava,
 // billows with 3D noise that climbs as it goes, and streams away with the scroll. Marched as a volume along the
 // camera ray, through a box around the vent only, so the rest of the picture does not pay for it.
 
-const float STEAM_TOP = 4.5;
+const float STEAM_TOP = 6.0;
 
 // How dense the steam is at a point, 0..1.
 float steamDensity(vec3 p) {
-  float h = p.y - SEA;
+  float waterline = SEA + bowWave(p.xz);
+  float h = p.y - waterline;
   if (h < -0.3 || h > STEAM_TOP) return 0.0;
   // The source: hot lava, at the place where the ground crosses the waterline.
   float heat = lavaHeat(p.xz);
   if (heat <= 0.0) return 0.0;
-  float edge = (height(p.xz, 3, 0.0) - SEA) / 0.8;
+  float edge = (height(p.xz, 3, 0.0) - waterline) / 1.2;
   float source = heat * exp(-edge * edge);
   if (source < 0.01) return 0.0;
   vec2 w = scrolled(p.xz);
-  float billow = fbm3(vec3(w.x * 0.5, p.y * 0.55 - uTime * 0.7, w.y * 0.5), 3);
-  float plume = source * exp(-max(h, 0.0) / 1.7) * smoothstep(0.5, 0.85, billow + 0.15 * source);
+  // Finer billows and wisps, with the vertical drift scaled to keep the same rise speed.
+  float billow = fbm3(vec3(w.x * 1.1, p.y * 1.2 - uTime * 1.5, w.y * 1.1), 3);
+  float plume = 1.35 * source * exp(-max(h, 0.0) / 2.4) * smoothstep(0.43, 0.78, billow + 0.18 * source);
+  plume *= 1.0 - smoothstep(4.0, STEAM_TOP, h);
   return clamp(plume, 0.0, 1.0);
 }
 
@@ -767,7 +802,8 @@ float steamDensity(vec3 p) {
 vec4 steamAlong(vec3 ro, vec3 rd, float tEnd) {
   // Only inside a box around the vent.
   vec3 lo = vec3(-uHalfW * 1.3, SEA - 0.3, uZ0 - 14.0);
-  vec3 hi = vec3(uHalfW * 1.3, SEA + STEAM_TOP, uZ0 + 1.0);
+  // The raised bow wave can add up to two units to the waterline beneath the plume.
+  vec3 hi = vec3(uHalfW * 1.3, SEA + STEAM_TOP + 2.0, uZ0 + 1.0);
   vec3 inv = 1.0 / (rd + vec3(1e-5));
   vec3 t0 = (lo - ro) * inv;
   vec3 t1 = (hi - ro) * inv;
@@ -788,7 +824,7 @@ vec4 steamAlong(vec3 ro, vec3 rd, float tEnd) {
       // Lit from below by the lava, the more so the lower in the plume.
       float glow = lavaHeat(p.xz) * exp(-max(p.y - SEA, 0.0) / 1.4);
       vec3 c = vec3(0.86, 0.88, 0.92) * light + vec3(1.2, 0.4, 0.08) * glow * 0.9;
-      float a = 1.0 - exp(-dens * dt * 0.45);
+      float a = 1.0 - exp(-dens * dt * 0.65);
       acc += trans * a * c;
       trans *= 1.0 - a;
       if (trans < 0.02) break;
@@ -826,11 +862,11 @@ void main() {
   float tEnd = FAR;
   if (march(uEye, rd, t)) {
     vec3 p = uEye + rd * t;
-    if (t >= uRows * uDz - uZ0) col = skyBase(normalize(vec3(rd.x, max(rd.y, 0.02), rd.z)));
+    if (t >= sceneEnd()) col = sky(uEye, rd);
     else col = height(p.xz, 4, detailLod(t)) > SEA + bowWave(p.xz) + 0.015 ? shade(p, rd, t) : shadeWater(p, rd, t);
     tEnd = t;
   } else {
-    col = t >= uRows * uDz - uZ0 ? skyBase(normalize(vec3(rd.x, max(rd.y, 0.02), rd.z))) : sky(uEye, rd);
+    col = sky(uEye, rd);
   }
   vec4 steam = steamAlong(uEye, rd, tEnd);
   col = col * steam.a + steam.rgb;
