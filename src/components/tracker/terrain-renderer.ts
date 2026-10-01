@@ -12,7 +12,7 @@ import { terrainCamera } from 'src/components/tracker/terrain-camera';
 import { BLUR_VERTEX_SHADER } from 'src/components/tracker/glow-scope-shader';
 
 /** Rows of history (the newest nearest the camera) and columns (bands) the texture holds. */
-export const TERRAIN_ROWS = 160;
+export const TERRAIN_ROWS = 320;
 export const TERRAIN_TEX_WIDTH = 128;
 /** A new row of spectrum this many times a second, spaced ROW_SPACING apart: the speed the land streams past. */
 const ROW_HZ = 30;

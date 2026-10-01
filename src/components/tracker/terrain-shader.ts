@@ -40,7 +40,7 @@ uniform float uNight;
 
 out vec4 outColor;
 
-const float FAR = 90.0;
+const float FAR = 160.0;
 // The sea: a plane at this height. Ground below it is seabed.
 const float SEA = 0.0;
 const mat2 M2 = mat2(0.8, -0.6, 0.6, 0.8);
@@ -196,7 +196,7 @@ bool march(vec3 ro, vec3 rd, out float tHit) {
   float t = 0.1;
   float prevT = t;
   float cap = uMaxH * 1.6;
-  for (int i = 0; i < 160; i++) {
+  for (int i = 0; i < 200; i++) {
     vec3 p = ro + rd * t;
     float d = p.y - max(height(p.xz, 4, detailLod(t)), SEA + bowWave(p.xz));
     if (d < 0.0012 * t) {
@@ -215,7 +215,8 @@ bool march(vec3 ro, vec3 rd, out float tHit) {
     }
     if (p.y > cap && rd.y >= 0.0) return false;
     prevT = t;
-    t += clamp(d * 0.4, 0.015 + 0.003 * t, 0.9);
+    // Long steps are only safe far away, where a pixel is wide: up close they would jump over thin ridges.
+    t += clamp(d * 0.33, 0.015 + 0.003 * t, 0.5 + 0.02 * t);
     if (t > FAR) break;
   }
   tHit = min(t, FAR);
@@ -450,7 +451,7 @@ float flowNoise(vec2 p) {
 // thick where the history ends, so the land goes into the fog instead of sinking away.
 float fogAt(float t) {
   float dataEnd = uRows * uDz - uZ0;
-  return max(1.0 - exp(-pow(t * 0.018, 1.5)), max(smoothstep(0.5 * FAR, FAR, t), smoothstep(0.4 * dataEnd, 0.95 * dataEnd, t)));
+  return max(1.0 - exp(-pow(t * 0.011, 1.5)), max(smoothstep(0.5 * FAR, FAR, t), smoothstep(0.55 * dataEnd, 1.0 * dataEnd, t)));
 }
 
 // Heat of the lava under a point: the newest rows of the loud bands, however deep they lie.
@@ -603,7 +604,7 @@ vec3 reflectedWorld(vec3 ro, vec3 rd, float tCam) {
     }
     if (q.y > uMaxH * 1.6) break;
     t += clamp(d * 0.5, 0.05 + 0.01 * t, 2.0);
-    if (t > 70.0) break;
+    if (t > 110.0) break;
   }
   return sky(ro, rd);
 }
