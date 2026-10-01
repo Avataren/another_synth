@@ -8,9 +8,9 @@ import type { Bars3dFrame } from 'src/components/tracker/bars3d-renderer';
 import { RAYMARCH_VERTEX_SHADER } from 'src/components/tracker/raymarch-shader';
 import { TERRAIN_FRAGMENT_SHADER } from 'src/components/tracker/terrain-shader';
 import { skyState } from 'src/components/tracker/sky-cycle';
+import { terrainCamera } from 'src/components/tracker/terrain-camera';
 import { BLUR_VERTEX_SHADER } from 'src/components/tracker/glow-scope-shader';
 
-const FOV_Y = (42 * Math.PI) / 180;
 /** Rows of history (the newest nearest the camera) and columns (bands) the texture holds. */
 export const TERRAIN_ROWS = 160;
 export const TERRAIN_TEX_WIDTH = 128;
@@ -269,10 +269,9 @@ export class TerrainRenderer {
       this.dirty = false;
     }
 
-    // The camera floats above the land, drifting a little so the depth reads.
+    // The camera drifts: close and low, then far and high, with the field of view breathing (see terrain-camera.ts).
     const t = frame.timeMs / 1000;
-    const eye = [Math.sin(t * 0.13) * 1.2, 4.4 + Math.sin(t * 0.09) * 0.2, -1.5] as const;
-    const look = [Math.sin(t * 0.07) * 1.0, 0.3, -13] as const;
+    const { eye, look, fovY } = terrainCamera(t, NEWEST_Z);
 
     const rw = Math.max(1, Math.round(width * this.scale));
     const rh = Math.max(1, Math.round(height * this.scale));
@@ -288,7 +287,7 @@ export class TerrainRenderer {
     gl.uniform2f(u.uRes ?? null, rw, rh);
     gl.uniform3f(u.uEye ?? null, eye[0], eye[1], eye[2]);
     gl.uniform3f(u.uTarget ?? null, look[0], look[1], look[2]);
-    gl.uniform1f(u.uFocal ?? null, 1 / Math.tan(FOV_Y / 2));
+    gl.uniform1f(u.uFocal ?? null, 1 / Math.tan(fovY / 2));
     gl.uniform1f(u.uTime ?? null, t);
     gl.uniform1f(u.uBands ?? null, bands);
     gl.uniform1f(u.uTexW ?? null, TERRAIN_TEX_WIDTH);
