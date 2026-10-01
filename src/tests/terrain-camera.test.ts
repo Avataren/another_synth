@@ -16,6 +16,12 @@ const SPAN = 1200; // seconds: several turns of the slowest drifts
 const STEP = 0.5;
 
 describe('terrainCamera', () => {
+  it('keeps enough distance from the molten front even at its closest approach', () => {
+    for (let t = 0; t < SPAN; t += STEP) {
+      expect(terrainCamera(t, VENT_Z).distance).toBeGreaterThanOrEqual(8);
+    }
+  });
+
   it('stays inside its ranges', () => {
     for (let t = 0; t < SPAN; t += STEP) {
       const c = terrainCamera(t, VENT_Z);
@@ -29,7 +35,7 @@ describe('terrainCamera', () => {
     }
   });
 
-  it('keeps the bottom edge of the frame at or before the vent, so the music always shows at the bottom', () => {
+  it('keeps the bottom edge of the frame at or before the vent, so the breach stays visible', () => {
     for (let t = 0; t < SPAN; t += STEP) {
       const c = terrainCamera(t, VENT_Z);
       expect(bottomEdgeReach(c)).toBeLessThanOrEqual(c.distance + 1e-6);
@@ -63,14 +69,18 @@ describe('terrainCamera', () => {
     let farthest = -Infinity;
     let narrow = Infinity;
     let wide = -Infinity;
+    let mostForeground = 0;
     for (let t = 0; t < SPAN; t += STEP) {
       const c = terrainCamera(t, VENT_Z);
       nearest = Math.min(nearest, c.distance);
       farthest = Math.max(farthest, c.distance);
       narrow = Math.min(narrow, c.fovY);
       wide = Math.max(wide, c.fovY);
+      mostForeground = Math.max(mostForeground, c.distance - bottomEdgeReach(c));
     }
-    expect(farthest - nearest).toBeGreaterThan(4);
+    expect(nearest).toBeLessThan(10);
+    expect(farthest).toBeGreaterThan(22);
+    expect(mostForeground).toBeGreaterThan(8);
     expect(wide - narrow).toBeGreaterThan(0.15);
   });
 });

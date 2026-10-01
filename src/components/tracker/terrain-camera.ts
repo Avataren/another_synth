@@ -4,7 +4,7 @@
  * arithmetic on the clock, so the renderer only has to be handed numbers.
  *
  * The one rule it keeps: the bottom edge of the frame meets the sea no farther from the camera than the vent (the
- * newest row of the spectrum), so the music always appears at the bottom of the picture, however the camera moves.
+ * newest row of the spectrum), so the breach stays in view, with more foreground water during the longer pullbacks.
  */
 
 export type Vec3 = [number, number, number];
@@ -22,10 +22,10 @@ export interface TerrainCamera {
 const DEG = Math.PI / 180;
 
 /** The ranges the path stays within. */
-export const MIN_HEIGHT = 2.0;
-export const MAX_HEIGHT = 4.6;
-export const MIN_DISTANCE = 3.4;
-export const MAX_DISTANCE = 8.0;
+export const MIN_HEIGHT = 4.0;
+export const MAX_HEIGHT = 9.2;
+export const MIN_DISTANCE = 8.0;
+export const MAX_DISTANCE = 24.0;
 /** How high the camera may be, as a fraction of its distance from the vent. */
 export const MAX_HEIGHT_PER_DISTANCE = 0.6;
 /** The least the camera looks down, radians: it always looks well ahead, never at the sky. */
@@ -41,14 +41,21 @@ const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.m
 /** The camera at `seconds`, for a vent whose newest row lies at world z = `ventZ`. */
 export function terrainCamera(seconds: number, ventZ: number): TerrainCamera {
   const t = seconds;
-  const height = clamp(3.4 + 1.4 * Math.sin(t * 0.075 + 1.0) + 0.5 * Math.sin(t * 0.18), MIN_HEIGHT, MAX_HEIGHT);
+  // Keep the closest approach, but occasionally pull farther out over the water on a slower drift.
+  const height = clamp(6.8 + 2.8 * Math.sin(t * 0.075 + 1.0) + 1.0 * Math.sin(t * 0.18), MIN_HEIGHT, MAX_HEIGHT);
   // Never high and close at once: that would force a pitch steeply down at the water. Height may reach at most
   // MAX_HEIGHT_PER_DISTANCE of the distance, which keeps the look-down angle shallow (about 31 degrees to the vent), so the
   // camera always looks well ahead, toward the horizon.
-  const wanted = 6.0 + 2.8 * Math.sin(t * 0.05 + 2.0) + 0.9 * Math.sin(t * 0.13 + 0.5);
+  const retreat = 0.5 + 0.5 * Math.sin(t * 0.027 + 0.7);
+  const wanted =
+    12.0 +
+    5.6 * Math.sin(t * 0.05 + 2.0) +
+    1.8 * Math.sin(t * 0.13 + 0.5) +
+    8.0 * retreat * retreat * retreat;
   const distance = clamp(Math.max(wanted, height / MAX_HEIGHT_PER_DISTANCE), MIN_DISTANCE, MAX_DISTANCE);
-  const x = 2.5 * Math.sin(t * 0.06) + 1.0 * Math.sin(t * 0.17);
-  const yaw = 0.22 * Math.sin(t * 0.07 + 0.7) + 0.08 * Math.sin(t * 0.2);
+  // A smaller sideways swing keeps the single left-to-right spectrum in view, especially the bass at its edge.
+  const x = 1.4 * Math.sin(t * 0.06) + 0.6 * Math.sin(t * 0.17);
+  const yaw = 0.12 * Math.sin(t * 0.07 + 0.7) + 0.04 * Math.sin(t * 0.2);
   const fovY = clamp(42 * DEG + 8 * DEG * Math.sin(t * 0.045 + 1.3), MIN_FOV, MAX_FOV);
   // The bottom edge, looking down at the sea, would meet it exactly at the vent with a pitch of
   // atan(height / distance) - fov / 2. A little more than that (0..4 degrees) brings the edge in front of the vent.

@@ -10,23 +10,24 @@ import { TERRAIN_FRAGMENT_SHADER } from 'src/components/tracker/terrain-shader';
 import { skyState } from 'src/components/tracker/sky-cycle';
 import { terrainCamera } from 'src/components/tracker/terrain-camera';
 import { BLUR_VERTEX_SHADER } from 'src/components/tracker/glow-scope-shader';
+import {
+  TerrainHistory,
+  terrainHeightBound,
+  TERRAIN_TEXTURE_ROWS,
+  TERRAIN_TEX_WIDTH,
+  TERRAIN_ROW_STRIDE,
+} from 'src/components/tracker/terrain-history';
 
-/** Rows of history (the newest nearest the camera) and columns (bands) the texture holds. */
-export const TERRAIN_ROWS = 320;
-export const TERRAIN_TEX_WIDTH = 128;
-/** A new row of spectrum this many times a second, spaced ROW_SPACING apart: the speed the land streams past. */
-const ROW_HZ = 30;
+/** Distance between archived spectrum rows: the speed and extent of the land stay the same. */
 const ROW_SPACING = 0.22;
-/** Half the width the spectrum spans, and how tall a full-scale band stands. */
+/** Half the width the spectrum spans, and its height scale (relief may rise higher). */
 const HALF_WIDTH = 10;
-const MAX_HEIGHT = 2.8;
+const HEIGHT_PER_LEVEL = 5.5;
 /**
  * World z of the newest row. It is where the bottom edge of the view meets the ground, so a sound shows up the
  * moment it is made and the land streams away from there; nearer to the camera it would be off screen.
  */
 const NEWEST_Z = -6.3;
-/** How many bands either side a peak is spread to when a row is made. */
-const SPREAD_REACH = 3;
 
 const BLIT_FRAGMENT_SHADER = `#version 300 es
 precision mediump float;
@@ -66,15 +67,7 @@ export class TerrainRenderer {
   private target: RenderTarget | null = null;
   private blitProgram: WebGLProgram | null = null;
   private blitSrc: WebGLUniformLocation | null = null;
-  private readonly rows = new Float32Array(TERRAIN_ROWS * TERRAIN_TEX_WIDTH);
-  /** The loudest each band has been since the last row was pushed, so a short hit still lands in a row. */
-  private readonly pending = new Float32Array(TERRAIN_TEX_WIDTH);
-  private readonly spread = new Float32Array(TERRAIN_TEX_WIDTH);
-
-  private timeMsPrev = 0;
-  private rowClock = 0;
-  private rowsPushed = 0;
-  private dirty = true;
+  private readonly spectrumHistory = new TerrainHistory();
   private scale = 0.75;
   private lastTime = 0;
   private smoothedMs = 16.7;
@@ -129,12 +122,21 @@ export class TerrainRenderer {
       return false;
     }
     gl.bindTexture(gl.TEXTURE_2D, this.history);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, TERRAIN_TEX_WIDTH, TERRAIN_ROWS, 0, gl.RED, gl.FLOAT, this.rows);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RG16F,
+      TERRAIN_TEX_WIDTH,
+      TERRAIN_TEXTURE_ROWS,
+      0,
+      gl.RG,
+      gl.FLOAT,
+      this.spectrumHistory.data,
+    );
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    this.dirty = false;
     this.uniforms = uniformLocations(gl, this.program, [
       'uRes',
       'uEye',
@@ -151,6 +153,7 @@ export class TerrainRenderer {
       'uDz',
       'uHalfW',
       'uMaxH',
+      'uHeightBound',
       'uSunDir',
       'uMoonDir',
       'uSunColor',
@@ -212,34 +215,6 @@ export class TerrainRenderer {
     }
   }
 
-  /**
-   * Ages the history by one row and puts the loudest of each band since the
-   * last row at the front. A tonal mix is a comb of harmonic spikes with next to
-   * nothing between them, which would be a fence of needles, not land: each
-   * peak is spread to its neighbours (falling off with distance) and the result
-   * blurred, so the row is one continuous ridge line.
-   */
-  private pushRow(bands: number): void {
-    this.rows.copyWithin(TERRAIN_TEX_WIDTH, 0, (TERRAIN_ROWS - 1) * TERRAIN_TEX_WIDTH);
-    const raw = this.pending;
-    const spread = this.spread;
-    for (let b = 0; b < bands; b++) {
-      let v = raw[b] ?? 0;
-      for (let k = 1; k <= SPREAD_REACH; k++) {
-        const w = 1 - k / (SPREAD_REACH + 1);
-        v = Math.max(v, (raw[b - k] ?? 0) * w, (b + k < bands ? (raw[b + k] ?? 0) : 0) * w);
-      }
-      spread[b] = v;
-    }
-    for (let b = 0; b < bands; b++) {
-      const l = spread[Math.max(0, b - 1)] ?? 0;
-      const r = spread[Math.min(bands - 1, b + 1)] ?? 0;
-      this.rows[b] = 0.25 * l + 0.5 * (spread[b] ?? 0) + 0.25 * r;
-    }
-    this.rowsPushed++;
-    this.dirty = true;
-  }
-
   /** Draws one frame into the canvas, whose bitmap size the caller has set. */
   render(frame: Bars3dFrame): void {
     const gl = this.gl;
@@ -248,26 +223,25 @@ export class TerrainRenderer {
     const width = this.canvas.width;
     const height = this.canvas.height;
     const bands = Math.max(2, Math.min(TERRAIN_TEX_WIDTH, frame.bands));
-    const levels = frame.levels;
     this.adapt(frame.timeMs);
 
-    // A stalled frame (a background tab) must not rush the rows or bank a backlog.
-    const dt = Math.min(0.1, Math.max(0, (frame.timeMs - this.timeMsPrev) / 1000));
-    this.timeMsPrev = frame.timeMs;
-    for (let b = 0; b < bands; b++) {
-      this.pending[b] = Math.max(this.pending[b] ?? 0, Math.min(1, Math.max(0, levels[b] ?? 0)));
-    }
-    this.rowClock += dt * ROW_HZ;
-    while (this.rowClock >= 1) {
-      this.rowClock -= 1;
-      this.pushRow(bands);
-      for (let b = 0; b < bands; b++) this.pending[b] = Math.min(1, Math.max(0, levels[b] ?? 0));
-    }
-    if (this.dirty) {
-      gl.bindTexture(gl.TEXTURE_2D, history);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, TERRAIN_TEX_WIDTH, TERRAIN_ROWS, gl.RED, gl.FLOAT, this.rows);
-      this.dirty = false;
-    }
+    const spectrum = this.spectrumHistory;
+    const previousRows = spectrum.rowsPushed;
+    spectrum.update(frame.levels, bands, frame.timeMs);
+    gl.bindTexture(gl.TEXTURE_2D, history);
+    // Only the live row changes between archive ticks; upload the whole history when it moves.
+    const uploadRows = spectrum.rowsPushed !== previousRows ? TERRAIN_TEXTURE_ROWS : 1;
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      TERRAIN_TEX_WIDTH,
+      uploadRows,
+      gl.RG,
+      gl.FLOAT,
+      spectrum.data.subarray(0, uploadRows * TERRAIN_ROW_STRIDE),
+    );
 
     // The camera drifts: close and low, then far and high, with the field of view breathing (see terrain-camera.ts).
     const t = frame.timeMs / 1000;
@@ -291,13 +265,14 @@ export class TerrainRenderer {
     gl.uniform1f(u.uTime ?? null, t);
     gl.uniform1f(u.uBands ?? null, bands);
     gl.uniform1f(u.uTexW ?? null, TERRAIN_TEX_WIDTH);
-    gl.uniform1f(u.uRows ?? null, TERRAIN_ROWS);
-    gl.uniform1f(u.uPhase ?? null, this.rowClock);
-    gl.uniform1f(u.uScroll ?? null, (this.rowsPushed + this.rowClock) * ROW_SPACING);
+    gl.uniform1f(u.uRows ?? null, TERRAIN_TEXTURE_ROWS);
+    gl.uniform1f(u.uPhase ?? null, spectrum.phase);
+    gl.uniform1f(u.uScroll ?? null, (spectrum.rowsPushed + spectrum.phase) * ROW_SPACING);
     gl.uniform1f(u.uZ0 ?? null, NEWEST_Z);
     gl.uniform1f(u.uDz ?? null, ROW_SPACING);
     gl.uniform1f(u.uHalfW ?? null, HALF_WIDTH);
-    gl.uniform1f(u.uMaxH ?? null, MAX_HEIGHT);
+    gl.uniform1f(u.uMaxH ?? null, HEIGHT_PER_LEVEL);
+    gl.uniform1f(u.uHeightBound ?? null, terrainHeightBound(spectrum.maximumLevel, HEIGHT_PER_LEVEL));
     const sky = skyState(t);
     gl.uniform3fv(u.uSunDir ?? null, sky.sunDir);
     gl.uniform3fv(u.uMoonDir ?? null, sky.moonDir);

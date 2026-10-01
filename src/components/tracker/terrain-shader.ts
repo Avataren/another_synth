@@ -17,7 +17,7 @@ uniform vec3 uTarget;
 uniform float uFocal;          // 1 / tan(fov / 2)
 uniform float uTime;
 
-uniform sampler2D uHist;       // R16F: one row per moment (row 0 the newest), one column per band
+uniform sampler2D uHist;       // RG16F: own bands / broad ridges; row 0 live, then archived rows
 uniform float uBands;          // columns in use
 uniform float uTexW;           // columns in the texture
 uniform float uRows;
@@ -26,7 +26,8 @@ uniform float uScroll;         // total distance the terrain has travelled, for 
 uniform float uZ0;             // world z of the newest row
 uniform float uDz;             // distance between rows
 uniform float uHalfW;          // half the width the spectrum is spread over
-uniform float uMaxH;           // the tallest a full-scale band gets
+uniform float uMaxH;           // height per full-scale band, before the landscape's relief
+uniform float uHeightBound;    // conservative ray bound from the texture maximum and all possible relief
 
 uniform vec3 uSunDir;
 uniform vec3 uMoonDir;
@@ -113,20 +114,30 @@ float relief(vec2 q, int octaves) {
   return a;
 }
 
-// How loud the music is under a point, 0..1: columns across (mirrored, so the bass is the crest down the
-// middle), rows back in time. Fades to nothing at the edges and just ahead of the newest row (so a hit rises almost at once). The oldest row is not faded: the fog takes it.
-float loudness(vec2 xz) {
+// Each frequency appears once, from bass on the left to treble on the right. The live sample is at the breach;
+// archived rows move away at their true positions. R preserves attacks; G supplies shoulders and the broad wave.
+vec2 spectrumAt(vec2 xz) {
   float dist = uZ0 - xz.y;
-  float rowf = max(dist / uDz - uPhase, 0.0);
-  float ax = abs(xz.x) / uHalfW;
-  // Linear filtering with a smoothstep'd weight: no kinks between bands or rows, so the slope stays marchable.
-  vec2 g = vec2(clamp(ax, 0.0, 1.0) * (uBands - 1.0), rowf);
+  float rowf = 0.0;
+  if (dist > 0.0) {
+    // Leave one interval between the live sample and the archive, even at a row tick. Collapsing that
+    // interval to zero would turn the newest peak into a vertical seam whenever the live level falls.
+    float firstRow = (1.0 + uPhase) * uDz;
+    rowf = dist < firstRow ? dist / firstRow : dist / uDz - uPhase;
+  }
+  float band = 0.5 + 0.5 * xz.x / uHalfW;
+  vec2 g = vec2(clamp(band, 0.0, 1.0) * (uBands - 1.0), rowf);
   vec2 i = floor(g);
   vec2 f = g - i;
+  // A smooth join between adjacent raw bands keeps their exact peaks and valleys, without spreading either.
   f = f * f * (3.0 - 2.0 * f);
-  float s = texture(uHist, (i + f + 0.5) / vec2(uTexW, uRows)).r;
-  float fade = smoothstep(-0.3, 0.9, dist);
-  return s * fade * (1.0 - smoothstep(1.0, 1.6, ax));
+  vec2 s = texture(uHist, (i + f + 0.5) / vec2(uTexW, uRows)).rg;
+  return s * (1.0 - smoothstep(1.0, 1.6, abs(xz.x) / uHalfW));
+}
+
+float loudness(vec2 xz) {
+  vec2 spectrum = spectrumAt(xz);
+  return max(spectrum.r, 0.7 * spectrum.g);
 }
 
 // The land: rolling ground everywhere, and the music's mountains rising out of it. Both are carried along
@@ -135,14 +146,15 @@ float loudness(vec2 xz) {
 // running back from it, as high as the music is loud. The surface itself is displaced by this, not just its normals.
 float bowWave(vec2 xz) {
   float d = uZ0 - xz.y;
-  if (d < -1.0 || d > 5.5) return 0.0;
-  float L = loudness(xz);
+  if (d < -5.5 || d > 6.5) return 0.0;
+  float L = spectrumAt(xz).g;
   float body = smoothstep(0.02, 0.35, L);
   if (body <= 0.0) return 0.0;
-  float crest = exp(-pow((d - 2.7) / 0.8, 2.0));
-  float trail = exp(-pow((d - 1.0) / 1.1, 2.0)) * (0.5 + 0.5 * sin(d * 4.2 - uTime * 3.0));
+  float crest = exp(-pow((d + 1.3) / 1.15, 2.0));
+  float trail = exp(-pow((d - 1.0) / 1.4, 2.0)) * (0.5 + 0.5 * sin(d * 4.2 - uTime * 3.0));
   float pulse = 0.88 + 0.12 * sin(uTime * 2.4 + xz.x * 0.8);
-  return body * (0.12 + 0.4 * L) * pulse * (0.95 * crest + 0.35 * trail);
+  float edge = smoothstep(-5.5, -3.5, d) * (1.0 - smoothstep(4.5, 6.5, d));
+  return body * (0.32 + 1.0 * L) * pulse * (0.95 * crest + 0.45 * trail) * edge;
 }
 
 // How much of the fine detail to show at distance t: all of it up close, none where a pixel would be wider than it.
@@ -151,14 +163,14 @@ float detailLod(float t) {
 }
 
 // High-resolution relief: bumps from a few centimetres to a handful, riding the rows with everything else.
-// Each octave is 3D noise taken at the current height, so the bumps change with altitude and drift slowly in time.
+// Each octave is 3D noise taken at the current height. It travels with the row instead of wobbling over time.
 float micro(vec2 w, float y) {
   float a = 0.0;
   float b = 0.5;
   w *= 2.5;
   y *= 2.5;
   for (int i = 0; i < 3; i++) {
-    a += b * (vnoise3(vec3(w, y + uTime * 0.2)) - 0.5);
+    a += b * (vnoise3(vec3(w, y)) - 0.5);
     w = M2 * w * 2.1;
     y *= 2.1;
     b *= 0.5;
@@ -169,23 +181,26 @@ float micro(vec2 w, float y) {
 float height(vec2 xz, int octaves, float lod) {
   vec2 w = vec2(xz.x, uZ0 - xz.y - uScroll);
   vec2 q = w * 0.14;
-  float n = relief(q, octaves);
-  // An abyss: the sea is bottomless at the vent (the newest row) and shoals to the normal seabed over ten units, all the
-  // way across, so there is no shelf and no trench to give the eruption away. The volcano is a pillar up out of it: at
-  // the vent it is level with the abyss floor, and it climbs, breaking the surface about four units out, to its mountain.
   float dist = uZ0 - xz.y;
+  float n = relief(q, octaves);
   float abyss = 40.0 * (1.0 - smoothstep(0.0, 10.0, dist));
-  float climb = smoothstep(0.0, 4.0, dist);
-  // The lookup is nudged by the relief, along the rows and across the bands: steady music makes near-identical
-  // rows, which would otherwise stretch into long straight ridges, one per band, running down the view.
-  float L = loudness(xz + vec2((vnoise(q * 2.3 + 9.0) - 0.5) * 1.2, (n - 0.4) * 1.6));
-  // The pillar's footprint (wherever the music is audible) rises out of the abyss whatever the level; the level
-  // only sets how tall the mountain on top of it stands.
-  float pillar = smoothstep(0.02, 0.3, L);
-  float h = uMaxH * (0.22 * n - 0.34) - abyss + pillar * abyss * climb + L * uMaxH * (0.25 + 1.3 * n * n) * climb;
+  // Broad shoulders join the bands into ranges, while their own peaks still reach full level. Use exactly
+  // this shape at birth and throughout the archive: no age-dependent spread, gain or lookup can morph it.
+  float L = loudness(xz);
+  // Finish one short rise on the water side of the newest row. Once born, a peak has its full height and
+  // travels unchanged into the distance. The n² relief is anchored to the row at birth, with a full linear
+  // response underneath it. Only the material cools with age; the mountain never grows into a later shape.
+  float rise = smoothstep(-0.75, 0.0, dist);
+  float seabed = uMaxH * (0.22 * n - 0.34) - abyss;
+  float factor = 1.0 + 0.6 * n * n;
+  // The molten face continues down into the abyss in front of the breach. A waterline floor here made the
+  // lava a shallow flat carpet; keep the above-water rise short while the submerged slope reaches deep water.
+  float submerged = 40.0 * (1.0 - smoothstep(-3.5, -0.75, dist));
+  float mountain = -0.16 + L * uMaxH * factor * rise - submerged;
+  float h = mix(seabed, mountain, smoothstep(0.005, 0.04, L));
   // Craggy ledges: 3D noise with the height so far as its third coordinate, so the displacement depends on altitude.
-  h += uMaxH * 0.12 * (vnoise3(vec3(q * 1.7, h * 1.1 + uTime * 0.08)) - 0.5);
-  if (lod > 0.0) h += lod * 0.22 * micro(w, h);
+  h += L * uMaxH * 0.12 * (vnoise3(vec3(q * 1.7, h * 1.1)) - 0.5);
+  if (lod > 0.0) h += L * lod * 0.22 * micro(w, h);
   return h;
 }
 
@@ -195,9 +210,13 @@ float height(vec2 xz, int octaves, float lod) {
 bool march(vec3 ro, vec3 rd, out float tHit) {
   float t = 0.1;
   float prevT = t;
-  float cap = uMaxH * 1.6;
+  tHit = 0.0;
+  // Beyond this distance fogAt() is exactly one. The heightfield remains intact; tracing it farther cannot
+  // change a visible pixel, and uncapped mountains otherwise make low sky rays pay for a long empty march.
+  float fogEnd = min(FAR, uRows * uDz - uZ0);
   for (int i = 0; i < 200; i++) {
     vec3 p = ro + rd * t;
+    if (p.y > uHeightBound && rd.y >= 0.0) return false;
     float d = p.y - max(height(p.xz, 4, detailLod(t)), SEA + bowWave(p.xz));
     if (d < 0.0012 * t) {
       if (d < 0.0) {
@@ -213,11 +232,17 @@ bool march(vec3 ro, vec3 rd, out float tHit) {
       tHit = t;
       return true;
     }
-    if (p.y > cap && rd.y >= 0.0) return false;
     prevT = t;
     // Long steps are only safe far away, where a pixel is wide: up close they would jump over thin ridges.
-    t += clamp(d * 0.33, 0.015 + 0.003 * t, 0.5 + 0.02 * t);
-    if (t > FAR) break;
+    float maxStep = 0.5 + 0.02 * t;
+    float front = uZ0 - p.z;
+    // Unspread bands can be much narrower than a normal march step. Bound it by their pitch only where
+    // those ridges exist and a ray could touch them; the sky and the distant scenery keep the cheaper steps.
+    if (front > -0.75 && front < 8.0 && abs(p.x) < uHalfW * 1.6 && p.y < uHeightBound) {
+      maxStep = min(maxStep, 0.85 * 2.0 * uHalfW / (uBands - 1.0));
+    }
+    t += min(maxStep, max(d * 0.33, 0.015 + 0.003 * t));
+    if (t > fogEnd) break;
   }
   tHit = min(t, FAR);
   return rd.y < 0.0;
@@ -237,7 +262,7 @@ float shadow(vec3 p, vec3 l, float lod) {
   float t = 0.05;
   for (int i = 0; i < 28; i++) {
     vec3 q = p + l * t;
-    if (q.y > uMaxH * 1.6) break;
+    if (q.y > uHeightBound) break;
     float d = q.y - height(q.xz, 4, lod);
     res = min(res, 6.0 * d / t);
     if (res < 0.02) break;
@@ -454,9 +479,15 @@ float fogAt(float t) {
   return max(1.0 - exp(-pow(t * 0.011, 1.5)), max(smoothstep(0.5 * FAR, FAR, t), smoothstep(0.55 * dataEnd, 1.0 * dataEnd, t)));
 }
 
+// Cool quickly after the breach, then leave a long dim tail. Ease the remaining glow to zero at the old boundary.
+float lavaWarmth(float distance) {
+  float age = max(distance, 0.0);
+  return exp(-0.45 * age) * (1.0 - smoothstep(6.0, 8.0, age));
+}
+
 // Heat of the lava under a point: the newest rows of the loud bands, however deep they lie.
 float lavaHeat(vec2 xz) {
-  return (1.0 - smoothstep(6.0, 8.0, uZ0 - xz.y)) * smoothstep(0.02, 0.3, loudness(xz));
+  return lavaWarmth(uZ0 - xz.y) * smoothstep(0.02, 0.3, loudness(xz));
 }
 
 // The terrain is lit from the side and front: the sun is behind the range, which would leave every visible face in shade.
@@ -501,10 +532,12 @@ vec3 shadeLand(vec3 p, vec3 rd, float t, int mode) {
   // Molten at the front, where the music rises. It streams away from the newest row, cooling to black crust with the
   // heat surviving in the cracks, redder and dimmer as it ages.
   float dFront = uZ0 - p.z + 0.5 * (vnoise(w * 0.7 + 3.0) - 0.5);
-  float heat = (1.0 - smoothstep(6.0, 8.0, dFront)) * smoothstep(0.02, 0.3, loudness(p.xz));
+  float level = loudness(p.xz);
+  float warmth = lavaWarmth(dFront);
+  float heat = warmth * smoothstep(0.02, 0.3, level);
   vec3 lava = vec3(0.0);
   if (heat > 0.0) {
-    float cool = smoothstep(4.0, 7.0, dFront);
+    float cool = 1.0 - warmth;
     // Under water the lava is quenched: it crusts over at once, and only the cracks keep their glow.
     if (mode == 2) cool = max(cool, 0.6);
     float rz = flowNoise(w * 0.8);
@@ -513,6 +546,8 @@ vec3 shadeLand(vec3 p, vec3 rd, float t, int mode) {
     vec3 glow = pow(vec3(0.2, 0.07, 0.01) / rz, vec3(1.4)) * 3.6;
     glow *= mix(1.0, (0.1 + 2.2 * crack) * (1.0 - 0.6 * cool), crust);
     glow *= mix(vec3(1.0), vec3(1.0, 0.55, 0.25), cool);
+    // A local pulse in the hot lava makes an attack legible without flashing the ocean or the old mountains.
+    glow *= 0.7 + 0.9 * level;
     lava = glow;
     col = mix(col, vec3(0.025, 0.023, 0.025) * (0.5 + detailGrain(q, footprint)), heat);
   }
@@ -555,7 +590,8 @@ vec3 shade(vec3 p, vec3 rd, float t) {
 }
 
 // ---- The sea. Waves after afl_ext (shadertoy MdXyzX): a sum of exp(sin) waves, each one dragging the next, so the
-// crests sharpen and the troughs flatten. Used for the surface normals; the surface itself is the plane at SEA.
+// crests sharpen and the troughs flatten. Broad swells and wind patches break up the fine ripples. These shape
+// the normals; the marcher displaces the surface only for the bow wave.
 
 const float WATER_AMP = 0.3;
 
@@ -566,7 +602,6 @@ vec2 wavedx(vec2 position, vec2 direction, float frequency, float timeshift) {
 }
 
 float getwaves(vec2 position, int iterations) {
-  float phase = length(position) * 0.1;
   float iter = 0.0;
   float frequency = 1.0;
   float timeMultiplier = 2.0;
@@ -576,7 +611,7 @@ float getwaves(vec2 position, int iterations) {
   for (int i = 0; i < 10; i++) {
     if (i >= iterations) break;
     vec2 d = vec2(sin(iter), cos(iter));
-    vec2 res = wavedx(position, d, frequency, uTime * timeMultiplier + phase);
+    vec2 res = wavedx(position, d, frequency, uTime * timeMultiplier + float(i) * 2.39996);
     position += d * res.y * weight * 0.38;
     sumValues += res.x * weight;
     sumWeights += weight;
@@ -586,6 +621,22 @@ float getwaves(vec2 position, int iterations) {
     iter += 1232.399963;
   }
   return sumValues / sumWeights;
+}
+
+// Water has its own slow current, independent of the spectrum's faster archive scroll.
+vec2 waterFlow(vec2 xz) {
+  return xz - vec2(0.18, -0.11) * uTime;
+}
+
+float waterHeight(vec2 xz, float rippleDetail) {
+  vec2 wind = waterFlow(xz) * 0.065;
+  vec2 bend = vec2(vnoise(wind + 4.7), vnoise(M2 * wind + 17.3)) - 0.5;
+  float strength = mix(0.45, 1.15, vnoise(wind * 0.73 + 29.1));
+  // Different directions, wavelengths and speeds keep large swells from forming a regular lattice.
+  float swell = 0.38 * sin(dot(xz, vec2(0.84, 0.54)) * 0.36 - uTime * 0.8 + bend.x * 2.0)
+              + 0.22 * sin(dot(xz, vec2(-0.63, 0.78)) * 0.57 - uTime * 0.63 + bend.y * 1.8);
+  float ripples = getwaves((xz + 3.5 * bend) * 1.35, 8);
+  return swell + WATER_AMP * strength * rippleDetail * ripples;
 }
 
 vec2 scrolled(vec2 xz) {
@@ -602,7 +653,7 @@ vec3 reflectedWorld(vec3 ro, vec3 rd, float tCam) {
     if (d < 0.003 * t + 0.002) {
       return mix(shadeLand(q, rd, tCam + t, 1), skyBase(normalize(vec3(rd.x, max(rd.y, 0.02), rd.z))), fogAt(tCam + t));
     }
-    if (q.y > uMaxH * 1.6) break;
+    if (q.y > uHeightBound) break;
     t += clamp(d * 0.5, 0.05 + 0.01 * t, 2.0);
     if (t > 110.0) break;
   }
@@ -642,26 +693,26 @@ vec3 seabedView(vec3 p, vec3 T, float tCam, out float depth) {
   // lower down, and black in the deep. It spreads into a soft halo around the vent.
   float halo = lavaHeat(qEnd.xz) + lavaHeat(qEnd.xz + vec2(2.2, 0.0)) + lavaHeat(qEnd.xz - vec2(2.2, 0.0))
              + lavaHeat(qEnd.xz + vec2(0.0, 2.2)) + lavaHeat(qEnd.xz - vec2(0.0, 2.2));
-  vec3 haloGlow = vec3(1.4, 0.4, 0.06) * (halo * 0.1) * exp(-t * vec3(1.7, 2.5, 3.4)) * (0.6 + 0.4 * vnoise(scrolled(qEnd.xz) * 0.6 + uTime * 0.15));
+  vec3 haloGlow = vec3(1.4, 0.4, 0.06) * (halo * 0.1) * exp(-t * vec3(0.24, 0.5, 0.9)) * (0.6 + 0.4 * vnoise(scrolled(qEnd.xz) * 0.6 + uTime * 0.15));
   if (!hit) return deep + haloGlow;
   vec3 bed = shadeLand(qEnd, T, tCam + t, 2);
   vec3 absorb = exp(-t * vec3(0.9, 0.28, 0.16));
-  return bed * absorb + gLava * exp(-t * vec3(1.7, 2.5, 3.4)) + haloGlow + deep * (1.0 - absorb);
+  return bed * absorb + gLava * exp(-t * vec3(0.24, 0.5, 0.9)) + haloGlow + deep * (1.0 - absorb);
 }
 
 vec3 shadeWater(vec3 p, vec3 rd, float t) {
-  vec2 pw = scrolled(p.xz) * 1.7;
-  float e = 0.034;
-  float h0 = getwaves(pw, 8);
-  float hx = getwaves(pw + vec2(e, 0.0), 8);
-  float hz = getwaves(pw + vec2(0.0, e), 8);
-  vec3 n = normalize(vec3(-(hx - h0) * WATER_AMP / 0.02, 1.0, -(hz - h0) * WATER_AMP / 0.02));
-  // Smooth the far waves: at a distance they only shimmer.
-  n = normalize(mix(n, vec3(0.0, 1.0, 0.0), 0.8 * min(1.0, sqrt(t * 0.01) * 1.1)));
+  const float e = 0.04;
+  // Fade only the fine ripples at distance; broad swells remain visible across the whole sea.
+  float rippleDetail = mix(1.0, 0.15, smoothstep(12.0, 90.0, t));
+  float h0 = waterHeight(p.xz, rippleDetail);
+  float hx = waterHeight(p.xz + vec2(e, 0.0), rippleDetail);
+  float hz = waterHeight(p.xz + vec2(0.0, e), rippleDetail);
+  vec2 oceanSlope = vec2(hx - h0, hz - h0) / e;
   // The bow wave tilts the surface: its slope is added after the smoothing, so the crest stays crisp at any distance.
   float b0 = bowWave(p.xz);
   vec2 bowSlope = vec2(bowWave(p.xz + vec2(0.05, 0.0)) - b0, bowWave(p.xz + vec2(0.0, 0.05)) - b0) / 0.05;
-  n = normalize(n + vec3(-bowSlope.x, 0.0, -bowSlope.y));
+  vec2 slope = oceanSlope + bowSlope;
+  vec3 n = normalize(vec3(-slope.x, 1.0, -slope.y));
 
   float fresnel = 0.02 + 0.98 * pow(1.0 - max(dot(-rd, n), 0.0), 5.0);
   vec3 R = reflect(rd, n);
@@ -673,7 +724,7 @@ vec3 shadeWater(vec3 p, vec3 rd, float t) {
   vec3 T = refract(rd, n, 0.75);
   vec3 refr = seabedView(p, T, t, depth);
   // Shore foam where the water is thin.
-  float foam = (1.0 - smoothstep(0.0, 0.35, depth)) * (0.4 + 0.6 * vnoise(scrolled(p.xz) * 7.0 + uTime * 0.5));
+  float foam = (1.0 - smoothstep(0.0, 0.35, depth)) * (0.4 + 0.6 * vnoise(waterFlow(p.xz) * 7.0 + uTime * 0.5));
   refr = mix(refr, vec3(0.8, 0.85, 0.9) * (uKeyColor * 0.25 + uAmbient * 3.0), foam * 0.6);
 
   vec3 col = fresnel * refl + (1.0 - fresnel) * refr;
@@ -681,7 +732,7 @@ vec3 shadeWater(vec3 p, vec3 rd, float t) {
   // Foam on the bow wave: a thin, broken fringe on the steep face of the crest and flecks torn off it, never a sheet.
   float steep = smoothstep(0.5, 1.8, length(bowSlope));
   if (steep > 0.0) {
-    vec2 fw = scrolled(p.xz);
+    vec2 fw = waterFlow(p.xz);
     float fringe = steep * (0.3 + 0.7 * smoothstep(0.35, 0.8, vnoise(fw * 5.0 + vec2(uTime * 1.2, -uTime * 0.7))));
     float fleck = steep * smoothstep(0.62, 0.9, vnoise(fw * 13.0 + vec2(-uTime * 2.2, uTime * 1.6)));
     vec3 foamCol = vec3(0.92, 0.94, 0.97) * (uKeyColor * 0.3 + uAmbient * 3.5 + 0.3);
@@ -775,10 +826,11 @@ void main() {
   float tEnd = FAR;
   if (march(uEye, rd, t)) {
     vec3 p = uEye + rd * t;
-    col = height(p.xz, 4, detailLod(t)) > SEA + bowWave(p.xz) + 0.015 ? shade(p, rd, t) : shadeWater(p, rd, t);
+    if (t >= uRows * uDz - uZ0) col = skyBase(normalize(vec3(rd.x, max(rd.y, 0.02), rd.z)));
+    else col = height(p.xz, 4, detailLod(t)) > SEA + bowWave(p.xz) + 0.015 ? shade(p, rd, t) : shadeWater(p, rd, t);
     tEnd = t;
   } else {
-    col = sky(uEye, rd);
+    col = t >= uRows * uDz - uZ0 ? skyBase(normalize(vec3(rd.x, max(rd.y, 0.02), rd.z))) : sky(uEye, rd);
   }
   vec4 steam = steamAlong(uEye, rd, tEnd);
   col = col * steam.a + steam.rgb;
