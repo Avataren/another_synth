@@ -36,6 +36,7 @@ describe('visualization modes', () => {
     expect(ids).toContain('equalizer');
     expect(ids).toContain('bars3d');
     expect(ids).toContain('raymarch');
+    expect(ids).toContain('terrain');
   });
 
   it('reads an unknown stored value as the default', () => {

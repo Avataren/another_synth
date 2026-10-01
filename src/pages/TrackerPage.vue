@@ -818,6 +818,13 @@
       />
 
       <Bars3dWall
+        v-if="scopeWallVisible && visualizationMode === 'terrain'"
+        :audio-node="masterOutputNode"
+        :audio-context="audioContext"
+        terrain
+      />
+
+      <Bars3dWall
         v-if="scopeWallVisible && visualizationMode === 'raymarch'"
         :audio-node="masterOutputNode"
         :audio-context="audioContext"

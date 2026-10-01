@@ -5,6 +5,8 @@ export const MAX_SPECTRUM_BANDS = 128;
 
 export interface SpectrumFeedOptions {
   fftSize?: number;
+  /** The analyser's smoothing across frames, 0..1 (higher is steadier and later). */
+  smoothing?: number;
   minHz?: number;
   maxHz?: number;
   minDb?: number;
@@ -19,6 +21,7 @@ export interface SpectrumFeedOptions {
 
 const DEFAULTS: Required<SpectrumFeedOptions> = {
   fftSize: 8192,
+  smoothing: 0.6,
   minHz: 35,
   maxHz: 16000,
   minDb: -95,
@@ -67,7 +70,7 @@ export class SpectrumFeed {
     if (!node) return;
     const analyser = (context ?? node.context).createAnalyser();
     analyser.fftSize = this.options.fftSize;
-    analyser.smoothingTimeConstant = 0.6;
+    analyser.smoothingTimeConstant = this.options.smoothing;
     analyser.minDecibels = -100;
     analyser.maxDecibels = -10;
     this.freqDb = new Float32Array(analyser.frequencyBinCount);

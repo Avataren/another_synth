@@ -7,7 +7,7 @@
  * mode here and give the pages a branch for it; the picker lists whatever this
  * table holds.
  */
-export type VisualizationMode = 'pattern' | 'scopes' | 'glow' | 'bloom' | 'spikes' | 'stereo' | 'equalizer' | 'bars3d' | 'raymarch' | 'crt';
+export type VisualizationMode = 'pattern' | 'scopes' | 'glow' | 'bloom' | 'spikes' | 'stereo' | 'equalizer' | 'bars3d' | 'raymarch' | 'terrain' | 'crt';
 
 export interface VisualizationModeOption {
   id: VisualizationMode;
@@ -75,6 +75,12 @@ export const VISUALIZATION_MODES: readonly VisualizationModeOption[] = [
     title: 'The 3D bars raymarched per pixel: soft shadows, ambient occlusion and a mirror floor (GPU heavy)',
   },
   {
+    id: 'terrain',
+    label: 'Terrain',
+    icon: 'terrain',
+    title: 'The spectrum of the last few seconds as a raymarched landscape streaming away from you (GPU heavy)',
+  },
+  {
     id: 'crt',
     label: 'CRT',
     icon: 'tv',
@@ -91,7 +97,7 @@ export function sanitizeVisualizationMode(value: unknown): VisualizationMode {
 
 /** The modes that replace the channel row and pattern grid with a wall of scopes. */
 export function isScopeWallMode(mode: VisualizationMode): boolean {
-  return mode === 'scopes' || mode === 'stereo' || mode === 'equalizer' || mode === 'bars3d' || mode === 'raymarch' || isGlowWallMode(mode);
+  return mode === 'scopes' || mode === 'stereo' || mode === 'equalizer' || mode === 'bars3d' || mode === 'raymarch' || mode === 'terrain' || isGlowWallMode(mode);
 }
 
 /** The wall views that are WebGL only, whatever the WebGL scopes setting says. */
@@ -101,5 +107,5 @@ export function isGlowWallMode(mode: VisualizationMode): boolean {
 
 /** The views that read the per-channel taps (the stereo view listens to the master only). */
 export function usesTrackTaps(mode: VisualizationMode): boolean {
-  return mode !== 'pattern' && mode !== 'stereo' && mode !== 'bars3d' && mode !== 'raymarch';
+  return mode !== 'pattern' && mode !== 'stereo' && mode !== 'bars3d' && mode !== 'raymarch' && mode !== 'terrain';
 }
