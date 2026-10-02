@@ -1,3 +1,5 @@
+import { GpuRenderBudget } from './gpu-render-budget';
+import { RaymarchBarData, RAYMARCH_MAX_BARS } from './raymarch-bars';
 import {
   BloomChain,
   RenderTarget,
@@ -9,11 +11,20 @@ import type { Bars3dFrame } from 'src/components/tracker/bars3d-renderer';
 import {
   RAYMARCH_COMBINE_FRAGMENT_SHADER,
   RAYMARCH_FRAGMENT_SHADER,
+  RAYMARCH_SKY_FRAGMENT_SHADER,
   RAYMARCH_VERTEX_SHADER,
 } from 'src/components/tracker/raymarch-shader';
-import { BALL_RADIUS, SEA_LIFT, ballState, bounceSeconds } from 'src/components/tracker/ball-motion';
+import {
+  BALL_RADIUS,
+  SEA_LIFT,
+  ballState,
+  bounceSeconds,
+} from 'src/components/tracker/ball-motion';
 import { skyState } from 'src/components/tracker/sky-cycle';
-import { BLUR_FRAGMENT_SHADER, BLUR_VERTEX_SHADER } from 'src/components/tracker/glow-scope-shader';
+import {
+  BLUR_FRAGMENT_SHADER,
+  BLUR_VERTEX_SHADER,
+} from 'src/components/tracker/glow-scope-shader';
 
 const FOV_Y = (34 * Math.PI) / 180;
 /**
@@ -24,7 +35,9 @@ const FOV_Y = (34 * Math.PI) / 180;
 const ROW_WIDTH = 11.2;
 const VIEW_WIDTH = 5.6;
 const MAX_HEIGHT = 2.85;
-const MAX_BARS = 128;
+const MAX_BARS = RAYMARCH_MAX_BARS;
+const SKY_WIDTH = 384;
+const SKY_HEIGHT = 96;
 /** A regular octagon reaches this much further at its corners than at its flats (1 / cos 22.5 degrees). */
 const OCTAGON_CORNER = 1.0824;
 /** How much of the canvas width the row may fill (1 = edge to edge). */
@@ -56,7 +69,11 @@ const EXPOSURE = 1.35;
  * is found in angles, not by adding a margin to the screen edge. A little extra
  * covers the camera's sideways drift.
  */
-export function ballOffscreenX(depth: number, tanHalf: number, radius: number): number {
+export function ballOffscreenX(
+  depth: number,
+  tanHalf: number,
+  radius: number,
+): number {
   const half = Math.atan(tanHalf);
   let x = depth * tanHalf;
   for (let i = 0; i < 4; i++) {
@@ -72,19 +89,6 @@ function norm(v: readonly [number, number, number]): [number, number, number] {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
   return [v[0] / l, v[1] / l, v[2] / l];
 }
-
-/** The marcher's resolution, as a fraction of the canvas, and how it is steered. */
-const MIN_SCALE = 0.4;
-const MAX_SCALE = 1;
-const SCALE_STEP_DOWN = 0.1;
-const SCALE_STEP_UP = 0.05;
-/** Frames between decisions, and the smoothed frame time (ms) that triggers one. */
-const DECISION_FRAMES = 30;
-const SLOW_MS = 23;
-const FAST_MS = 18;
-/** A step up that is followed by a step down back off for this long (ms), doubling each time. */
-const BASE_COOLDOWN_MS = 4000;
-const MAX_COOLDOWN_MS = 60000;
 
 /** A framebuffer with two colour textures (the scene and the floor's reflection), resized on demand. */
 class SceneTarget {
@@ -112,8 +116,20 @@ class SceneTarget {
       this.scene.use(gl, w, h);
       this.refl.use(gl, w, h);
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.scene.texture, 0);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, this.refl.texture, 0);
+      gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT0,
+        gl.TEXTURE_2D,
+        this.scene.texture,
+        0,
+      );
+      gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT1,
+        gl.TEXTURE_2D,
+        this.refl.texture,
+        0,
+      );
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
@@ -128,8 +144,8 @@ class SceneTarget {
 }
 
 /**
- * The 3D bars scene, raytraced: one full-screen fragment shader marches a
- * distance field of the bars (soft shadows, ambient occlusion, a glossy mirror
+ * The 3D bars scene, raytraced: one full-screen fragment shader intersects
+ * the bars (soft shadows, ambient occlusion, a glossy mirror
  * floor, reflections) into a target whose resolution follows the frame rate,
  * and the bloom chain scales it up onto the canvas. The canvas is sized by the
  * caller.
@@ -150,18 +166,16 @@ export class RaymarchRenderer {
   private reflBlur: RenderTarget | null = null;
   private combined: RenderTarget | null = null;
   private bloom: BloomChain | null = null;
-  private readonly bars = new Float32Array(MAX_BARS * 2);
+  private readonly bars = new RaymarchBarData();
+  private barTexture: WebGLTexture | null = null;
+  private skyTarget: RenderTarget | null = null;
+  private skyProgram: WebGLProgram | null = null;
+  private skyUniforms: UniformLocations = {};
+  private budget: GpuRenderBudget | null = null;
   private readonly rect = new Float32Array(4);
 
   private bounces = 0;
-  private scale = 0.75;
-  private lastTime = 0;
   private lastBounceMs = 0;
-  private smoothedMs = 16.7;
-  private frames = 0;
-  private raisedAt = -Infinity;
-  private cooldownMs = BASE_COOLDOWN_MS;
-  private blockedUntil = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     canvas.addEventListener('webglcontextlost', this.onLost);
@@ -175,7 +189,7 @@ export class RaymarchRenderer {
 
   /** The current marcher resolution as a fraction of the canvas. */
   get resolutionScale(): number {
-    return this.scale;
+    return this.budget?.quality.scale ?? 0.75;
   }
 
   private onLost = (event: Event): void => {
@@ -197,10 +211,48 @@ export class RaymarchRenderer {
       powerPreference: 'high-performance',
     });
     if (!gl) return false;
+    this.gl = gl;
     try {
-      this.program = linkProgram(gl, RAYMARCH_VERTEX_SHADER, RAYMARCH_FRAGMENT_SHADER);
-      this.blurProgram = linkProgram(gl, BLUR_VERTEX_SHADER, BLUR_FRAGMENT_SHADER);
-      this.combineProgram = linkProgram(gl, BLUR_VERTEX_SHADER, RAYMARCH_COMBINE_FRAGMENT_SHADER);
+      this.budget = new GpuRenderBudget(gl);
+      this.skyProgram = linkProgram(
+        gl,
+        RAYMARCH_VERTEX_SHADER,
+        RAYMARCH_SKY_FRAGMENT_SHADER,
+      );
+      this.skyTarget = new RenderTarget(gl);
+      this.barTexture = gl.createTexture();
+      if (!this.barTexture) throw new Error('bar texture allocation failed');
+      gl.bindTexture(gl.TEXTURE_2D, this.barTexture);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA32F,
+        MAX_BARS,
+        2,
+        0,
+        gl.RGBA,
+        gl.FLOAT,
+        this.bars.data,
+      );
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      this.program = linkProgram(
+        gl,
+        RAYMARCH_VERTEX_SHADER,
+        RAYMARCH_FRAGMENT_SHADER,
+      );
+      this.blurProgram = linkProgram(
+        gl,
+        BLUR_VERTEX_SHADER,
+        BLUR_FRAGMENT_SHADER,
+      );
+      this.combineProgram = linkProgram(
+        gl,
+        BLUR_VERTEX_SHADER,
+        RAYMARCH_COMBINE_FRAGMENT_SHADER,
+      );
       this.bloom = new BloomChain(gl);
       this.target = new SceneTarget(gl);
       this.reflTmp = new RenderTarget(gl);
@@ -208,6 +260,7 @@ export class RaymarchRenderer {
       this.combined = new RenderTarget(gl);
     } catch (error) {
       console.error(error);
+      this.release();
       return false;
     }
     this.uniforms = uniformLocations(gl, this.program, [
@@ -219,10 +272,12 @@ export class RaymarchRenderer {
       'uBands',
       'uPitch',
       'uHalf',
+      'uCapHalf',
       'uHalfZ',
       'uMaxH',
       'uLoud',
-      'uBars',
+      'uBarData',
+      'uSky',
       'uSunDir',
       'uMoonDir',
       'uSunColor',
@@ -239,7 +294,10 @@ export class RaymarchRenderer {
       'uBallOn',
       'uSeaLift',
     ]);
-    this.blurUniforms = uniformLocations(gl, this.blurProgram, ['uSrc', 'uStep']);
+    this.blurUniforms = uniformLocations(gl, this.blurProgram, [
+      'uSrc',
+      'uStep',
+    ]);
     this.combineUniforms = uniformLocations(gl, this.combineProgram, [
       'uScene',
       'uSharp',
@@ -247,6 +305,22 @@ export class RaymarchRenderer {
       'uBaseV',
       'uStrength',
       'uExposure',
+    ]);
+    this.skyUniforms = uniformLocations(gl, this.skyProgram, [
+      'uSkyRes',
+      'uTime',
+      'uLoud',
+      'uSunDir',
+      'uMoonDir',
+      'uSunColor',
+      'uMoonColor',
+      'uKeyDir',
+      'uKeyColor',
+      'uAmbient',
+      'uDay',
+      'uNight',
+      'uAurora',
+      'uSunE',
     ]);
     this.emptyVao = gl.createVertexArray();
     this.gl = gl;
@@ -256,13 +330,22 @@ export class RaymarchRenderer {
   private release(): void {
     const gl = this.gl;
     if (gl) {
+      this.budget?.dispose();
+      this.skyTarget?.dispose(gl);
+      if (this.skyProgram) gl.deleteProgram(this.skyProgram);
+      if (this.barTexture) gl.deleteTexture(this.barTexture);
       if (this.emptyVao) gl.deleteVertexArray(this.emptyVao);
       for (const p of [this.program, this.blurProgram, this.combineProgram]) {
         if (p) gl.deleteProgram(p);
       }
-      for (const t of [this.target, this.reflTmp, this.reflBlur, this.combined]) t?.dispose(gl);
+      for (const t of [this.target, this.reflTmp, this.reflBlur, this.combined])
+        t?.dispose(gl);
       this.bloom?.dispose(gl);
     }
+    this.budget = null;
+    this.skyTarget = null;
+    this.skyProgram = null;
+    this.barTexture = null;
     this.emptyVao = null;
     this.program = this.blurProgram = this.combineProgram = null;
     this.target = this.reflTmp = this.reflBlur = this.combined = null;
@@ -277,78 +360,132 @@ export class RaymarchRenderer {
     this.lost = true;
   }
 
-  /**
-   * Trades resolution for frame rate: the marcher is the whole cost of the
-   * view, so it drops a step when frames run long and creeps back up when
-   * there is room, backing off if going up keeps making it slow again.
-   */
-  private adapt(timeMs: number): void {
-    const dt = timeMs - this.lastTime;
-    this.lastTime = timeMs;
-    // A stalled tab or the first frame says nothing about the GPU.
-    if (dt <= 0 || dt > 120) return;
-    this.smoothedMs += (dt - this.smoothedMs) * 0.1;
-    if (++this.frames < DECISION_FRAMES) return;
-    this.frames = 0;
-    if (this.smoothedMs > SLOW_MS && this.scale > MIN_SCALE) {
-      this.scale = Math.max(MIN_SCALE, this.scale - SCALE_STEP_DOWN);
-      if (timeMs - this.raisedAt < this.cooldownMs) {
-        this.cooldownMs = Math.min(MAX_COOLDOWN_MS, this.cooldownMs * 2);
-      }
-      this.blockedUntil = timeMs + this.cooldownMs;
-      this.smoothedMs = (FAST_MS + SLOW_MS) / 2;
-    } else if (this.smoothedMs < FAST_MS && this.scale < MAX_SCALE && timeMs >= this.blockedUntil) {
-      this.scale = Math.min(MAX_SCALE, this.scale + SCALE_STEP_UP);
-      this.raisedAt = timeMs;
-    }
+  private applySky(
+    gl: WebGL2RenderingContext,
+    u: UniformLocations,
+    sky: ReturnType<typeof skyState>,
+  ): void {
+    gl.uniform3fv(u.uSunDir ?? null, sky.sunDir);
+    gl.uniform3fv(u.uMoonDir ?? null, sky.moonDir);
+    gl.uniform3fv(u.uSunColor ?? null, sky.sunColor);
+    gl.uniform3fv(u.uMoonColor ?? null, sky.moonColor);
+    gl.uniform3fv(u.uKeyDir ?? null, sky.keyDir);
+    gl.uniform3fv(u.uKeyColor ?? null, sky.keyColor);
+    gl.uniform3fv(u.uAmbient ?? null, sky.ambient);
+    gl.uniform1f(u.uDay ?? null, sky.day);
+    gl.uniform1f(u.uNight ?? null, sky.night);
+    gl.uniform1f(u.uAurora ?? null, sky.aurora);
+    gl.uniform1f(u.uSunE ?? null, sky.sunElevation);
   }
 
   /** Draws one frame into the canvas, whose bitmap size the caller has set. */
   render(frame: Bars3dFrame): void {
     const gl = this.gl;
-    const { target, reflTmp, reflBlur, combined, bloom } = this;
-    if (!gl || this.lost || !target || !reflTmp || !reflBlur || !combined || !bloom || !this.program) return;
+    const {
+      target,
+      reflTmp,
+      reflBlur,
+      combined,
+      bloom,
+      skyTarget,
+      skyProgram,
+      budget,
+      barTexture,
+    } = this;
+    if (
+      !gl ||
+      this.lost ||
+      !target ||
+      !reflTmp ||
+      !reflBlur ||
+      !combined ||
+      !bloom ||
+      !this.program ||
+      !skyTarget ||
+      !skyProgram ||
+      !budget ||
+      !barTexture
+    )
+      return;
     const width = this.canvas.width;
     const height = this.canvas.height;
-    const bands = Math.max(1, Math.min(MAX_BARS, frame.bands));
-    this.adapt(frame.timeMs);
+    const bands = Math.max(1, Math.min(MAX_BARS, Math.floor(frame.bands)));
+    budget.update(frame.timeMs, width, height);
     // Count bounces at the song's tempo: a running count, so a tempo change bends the rate without a jump.
-    const frameSeconds = Math.min(0.1, Math.max(0, (frame.timeMs - this.lastBounceMs) / 1000));
+    const frameSeconds = Math.min(
+      0.1,
+      Math.max(0, (frame.timeMs - this.lastBounceMs) / 1000),
+    );
     this.lastBounceMs = frame.timeMs;
     this.bounces += frameSeconds / bounceSeconds(frame.bpm ?? 0);
 
     // The camera: low and wide, drifting a little so the depth reads.
     const aspect = width / Math.max(1, height);
     const t = frame.timeMs / 1000;
-    const fitWidth = (VIEW_WIDTH / 2 / ROW_FILL) / (Math.tan(FOV_Y / 2) * aspect);
-    const backOff = DISTANCE_REF * Math.pow(Math.max(aspect, ASPECT_REF) / ASPECT_REF, ASPECT_POWER);
+    const fitWidth = VIEW_WIDTH / 2 / ROW_FILL / (Math.tan(FOV_Y / 2) * aspect);
+    const backOff =
+      DISTANCE_REF *
+      Math.pow(Math.max(aspect, ASPECT_REF) / ASPECT_REF, ASPECT_POWER);
     const distance = Math.max(fitWidth, backOff);
-    const eye = [Math.sin(t * 0.17) * 0.9, EYE_HEIGHT + Math.sin(t * 0.11) * 0.05, distance] as const;
+    const eye = [
+      Math.sin(t * 0.17) * 0.9,
+      EYE_HEIGHT + Math.sin(t * 0.11) * 0.05,
+      distance,
+    ] as const;
 
     const pitch = ROW_WIDTH / bands;
-    let loud = 0;
-    for (let b = 0; b < bands; b++) {
-      const level = Math.min(1, Math.max(0, frame.levels[b] ?? 0));
-      const peak = Math.min(1, Math.max(0, frame.peaks[b] ?? 0));
-      loud += level;
-      this.bars[b * 2] = Math.max(0.02, level * MAX_HEIGHT);
-      this.bars[b * 2 + 1] = peak * MAX_HEIGHT + 0.04;
-    }
+    const loud = this.bars.update(frame.levels, frame.peaks, bands, MAX_HEIGHT);
 
     // Where the floor line under the bars lands on the screen (v, 0 at the bottom).
     const focal = 1 / Math.tan(FOV_Y / 2);
     const look = [0, LOOK_HEIGHT, 0] as const;
     const f = norm([look[0] - eye[0], look[1] - eye[1], look[2] - eye[2]]);
     const right = norm([f[2], 0, -f[0]]); // cross(f, up)
-    const up: [number, number, number] = [f[1] * right[2] - f[2] * right[1], f[2] * right[0] - f[0] * right[2], f[0] * right[1] - f[1] * right[0]];
+    const up: [number, number, number] = [
+      f[1] * right[2] - f[2] * right[1],
+      f[2] * right[0] - f[0] * right[2],
+      f[0] * right[1] - f[1] * right[0],
+    ];
     const px = -eye[0];
     const py = -eye[1];
     const pz = -eye[2];
     const depth = px * f[0] + py * f[1] + pz * f[2];
-    const baseV = 0.5 + (0.5 * focal * (px * up[0] + py * up[1] + pz * up[2])) / depth;
+    const baseV =
+      0.5 + (0.5 * focal * (px * up[0] + py * up[1] + pz * up[2])) / depth;
 
-    const rw = Math.max(1, Math.round(width * this.scale));
-    const rh = Math.max(1, Math.round(height * this.scale));
+    const rw = Math.max(1, Math.round(width * budget.quality.scale));
+    const rh = Math.max(1, Math.round(height * budget.quality.scale));
+    budget.begin(rw, rh);
+    gl.bindVertexArray(this.emptyVao);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, barTexture);
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      MAX_BARS,
+      2,
+      gl.RGBA,
+      gl.FLOAT,
+      this.bars.data,
+    );
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    gl.activeTexture(gl.TEXTURE0);
+    skyTarget.use(gl, SKY_WIDTH, SKY_HEIGHT);
+    gl.useProgram(skyProgram);
+    gl.uniform2f(this.skyUniforms.uSkyRes ?? null, SKY_WIDTH, SKY_HEIGHT);
+    gl.uniform1f(this.skyUniforms.uTime ?? null, t);
+    gl.uniform1f(this.skyUniforms.uLoud ?? null, loud);
+    const sky = skyState(t);
+    this.applySky(gl, this.skyUniforms, sky);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, skyTarget.texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.activeTexture(gl.TEXTURE0);
+
     target.use(gl, rw, rh);
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
@@ -362,29 +499,29 @@ export class RaymarchRenderer {
     gl.uniform1f(u.uTime ?? null, t);
     gl.uniform1i(u.uBands ?? null, bands);
     gl.uniform1f(u.uPitch ?? null, pitch);
-    gl.uniform1f(u.uHalf ?? null, pitch * 0.6 * 0.5);
-    gl.uniform1f(u.uHalfZ ?? null, pitch * 0.6 * 0.5 * OCTAGON_CORNER);
+    gl.uniform1f(u.uHalf ?? null, pitch * 0.75 * 0.5);
+    gl.uniform1f(u.uCapHalf ?? null, pitch * 0.6 * 0.5);
+    gl.uniform1f(u.uHalfZ ?? null, pitch * 0.75 * 0.5 * OCTAGON_CORNER);
     gl.uniform1f(u.uMaxH ?? null, MAX_HEIGHT);
-    gl.uniform1f(u.uLoud ?? null, Math.min(1, loud / bands / 0.4));
-    gl.uniform2fv(u.uBars ?? null, this.bars);
+    gl.uniform1f(u.uLoud ?? null, loud);
+    gl.uniform1i(u.uBarData ?? null, 3);
+    gl.uniform1i(u.uSky ?? null, 4);
     const tanHalf = Math.tan(FOV_Y / 2);
-    const ball = ballState(t, (z) => ballOffscreenX(Math.max(distance - z, 0.1), tanHalf * aspect, BALL_RADIUS), this.bounces);
+    const ball = ballState(
+      t,
+      (z) =>
+        ballOffscreenX(
+          Math.max(distance - z, 0.1),
+          tanHalf * aspect,
+          BALL_RADIUS,
+        ),
+      this.bounces,
+    );
     gl.uniform4f(u.uBall ?? null, ball.x, ball.y, ball.z, ball.radius);
     gl.uniformMatrix3fv(u.uBallRot ?? null, false, ball.rotation);
     gl.uniform1f(u.uBallOn ?? null, ball.visible ? 1 : 0);
     gl.uniform1f(u.uSeaLift ?? null, SEA_LIFT);
-    const sky = skyState(t);
-    gl.uniform3fv(u.uSunDir ?? null, sky.sunDir);
-    gl.uniform3fv(u.uMoonDir ?? null, sky.moonDir);
-    gl.uniform3fv(u.uSunColor ?? null, sky.sunColor);
-    gl.uniform3fv(u.uMoonColor ?? null, sky.moonColor);
-    gl.uniform3fv(u.uKeyDir ?? null, sky.keyDir);
-    gl.uniform3fv(u.uKeyColor ?? null, sky.keyColor);
-    gl.uniform3fv(u.uAmbient ?? null, sky.ambient);
-    gl.uniform1f(u.uDay ?? null, sky.day);
-    gl.uniform1f(u.uNight ?? null, sky.night);
-    gl.uniform1f(u.uAurora ?? null, sky.aurora);
-    gl.uniform1f(u.uSunE ?? null, sky.sunElevation);
+    this.applySky(gl, u, sky);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
 
@@ -392,16 +529,23 @@ export class RaymarchRenderer {
     gl.useProgram(this.blurProgram);
     gl.uniform1i(this.blurUniforms.uSrc ?? null, 0);
     gl.activeTexture(gl.TEXTURE0);
-    const smear = (from: RenderTarget, into: RenderTarget, dx: number, dy: number): void => {
-      into.use(gl, rw, rh);
+    const smear = (
+      from: RenderTarget,
+      into: RenderTarget,
+      dx: number,
+      dy: number,
+    ): void => {
+      into.use(
+        gl,
+        Math.max(1, Math.round(rw / 2)),
+        Math.max(1, Math.round(rh / 2)),
+      );
       gl.bindTexture(gl.TEXTURE_2D, from.texture);
       gl.uniform2f(this.blurUniforms.uStep ?? null, dx / rw, dy / rh);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
-    smear(target.refl, reflTmp, 0.8, 0);
-    smear(reflTmp, reflBlur, 0, 2);
-    smear(reflBlur, reflTmp, 1.4, 0);
-    smear(reflTmp, reflBlur, 0, 3);
+    smear(target.refl, reflTmp, 1.6, 0);
+    smear(reflTmp, reflBlur, 0, 3.6);
 
     // Scene plus reflection, then the bloom onto the canvas.
     combined.use(gl, rw, rh);
@@ -426,5 +570,6 @@ export class RaymarchRenderer {
     this.rect[2] = width;
     this.rect[3] = height;
     bloom.apply(gl, combined, width, height, this.rect, 1, BLOOM_STRENGTH);
+    budget.end();
   }
 }

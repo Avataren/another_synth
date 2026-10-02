@@ -1,8 +1,9 @@
+import { RAYMARCH_GEOMETRY_GLSL } from './raymarch-geometry';
+
 /**
  * GLSL for the raymarched bars scene (WebGL2). One full-screen triangle; the
- * fragment shader sphere-traces a signed distance field of the bars and
- * intersects the floor analytically, so the floor costs nothing and the
- * marcher only runs on rays that cross the bounding box of the row.
+ * fragment shader intersects beveled octagonal bars in cell order, then
+ * compares their depth with the checker ball and gently displaced ocean.
  */
 
 export const RAYMARCH_VERTEX_SHADER = `#version 300 es
@@ -17,9 +18,7 @@ void main() {
 /**
  * The classic Inigo Quilez kit, on a row of rounded octagonal prisms above a glossy floor:
  *
- *  - an octagonal-prism distance, evaluated for the cell under the point and
- *    its nearest neighbour only (domain repetition), so cost does not grow with
- *    the number of bars;
+ *  - convex octagonal intersections; local distances for shading and ripples;
  *  - normals from the tetrahedron trick (4 taps);
  *  - soft shadows with the improved penumbra estimate;
  *  - ambient occlusion from 5 taps along the normal;
@@ -27,8 +26,10 @@ void main() {
  *    (Schlick fresnel, reflections fade with the distance they travelled);
  *  - the bars are light sources too: they tint the floor around them.
  */
-export const RAYMARCH_FRAGMENT_SHADER = `#version 300 es
+export const RAYMARCH_COMMON_GLSL = `#version 300 es
 precision highp float;
+precision highp int;
+precision highp sampler2D;
 
 #define MAX_BARS 128
 
@@ -40,11 +41,14 @@ uniform float uTime;
 uniform int uBands;
 uniform float uPitch;          // centre to centre
 uniform float uHalf;           // half the width of a bar
+uniform float uCapHalf;        // original peak-dot size, independent of the body
 uniform float uHalfZ;          // half its depth
 uniform float uMaxH;           // the tallest a bar gets
 uniform float uLoud;           // 0..1 how loud the mix is
 uniform float uSeaLift;        // how far above y = 0 the sea's mean level sits
-uniform vec2 uBars[MAX_BARS];  // x: bar height, y: peak marker height
+uniform sampler2D uBarData;  // row 0: height/peak; row 1: linear RGB
+uniform sampler2D uSky;
+uniform vec2 uSkyRes;
 
 // The sky's clock (see sky-cycle.ts): directions and light colours of the sun and moon, etc.
 uniform vec3 uSunDir;
@@ -68,6 +72,7 @@ layout(location = 0) out vec4 outColor;   // the scene, without the floor's refl
 layout(location = 1) out vec4 outRefl;    // just the floor's reflection, to be blurred
 
 vec3 gRefl = vec3(0.0);
+float gWater = 0.0;
 float gShadow = 1.0;   // the floor's shadow term at the primary hit
 
 const float FOOT = 0.7;
@@ -76,6 +81,10 @@ const float CAP_GAP = 0.07;
 const vec3 BG = vec3(0.0006, 0.0008, 0.0016);
 
 // ---------------------------------------------------------------- geometry --
+
+vec2 barHeights(int i) {
+  return texelFetch(uBarData, ivec2(i, 0), 0).rg;
+}
 
 float cellX(int i) {
   return (float(i) - float(uBands - 1) * 0.5) * uPitch;
@@ -111,7 +120,7 @@ vec2 mapBars(vec3 p) {
   for (int k = 0; k < 2; k++) {
     int i = k == 0 ? i0 : i1;
     if (i < 0 || i >= uBands) continue;
-    vec2 hp = uBars[i];
+    vec2 hp = barHeights(i);
     vec3 q = p - vec3(cellX(i), 0.0, 0.0);
     // The box runs a little below the floor so its rounded foot is hidden.
     float h = hp.x;
@@ -123,28 +132,13 @@ vec2 mapBars(vec3 p) {
       min(0.02, min(uHalf, hh) * 0.5));
     float dc = sdRoundOctagonPrism(
       q - vec3(0.0, hp.y + CAP_GAP, 0.0),
-      uHalf,
+      uCapHalf,
       CAP_HALF,
-      0.02);
+      min(0.02, min(uCapHalf, CAP_HALF) * 0.5));
     if (db < best.x) best = vec2(db, float(i * 2));
     if (dc < best.x) best = vec2(dc, float(i * 2 + 1));
   }
   return best;
-}
-
-/** The row's bounding box; false when the ray misses it. */
-bool rowBox(vec3 ro, vec3 rd, out float t0, out float t1) {
-  float w = float(uBands) * uPitch * 0.5 + 0.1;
-  vec3 lo = vec3(-w, -0.1, -uHalfZ - 0.1);
-  vec3 hi = vec3(w, uMaxH + 0.25, uHalfZ + 0.1);
-  vec3 inv = 1.0 / rd;
-  vec3 a = (lo - ro) * inv;
-  vec3 b = (hi - ro) * inv;
-  vec3 tn = min(a, b);
-  vec3 tf = max(a, b);
-  t0 = max(max(tn.x, tn.y), max(tn.z, 0.0));
-  t1 = min(tf.x, min(tf.y, tf.z));
-  return t1 > t0;
 }
 
 // ------------------------------------------------------------------ ocean --
@@ -153,12 +147,12 @@ bool rowBox(vec3 ro, vec3 rd, out float t0, out float t1) {
 // octave a little finer and faster, every ridge dragging the next octave's coordinates
 // along with it (which is what makes the crests sharp and the troughs wide). Here the
 // gradient comes out of the same loop, so a normal costs no extra samples.
-const float WAVE_AMP = 1.0;       // height of the surface per unit of the normalised sum
-const float WAVE_MEAN = 0.37;     // what that sum averages (for this SHARP), so the sea sits on its mean level
-const float SHARP = 1.5;          // >1 narrows the crests and widens the troughs: crisper waves
-const float WAVE_SPEED = 1.4;
-const float DRAG = 0.38;
-const float WAVE_FREQ = 0.9;
+const float WAVE_AMP = 0.3;       // height of the surface per unit of the normalised sum
+const float WAVE_MEAN = 0.41;     // what that sum averages (for this SHARP), so the sea sits on its mean level
+const float SHARP = 1.25;          // >1 narrows the crests and widens the troughs: crisper waves
+const float WAVE_SPEED = 0.7;
+const float DRAG = 0.24;
+const float WAVE_FREQ = 0.65;
 
 float oceanWaves(vec2 position, int iterations, out vec2 grad) {
   float phase = length(position) * 0.1;
@@ -198,13 +192,13 @@ float oceanFade(float dist) {
 // their shape from the bars (octagons near the feet, rounding off further out) and move
 // away from them; the height follows how tall the bar is, so a quiet bar leaves the
 // water alone and a loud one sets off rings that run into its neighbours'.
-const float RIPPLE_AMP = 0.03;
-const float RIPPLE_K = 38.0;       // radians per unit: the rings are about 0.17 apart
-const float RIPPLE_SPEED = 30.0;   // so they travel about 0.8 units a second
+const float RIPPLE_AMP = 0.012;
+const float RIPPLE_K = 22.0;       // broad, gentle rings
+const float RIPPLE_SPEED = 12.0;   // about half a world unit per second
 const float RIPPLE_DECAY = 2.4;    // they die away over about a unit
 
 float barLevel(int i) {
-  return (i < 0 || i >= uBands) ? 0.0 : uBars[i].x / uMaxH;
+  return (i < 0 || i >= uBands) ? 0.0 : barHeights(i).x / uMaxH;
 }
 
 /**
@@ -229,7 +223,7 @@ float barRipple(vec2 xz) {
   float dBall = ballWaterline(xz, ballNear);
   float height = 0.0;
   if (ballNear > 0.0) {
-    height = 0.06 * ballNear * exp(-dBall * 1.5) * smoothstep(0.0, 0.05, dBall) * sin(24.0 * dBall - uTime * 16.0);
+    height = 0.025 * ballNear * exp(-dBall * 1.5) * smoothstep(0.0, 0.05, dBall) * sin(16.0 * dBall - uTime * 9.0);
   }
   float rowHalf = float(uBands) * uPitch * 0.5;
   if (abs(xz.y) > 3.0 || abs(xz.x) > rowHalf + 3.0) return height;
@@ -245,20 +239,28 @@ float barRipple(vec2 xz) {
 /** Height of the surface at a point, with few octaves (for finding where a ray meets it). */
 float oceanHeight(vec2 xz, float dist) {
   vec2 g;
-  float w = oceanWaves(xz, dist < 14.0 ? 8 : 6, g);
+  float w = oceanWaves(xz, 8, g);
   return uSeaLift + (w - WAVE_MEAN) * WAVE_AMP * oceanFade(dist) + barRipple(xz);
 }
 
-/** Where a descending ray meets the waves: a few steps of Newton's method from the mean plane. */
+/** Bracket the displaced surface; unchecked Newton steps can put water in front of an opaque hit. */
 float oceanHit(vec3 ro, vec3 rd) {
-  float t = (uSeaLift - ro.y) / rd.y;
-  if (t > 160.0) return t;   // the horizon: flat
-  for (int i = 0; i < 5; i++) {
+  float mean = (uSeaLift - ro.y) / rd.y;
+  if (mean > 160.0) return mean;
+  // Both wave weights and the fade are bounded by one. These enclose all bar/ball ripples too.
+  float top = uSeaLift + (1.0 - WAVE_MEAN) * WAVE_AMP + 0.04;
+  float bottom = uSeaLift - WAVE_MEAN * WAVE_AMP - 0.04;
+  float lo = max(0.0, (top - ro.y) / rd.y);
+  float hi = max(lo, (bottom - ro.y) / rd.y);
+  float t = clamp(mean, lo, hi);
+  for (int i = 0; i < 14; i++) {
     vec3 p = ro + rd * t;
-    float h = oceanHeight(p.xz, t);
-    t += 0.85 * (p.y - h) / -rd.y;
+    float distance = p.y - oceanHeight(p.xz, t);
+    if (abs(distance) < 0.0001) return t;
+    if (distance > 0.0) lo = t; else hi = t;
+    t = (lo + hi) * 0.5;
   }
-  return max(t, 0.0);
+  return t;
 }
 
 struct Hit {
@@ -267,51 +269,9 @@ struct Hit {
   int bar;
 };
 
-Hit trace(vec3 ro, vec3 rd, int steps, bool waves) {
-  Hit h = Hit(1e4, 0, 0);
-  // The sea is a few Newton steps; what a mirror looks at (waves false) gets the flat plane.
-  if (rd.y < -1e-4) {
-    float tf = waves ? oceanHit(ro, rd) : (uSeaLift - ro.y) / rd.y;
-    if (tf > 0.0) h = Hit(tf, 1, 0);
-  }
-  // The ball is a sphere: no marching either.
-  if (uBallOn > 0.5) {
-    vec3 oc = ro - uBall.xyz;
-    float b = dot(oc, rd);
-    float disc = b * b - (dot(oc, oc) - uBall.w * uBall.w);
-    if (disc > 0.0) {
-      float tb = -b - sqrt(disc);
-      if (tb > 1e-3 && tb < h.t) h = Hit(tb, 4, 0);
-    }
-  }
-  float t0, t1;
-  if (!rowBox(ro, rd, t0, t1)) return h;
-  t1 = min(t1, h.t);
-  float t = t0;
-  for (int i = 0; i < 96; i++) {
-    if (i >= steps) break;
-    vec2 d = mapBars(ro + rd * t);
-    if (d.x < 0.0004 * t) {
-      float code = d.y;
-      int bar = int(code * 0.5);
-      return Hit(t, (code - float(bar * 2)) > 0.5 ? 3 : 2, bar);
-    }
-    t += d.x;
-    if (t > t1) break;
-  }
-  return h;
-}
+`;
 
-vec3 barNormal(vec3 p) {
-  const vec2 k = vec2(1.0, -1.0);
-  const float e = 0.0006;
-  return normalize(
-    k.xyy * mapBars(p + k.xyy * e).x +
-    k.yyx * mapBars(p + k.yyx * e).x +
-    k.yxy * mapBars(p + k.yxy * e).x +
-    k.xxx * mapBars(p + k.xxx * e).x);
-}
-
+const RAYMARCH_SKY_GLSL = `
 // ---------------------------------------------------------------- lighting --
 
 /**
@@ -351,14 +311,8 @@ float ambientOcclusion(vec3 p, vec3 n) {
   return clamp(1.0 - 1.8 * occ, 0.0, 1.0);
 }
 
-vec3 rainbow(float t) {
-  vec3 c = 0.5 + 0.5 * cos(6.2831853 * (t * 0.9 + vec3(0.02, 0.36, 0.68)));
-  c = mix(vec3(dot(c, vec3(0.3333))), c, 1.25);
-  return pow(clamp(c, 0.0, 1.0), vec3(2.2));   // authored on screen, lit in linear
-}
-
 vec3 barColour(int i) {
-  return rainbow(uBands > 1 ? float(i) / float(uBands - 1) : 0.0);
+  return texelFetch(uBarData, ivec2(clamp(i, 0, uBands - 1), 1), 0).rgb;
 }
 
 /** Light the bars throw on the floor around them: their own colour, by level. */
@@ -370,7 +324,7 @@ vec3 floorGlow(vec3 p) {
   for (int k = -5; k <= 5; k++) {
     int i = i0 + k;
     if (i < 0 || i >= uBands) continue;
-    float level = uBars[i].x / uMaxH;
+    float level = barHeights(i).x / uMaxH;
     float dx = max(abs(p.x - cellX(i)) - uHalf, 0.0);
     float d2 = dx * dx + dz * dz;
     sum += barColour(i) * level * (0.55 * exp(-d2 * 14.0) + 0.25 * exp(-d2 * 3.0));
@@ -601,20 +555,14 @@ float cloudDensity(vec3 p) {
  * by comparing the density here with a little towards the light (iq's cheap
  * directional light).
  */
-vec3 background(vec3 rd, int steps) {
-  vec3 col = skyBase(rd);
-  if (rd.y < 0.0) return col;
-  if (uNight > 0.02) {
-    float moonGlare = 1.0 - 0.85 * pow(max(dot(rd, uMoonDir), 0.0), 6.0) * smoothstep(-0.05, 0.1, uMoonDir.y);
-    float fade = uNight * smoothstep(0.0, 0.12, rd.y) * moonGlare;
-    col += (stars(rd) + meteors(rd)) * fade;
-    if (uAurora > 0.02) col += aurora(rd, steps > 8 ? 10 : 4) * uAurora * uNight;
-  }
-  if (rd.y < 0.015) return col;   // clouds are too far to march this close to the horizon
+vec4 skyLayers(vec3 rd, int steps) {
+  vec3 col = vec3(0.0);
+  if (uNight > 0.02 && uAurora > 0.02) col += aurora(rd, 10) * uAurora * uNight;
+  if (rd.y < 0.015) return vec4(col, 1.0);   // clouds are too far to march this close to the horizon
   float t0 = (CLOUD_LO - 1.0) / rd.y;
   float t1 = (CLOUD_HI - 1.0) / rd.y;
   float dt = (t1 - t0) / float(steps);
-  float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  float jitter = 0.5;
   vec3 litCloud = uSunColor * 0.28 + uMoonColor * 0.06 + uAmbient * 0.6;
   vec3 shadedCloud = uAmbient * vec3(0.8, 0.95, 1.25);
   vec3 acc = vec3(0.0);
@@ -634,7 +582,26 @@ vec3 background(vec3 rd, int steps) {
   }
   // Far clouds melt into the haze at the horizon.
   float haze = exp(-t0 * 0.0018);
-  return col * mix(1.0, trans, haze) + acc * haze;
+  float through = mix(1.0, trans, haze);
+  return vec4(col * through + acc * haze, through);
+}
+
+
+vec3 decodeSky(vec3 encoded) {
+  vec3 value = pow(encoded, vec3(2.2));
+  return value / max(vec3(1.0) - value, vec3(1.0 / 64.0));
+}
+
+vec3 background(vec3 rd, int steps) {
+  vec3 col = skyBase(rd);
+  if (rd.y < 0.0) return col;
+  if (uNight > 0.02) {
+    float glare = 1.0 - 0.85 * pow(max(dot(rd, uMoonDir), 0.0), 6.0) * smoothstep(-0.05, 0.1, uMoonDir.y);
+    col += (stars(rd) + meteors(rd)) * uNight * smoothstep(0.0, 0.12, rd.y) * glare;
+  }
+  vec2 uv = vec2(atan(rd.x, rd.z) / 6.2831853 + 0.5, asin(clamp(rd.y, 0.0, 1.0)) / 1.57079633);
+  vec4 layer = texture(uSky, uv);
+  return col * layer.a + decodeSky(layer.rgb);
 }
 
 vec3 background(vec3 rd) {
@@ -653,6 +620,28 @@ vec3 environment(vec3 rd) {
   return background(rd, 4) + (softKey + strip + rim) * (0.3 + 0.7 * uDay);
 }
 
+`;
+
+export const RAYMARCH_SKY_FRAGMENT_SHADER =
+  RAYMARCH_COMMON_GLSL +
+  RAYMARCH_SKY_GLSL +
+  `
+void main() {
+  vec2 uv = gl_FragCoord.xy / uSkyRes;
+  float azimuth = (uv.x - 0.5) * 6.2831853;
+  float elevation = uv.y * 1.57079633;
+  vec3 rd = vec3(sin(azimuth) * cos(elevation), sin(elevation), cos(azimuth) * cos(elevation));
+  vec4 layers = skyLayers(rd, 14);
+  vec3 rgb = pow(max(layers.rgb, 0.0) / (1.0 + max(layers.rgb, 0.0)), vec3(1.0 / 2.2));
+  outColor = vec4(rgb, layers.a);
+}
+`;
+
+export const RAYMARCH_FRAGMENT_SHADER =
+  RAYMARCH_COMMON_GLSL +
+  RAYMARCH_GEOMETRY_GLSL +
+  RAYMARCH_SKY_GLSL +
+  `
 const vec3 FILL = normalize(vec3(0.5, 0.35, 0.8));
 const vec3 RIM = normalize(vec3(0.1, 0.45, -1.0));
 
@@ -700,6 +689,14 @@ vec3 bodyLight(vec3 p, vec3 n, vec3 v, bool full, float offset, float mint, floa
  * The lit colour of a surface point, and how mirror-like it is (refl, 0..1).
  * The second bounce runs without shadows and occlusion.
  */
+float chequerIntegral(float x) {
+  return 1.0 - abs(mod(x, 2.0) - 1.0);
+}
+float filteredChequer(float x, float width) {
+  width = max(width, 0.0001);
+  return clamp((chequerIntegral(x + width * 0.5) - chequerIntegral(x - width * 0.5)) / width, -1.0, 1.0);
+}
+
 vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
   vec3 v = -rd;
   vec3 col;
@@ -712,8 +709,8 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
     float crest = 0.4;
     {
       vec2 g;
-      // Full detail only for what the camera looks at; a mirror off a bar gets the broad shape of the waves, which reads as a gradient, not noise.
-      float w = oceanWaves(p.xz, !full ? 6 : (h.t < 18.0 ? 18 : 10), g);
+      // Use the same broad swells for the surface and its normals, at every distance.
+      float w = oceanWaves(p.xz, 8, g);
       float fade = oceanFade(h.t);
       n = normalize(vec3(-g.x * WAVE_AMP * fade, 1.0, -g.y * WAVE_AMP * fade));
       n = normalize(mix(n, vec3(0.0, 1.0, 0.0), 0.8 * min(1.0, sqrt(h.t * 0.01) * 1.1)));
@@ -766,18 +763,24 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
     vec3 local = n * uBallRot;
     float lon = atan(local.z, local.x) * (16.0 / 6.2831853);
     float lat = asin(clamp(local.y, -1.0, 1.0)) * (8.0 / 3.14159265);
-    float edge = sin(3.14159265 * lon) * sin(3.14159265 * lat);
-    float chequer = 0.5 + 0.5 * clamp(edge / (0.12 + 0.012 * h.t), -1.0, 1.0);
-    vec3 albedo = mix(vec3(0.8, 0.004, 0.004), vec3(0.85), chequer);
+    float angularPixel = 2.0 * h.t / (uRes.y * uFocal * uBall.w * max(dot(n, v), 0.2));
+    float longitudeWidth = angularPixel * (16.0 / 6.2831853) / sqrt(max(1.0 - local.y * local.y, 0.001));
+    float latitudeWidth = angularPixel * (8.0 / 3.14159265);
+    float chequer = 0.5 + 0.5 * filteredChequer(lon, longitudeWidth) * filteredChequer(lat, latitudeWidth);
+    vec3 albedo = mix(vec3(0.8, 0.006, 0.008), vec3(0.9, 0.89, 0.86), chequer);
     vec3 irradiance = bodyLight(p, n, v, full, 0.01, 0.05, 12.0, false, shadow, spec);
     col = albedo * (uAmbient * (0.9 + 0.4 * n.y) + irradiance * 0.55 + 0.05);
-    col += spec * 2.0;
+    vec3 studio = normalize(vec3(-0.5, 0.75, 0.35));
+    float nl = max(dot(n, studio), 0.0);
+    vec3 coat = vec3(1.0, 0.92, 0.83) * (0.35 + 0.65 * uDay);
+    col += albedo * coat * nl * 0.18;
+    col += coat * pow(max(dot(n, normalize(studio + v)), 0.0), 110.0) * 0.7 + spec * 1.4;
     // A glossy coat: it mirrors the scene, more at a glancing angle.
-    refl = mix(0.28, 0.9, pow(1.0 - max(dot(n, v), 0.0), 4.0));
+    refl = mix(0.12, 0.72, pow(1.0 - max(dot(n, v), 0.0), 4.0));
     return col;
   }
 
-  n = barNormal(p);
+  n = barNormal(p, h);
   bool cap = h.mat == 3;
   vec3 albedo = barColour(h.bar);
   if (full) ao = ambientOcclusion(p, n);
@@ -793,7 +796,9 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
   col += spec;
   // Self-light, so a colour is never dead, brighter towards the tip.
   col += albedo * (0.10 + 0.22 * height) * (cap ? 2.5 : 1.0);
-  col += albedo * fres * 0.25;
+  float edge = 1.0 - smoothstep(0.0, 0.006, abs(hitDistance(p, h)));
+  col += albedo * fres * 0.3;
+  col += albedo * (0.2 + 0.5 * height) * max(n.y, 0.0) * 0.12 * edge;
   if (cap) col = mix(col * 1.5, vec3(1.0), 0.1) + albedo * 0.35;   // bright, but still the bar's colour
   refl = cap ? mix(0.4, 0.75, fres) : mix(0.32, 0.8, fres);
   return col;
@@ -801,20 +806,22 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
 
 /** What a ray sees after a mirror: the lit surface it lands on, without shadows or occlusion. */
 vec3 secondary(vec3 ro, vec3 rd, out float t) {
-  Hit h = trace(ro, rd, 56, false);
+  Hit h = trace(ro, rd, false);
   t = h.t;
   if (h.mat == 0) return background(rd, 5);
   vec3 n;
   float refl;
   vec3 local = shade(ro + rd * h.t, rd, h, false, n, refl);
-  return local * (1.0 - refl);
+  vec3 mirror = reflect(rd, n);
+  if (h.mat == 1) mirror.y = abs(mirror.y);
+  return local * (1.0 - refl) + refl * environment(mirror);
 }
 
 vec3 render(vec3 ro, vec3 rd) {
   vec3 col = vec3(0.0);
   vec3 through = vec3(1.0);
   for (int bounce = 0; bounce < 2; bounce++) {
-    Hit h = trace(ro, rd, bounce == 0 ? 96 : 56, true);   // the sea is real for mirrors off the bars too
+    Hit h = trace(ro, rd, true);   // the sea is real for mirrors off the bars too
     if (h.mat == 0) {
       col += through * (bounce == 0 ? background(rd) : environment(rd));
       break;
@@ -826,6 +833,7 @@ vec3 render(vec3 ro, vec3 rd) {
     if (bounce == 0 && h.mat == 1) {
       // The floor's mirror goes to its own buffer: the renderer blurs it (more
       // the further it is from the contact line) and adds it back.
+      gWater = 1.0;
       col += through * local * (1.0 - refl);
       float td;
       vec3 mirror = reflect(rd, n);
@@ -869,8 +877,8 @@ void main() {
 
   // Both targets are 8 bit, so keep the wide range in them: a Reinhard curve
   // under a gamma (dark values keep their precision); the combine pass undoes it.
-  outColor = vec4(encodeHdr(col), 1.0);
-  outRefl = vec4(encodeHdr(gRefl), 1.0);
+  outColor = vec4(encodeHdr(col), gWater);
+  outRefl = vec4(encodeHdr(gRefl), gWater);
 }
 `;
 
@@ -881,6 +889,7 @@ void main() {
  */
 export const RAYMARCH_COMBINE_FRAGMENT_SHADER = `#version 300 es
 precision highp float;
+precision highp sampler2D;
 in vec2 vUv;
 uniform sampler2D uScene;
 uniform sampler2D uSharp;
@@ -908,12 +917,13 @@ vec3 aces(vec3 color) {
 }
 
 void main() {
-  vec3 scene = decodeHdr(texture(uScene, vUv).rgb);
+  vec4 sceneSample = texture(uScene, vUv);
+  vec3 scene = decodeHdr(sceneSample.rgb);
   float below = max(0.0, uBaseV - vUv.y);
   vec3 sharp = decodeHdr(texture(uSharp, vUv).rgb);
   vec3 blur = decodeHdr(texture(uBlur, vUv).rgb);
   vec3 refl = mix(sharp, blur, smoothstep(0.0, 0.3, below) * 0.45 + 0.05);
-  vec3 col = scene + refl * uStrength * exp(-below * 1.4);
+  vec3 col = scene + sceneSample.a * refl * uStrength * exp(-below * 1.4);
 
   float vignette = 0.55 + 0.45 * pow(16.0 * vUv.x * vUv.y * (1.0 - vUv.x) * (1.0 - vUv.y), 0.25);
   col = aces(col * uExposure * vignette);

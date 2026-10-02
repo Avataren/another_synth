@@ -1,5 +1,5 @@
 import { TerrainAtlas } from 'src/components/tracker/terrain-atlas';
-import { TerrainQuality } from 'src/components/tracker/terrain-quality';
+import { GpuRenderBudget } from './gpu-render-budget';
 import {
   RenderTarget,
   linkProgram,
@@ -41,11 +41,6 @@ void main() {
 }
 `;
 
-interface GpuTimerExtension {
-  TIME_ELAPSED_EXT: number;
-  GPU_DISJOINT_EXT: number;
-}
-
 /**
  * The spectrum as a landscape: the last few seconds of the spectrum are kept
  * as rows of a texture, and one full-screen fragment shader raymarches it as a
@@ -64,11 +59,8 @@ export class TerrainRenderer {
   private blitProgram: WebGLProgram | null = null;
   private blitSrc: WebGLUniformLocation | null = null;
   private readonly spectrumHistory = new TerrainHistory();
-  private readonly quality = new TerrainQuality();
   private atlas: TerrainAtlas | null = null;
-  private timer: GpuTimerExtension | null = null;
-  private queries: { query: WebGLQuery; scale: number }[] = [];
-  private frameCount = 0;
+  private budget: GpuRenderBudget | null = null;
   private lastBands = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -83,7 +75,7 @@ export class TerrainRenderer {
 
   /** The current marcher resolution as a fraction of the canvas. */
   get resolutionScale(): number {
-    return this.quality.scale;
+    return this.budget?.quality.scale ?? 0.75;
   }
 
   private onLost = (event: Event): void => {
@@ -119,7 +111,7 @@ export class TerrainRenderer {
       );
       this.target = new RenderTarget(gl);
       this.atlas = new TerrainAtlas(gl);
-      this.timer = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+      this.budget = new GpuRenderBudget(gl);
       const history = gl.createTexture();
       if (!history) throw new Error('history texture allocation failed');
       this.history = history;
@@ -189,12 +181,11 @@ export class TerrainRenderer {
       if (this.history) gl.deleteTexture(this.history);
       this.target?.dispose(gl);
       this.atlas?.dispose(gl);
-      for (const { query } of this.queries) gl.deleteQuery(query);
+      this.budget?.dispose();
       if (this.blitProgram) gl.deleteProgram(this.blitProgram);
     }
     this.atlas = null;
-    this.timer = null;
-    this.queries = [];
+    this.budget = null;
     this.emptyVao = null;
     this.program = null;
     this.history = null;
@@ -210,35 +201,10 @@ export class TerrainRenderer {
     this.lost = true;
   }
 
-  /** Read completed timers only: no gl.finish(), stalls or waiting for this frame's GPU. */
-  private pollTimers(gl: WebGL2RenderingContext, timeMs: number): void {
-    const timer = this.timer;
-    if (!timer) return;
-    const disjoint: unknown = gl.getParameter(timer.GPU_DISJOINT_EXT);
-    while (this.queries.length > 0) {
-      const pending = this.queries[0];
-      if (!pending) break;
-      if (
-        !disjoint &&
-        !gl.getQueryParameter(pending.query, gl.QUERY_RESULT_AVAILABLE)
-      )
-        break;
-      if (!disjoint && Math.abs(pending.scale - this.quality.scale) < 0.001) {
-        const ns: unknown = gl.getQueryParameter(
-          pending.query,
-          gl.QUERY_RESULT,
-        );
-        if (typeof ns === 'number') this.quality.recordGpu(ns / 1e6, timeMs);
-      }
-      gl.deleteQuery(pending.query);
-      this.queries.shift();
-    }
-  }
-
   /** Draws one frame into the canvas, whose bitmap size the caller has set. */
   render(frame: Bars3dFrame): void {
     const gl = this.gl;
-    const { target, blitProgram, history, atlas } = this;
+    const { target, blitProgram, history, atlas, budget } = this;
     if (
       !gl ||
       this.lost ||
@@ -246,6 +212,7 @@ export class TerrainRenderer {
       !blitProgram ||
       !history ||
       !atlas ||
+      !budget ||
       !this.program
     )
       return;
@@ -255,8 +222,7 @@ export class TerrainRenderer {
       2,
       Math.min(TERRAIN_TEX_WIDTH, Math.floor(frame.bands)),
     );
-    this.pollTimers(gl, frame.timeMs);
-    this.quality.update(frame.timeMs, width * height);
+    budget.update(frame.timeMs, width, height);
 
     const spectrum = this.spectrumHistory;
     const previousRows = spectrum.rowsPushed;
@@ -285,14 +251,9 @@ export class TerrainRenderer {
     const t = frame.timeMs / 1000;
     const { eye, look, fovY } = terrainCamera(t, NEWEST_Z);
 
-    const rw = Math.max(1, Math.round(width * this.quality.scale));
-    const rh = Math.max(1, Math.round(height * this.quality.scale));
-    const timer = this.timer;
-    const query =
-      timer && ++this.frameCount % 6 === 0 && this.queries.length < 4
-        ? gl.createQuery()
-        : null;
-    if (timer && query) gl.beginQuery(timer.TIME_ELAPSED_EXT, query);
+    const rw = Math.max(1, Math.round(width * budget.quality.scale));
+    const rh = Math.max(1, Math.round(height * budget.quality.scale));
+    budget.begin(rw, rh);
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
     gl.disable(gl.DITHER); // Packed height bytes must not be changed by framebuffer dithering.
@@ -374,9 +335,6 @@ export class TerrainRenderer {
     gl.bindTexture(gl.TEXTURE_2D, target.texture);
     gl.uniform1i(this.blitSrc, 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    if (timer && query) {
-      gl.endQuery(timer.TIME_ELAPSED_EXT);
-      this.queries.push({ query, scale: this.quality.scale });
-    }
+    budget.end();
   }
 }
