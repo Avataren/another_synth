@@ -1,3 +1,5 @@
+import { TERRAIN_SURFACE_GLSL } from 'src/components/tracker/terrain-surface';
+
 /**
  * GLSL for the spectrum terrain (WebGL2). The spectrum of the last few seconds
  * is a texture, one row per moment and one column per band, newest row nearest
@@ -8,8 +10,10 @@
  * fuller one for the normals, rock/moss/snow by height and slope, a sun-tinted fog.
  */
 
-export const TERRAIN_FRAGMENT_SHADER = `#version 300 es
+export const TERRAIN_HEIGHT_GLSL = `#version 300 es
 precision highp float;
+precision highp int;
+precision highp sampler2D;
 
 uniform vec2 uRes;
 uniform vec3 uEye;
@@ -214,70 +218,42 @@ float height(vec2 xz, int octaves, float lod) {
   return h;
 }
 
-// Sphere tracing the heightfield. A hit is anywhere within a tolerance that grows with distance (a pixel is wider
-// there anyway), which lets far rays settle instead of crawling along the surface. A ray that runs out of steps
-// or distance while still heading down is over ground we cannot resolve: it counts as ground (the fog takes it).
-bool march(vec3 ro, vec3 rd, out float tHit) {
-  float t = 0.1;
-  float prevT = t;
-  tHit = 0.0;
-  // Beyond this distance fogAt() is exactly one. The heightfield remains intact; tracing it farther cannot
-  // change a visible pixel, and uncapped mountains otherwise make low sky rays pay for a long empty march.
-  float fogEnd = sceneEnd();
-  for (int i = 0; i < 200; i++) {
-    vec3 p = ro + rd * t;
-    if (p.y > uHeightBound && rd.y >= 0.0) return false;
-    float d = p.y - max(height(p.xz, 4, detailLod(t)), SEA + bowWave(p.xz));
-    if (d < 0.0012 * t) {
-      if (d < 0.0) {
-        float lo = prevT;
-        float hi = t;
-        for (int j = 0; j < 6; j++) {
-          float m = 0.5 * (lo + hi);
-          vec3 q = ro + rd * m;
-          if (q.y < max(height(q.xz, 4, detailLod(m)), SEA + bowWave(q.xz))) hi = m; else lo = m;
-        }
-        t = 0.5 * (lo + hi);
-      }
-      tHit = t;
-      return true;
-    }
-    prevT = t;
-    // Long steps are only safe far away, where a pixel is wide: up close they would jump over thin ridges.
-    float maxStep = 0.5 + 0.02 * t;
-    float front = uZ0 - p.z;
-    // Unspread bands can be much narrower than a normal march step. Bound it by their pitch only where
-    // those ridges exist and a ray could touch them; the sky and the distant scenery keep the cheaper steps.
-    if (front > -0.75 && front < 8.0 && abs(p.x) < uHalfW * 1.6 && p.y < uHeightBound) {
-      maxStep = min(maxStep, 0.85 * 2.0 * uHalfW / (uBands - 1.0));
-    }
-    t += min(maxStep, max(d * 0.33, 0.015 + 0.003 * t));
-    if (t > fogEnd) break;
-  }
-  tHit = min(t, FAR);
-  return rd.y < 0.0;
-}
+`;
 
+export const TERRAIN_FRAGMENT_SHADER =
+  TERRAIN_HEIGHT_GLSL +
+  TERRAIN_SURFACE_GLSL +
+  `
 vec3 normalAt(vec2 xz, float t, int octaves, float detail) {
   float e = 0.01 + 0.002 * t;
   float lod = detailLod(t) * detail;
+  if (octaves <= 4) {
+    return normalize(vec3(landHeight(xz - vec2(e, 0.0)) - landHeight(xz + vec2(e, 0.0)),
+                          2.0 * e,
+                          landHeight(xz - vec2(0.0, e)) - landHeight(xz + vec2(0.0, e))));
+  }
   return normalize(vec3(height(xz - vec2(e, 0.0), octaves, lod) - height(xz + vec2(e, 0.0), octaves, lod),
                         2.0 * e,
                         height(xz - vec2(0.0, e), octaves, lod) - height(xz + vec2(0.0, e), octaves, lod)));
 }
 
-float shadow(vec3 p, vec3 l, float lod) {
+float shadow(vec3 p, vec3 l) {
   if (l.y <= 0.01) return 0.0;
   float res = 1.0;
   float t = 0.05;
   for (int i = 0; i < 28; i++) {
     vec3 q = p + l * t;
     if (q.y > uHeightBound) break;
-    float d = q.y - height(q.xz, 4, lod);
+    float d = q.y - landHeight(q.xz);
     res = min(res, 6.0 * d / t);
     if (res < 0.02) break;
     t += clamp(d, 0.05, 0.8);
   }
+  // The cone samples soften shadows; the exact visibility check catches thin
+  // ridges they could otherwise step over and flicker between lit and unlit.
+  float blocker;
+  bool water;
+  if (res > 0.02 && traceSurface(p, l, 0.05, 24.0, false, blocker, water)) res = 0.0;
   return clamp(res, 0.0, 1.0);
 }
 
@@ -372,9 +348,14 @@ float voronoiEdge(vec2 x) {
 
 // Pebble-and-sand grain at three high resolutions, each fading out as it gets finer than a pixel. 0..1, 0.5 when absent.
 float detailGrain(vec3 q, float fp) {
-  return 0.5 * mix(0.5, vnoise3(q * 18.0), fineFade(0.055, fp))
-       + 0.3 * mix(0.5, vnoise3(q * 41.0 + 3.7), fineFade(0.024, fp))
-       + 0.2 * mix(0.5, vnoise3(q * 93.0 + 9.1), fineFade(0.011, fp));
+  float grain = 0.5;
+  float fade = fineFade(0.055, fp);
+  if (fade > 0.0) grain += 0.5 * fade * (vnoise3(q * 18.0) - 0.5);
+  fade = fineFade(0.024, fp);
+  if (fade > 0.0) grain += 0.3 * fade * (vnoise3(q * 41.0 + 3.7) - 0.5);
+  fade = fineFade(0.011, fp);
+  if (fade > 0.0) grain += 0.2 * fade * (vnoise3(q * 93.0 + 9.1) - 0.5);
+  return grain;
 }
 
 // 3D Voronoi: the distance to the nearest cell border (0 on it), and a random value for the nearest cell.
@@ -405,14 +386,18 @@ vec3 rockTexture(vec3 q, float fp) {
   vec3 base = mix(vec3(0.2, 0.19, 0.18), vec3(0.23, 0.15, 0.085), smoothstep(0.35, 0.65, mott));
 
   // Blocks: a warped 3D lattice, so the fractures run in every direction and wander.
-  vec3 warp = vec3(vnoise3(q * 0.9), vnoise3(q * 0.9 + 4.0), vnoise3(q * 0.9 + 9.0)) - 0.5;
-  float cellId;
-  float edge = voronoiEdge3(q * 1.7 + 1.6 * warp, cellId);
-  float fissure = (1.0 - smoothstep(0.0, 0.1, edge)) * fineFade(0.3, fp);
-  vec3 c = base * (0.75 + 0.5 * cellId);
-  // Each block is a little lighter towards its middle: it reads as faceted, not flat.
-  c *= 0.88 + 0.2 * smoothstep(0.0, 0.5, edge);
-  c = mix(c, vec3(0.06, 0.055, 0.055), 0.28 * fissure);
+  vec3 c = base;
+  float blockFade = fineFade(0.6, fp);
+  if (blockFade > 0.0) {
+    vec3 warp = vec3(vnoise3(q * 0.9), vnoise3(q * 0.9 + 4.0), vnoise3(q * 0.9 + 9.0)) - 0.5;
+    float cellId;
+    float edge = voronoiEdge3(q * 1.7 + 1.6 * warp, cellId);
+    float fissure = (1.0 - smoothstep(0.0, 0.1, edge)) * fineFade(0.3, fp);
+    c *= 0.75 + 0.5 * mix(0.5, cellId, blockFade);
+    // Blend unresolved facets to their mean rather than flashing between distant cells.
+    c *= mix(1.0, 0.88 + 0.2 * smoothstep(0.0, 0.5, edge), blockFade);
+    c = mix(c, vec3(0.06, 0.055, 0.055), 0.28 * fissure);
+  }
 
   // Rain streaks: noise stretched along the height, so the dark runs hang down the face.
   float streak = smoothstep(0.5, 0.9, vnoise3(vec3(q.x * 4.5, q.y * 0.3, q.z * 4.5)));
@@ -559,7 +544,8 @@ vec3 shadeLand(vec3 p, vec3 rd, float t, int mode) {
   float snow = h * e * (0.3 + 0.7 * smoothstep(0.0, 0.1, nb.x + h * h));
   // Snow settles only on ground that has had time to cool: well behind the lava, not on peaks that were molten a moment ago.
   snow *= smoothstep(12.0, 30.0, uZ0 - p.z);
-  col = mix(col, snowTexture(q, footprint), smoothstep(0.1, 0.9, snow));
+  float snowCover = smoothstep(0.1, 0.9, snow);
+  if (snowCover > 0.0) col = mix(col, snowTexture(q, footprint), snowCover);
 
   // Molten at the front, where the music rises. It streams away from the newest row, cooling to black crust with the
   // heat surviving in the cracks, redder and dimmer as it ages.
@@ -575,7 +561,7 @@ vec3 shadeLand(vec3 p, vec3 rd, float t, int mode) {
     float rz = flowNoise(w * 0.8);
     float crust = smoothstep(0.0, 1.0, cool * 1.4 + (rz - 0.95) * 1.1);
     float crack = pow(1.0 - smoothstep(0.55, 1.05, rz), 2.0);
-    vec3 glow = pow(vec3(0.2, 0.07, 0.01) / rz, vec3(1.4)) * 3.6;
+    vec3 glow = pow(vec3(0.2, 0.07, 0.01) / max(rz, 0.02), vec3(1.4)) * 3.6;
     glow *= mix(1.0, (0.1 + 2.2 * crack) * (1.0 - 0.6 * cool), crust);
     glow *= mix(vec3(1.0), vec3(1.0, 0.55, 0.25), cool);
     // A local pulse in the hot lava makes an attack legible without flashing the ocean or the old mountains.
@@ -587,7 +573,7 @@ vec3 shadeLand(vec3 p, vec3 rd, float t, int mode) {
   // The sun is behind the range, which leaves every face we can see in shade: light it from the side and front instead.
   vec3 l = keyLight();
   float dif = max(dot(n, l), 0.0);
-  float sh = mode == 0 ? (dif > 0.0001 ? shadow(p + n * 0.02, l, detailLod(t)) : 0.0) : 0.85;
+  float sh = mode == 0 ? (dif > 0.0001 ? shadow(p + n * 0.02, l) : 0.0) : 0.85;
   vec3 keyCol = uKeyColor;
   vec3 ambCol = uAmbient;
   if (mode == 2) {
@@ -678,16 +664,11 @@ vec2 scrolled(vec2 xz) {
 // What a ray leaving the water sees: the real landscape, marched and shaded with the same material as the land (lava
 // included), or the sky.
 vec3 reflectedWorld(vec3 ro, vec3 rd, float tCam) {
-  float t = 0.15;
-  for (int i = 0; i < 44; i++) {
+  float t;
+  bool water;
+  if (traceSurface(ro, rd, 0.08, sceneEnd(), false, t, water)) {
     vec3 q = ro + rd * t;
-    float d = q.y - height(q.xz, 4, 0.0);
-    if (d < 0.003 * t + 0.002) {
-      return mix(shadeLand(q, rd, tCam + t, 1), sky(ro, rd), landFog(q));
-    }
-    if (q.y > uHeightBound) break;
-    t += clamp(d * 0.5, 0.05 + 0.01 * t, 2.0);
-    if (t > 110.0) break;
+    return mix(shadeLand(q, rd, tCam + t, 1), sky(ro, rd), landFog(q));
   }
   return sky(ro, rd);
 }
@@ -697,27 +678,19 @@ vec3 reflectedWorld(vec3 ro, vec3 rd, float tCam) {
 // and tinted by the water, red first; the lava keeps more of its light than the day does.
 vec3 seabedView(vec3 p, vec3 T, float tCam, out float depth) {
   vec3 deep = vec3(0.012, 0.06, 0.09) * (0.2 + 0.9 * uDay + 0.1 * length(uMoonColor));
-  float t = 0.0;
-  float prevT = 0.0;
-  bool hit = false;
-  for (int i = 0; i < 48; i++) {
-    vec3 q = p + T * t;
-    float d = q.y - height(q.xz, 4, 0.0);
-    if (d < 0.0) {
-      float lo = prevT;
-      float hi = t;
-      for (int j = 0; j < 5; j++) {
-        float m = 0.5 * (lo + hi);
-        vec3 r = p + T * m;
-        if (r.y < height(r.xz, 4, 0.0)) hi = m; else lo = m;
-      }
-      t = 0.5 * (lo + hi);
-      hit = true;
-      break;
+  float t;
+  bool water;
+  bool hit = traceSurface(p, T, 0.01, 60.0, false, t, water);
+  if (!hit) {
+    // Outside the music's footprint the bottom is gently rolling; retain its original deep-water view.
+    t = 0.0;
+    for (int i = 0; i < 32; i++) {
+      vec3 q = p + T * t;
+      float d = q.y - landHeight(q.xz);
+      if (d < 0.01) { hit = true; break; }
+      t += clamp(d * 0.5, 0.05, 3.0);
+      if (t >= 60.0) { t = 60.0; break; }
     }
-    prevT = t;
-    t += clamp(d * 0.5, 0.03, 2.0);
-    if (t > 60.0) break;
   }
   depth = t;
   vec3 qEnd = p + T * t;
@@ -787,7 +760,7 @@ float steamDensity(vec3 p) {
   // The source: hot lava, at the place where the ground crosses the waterline.
   float heat = lavaHeat(p.xz);
   if (heat <= 0.0) return 0.0;
-  float edge = (height(p.xz, 3, 0.0) - waterline) / 1.2;
+  float edge = (landHeight(p.xz) - waterline) / 1.2;
   float source = heat * exp(-edge * edge);
   if (source < 0.01) return 0.0;
   vec2 w = scrolled(p.xz);
@@ -811,9 +784,10 @@ vec4 steamAlong(vec3 ro, vec3 rd, float tEnd) {
   float tFar = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), min(max(t0.z, t1.z), tEnd));
   if (tFar <= tNear) return vec4(0.0, 0.0, 0.0, 1.0);
 
-  const int STEPS = 32;
+  const int STEPS = 20;
   float dt = (tFar - tNear) / float(STEPS);
-  float t = tNear + dt * hash21(gl_FragCoord.xy + uTime);
+  // A fixed midpoint avoids frame-random speckling without temporal accumulation.
+  float t = tNear + dt * 0.5;
   vec3 light = uAmbient * 3.5 + uKeyColor * 0.6 * (0.7 + 0.3 * pow(max(dot(rd, keyLight()), 0.0), 3.0));
   vec3 acc = vec3(0.0);
   float trans = 1.0;
@@ -860,10 +834,11 @@ void main() {
   float t;
   vec3 col;
   float tEnd = FAR;
-  if (march(uEye, rd, t)) {
+  bool water;
+  if (march(uEye, rd, t, water)) {
     vec3 p = uEye + rd * t;
     if (t >= sceneEnd()) col = sky(uEye, rd);
-    else col = height(p.xz, 4, detailLod(t)) > SEA + bowWave(p.xz) + 0.015 ? shade(p, rd, t) : shadeWater(p, rd, t);
+    else col = water ? shadeWater(p, rd, t) : shade(p, rd, t);
     tEnd = t;
   } else {
     col = sky(uEye, rd);

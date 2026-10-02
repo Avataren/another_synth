@@ -1,3 +1,5 @@
+import { TerrainAtlas } from 'src/components/tracker/terrain-atlas';
+import { TerrainQuality } from 'src/components/tracker/terrain-quality';
 import {
   RenderTarget,
   linkProgram,
@@ -39,16 +41,10 @@ void main() {
 }
 `;
 
-/** The marcher's resolution, as a fraction of the canvas, and how it is steered. */
-const MIN_SCALE = 0.4;
-const MAX_SCALE = 1;
-const SCALE_STEP_DOWN = 0.1;
-const SCALE_STEP_UP = 0.05;
-const DECISION_FRAMES = 30;
-const SLOW_MS = 23;
-const FAST_MS = 18;
-const BASE_COOLDOWN_MS = 4000;
-const MAX_COOLDOWN_MS = 60000;
+interface GpuTimerExtension {
+  TIME_ELAPSED_EXT: number;
+  GPU_DISJOINT_EXT: number;
+}
 
 /**
  * The spectrum as a landscape: the last few seconds of the spectrum are kept
@@ -68,13 +64,12 @@ export class TerrainRenderer {
   private blitProgram: WebGLProgram | null = null;
   private blitSrc: WebGLUniformLocation | null = null;
   private readonly spectrumHistory = new TerrainHistory();
-  private scale = 0.75;
-  private lastTime = 0;
-  private smoothedMs = 16.7;
-  private frames = 0;
-  private raisedAt = -Infinity;
-  private cooldownMs = BASE_COOLDOWN_MS;
-  private blockedUntil = 0;
+  private readonly quality = new TerrainQuality();
+  private atlas: TerrainAtlas | null = null;
+  private timer: GpuTimerExtension | null = null;
+  private queries: { query: WebGLQuery; scale: number }[] = [];
+  private frameCount = 0;
+  private lastBands = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     canvas.addEventListener('webglcontextlost', this.onLost);
@@ -88,7 +83,7 @@ export class TerrainRenderer {
 
   /** The current marcher resolution as a fraction of the canvas. */
   get resolutionScale(): number {
-    return this.scale;
+    return this.quality.scale;
   }
 
   private onLost = (event: Event): void => {
@@ -110,15 +105,27 @@ export class TerrainRenderer {
       powerPreference: 'high-performance',
     });
     if (!gl) return false;
+    this.gl = gl;
     try {
-      this.program = linkProgram(gl, RAYMARCH_VERTEX_SHADER, TERRAIN_FRAGMENT_SHADER);
-      this.blitProgram = linkProgram(gl, BLUR_VERTEX_SHADER, BLIT_FRAGMENT_SHADER);
+      this.program = linkProgram(
+        gl,
+        RAYMARCH_VERTEX_SHADER,
+        TERRAIN_FRAGMENT_SHADER,
+      );
+      this.blitProgram = linkProgram(
+        gl,
+        BLUR_VERTEX_SHADER,
+        BLIT_FRAGMENT_SHADER,
+      );
       this.target = new RenderTarget(gl);
+      this.atlas = new TerrainAtlas(gl);
+      this.timer = gl.getExtension('EXT_disjoint_timer_query_webgl2');
       const history = gl.createTexture();
       if (!history) throw new Error('history texture allocation failed');
       this.history = history;
     } catch (error) {
       console.error(error);
+      this.release();
       return false;
     }
     gl.bindTexture(gl.TEXTURE_2D, this.history);
@@ -138,6 +145,10 @@ export class TerrainRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.uniforms = uniformLocations(gl, this.program, [
+      'uSurface',
+      'uBounds',
+      'uSurfaceOrigin',
+      'uSurfaceStep',
       'uRes',
       'uEye',
       'uTarget',
@@ -177,8 +188,13 @@ export class TerrainRenderer {
       if (this.program) gl.deleteProgram(this.program);
       if (this.history) gl.deleteTexture(this.history);
       this.target?.dispose(gl);
+      this.atlas?.dispose(gl);
+      for (const { query } of this.queries) gl.deleteQuery(query);
       if (this.blitProgram) gl.deleteProgram(this.blitProgram);
     }
+    this.atlas = null;
+    this.timer = null;
+    this.queries = [];
     this.emptyVao = null;
     this.program = null;
     this.history = null;
@@ -194,43 +210,65 @@ export class TerrainRenderer {
     this.lost = true;
   }
 
-  /** Trades resolution for frame rate, as the raytraced view does: down fast, up cautiously. */
-  private adapt(timeMs: number): void {
-    const dt = timeMs - this.lastTime;
-    this.lastTime = timeMs;
-    if (dt <= 0 || dt > 120) return;
-    this.smoothedMs += (dt - this.smoothedMs) * 0.1;
-    if (++this.frames < DECISION_FRAMES) return;
-    this.frames = 0;
-    if (this.smoothedMs > SLOW_MS && this.scale > MIN_SCALE) {
-      this.scale = Math.max(MIN_SCALE, this.scale - SCALE_STEP_DOWN);
-      if (timeMs - this.raisedAt < this.cooldownMs) {
-        this.cooldownMs = Math.min(MAX_COOLDOWN_MS, this.cooldownMs * 2);
+  /** Read completed timers only: no gl.finish(), stalls or waiting for this frame's GPU. */
+  private pollTimers(gl: WebGL2RenderingContext, timeMs: number): void {
+    const timer = this.timer;
+    if (!timer) return;
+    const disjoint: unknown = gl.getParameter(timer.GPU_DISJOINT_EXT);
+    while (this.queries.length > 0) {
+      const pending = this.queries[0];
+      if (!pending) break;
+      if (
+        !disjoint &&
+        !gl.getQueryParameter(pending.query, gl.QUERY_RESULT_AVAILABLE)
+      )
+        break;
+      if (!disjoint && Math.abs(pending.scale - this.quality.scale) < 0.001) {
+        const ns: unknown = gl.getQueryParameter(
+          pending.query,
+          gl.QUERY_RESULT,
+        );
+        if (typeof ns === 'number') this.quality.recordGpu(ns / 1e6, timeMs);
       }
-      this.blockedUntil = timeMs + this.cooldownMs;
-      this.smoothedMs = (FAST_MS + SLOW_MS) / 2;
-    } else if (this.smoothedMs < FAST_MS && this.scale < MAX_SCALE && timeMs >= this.blockedUntil) {
-      this.scale = Math.min(MAX_SCALE, this.scale + SCALE_STEP_UP);
-      this.raisedAt = timeMs;
+      gl.deleteQuery(pending.query);
+      this.queries.shift();
     }
   }
 
   /** Draws one frame into the canvas, whose bitmap size the caller has set. */
   render(frame: Bars3dFrame): void {
     const gl = this.gl;
-    const { target, blitProgram, history } = this;
-    if (!gl || this.lost || !target || !blitProgram || !history || !this.program) return;
+    const { target, blitProgram, history, atlas } = this;
+    if (
+      !gl ||
+      this.lost ||
+      !target ||
+      !blitProgram ||
+      !history ||
+      !atlas ||
+      !this.program
+    )
+      return;
     const width = this.canvas.width;
     const height = this.canvas.height;
-    const bands = Math.max(2, Math.min(TERRAIN_TEX_WIDTH, frame.bands));
-    this.adapt(frame.timeMs);
+    const bands = Math.max(
+      2,
+      Math.min(TERRAIN_TEX_WIDTH, Math.floor(frame.bands)),
+    );
+    this.pollTimers(gl, frame.timeMs);
+    this.quality.update(frame.timeMs, width * height);
 
     const spectrum = this.spectrumHistory;
     const previousRows = spectrum.rowsPushed;
+    const previousBands = this.lastBands;
+    this.lastBands = bands;
     spectrum.update(frame.levels, bands, frame.timeMs);
     gl.bindTexture(gl.TEXTURE_2D, history);
     // Only the live row changes between archive ticks; upload the whole history when it moves.
-    const uploadRows = spectrum.rowsPushed !== previousRows ? TERRAIN_TEXTURE_ROWS : 1;
+    const uploadRows =
+      spectrum.rowsPushed !== previousRows || previousBands !== bands
+        ? TERRAIN_TEXTURE_ROWS
+        : 1;
     gl.texSubImage2D(
       gl.TEXTURE_2D,
       0,
@@ -247,17 +285,54 @@ export class TerrainRenderer {
     const t = frame.timeMs / 1000;
     const { eye, look, fovY } = terrainCamera(t, NEWEST_Z);
 
-    const rw = Math.max(1, Math.round(width * this.scale));
-    const rh = Math.max(1, Math.round(height * this.scale));
-    target.use(gl, rw, rh);
+    const rw = Math.max(1, Math.round(width * this.quality.scale));
+    const rh = Math.max(1, Math.round(height * this.quality.scale));
+    const timer = this.timer;
+    const query =
+      timer && ++this.frameCount % 6 === 0 && this.queries.length < 4
+        ? gl.createQuery()
+        : null;
+    if (timer && query) gl.beginQuery(timer.TIME_ELAPSED_EXT, query);
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
-    gl.useProgram(this.program);
+    gl.disable(gl.DITHER); // Packed height bytes must not be changed by framebuffer dithering.
     gl.bindVertexArray(this.emptyVao);
+    gl.activeTexture(gl.TEXTURE0);
+
+    atlas.use(gl, bands, HALF_WIDTH, ROW_SPACING, spectrum.phase);
+    gl.bindTexture(gl.TEXTURE_2D, history);
+    const au = atlas.uniforms;
+    gl.uniform1i(au.uHist ?? null, 0);
+    gl.uniform1f(au.uTime ?? null, t);
+    gl.uniform1f(au.uBands ?? null, bands);
+    gl.uniform1f(au.uTexW ?? null, TERRAIN_TEX_WIDTH);
+    gl.uniform1f(au.uRows ?? null, TERRAIN_TEXTURE_ROWS);
+    gl.uniform1f(au.uPhase ?? null, spectrum.phase);
+    gl.uniform1f(
+      au.uScroll ?? null,
+      (spectrum.rowsPushed + spectrum.phase) * ROW_SPACING,
+    );
+    gl.uniform1f(au.uZ0 ?? null, NEWEST_Z);
+    gl.uniform1f(au.uDz ?? null, ROW_SPACING);
+    gl.uniform1f(au.uHalfW ?? null, HALF_WIDTH);
+    gl.uniform1f(au.uMaxH ?? null, HEIGHT_PER_LEVEL);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    atlas.reduce(gl);
+
+    target.use(gl, rw, rh);
+    gl.useProgram(this.program);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, atlas.surface.texture);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, atlas.boundTexture);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, history);
     const u = this.uniforms;
     gl.uniform1i(u.uHist ?? null, 0);
+    gl.uniform1i(u.uSurface ?? null, 1);
+    gl.uniform1i(u.uBounds ?? null, 2);
+    gl.uniform2fv(u.uSurfaceOrigin ?? null, atlas.origin);
+    gl.uniform2fv(u.uSurfaceStep ?? null, atlas.step);
     gl.uniform2f(u.uRes ?? null, rw, rh);
     gl.uniform3f(u.uEye ?? null, eye[0], eye[1], eye[2]);
     gl.uniform3f(u.uTarget ?? null, look[0], look[1], look[2]);
@@ -267,12 +342,18 @@ export class TerrainRenderer {
     gl.uniform1f(u.uTexW ?? null, TERRAIN_TEX_WIDTH);
     gl.uniform1f(u.uRows ?? null, TERRAIN_TEXTURE_ROWS);
     gl.uniform1f(u.uPhase ?? null, spectrum.phase);
-    gl.uniform1f(u.uScroll ?? null, (spectrum.rowsPushed + spectrum.phase) * ROW_SPACING);
+    gl.uniform1f(
+      u.uScroll ?? null,
+      (spectrum.rowsPushed + spectrum.phase) * ROW_SPACING,
+    );
     gl.uniform1f(u.uZ0 ?? null, NEWEST_Z);
     gl.uniform1f(u.uDz ?? null, ROW_SPACING);
     gl.uniform1f(u.uHalfW ?? null, HALF_WIDTH);
     gl.uniform1f(u.uMaxH ?? null, HEIGHT_PER_LEVEL);
-    gl.uniform1f(u.uHeightBound ?? null, terrainHeightBound(spectrum.maximumLevel, HEIGHT_PER_LEVEL));
+    gl.uniform1f(
+      u.uHeightBound ?? null,
+      terrainHeightBound(spectrum.maximumLevel, HEIGHT_PER_LEVEL),
+    );
     const sky = skyState(t);
     gl.uniform3fv(u.uSunDir ?? null, sky.sunDir);
     gl.uniform3fv(u.uMoonDir ?? null, sky.moonDir);
@@ -293,5 +374,9 @@ export class TerrainRenderer {
     gl.bindTexture(gl.TEXTURE_2D, target.texture);
     gl.uniform1i(this.blitSrc, 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (timer && query) {
+      gl.endQuery(timer.TIME_ELAPSED_EXT);
+      this.queries.push({ query, scale: this.quality.scale });
+    }
   }
 }
