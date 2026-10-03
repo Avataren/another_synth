@@ -16,9 +16,11 @@
     <Teleport to="body">
       <div
         v-if="isOpen"
+        ref="dropdownRef"
         class="patch-picker-dropdown"
         :style="dropdownStyle"
         @click.stop
+        @keydown="onDropdownKeydown"
       >
         <div class="picker-search">
           <q-icon name="search" size="14px" class="search-icon" />
@@ -29,6 +31,7 @@
             placeholder="Search patches..."
             class="search-input"
             @keydown.esc="closeDropdown"
+            @keydown.enter.prevent="pickFirstResult"
           />
           <button
             v-if="searchFilter"
@@ -151,6 +154,7 @@ const expandedBanks = ref(new Set<string>());
 const expandedCategories = ref(new Set<string>());
 const pickerRef = ref<HTMLElement | null>(null);
 const searchInputRef = ref<HTMLInputElement | null>(null);
+const dropdownRef = ref<HTMLElement | null>(null);
 const dropdownPosition = ref({ top: 0, left: 0, width: 280 });
 
 // Get banks from props or from patchStore
@@ -612,6 +616,32 @@ function openDropdown() {
   });
 }
 
+/** The patches the dropdown lists right now, top to bottom. */
+function resultButtons(): HTMLElement[] {
+  return Array.from(dropdownRef.value?.querySelectorAll<HTMLElement>('.patch-item') ?? []);
+}
+
+/** Enter in the search box takes the first result. */
+function pickFirstResult() {
+  resultButtons()[0]?.click();
+}
+
+/** Up/Down walk the results (Enter or Space on one picks it); Up from the first returns to the search box. */
+function onDropdownKeydown(event: KeyboardEvent) {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  const buttons = resultButtons();
+  if (buttons.length === 0) return;
+  event.preventDefault();
+  const at = buttons.indexOf(document.activeElement as HTMLElement);
+  if (event.key === 'ArrowDown') {
+    buttons[Math.min(buttons.length - 1, at + 1)]?.focus();
+  } else if (at <= 0) {
+    searchInputRef.value?.focus();
+  } else {
+    buttons[at - 1]?.focus();
+  }
+}
+
 function closeDropdown() {
   isOpen.value = false;
   emit('close');
@@ -932,7 +962,9 @@ onUnmounted(() => {
   transition: all 0.1s ease;
 }
 
-.patch-item:hover {
+.patch-item:hover,
+.patch-item:focus-visible {
+  outline: none;
   background: var(--button-hover, rgba(255, 255, 255, 0.06));
   color: var(--text-primary, #e8f3ff);
 }

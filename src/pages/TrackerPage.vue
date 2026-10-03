@@ -491,6 +491,9 @@
           <div v-if="editNotice" class="tracker-edit-notice" role="alert" data-testid="tracker-edit-notice">
             {{ editNotice.message }}
           </div>
+          <div v-else-if="isSidSong" class="tracker-cursor-hint" data-testid="tracker-cursor-hint">
+            {{ cursorHint || '\u00a0' }}
+          </div>
           <div class="pattern-row-inline">
             <div class="pattern-controls">
               <div class="control-label">Pattern length</div>
@@ -1226,6 +1229,8 @@ import { SID_MAX_INSTRUMENTS, sidMinTempo, type SidChipModel } from 'src/audio/t
 import { sidPresetOptions } from 'src/audio/tracker/sid-presets';
 import { ahxPresetOptions } from 'src/audio/tracker/ahx-presets';
 import { AHX_MAX_INSTRUMENTS, fileInstruments } from 'src/audio/tracker/ahx-doc';
+import { useSessionAutosave } from 'src/composables/useSessionAutosave';
+import { sidCommandHint } from 'src/audio/tracker/sid-command-help';
 import { ahxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
   channelsFromSelection,
@@ -1339,6 +1344,8 @@ const {
   handleLoadSongFile,
   loadSongFromFile,
   loadSongFromUrl,
+  parseSongBuffer,
+  applySongFile,
   applyNewSong,
   formatInstrumentId,
   normalizeInstrumentId,
@@ -1361,6 +1368,37 @@ const deepLinkPending = ref(deepLinkFile !== null);
  */
 const deepLinkSongName = ref(deepLinkFile ? demoFileDisplayName(deepLinkFile) : '');
 if (deepLinkPending.value) isLoadingSong.value = true;
+
+// The song survives a reload: saved to IndexedDB after edits, offered back on a fresh page load.
+const sessionAutosave = useSessionAutosave({
+  trackerStore,
+  isLoadingSong,
+  parseSongBuffer,
+  applySongFile,
+  suppressRestore: () => deepLinkPending.value,
+  offerRestore: (record, restore) => {
+    const when = new Date(record.savedAt).toLocaleString();
+    $q.notify({
+      type: 'info',
+      message: `Restore “${record.title}” from your last session?`,
+      caption: `Saved ${when}`,
+      timeout: 0,
+      actions: [
+        {
+          label: 'Restore',
+          color: 'white',
+          handler: () => {
+            void restore().catch((err) => {
+              console.error('[session-autosave] could not restore the session', err);
+              $q.notify({ type: 'negative', message: 'Could not restore the last session.', timeout: 4000 });
+            });
+          },
+        },
+        { label: 'Dismiss', color: 'white' },
+      ],
+    });
+  },
+});
 const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
@@ -1380,6 +1418,17 @@ const isReadOnly = computed(() => trackerStore.isReadOnly);
 const isAhxSong = computed(() => trackerStore.isAhxSong);
 /** A SID song (plan-sid-tracking.md S4): played by the SID worklet, edited through its doc. */
 const isSidSong = computed(() => trackerStore.isSidSong);
+/**
+ * What the cursor is on, for a SID song's cells that are not self-evident (the
+ * instrument number and the pattern command). Empty for the others.
+ */
+const cursorHint = computed(() => {
+  if (!isSidSong.value) return '';
+  if (activeColumn.value === 1) return 'Instrument: type two digits, or press Alt+Up / Alt+Down to pick the slot for new notes.';
+  if (activeColumn.value !== 4 && activeColumn.value !== 5) return '';
+  const entry = currentPattern.value?.tracks[activeTrack.value]?.entries.find((e) => e.row === activeRow.value);
+  return sidCommandHint(entry?.macro);
+});
 /**
  * The SID song's chip (plan-sid-tracking.md S5.7), `null` for any other song:
  * the toggle beside the transport shows it and retags the doc, which a
@@ -3100,6 +3149,7 @@ function handleFileDrop(event: DragEvent): void {
 
 onMounted(async () => {
   window.addEventListener('dragover', handleSongDragOver);
+  void sessionAutosave.start();
   window.addEventListener('drop', handleFileDrop);
   trackerContainer.value?.focus();
   // Skip song bank sync if playback is active (returning from instrument editor)

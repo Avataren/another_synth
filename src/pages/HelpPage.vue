@@ -10,6 +10,7 @@
       >
         <q-tab name="basics" label="Basics" />
         <q-tab name="effects" label="Effects & Macros" />
+        <q-tab name="sid" label="SID (GoatTracker)" />
         <q-tab name="transport" label="Transport" />
         <q-tab name="shortcuts" label="Shortcuts" />
       </q-tabs>
@@ -139,6 +140,41 @@
           </section>
         </q-tab-panel>
 
+        <q-tab-panel name="sid">
+          <section class="help-section">
+            <h2>SID songs</h2>
+            <p>
+              A SID song is three voices on a Commodore 64 sound chip, saved as a GoatTracker 2 <code>.sng</code>
+              (or exported as <code>.sid</code> / <code>.prg</code>). Start one with New &rarr; SID (GoatTracker).
+            </p>
+            <h3>A row</h3>
+            <div class="pill-row">
+              <div class="pill"><span class="pill-label">Note</span><span>C-4</span></div>
+              <div class="pill"><span class="pill-label">Instr</span><span>02</span></div>
+              <div class="pill"><span class="pill-label">Cmd</span><span>4</span></div>
+              <div class="pill"><span class="pill-label">Param</span><span>35</span></div>
+            </div>
+            <ul>
+              <li><strong>Note</strong>: type notes on the keyboard rows. <strong>Edit mode must be on</strong> (F2), or the keys only play the sound.</li>
+              <li><strong>Instr</strong>: the instrument slot, shown beside the grid. Notes use the <em>active</em> slot: click a slot or press Alt+Up / Alt+Down. To change it mid-voice, move onto the Instr column (Right arrow) and type two digits (<code>0</code> <code>3</code> for 03); that slot becomes the active one.</li>
+              <li><strong>Cmd and Param</strong>: one command digit and two parameter digits, three keystrokes in the effect cell. The hint line under the song controls names the command under the cursor.</li>
+              <li>Instruments are made from presets (the button beside a slot, or "Add from preset") and edited in the SID instrument editor with the pencil button.</li>
+            </ul>
+          </section>
+          <section class="help-section">
+            <h2>Pattern commands</h2>
+            <div class="effect-table">
+              <div class="effect-group">
+                <h3>Command digit, then two parameter digits</h3>
+                <div v-for="(command, code) in sidCommands.slice(1)" :key="code" class="effect-row">
+                  <code>{{ (code + 1).toString(16).toUpperCase() }}xx</code>
+                  <span>{{ command.name }} &ndash; {{ command.param }}</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </q-tab-panel>
+
         <q-tab-panel name="transport">
           <section class="help-section">
             <h2>Transport & patterns</h2>
@@ -169,6 +205,7 @@
               <li><strong>PageUp/PageDown</strong>: Move 16 rows.</li>
               <li><strong>Home/End</strong>: Jump to first/last row.</li>
               <li><strong>Tab/Shift+Tab</strong>: Move to next/previous track.</li>
+              <li><strong>Alt+ArrowUp/ArrowDown</strong>: Previous/next instrument slot for new notes.</li>
               <li><strong>Shift+PageUp/PageDown</strong>: Adjust base octave.</li>
               <li><strong>Ctrl+ArrowUp/ArrowDown</strong>: Adjust step size.</li>
             </ul>
@@ -211,8 +248,10 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { SID_COMMANDS } from 'src/audio/tracker/sid-command-help';
 
-const tab = ref<'basics' | 'effects' | 'transport' | 'shortcuts'>('basics');
+const sidCommands = SID_COMMANDS;
+const tab = ref<'basics' | 'effects' | 'sid' | 'transport' | 'shortcuts'>('basics');
 </script>
 
 <style scoped>

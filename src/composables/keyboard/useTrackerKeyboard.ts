@@ -7,10 +7,13 @@ import { playbackCommands } from './commands/playback';
 import { transposeCommands } from './commands/transpose';
 import { trackPatternCommands } from './commands/trackPattern';
 import { utilityCommands } from './commands/utility';
+import { reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 
 // Keys that should be throttled when held down
 const THROTTLED_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
 const THROTTLE_MS = 30; // ~33fps for smooth navigation
+// The edit-mode-off hint shows at most this often.
+const EDIT_OFF_HINT_MS = 30000;
 
 /**
  * Composable for handling all tracker keyboard shortcuts
@@ -36,6 +39,8 @@ export function useTrackerKeyboard(context: TrackerKeyboardContext) {
     ...playbackCommands,
     ...utilityCommands
   ];
+
+  let editOffHintAt = -Infinity;
 
   // Throttle state for navigation keys
   let lastNavigationTime = 0;
@@ -72,7 +77,23 @@ export function useTrackerKeyboard(context: TrackerKeyboardContext) {
       }
     }
 
+    hintIfEditModeOff(event);
     return false;
+  }
+
+  /**
+   * A note key pressed on the note column with edit mode off only plays the
+   * sound (another handler does that). Say why nothing was written, once in a
+   * while: a run of keys is one hint, not one per key.
+   */
+  function hintIfEditModeOff(event: KeyboardEvent): void {
+    if (context.isEditMode.value || context.activeColumn.value !== 0 || event.repeat) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (context.noteKeyMap[event.code] === undefined) return;
+    const now = Date.now();
+    if (now - editOffHintAt < EDIT_OFF_HINT_MS) return;
+    editOffHintAt = now;
+    reportAhxEditNotice('Edit mode is off, so keys only play notes. Press F2 to write them into the pattern.');
   }
 
   /**

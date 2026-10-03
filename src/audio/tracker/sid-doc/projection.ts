@@ -90,5 +90,5 @@ export function projectSidFlatPattern(id: string, pattern: SidFlatPattern, name:
  * own; the doc has none) or `Pattern <n>`.
  */
 export function projectSidFlatSubsong(flat: SidFlatSubsong, names: Readonly<Record<string, string>> = {}): TrackerPattern[] {
-  return Object.entries(flat.patterns).map(([id, pattern], index) => projectSidFlatPattern(id, pattern, names[id] ?? `Pattern ${index}`));
+  return Object.entries(flat.patterns).map(([id, pattern], index) => projectSidFlatPattern(id, pattern, names[id] ?? `Pattern ${index + 1}`));
 }

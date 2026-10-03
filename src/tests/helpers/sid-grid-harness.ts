@@ -126,6 +126,6 @@ export function sidGridHarness(
     store.syncSidWriteBack();
     return store.patterns[position]!.tracks[track]!.entries.find((e) => e.row === row);
   };
-  return { store, editing, selection, at, sid, patternRow, flatRow, entryAt, activeInstrumentId };
+  return { store, editing, selection, at, sid, patternRow, flatRow, entryAt, activeInstrumentId, isEditMode };
 }
 

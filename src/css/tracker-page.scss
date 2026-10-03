@@ -1448,6 +1448,16 @@
   font-size: 12px;
 }
 
+/* What the SID cursor is on (instrument, command); the line is always there so the panel below does not jump. */
+.tracker-cursor-hint {
+  margin-top: 6px;
+  padding: 6px 10px;
+  min-height: 1.4em;
+  border-radius: 6px;
+  color: var(--text-secondary, #b8c9e0);
+  font-size: 12px;
+}
+
 /* The visualization wall's slot. Over the pattern it adds no box of its own;
    over the top panels it takes the band they leave, so the pattern stays on
    screen beneath it. */

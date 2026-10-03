@@ -133,7 +133,9 @@ defineEmits<{
   transition: all 0.1s ease;
 }
 
-.patch-item:hover {
+.patch-item:hover,
+.patch-item:focus-visible {
+  outline: none;
   background: var(--button-hover, rgba(255, 255, 255, 0.06));
   color: var(--text-primary, #e8f3ff);
 }

@@ -1092,7 +1092,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         const rows = Math.min(SID_MAX_PATTERN_ROWS, clampPatternRows(this.defaultPatternRows));
         const id = uid();
         const cells = Array.from({ length: this.sidDoc.channels }, () => blankSidFlatCell(rows));
-        this.patterns.push(projectSidFlatPattern(id, { rows, cells }, `Pattern ${this.patterns.length}`));
+        this.patterns.push(projectSidFlatPattern(id, { rows, cells }, `Pattern ${this.patterns.length + 1}`));
         this.syncSidWriteBack();
         return id;
       }
