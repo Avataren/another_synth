@@ -15,8 +15,9 @@
 // First, and it must stay first: the wasm glue builds a TextDecoder at module
 // load, and an AudioWorkletGlobalScope has none until this polyfills it.
 import './textencoder.js';
-import { SidPlayer, initSync } from 'app/public/wasm/audio_processor.js';
+import { SidChipPlayer, SidPlayer, initSync } from 'app/public/wasm/audio_processor.js';
 import { SidProcessorCore, type SidCommand, type SidWasmPlayerCtor } from './sid-core';
+import type { SidChipWasmCtor } from '../tracker/psid/psid-playback';
 
 // Module-local, like ahx-worklet.ts: the synth worklet declares these
 // globally with a different shape, and the two must not collide.
@@ -58,8 +59,11 @@ class SidAudioProcessor extends AudioWorkletProcessor {
     if (this.wasmReady) return;
     try {
       initSync({ module: new Uint8Array(wasmBytes) });
-      this.core = new SidProcessorCore(SidPlayer as unknown as SidWasmPlayerCtor, sampleRate, (event) =>
-        this.port.postMessage(event),
+      this.core = new SidProcessorCore(
+        SidPlayer as unknown as SidWasmPlayerCtor,
+        sampleRate,
+        (event) => this.port.postMessage(event),
+        SidChipPlayer as unknown as SidChipWasmCtor,
       );
       this.wasmReady = true;
       this.port.postMessage({ type: 'wasm-ready' });

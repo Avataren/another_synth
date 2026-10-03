@@ -434,6 +434,9 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   // A `'sid'` song plays in the SID worklet (`SidSongTransport`) from the
   // store's doc, like an AHX song plays in the AHX worklet from its bytes.
 
+  /** Whole seconds a SID tune (played as the file it is) has played. */
+  const psidElapsed = ref(0);
+
   const sid = new SidSongTransport({
     isPlaying,
     isPaused,
@@ -446,6 +449,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     hasSongLoaded,
     loopSong,
     songEndListeners,
+    psidElapsed,
     trackerStore,
     getSongBank,
     setPlaybackState: (playing) => audioStore.setPlaybackState(playing),
@@ -488,6 +492,12 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   function connectA2mTrackTaps(): void {
     a2m.connectTrackTaps();
   }
+
+  // Another subsong of a tune restarts it.
+  watch(
+    () => trackerStore.psidRevision,
+    () => sid.onTuneChange(),
+  );
 
   // An edit of the doc (the grid's write-back, the instrument page, an undo)
   // reaches a playing song through a reload.
@@ -1143,6 +1153,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     connectA2mTrackTaps,
     getSidPreviewFullScale,
     sidTransport,
+    psidElapsed,
     setSidRevision,
 
     // Mute/Solo

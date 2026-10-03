@@ -78,13 +78,13 @@ export interface SidTrace {
 export type SidCapture = { readonly ok: true; readonly trace: SidTrace } | { readonly ok: false; readonly reason: string };
 
 /** Where a host call returns to: in the I/O area, where no player's code runs. */
-const RETURN_TRAP = 0xdff0;
+export const RETURN_TRAP = 0xdff0;
 /** Where the host idles between the tune's interrupts. */
-const IDLE_TRAP = 0xdff8;
-const INIT_MAX_CYCLES = 60_000_000;
+export const IDLE_TRAP = 0xdff8;
+export const INIT_MAX_CYCLES = 60_000_000;
 /** Seconds without a SID-writing interrupt that end an interrupt-driven capture. */
 const SILENCE_SECONDS = 3;
-const PLAY_MAX_CYCLES = 2_000_000;
+export const PLAY_MAX_CYCLES = 2_000_000;
 
 /** The `$01` value for a PSID call at `addr` (libsidplayfp's `iomap`). */
 export function psidBanksFor(addr: number): number {
@@ -94,9 +94,9 @@ export function psidBanksFor(addr: number): number {
   return 0x34;
 }
 
-const hex4 = (v: number): string => `$${v.toString(16).toUpperCase().padStart(4, '0')}`;
+export const hex4 = (v: number): string => `$${v.toString(16).toUpperCase().padStart(4, '0')}`;
 
-type CallEnd = 'return' | 'kernal-exit' | 'rti' | 'jam' | 'brk' | 'timeout';
+export type CallEnd = 'return' | 'kernal-exit' | 'rti' | 'jam' | 'brk' | 'timeout';
 
 class Recorder {
   readonly regs = new Uint8Array(32);
@@ -163,7 +163,7 @@ class TickStore {
 }
 
 /** Set the CPU up as if the host had JSR'd to `addr` with A = `a` and interrupts off. */
-function enterCall(machine: C64, addr: number, a: number): void {
+export function enterCall(machine: C64, addr: number, a: number): void {
   const cpu = machine.cpu;
   cpu.a = a;
   cpu.x = 0;
@@ -174,6 +174,26 @@ function enterCall(machine: C64, addr: number, a: number): void {
   cpu.sp = 0xfd;
   cpu.pc = addr;
   cpu.jammed = false;
+}
+
+/**
+ * A host JSR to `addr` with A = `a` and interrupts off, run until it returns
+ * (or leaves the way an interrupt handler does).
+ */
+export function callRoutine(machine: C64, addr: number, a: number, maxCycles: number): CallEnd {
+  const cpu = machine.cpu;
+  enterCall(machine, addr, a);
+  const limit = cpu.cycles + maxCycles;
+  while (cpu.cycles < limit) {
+    const pc = cpu.pc;
+    if (pc === RETURN_TRAP) return 'return';
+    if (pc >= 0xea31 && pc <= 0xea83 && (machine.banks & 2) !== 0) return 'kernal-exit';
+    if (pc === KERNAL_BRK_HANDLER && (machine.banks & 2) !== 0) return 'brk';
+    if (cpu.jammed) return 'jam';
+    if (machine.read(pc) === 0x40 && cpu.sp >= 0xfd) return 'rti';
+    cpu.step();
+  }
+  return 'timeout';
 }
 
 /** Run `file`'s subsong `options.subsong` and record its SID trace. Never throws for a tune's behaviour. */
@@ -187,22 +207,7 @@ export function captureSid(file: PsidFile, options: SidCaptureOptions): SidCaptu
   const subsong = Math.max(0, Math.min(file.songs - 1, options.subsong));
   const irqMode = file.type === 'RSID' || file.playAddress === 0;
 
-  // A host JSR to `addr` with interrupts off, run until it returns (or leaves
-  // the way an interrupt handler does).
-  const call = (addr: number, a: number, maxCycles: number): CallEnd => {
-    enterCall(machine, addr, a);
-    const limit = cpu.cycles + maxCycles;
-    while (cpu.cycles < limit) {
-      const pc = cpu.pc;
-      if (pc === RETURN_TRAP) return 'return';
-      if (pc >= 0xea31 && pc <= 0xea83 && (machine.banks & 2) !== 0) return 'kernal-exit';
-      if (pc === KERNAL_BRK_HANDLER && (machine.banks & 2) !== 0) return 'brk';
-      if (cpu.jammed) return 'jam';
-      if (machine.read(pc) === 0x40 && cpu.sp >= 0xfd) return 'rti';
-      cpu.step();
-    }
-    return 'timeout';
-  };
+  const call = (addr: number, a: number, maxCycles: number): CallEnd => callRoutine(machine, addr, a, maxCycles);
 
   if (!irqMode) {
     machine.setBanks(psidBanksFor(file.initAddress));

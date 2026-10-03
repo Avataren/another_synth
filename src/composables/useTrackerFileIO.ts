@@ -11,7 +11,7 @@ import { attachAhxSource, ahxSourceRecordOf, setCurrentAhxSource, type AhxSource
 import { decodeAhxFile } from 'src/audio/tracker/ahx-doc';
 import { importGtSongToTrackerSong, looksLikeGtSongFile } from 'src/audio/tracker/sid-import';
 import { importA2mToTrackerSong, looksLikeA2m, upgradeLegacyA2mSongFile } from 'src/audio/tracker/a2m-import';
-import { importPsidToTrackerSongAsync, looksLikePsidFile, psidImportSummaryOf } from 'src/audio/tracker/psid-import';
+import { importPsidToTrackerSongAsync, looksLikePsidFile, openPsidAsTune, psidImportSummaryOf } from 'src/audio/tracker/psid-import';
 import { recordLoadedSongHash } from 'src/composables/song-identity';
 import { usePostFxStore } from 'src/stores/post-fx-store';
 
@@ -237,7 +237,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       refuseSavingAhx();
       return;
     }
-    if (store.moduleFormat === 'sid' && store.sidDoc === null) {
+    if (store.moduleFormat === 'sid' && store.sidDoc === null && store.psidTune === null) {
       refuseSavingSid();
       return;
     }
@@ -249,7 +249,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
         refuseSavingAhx();
         return;
       }
-      if (songFile.data.moduleFormat === 'sid' && songFile.data.sidFile === undefined) {
+      if (songFile.data.moduleFormat === 'sid' && songFile.data.sidFile === undefined && songFile.data.psidFile === undefined) {
         refuseSavingSid();
         return;
       }
@@ -357,11 +357,10 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       return await finishSongFile(JSON.parse(text) as TrackerSongFile);
     }
     if (looksLikePsidFile(buffer)) {
-      // C64 .sid (PSID/RSID, plan-psid-import.md): the tune's player is run on
-      // an emulated C64 and transcribed into a GoatTracker song, in a worker
-      // (seconds for a big tune). What the user got is told when the song is
-      // applied (`applySongFile`).
-      return (await importPsidToTrackerSongAsync(data, name)).song;
+      // C64 .sid (PSID/RSID): kept as it is and played by running its own
+      // code; converting to an editable GoatTracker song is a separate,
+      // explicit action (`convertPsidTune`).
+      return openPsidAsTune(data, name);
     }
     if (looksLikeMod(buffer)) {
       // Raw Amiga-style MOD module
@@ -589,7 +588,29 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     console.log('[FileIO] Song loaded successfully');
   }
 
+  /**
+   * Turn the SID tune on screen (played as the file it is) into an editable
+   * GoatTracker song: a GoatTracker-made file is unpacked exactly, any other
+   * transcribed (an approximation, which the notice says). Replaces the song.
+   */
+  async function convertPsidTune(): Promise<void> {
+    const tune = context.trackerStore.psidTune;
+    if (tune === null) return;
+    try {
+      context.isLoadingSong.value = true;
+      const copy = tune.bytes.slice();
+      const imported = await importPsidToTrackerSongAsync(copy.buffer, context.currentSong.value.title);
+      await applySongFile(imported.song);
+    } catch (error) {
+      console.error('Failed to convert SID tune', error);
+      tell(error instanceof Error ? error.message : String(error));
+    } finally {
+      context.isLoadingSong.value = false;
+    }
+  }
+
   return {
+    convertPsidTune,
     promptSaveFile,
     promptOpenFile,
     handleSaveSongFile,

@@ -46,7 +46,7 @@ describe('the C64 SID demo collection', () => {
     expect(sids?.songs.map((s) => s.title)).toContain('Golden Axe · Jeroen Tel');
   });
 
-  it('a tune picked in the browser loads through loadSongFromUrl as an editable SID song and plays', async () => {
+  it('a tune picked in the browser loads through loadSongFromUrl as a tune played as it is, and plays', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const song = sids?.songs.find((s) => s.file === 'sid/hubbard_rob/commando.sid');
@@ -55,11 +55,13 @@ describe('the C64 SID demo collection', () => {
     serveFromPublic();
     await app.host.loadSongFromUrl(demoSongUrl(song));
     expect(app.trackerStore.moduleFormat).toBe('sid');
-    expect(app.trackerStore.isSidEditable).toBe(true);
+    expect(app.trackerStore.isPsidSong).toBe(true);
+    expect(app.trackerStore.isSidEditable).toBe(false);
     expect(app.trackerStore.currentSong.title).toBe('Commando');
     await app.host.play('song', 0);
     await until(() => sidWorkletNodes[0]?.received.some((c) => c.type === 'play') ?? false, 'play');
     const node = sidWorkletNodes[0] as FakeSidWorkletNode;
+    expect(node.received.some((c) => c.type === 'load-psid')).toBe(true);
     node.pump(ROW);
     expect(peak(node.pump(32 * ROW).mix)).toBeGreaterThan(0.05);
   }, 60000);
@@ -75,8 +77,9 @@ describe('the C64 SID demo collection', () => {
     const player = useJukeboxPlayer(app.host);
     const index = player.addSong(song);
     await player.playIndex(index);
-    expect(app.trackerStore.sidDoc?.songName).toBe('RoboCop 3');
-    expect(app.trackerStore.sidDoc?.chipModel).toBe('8580');
+    expect(app.trackerStore.isPsidSong).toBe(true);
+    expect(app.trackerStore.currentSong.title).toBe('RoboCop 3');
+    expect(app.trackerStore.psidTune?.file.sidModel).toBe('8580');
     expect(app.playbackStore.isPlaying).toBe(true);
     await until(() => sidWorkletNodes[0]?.received.some((c) => c.type === 'play') ?? false, 'play');
     const node = sidWorkletNodes[0] as FakeSidWorkletNode;

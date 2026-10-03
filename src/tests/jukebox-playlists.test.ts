@@ -9,10 +9,10 @@ import type { TrackerSongHost } from 'src/composables/useTrackerSongHost';
  * Which songs a jukebox playlist is built from.
  *
  * The standard playlist -- the one the jukebox starts with, and "All songs" --
- * leaves out the experimental collections: a transcribed .sid only
- * approximates the original, and the default rotation should be the songs
- * that sound right. Each collection can still be played as a playlist of its
- * own, the experimental ones included, since asking for it is opting in.
+ * leaves out the experimental collections (`EXPERIMENTAL_COLLECTIONS`, none
+ * at present: the C64 SID collection was one until `.sid` files played as they
+ * are, so it is in the default rotation). Each collection can still be played
+ * as a playlist of its own.
  */
 
 const manifest = {
@@ -72,23 +72,23 @@ describe('jukebox playlists', () => {
     vi.unstubAllGlobals();
   });
 
-  it('starts with every song outside the experimental collections', async () => {
+  it('starts with every song (no collection is experimental now)', async () => {
     const player = useJukeboxPlayer(makeHost());
     await player.start();
-    expect(files()).toEqual(['ahx/c.ahx', 'amiga/a.mod', 'amiga/b.mod']);
+    expect(files()).toEqual(['ahx/c.ahx', 'amiga/a.mod', 'amiga/b.mod', 'sid/d.sid']);
   });
 
-  it('builds a playlist of one collection, experimental ones included', async () => {
+  it('builds a playlist of one collection', async () => {
     const player = useJukeboxPlayer(makeHost());
     await player.refill('amiga');
     expect(files()).toEqual(['amiga/a.mod', 'amiga/b.mod']);
     await player.refill('sid');
     expect(files()).toEqual(['sid/d.sid']);
     await player.refill();
-    expect(files()).toEqual(['ahx/c.ahx', 'amiga/a.mod', 'amiga/b.mod']);
+    expect(files()).toEqual(['ahx/c.ahx', 'amiga/a.mod', 'amiga/b.mod', 'sid/d.sid']);
   });
 
-  it('lists each collection as a playlist source, marking the experimental', async () => {
+  it('lists each collection as a playlist source, none marked experimental', async () => {
     const player = useJukeboxPlayer(makeHost());
     await player.refill();
     expect(
@@ -101,7 +101,7 @@ describe('jukebox playlists', () => {
     ).toEqual([
       { id: 'amiga', format: 'MOD', count: 2, experimental: false },
       { id: 'ahx', format: 'AHX', count: 1, experimental: false },
-      { id: 'sid', format: 'PSID', count: 1, experimental: true },
+      { id: 'sid', format: 'PSID', count: 1, experimental: false },
     ]);
   });
 

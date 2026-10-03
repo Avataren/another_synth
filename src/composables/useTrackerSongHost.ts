@@ -385,6 +385,7 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
   };
 
   const {
+    convertPsidTune,
     promptSaveFile,
     promptOpenFile,
     handleSaveSongFile,
@@ -435,6 +436,7 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
 
     // files
     isLoadingSong,
+    convertPsidTune,
     promptSaveFile,
     promptOpenFile,
     handleSaveSongFile,

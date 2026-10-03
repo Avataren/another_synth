@@ -4,9 +4,10 @@ import { expect, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 // Relative on purpose: the `app/public/wasm/audio_processor.js` alias is
 // mocked for every other test, and this harness is about the real bytes.
-import { SidPlayer, initSync } from '../../../public/wasm/audio_processor.js';
+import { SidChipPlayer, SidPlayer, initSync } from '../../../public/wasm/audio_processor.js';
 import { resetPostFxRegistryForTests } from '@another-synth/tracker-playback';
 import { SidProcessorCore, type SidCommand, type SidEvent, type SidWasmPlayerCtor } from 'src/audio/worklets/sid-core';
+import type { SidChipWasmCtor } from 'src/audio/tracker/psid/psid-playback';
 
 /**
  * The stand-in render thread for a SID song played through the app's real
@@ -86,7 +87,12 @@ export class FakeSidWorkletNode extends FakeNode {
   private fromMain(message: unknown): void {
     const data = message as { type: string };
     if (data.type === 'wasm-binary') {
-      this.core = new SidProcessorCore(SidPlayer as unknown as SidWasmPlayerCtor, SID_HARNESS_SAMPLE_RATE, (event: SidEvent) => this.toMain(event));
+      this.core = new SidProcessorCore(
+        SidPlayer as unknown as SidWasmPlayerCtor,
+        SID_HARNESS_SAMPLE_RATE,
+        (event: SidEvent) => this.toMain(event),
+        SidChipPlayer as unknown as SidChipWasmCtor,
+      );
       this.toMain({ type: 'wasm-ready' });
       return;
     }

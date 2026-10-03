@@ -102,6 +102,23 @@ export class SidPlayerClient {
     });
   }
 
+  /**
+   * Run a C64 `.sid` (PSID/RSID bytes) as it is, subsong `subsong` (0-based):
+   * the worklet emulates the tune's own code (`psid/psid-playback.ts`).
+   * Resolves once it can `play()`; rejects with the reason it cannot run.
+   * Supersedes any earlier load, like `loadSong`.
+   */
+  loadPsid(bytes: Uint8Array, subsong: number): Promise<SidSongInfo> {
+    if (this.unusable) return Promise.reject(this.unusable);
+    this.pendingLoad?.reject(new Error('superseded by a newer load'));
+    const id = this.nextLoadId++;
+    return new Promise<SidSongInfo>((resolve, reject) => {
+      this.pendingLoad = { id, resolve, reject };
+      const copy = bytes.slice();
+      this.send({ type: 'load-psid', id, bytes: copy.buffer, subsong }, [copy.buffer]);
+    });
+  }
+
   play(): void {
     this.send({ type: 'play' });
   }

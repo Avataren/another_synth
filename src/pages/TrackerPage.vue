@@ -206,6 +206,16 @@
           </label>
           <button
             type="button"
+            class="song-button ghost toolbar-demos"
+            data-testid="toolbar-demos"
+            title="Browse the demo songs"
+            :disabled="isLoadingSong"
+            @click="openDemoBrowser()"
+          >
+            Demos
+          </button>
+          <button
+            type="button"
             class="edit-mode-toggle toolbar-edit-toggle"
             :class="{ active: isEditMode }"
             :disabled="isReadOnly"
@@ -460,14 +470,6 @@
               @click="exportSongToMp3"
             >
               {{ isExporting ? 'Exporting…' : 'Export MP3' }}
-            </button>
-            <button
-              type="button"
-              class="song-button ghost"
-              :disabled="isLoadingSong"
-              @click="openDemoBrowser()"
-            >
-              Demos
             </button>
             <span class="file-row-divider" aria-hidden="true"></span>
             <button
@@ -832,6 +834,41 @@
       <!-- `display: contents` when the wall replaces the pattern, so the walls
            lay out as before; a fixed-height band in place of the top panels
            when it replaces those. -->
+      <!-- A C64 tune played as the file it is: what it is, which subsong, and the way to an editable copy. -->
+      <div v-if="isPsidTune && psidTune" class="psid-tune-bar" data-testid="psid-tune-bar">
+        <div class="psid-tune-bar__title">
+          <strong>{{ psidTune.file.name || currentSong.title }}</strong>
+          <span v-if="psidTune.file.author"> · {{ psidTune.file.author }}</span>
+          <span v-if="psidTune.file.released" class="psid-tune-bar__released"> · {{ psidTune.file.released }}</span>
+        </div>
+        <div class="psid-tune-bar__facts">
+          {{ psidTune.file.clock === 'ntsc' ? 'NTSC' : 'PAL' }} ·
+          {{ psidTune.file.sidModel === '8580' ? '8580' : '6581' }}
+          <span v-if="psidTune.file.extraSids.length > 0" title="Only the first SID chip is played"> · {{ psidTune.file.extraSids.length + 1 }} SIDs (first played)</span>
+          · {{ psidClock }}
+        </div>
+        <label v-if="psidTune.file.songs > 1" class="psid-tune-bar__subsong">
+          Subsong
+          <select
+            data-testid="psid-subsong"
+            :value="psidTune.subsong"
+            @change="trackerStore.selectPsidSubsong(Number(($event.target as HTMLSelectElement).value))"
+          >
+            <option v-for="n in psidTune.file.songs" :key="n" :value="n - 1">{{ n }} / {{ psidTune.file.songs }}</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          class="psid-tune-bar__convert"
+          data-testid="psid-convert"
+          title="Make an editable GoatTracker song of this tune (a GoatTracker-made file is unpacked exactly; any other is transcribed, an approximation)"
+          :disabled="isLoadingSong"
+          @click="convertPsidTune"
+        >
+          Convert to GoatTracker song
+        </button>
+      </div>
+
       <div v-if="scopeWallVisible" class="viz-wall-slot" :class="{ 'viz-wall-slot--top': wallInTop }">
       <ScopeWall
         v-if="scopeWallVisible && visualizationMode === 'scopes'"
@@ -1173,7 +1210,7 @@ import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import ScopeWall from 'src/components/tracker/ScopeWall.vue';
 import VisualizationPicker from 'src/components/VisualizationPicker.vue';
 import { useVisualizationMode } from 'src/composables/useVisualizationMode';
-import { isGlowWallMode, isScopeWallMode } from 'src/components/tracker/visualization-modes';
+import { isGlowWallMode, isScopeWallMode, type VisualizationMode } from 'src/components/tracker/visualization-modes';
 import GlowScopeWall from 'src/components/tracker/GlowScopeWall.vue';
 import Bars3dWall from 'src/components/tracker/Bars3dWall.vue';
 import EqualizerWall from 'src/components/tracker/EqualizerWall.vue';
@@ -1348,6 +1385,7 @@ const {
   syncSongBankFromSlots,
   initializePlayback,
   isLoadingSong,
+  convertPsidTune,
   handleSaveSongFile,
   handleLoadSongFile,
   loadSongFromFile,
@@ -1917,7 +1955,38 @@ watch(
  * row *and* the pattern grid (and the spectrum strips beside it), so those go
  * quiet while it shows. Like the rest, it is a desktop-only view.
  */
-const { mode: visualizationMode, placement: visualizationPlacement } = useVisualizationMode();
+const { mode: pickedVisualizationMode, placement: pickedVisualizationPlacement } = useVisualizationMode();
+
+/**
+ * A C64 tune played as the file it is has no pattern to show, so it opens on
+ * the Glow 2 wall under the usual toolbar and panels (what the pick was, when
+ * that is a wall; otherwise `bloom`). Picking "Pattern" for it still works and
+ * gives the plain grid and UI. The tune's own pick is forgotten when another
+ * song loads.
+ */
+const isPsidTune = computed(() => trackerStore.isPsidSong);
+const psidViewMode = ref<VisualizationMode | null>(null);
+const visualizationMode = computed<VisualizationMode>(() => {
+  if (!isPsidTune.value) return pickedVisualizationMode.value;
+  if (psidViewMode.value !== null) return psidViewMode.value;
+  return isScopeWallMode(pickedVisualizationMode.value) ? pickedVisualizationMode.value : 'bloom';
+});
+const visualizationPlacement = computed(() => (isPsidTune.value ? 'pattern' : pickedVisualizationPlacement.value));
+watch(pickedVisualizationMode, (mode) => {
+  if (isPsidTune.value) psidViewMode.value = mode;
+});
+watch(
+  () => trackerStore.psidTune?.bytes,
+  () => {
+    psidViewMode.value = null;
+  },
+);
+const psidTune = computed(() => trackerStore.psidTune);
+/** Time into the tune, m:ss (a tune has no rows; the worklet reports whole seconds). */
+const psidClock = computed(() => {
+  const t = Math.max(0, Math.floor(playbackStore.psidElapsed));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+});
 const scopeWallVisible = computed(
   () => isScopeWallMode(visualizationMode.value) && !isMobileLayout.value,
 );
@@ -3364,5 +3433,38 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="scss">
+.psid-tune-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--tracker-border, rgba(255, 255, 255, 0.12));
+  font-size: 0.9rem;
+
+  &__title {
+    flex: 1 1 14rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__released,
+  &__facts {
+    opacity: 0.7;
+  }
+
+  &__subsong {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  &__convert {
+    cursor: pointer;
+  }
+}
+
 @import '../css/tracker-page.scss';
 </style>

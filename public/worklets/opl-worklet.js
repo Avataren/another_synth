@@ -2908,6 +2908,127 @@ var OplRenderer = class {
   }
 };
 if (Symbol.dispose) OplRenderer.prototype[Symbol.dispose] = OplRenderer.prototype.free;
+var SidChipPlayerFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_sidchipplayer_free(ptr >>> 0, 1));
+var SidChipPlayer = class {
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    SidChipPlayerFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_sidchipplayer_free(ptr, 0);
+  }
+  /**
+   * `"8580"` or `"6581"`.
+   * @returns {string}
+   */
+  chip_model() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+      const ret = wasm.sidchipplayer_chip_model(this.__wbg_ptr);
+      deferred1_0 = ret[0];
+      deferred1_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+  }
+  /**
+   * Write register `reg` (0-31) `delay` chip cycles after the start of the next `render`.
+   * @param {number} delay
+   * @param {number} reg
+   * @param {number} value
+   */
+  write_after(delay, reg, value) {
+    wasm.sidchipplayer_write_after(this.__wbg_ptr, delay, reg, value);
+  }
+  /**
+   * Play the 6581 as revision `name` (`DieRevision::name`); `false` for an unknown name.
+   * @param {string} name
+   * @returns {boolean}
+   */
+  set_revision(name) {
+    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.sidchipplayer_set_revision(this.__wbg_ptr, ptr0, len0);
+    return ret !== 0;
+  }
+  /**
+   * Bit masks, bit `i` = voice `i`: muted voices, and (when non-zero) the
+   * only voices heard. Same rule as `SidPlayer::set_mute_solo`.
+   * @param {number} mute
+   * @param {number} solo
+   */
+  set_mute_solo(mute, solo) {
+    wasm.sidchipplayer_set_mute_solo(this.__wbg_ptr, mute, solo);
+  }
+  /**
+   * A voice tap's full scale (`Chip::tap_full_scale`) at gain 1.0.
+   * @returns {number}
+   */
+  tap_full_scale() {
+    const ret = wasm.sidchipplayer_tap_full_scale(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * A powered-on chip: an 8580 when `model_8580`, else a 6581, running at
+   * `clock_hz` chip cycles per second (985 248 PAL, 1 022 727 NTSC) and
+   * rendering at `sample_rate`.
+   * @param {boolean} model_8580
+   * @param {number} sample_rate
+   * @param {number} clock_hz
+   */
+  constructor(model_8580, sample_rate, clock_hz) {
+    const ret = wasm.sidchipplayer_new(model_8580, sample_rate, clock_hz);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    this.__wbg_ptr = ret[0] >>> 0;
+    SidChipPlayerFinalization.register(this, this.__wbg_ptr, this);
+    return this;
+  }
+  /**
+   * Write register `reg` now.
+   * @param {number} reg
+   * @param {number} value
+   */
+  write(reg, value) {
+    wasm.sidchipplayer_write(this.__wbg_ptr, reg, value);
+  }
+  /**
+   * Fills `out` with the mix and `v0`..`v2` with the three voices' taps.
+   * Every buffer must be as long as `out`. Returns the frames written.
+   * @param {Float32Array} out
+   * @param {Float32Array} v0
+   * @param {Float32Array} v1
+   * @param {Float32Array} v2
+   * @returns {number}
+   */
+  render(out, v0, v1, v2) {
+    var ptr0 = passArrayF32ToWasm0(out, wasm.__wbindgen_malloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = passArrayF32ToWasm0(v0, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    var ptr2 = passArrayF32ToWasm0(v1, wasm.__wbindgen_malloc);
+    var len2 = WASM_VECTOR_LEN;
+    var ptr3 = passArrayF32ToWasm0(v2, wasm.__wbindgen_malloc);
+    var len3 = WASM_VECTOR_LEN;
+    const ret = wasm.sidchipplayer_render(this.__wbg_ptr, ptr0, len0, out, ptr1, len1, v0, ptr2, len2, v1, ptr3, len3, v2);
+    return ret >>> 0;
+  }
+  /**
+   * @param {number} gain
+   */
+  set_gain(gain) {
+    wasm.sidchipplayer_set_gain(this.__wbg_ptr, gain);
+  }
+};
+if (Symbol.dispose) SidChipPlayer.prototype[Symbol.dispose] = SidChipPlayer.prototype.free;
 var SidPlayerFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_sidplayer_free(ptr >>> 0, 1));

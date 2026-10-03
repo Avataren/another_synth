@@ -2908,6 +2908,127 @@ var OplRenderer = class {
   }
 };
 if (Symbol.dispose) OplRenderer.prototype[Symbol.dispose] = OplRenderer.prototype.free;
+var SidChipPlayerFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_sidchipplayer_free(ptr >>> 0, 1));
+var SidChipPlayer = class {
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    SidChipPlayerFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_sidchipplayer_free(ptr, 0);
+  }
+  /**
+   * `"8580"` or `"6581"`.
+   * @returns {string}
+   */
+  chip_model() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+      const ret = wasm.sidchipplayer_chip_model(this.__wbg_ptr);
+      deferred1_0 = ret[0];
+      deferred1_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+  }
+  /**
+   * Write register `reg` (0-31) `delay` chip cycles after the start of the next `render`.
+   * @param {number} delay
+   * @param {number} reg
+   * @param {number} value
+   */
+  write_after(delay, reg, value) {
+    wasm.sidchipplayer_write_after(this.__wbg_ptr, delay, reg, value);
+  }
+  /**
+   * Play the 6581 as revision `name` (`DieRevision::name`); `false` for an unknown name.
+   * @param {string} name
+   * @returns {boolean}
+   */
+  set_revision(name) {
+    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.sidchipplayer_set_revision(this.__wbg_ptr, ptr0, len0);
+    return ret !== 0;
+  }
+  /**
+   * Bit masks, bit `i` = voice `i`: muted voices, and (when non-zero) the
+   * only voices heard. Same rule as `SidPlayer::set_mute_solo`.
+   * @param {number} mute
+   * @param {number} solo
+   */
+  set_mute_solo(mute, solo) {
+    wasm.sidchipplayer_set_mute_solo(this.__wbg_ptr, mute, solo);
+  }
+  /**
+   * A voice tap's full scale (`Chip::tap_full_scale`) at gain 1.0.
+   * @returns {number}
+   */
+  tap_full_scale() {
+    const ret = wasm.sidchipplayer_tap_full_scale(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * A powered-on chip: an 8580 when `model_8580`, else a 6581, running at
+   * `clock_hz` chip cycles per second (985 248 PAL, 1 022 727 NTSC) and
+   * rendering at `sample_rate`.
+   * @param {boolean} model_8580
+   * @param {number} sample_rate
+   * @param {number} clock_hz
+   */
+  constructor(model_8580, sample_rate, clock_hz) {
+    const ret = wasm.sidchipplayer_new(model_8580, sample_rate, clock_hz);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    this.__wbg_ptr = ret[0] >>> 0;
+    SidChipPlayerFinalization.register(this, this.__wbg_ptr, this);
+    return this;
+  }
+  /**
+   * Write register `reg` now.
+   * @param {number} reg
+   * @param {number} value
+   */
+  write(reg, value) {
+    wasm.sidchipplayer_write(this.__wbg_ptr, reg, value);
+  }
+  /**
+   * Fills `out` with the mix and `v0`..`v2` with the three voices' taps.
+   * Every buffer must be as long as `out`. Returns the frames written.
+   * @param {Float32Array} out
+   * @param {Float32Array} v0
+   * @param {Float32Array} v1
+   * @param {Float32Array} v2
+   * @returns {number}
+   */
+  render(out, v0, v1, v2) {
+    var ptr0 = passArrayF32ToWasm0(out, wasm.__wbindgen_malloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = passArrayF32ToWasm0(v0, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    var ptr2 = passArrayF32ToWasm0(v1, wasm.__wbindgen_malloc);
+    var len2 = WASM_VECTOR_LEN;
+    var ptr3 = passArrayF32ToWasm0(v2, wasm.__wbindgen_malloc);
+    var len3 = WASM_VECTOR_LEN;
+    const ret = wasm.sidchipplayer_render(this.__wbg_ptr, ptr0, len0, out, ptr1, len1, v0, ptr2, len2, v1, ptr3, len3, v2);
+    return ret >>> 0;
+  }
+  /**
+   * @param {number} gain
+   */
+  set_gain(gain) {
+    wasm.sidchipplayer_set_gain(this.__wbg_ptr, gain);
+  }
+};
+if (Symbol.dispose) SidChipPlayer.prototype[Symbol.dispose] = SidChipPlayer.prototype.free;
 var SidPlayerFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_sidplayer_free(ptr >>> 0, 1));
@@ -3788,6 +3909,1864 @@ async function __wbg_init(module_or_path) {
   return __wbg_finalize_init(instance, module);
 }
 
+// src/audio/tracker/psid/psid-file.ts
+var V1_HEADER = 118;
+var V2_HEADER = 124;
+var TEXT = 32;
+function looksLikePsid(bytes) {
+  if (bytes.length < 4) return false;
+  const m = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+  return m === "PSID" || m === "RSID";
+}
+var word = (b, at) => b[at] << 8 | b[at + 1];
+function text(b, at) {
+  let s = "";
+  for (let i = 0; i < TEXT; i++) {
+    const c = b[at + i];
+    if (c === 0) break;
+    s += String.fromCharCode(c);
+  }
+  return s;
+}
+var CLOCKS = ["unknown", "pal", "ntsc", "any"];
+var MODELS = ["unknown", "6581", "8580", "any"];
+function extraSidAddress(v) {
+  if (v & 1) return null;
+  if (v >= 66 && v <= 127 || v >= 224 && v <= 254) return 53248 | v << 4;
+  return null;
+}
+var hex4 = (v) => `$${v.toString(16).toUpperCase().padStart(4, "0")}`;
+function parsePsid(bytes) {
+  if (!looksLikePsid(bytes)) return { ok: false, reason: "it is not a SID file (no PSID/RSID magic)" };
+  if (bytes.length < V1_HEADER) return { ok: false, reason: `the file is ${bytes.length} bytes, shorter than a SID header` };
+  const type = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+  const version = word(bytes, 4);
+  if (version < 1 || version > 4) return { ok: false, reason: `its header is version ${version}; SID files are versions 1-4` };
+  if (type === "RSID" && version < 2) return { ok: false, reason: "it is an RSID file of version 1, which the format does not have" };
+  const dataOffset = word(bytes, 6);
+  const expected = version === 1 ? V1_HEADER : V2_HEADER;
+  if (dataOffset !== expected) {
+    return { ok: false, reason: `its data starts at ${hex4(dataOffset)}; a version ${version} file's starts at ${hex4(expected)}` };
+  }
+  if (bytes.length < dataOffset) return { ok: false, reason: "the file ends inside its header" };
+  let loadAddress = word(bytes, 8);
+  let data = bytes.subarray(dataOffset);
+  if (loadAddress === 0) {
+    if (data.length < 2) return { ok: false, reason: "the file has no data after its header" };
+    loadAddress = data[0] | data[1] << 8;
+    data = data.subarray(2);
+  }
+  if (data.length === 0) return { ok: false, reason: "the file has no C64 data" };
+  if (loadAddress + data.length > 65536) {
+    return { ok: false, reason: `its ${data.length} bytes load at ${hex4(loadAddress)} and run past the end of the C64's memory` };
+  }
+  const initAddress = word(bytes, 10) || loadAddress;
+  const playAddress = word(bytes, 12);
+  const songs = word(bytes, 14);
+  if (songs < 1 || songs > 256) return { ok: false, reason: `its header says ${songs} songs; a SID file has 1-256` };
+  const start = word(bytes, 16);
+  const startSong = start >= 1 && start <= songs ? start : 1;
+  const speed = (bytes[18] << 24 | bytes[19] << 16 | bytes[20] << 8 | bytes[21]) >>> 0;
+  const flags = version >= 2 ? word(bytes, 118) : 0;
+  if (type === "PSID" && flags & 1) {
+    return { ok: false, reason: "it holds Compute!'s Sidplayer (MUS) data, not a program to run" };
+  }
+  if (type === "RSID" && flags & 2) {
+    return { ok: false, reason: "it is a C64 BASIC program; running it needs the C64's BASIC ROM, which this importer does not have" };
+  }
+  const extraSids = [];
+  if (version >= 3) {
+    const second = extraSidAddress(bytes[122]);
+    if (second !== null) {
+      extraSids.push(second);
+      if (version >= 4) {
+        const third = extraSidAddress(bytes[123]);
+        if (third !== null && third !== second) extraSids.push(third);
+      }
+    }
+  }
+  return {
+    ok: true,
+    file: {
+      type,
+      version,
+      loadAddress,
+      initAddress,
+      playAddress,
+      songs,
+      startSong,
+      speed,
+      name: text(bytes, 22),
+      author: text(bytes, 54),
+      released: text(bytes, 86),
+      flags,
+      clock: CLOCKS[flags >> 2 & 3],
+      sidModel: MODELS[flags >> 4 & 3],
+      extraSids,
+      relocStartPage: version >= 2 ? bytes[120] : 0,
+      relocPages: version >= 2 ? bytes[121] : 0,
+      data
+    }
+  };
+}
+function psidSongUsesCia(file, song) {
+  if (file.type === "RSID") return false;
+  const bit = Math.min(31, Math.max(0, song - 1));
+  return (file.speed >>> bit & 1) === 1;
+}
+
+// src/audio/tracker/psid/mos6510.ts
+var C = 1;
+var Z = 2;
+var I = 4;
+var D = 8;
+var B = 16;
+var U = 32;
+var V = 64;
+var N = 128;
+var IMP = 0;
+var IMM = 1;
+var ZP = 2;
+var ZPX = 3;
+var ZPY = 4;
+var ABS = 5;
+var ABX = 6;
+var ABY = 7;
+var IND = 8;
+var IZX = 9;
+var IZY = 10;
+var REL = 11;
+var ACC = 12;
+var enumOps = [
+  "ADC",
+  "AND",
+  "ASL",
+  "BCC",
+  "BCS",
+  "BEQ",
+  "BIT",
+  "BMI",
+  "BNE",
+  "BPL",
+  "BRK",
+  "BVC",
+  "BVS",
+  "CLC",
+  "CLD",
+  "CLI",
+  "CLV",
+  "CMP",
+  "CPX",
+  "CPY",
+  "DEC",
+  "DEX",
+  "DEY",
+  "EOR",
+  "INC",
+  "INX",
+  "INY",
+  "JMP",
+  "JSR",
+  "LDA",
+  "LDX",
+  "LDY",
+  "LSR",
+  "NOP",
+  "ORA",
+  "PHA",
+  "PHP",
+  "PLA",
+  "PLP",
+  "ROL",
+  "ROR",
+  "RTI",
+  "RTS",
+  "SBC",
+  "SEC",
+  "SED",
+  "SEI",
+  "STA",
+  "STX",
+  "STY",
+  "TAX",
+  "TAY",
+  "TSX",
+  "TXA",
+  "TXS",
+  "TYA",
+  "SLO",
+  "RLA",
+  "SRE",
+  "RRA",
+  "SAX",
+  "LAX",
+  "DCP",
+  "ISC",
+  "ANC",
+  "ALR",
+  "ARR",
+  "SBX",
+  "LAS",
+  "SHA",
+  "SHX",
+  "SHY",
+  "TAS",
+  "ANE",
+  "LXA",
+  "JAM"
+];
+var OP = Object.fromEntries(enumOps.map((n, i) => [n, i]));
+var KIND = new Uint8Array(256).fill(OP.JAM);
+var MODE = new Uint8Array(256);
+var CYCLES = new Uint8Array(256).fill(2);
+var PAGE = new Uint8Array(256);
+function op(code, name, mode, cycles, page = 0) {
+  KIND[code] = OP[name];
+  MODE[code] = mode;
+  CYCLES[code] = cycles;
+  PAGE[code] = page;
+}
+function aluGroup(base, name) {
+  op(base + 0, name, IZX, 6);
+  op(base + 4, name, ZP, 3);
+  op(base + 8, name, IMM, 2);
+  op(base + 12, name, ABS, 4);
+  op(base + 16, name, IZY, 5, 1);
+  op(base + 20, name, ZPX, 4);
+  op(base + 24, name, ABY, 4, 1);
+  op(base + 28, name, ABX, 4, 1);
+}
+aluGroup(1, "ORA");
+aluGroup(33, "AND");
+aluGroup(65, "EOR");
+aluGroup(97, "ADC");
+aluGroup(161, "LDA");
+aluGroup(193, "CMP");
+aluGroup(225, "SBC");
+op(129, "STA", IZX, 6);
+op(133, "STA", ZP, 3);
+op(141, "STA", ABS, 4);
+op(145, "STA", IZY, 6);
+op(149, "STA", ZPX, 4);
+op(153, "STA", ABY, 5);
+op(157, "STA", ABX, 5);
+op(137, "NOP", IMM, 2);
+function rmwGroup(zp, name, acc) {
+  op(zp, name, ZP, 5);
+  if (acc) op(zp + 4, name, ACC, 2);
+  op(zp + 8, name, ABS, 6);
+  op(zp + 16, name, ZPX, 6);
+  op(zp + 24, name, ABX, 7);
+}
+rmwGroup(6, "ASL", true);
+rmwGroup(38, "ROL", true);
+rmwGroup(70, "LSR", true);
+rmwGroup(102, "ROR", true);
+rmwGroup(198, "DEC", false);
+rmwGroup(230, "INC", false);
+function illegalRmwGroup(base, name) {
+  op(base + 0, name, IZX, 8);
+  op(base + 4, name, ZP, 5);
+  op(base + 12, name, ABS, 6);
+  op(base + 16, name, IZY, 8);
+  op(base + 20, name, ZPX, 6);
+  op(base + 24, name, ABY, 7);
+  op(base + 28, name, ABX, 7);
+}
+illegalRmwGroup(3, "SLO");
+illegalRmwGroup(35, "RLA");
+illegalRmwGroup(67, "SRE");
+illegalRmwGroup(99, "RRA");
+illegalRmwGroup(195, "DCP");
+illegalRmwGroup(227, "ISC");
+op(131, "SAX", IZX, 6);
+op(135, "SAX", ZP, 3);
+op(143, "SAX", ABS, 4);
+op(151, "SAX", ZPY, 4);
+op(163, "LAX", IZX, 6);
+op(167, "LAX", ZP, 3);
+op(171, "LXA", IMM, 2);
+op(175, "LAX", ABS, 4);
+op(179, "LAX", IZY, 5, 1);
+op(183, "LAX", ZPY, 4);
+op(191, "LAX", ABY, 4, 1);
+op(11, "ANC", IMM, 2);
+op(43, "ANC", IMM, 2);
+op(75, "ALR", IMM, 2);
+op(107, "ARR", IMM, 2);
+op(139, "ANE", IMM, 2);
+op(203, "SBX", IMM, 2);
+op(235, "SBC", IMM, 2);
+op(147, "SHA", IZY, 6);
+op(159, "SHA", ABY, 5);
+op(155, "TAS", ABY, 5);
+op(156, "SHY", ABX, 5);
+op(158, "SHX", ABY, 5);
+op(187, "LAS", ABY, 4, 1);
+op(162, "LDX", IMM, 2);
+op(166, "LDX", ZP, 3);
+op(174, "LDX", ABS, 4);
+op(182, "LDX", ZPY, 4);
+op(190, "LDX", ABY, 4, 1);
+op(160, "LDY", IMM, 2);
+op(164, "LDY", ZP, 3);
+op(172, "LDY", ABS, 4);
+op(180, "LDY", ZPX, 4);
+op(188, "LDY", ABX, 4, 1);
+op(134, "STX", ZP, 3);
+op(142, "STX", ABS, 4);
+op(150, "STX", ZPY, 4);
+op(132, "STY", ZP, 3);
+op(140, "STY", ABS, 4);
+op(148, "STY", ZPX, 4);
+op(224, "CPX", IMM, 2);
+op(228, "CPX", ZP, 3);
+op(236, "CPX", ABS, 4);
+op(192, "CPY", IMM, 2);
+op(196, "CPY", ZP, 3);
+op(204, "CPY", ABS, 4);
+op(36, "BIT", ZP, 3);
+op(44, "BIT", ABS, 4);
+op(16, "BPL", REL, 2);
+op(48, "BMI", REL, 2);
+op(80, "BVC", REL, 2);
+op(112, "BVS", REL, 2);
+op(144, "BCC", REL, 2);
+op(176, "BCS", REL, 2);
+op(208, "BNE", REL, 2);
+op(240, "BEQ", REL, 2);
+op(0, "BRK", IMP, 7);
+op(32, "JSR", ABS, 6);
+op(64, "RTI", IMP, 6);
+op(96, "RTS", IMP, 6);
+op(76, "JMP", ABS, 3);
+op(108, "JMP", IND, 5);
+op(8, "PHP", IMP, 3);
+op(40, "PLP", IMP, 4);
+op(72, "PHA", IMP, 3);
+op(104, "PLA", IMP, 4);
+op(24, "CLC", IMP, 2);
+op(56, "SEC", IMP, 2);
+op(88, "CLI", IMP, 2);
+op(120, "SEI", IMP, 2);
+op(184, "CLV", IMP, 2);
+op(216, "CLD", IMP, 2);
+op(248, "SED", IMP, 2);
+op(136, "DEY", IMP, 2);
+op(200, "INY", IMP, 2);
+op(202, "DEX", IMP, 2);
+op(232, "INX", IMP, 2);
+op(138, "TXA", IMP, 2);
+op(152, "TYA", IMP, 2);
+op(154, "TXS", IMP, 2);
+op(168, "TAY", IMP, 2);
+op(170, "TAX", IMP, 2);
+op(186, "TSX", IMP, 2);
+op(234, "NOP", IMP, 2);
+for (const c of [26, 58, 90, 122, 218, 250]) op(c, "NOP", IMP, 2);
+for (const c of [128, 130, 194, 226]) op(c, "NOP", IMM, 2);
+for (const c of [4, 68, 100]) op(c, "NOP", ZP, 3);
+for (const c of [20, 52, 84, 116, 212, 244]) op(c, "NOP", ZPX, 4);
+op(12, "NOP", ABS, 4);
+for (const c of [28, 60, 92, 124, 220, 252]) op(c, "NOP", ABX, 4, 1);
+for (const c of [2, 18, 34, 50, 66, 82, 98, 114, 146, 178, 210, 242]) op(c, "JAM", IMP, 2);
+var Mos6510 = class {
+  constructor(bus) {
+    this.bus = bus;
+    __publicField(this, "a", 0);
+    __publicField(this, "x", 0);
+    __publicField(this, "y", 0);
+    __publicField(this, "sp", 255);
+    __publicField(this, "p", U | I);
+    __publicField(this, "pc", 0);
+    /** Clock cycles run so far. */
+    __publicField(this, "cycles", 0);
+    /** A JAM opcode stopped the CPU at `pc`. */
+    __publicField(this, "jammed", false);
+  }
+  push(v) {
+    this.bus.write(256 | this.sp, v);
+    this.sp = this.sp - 1 & 255;
+  }
+  pull() {
+    this.sp = this.sp + 1 & 255;
+    return this.bus.read(256 | this.sp);
+  }
+  setNZ(v) {
+    this.p = this.p & ~(N | Z) | v & N | (v === 0 ? Z : 0);
+    return v;
+  }
+  adc(v) {
+    const a = this.a;
+    const c = this.p & C;
+    if (this.p & D) {
+      let lo = (a & 15) + (v & 15) + c;
+      if (lo > 9) lo += 6;
+      let t = lo <= 15 ? (lo & 15) + (a & 240) + (v & 240) : (lo & 15) + (a & 240) + (v & 240) + 16;
+      const zero = (a + v + c & 255) === 0;
+      const neg = (t & 128) !== 0;
+      const ovf = ((a ^ t) & 128) !== 0 && ((a ^ v) & 128) === 0;
+      if ((t & 496) > 144) t += 96;
+      const carry = (t & 4080) > 240;
+      this.p = this.p & ~(N | V | Z | C) | (neg ? N : 0) | (ovf ? V : 0) | (zero ? Z : 0) | (carry ? C : 0);
+      this.a = t & 255;
+      return;
+    }
+    const r = a + v + c;
+    this.p = this.p & ~(V | C) | ((~(a ^ v) & (a ^ r) & 128) !== 0 ? V : 0) | (r > 255 ? C : 0);
+    this.a = this.setNZ(r & 255);
+  }
+  sbc(v) {
+    const a = this.a;
+    const borrow = this.p & C ^ 1;
+    const r = a - v - borrow;
+    this.p = this.p & ~(V | C) | (((a ^ v) & (a ^ r) & 128) !== 0 ? V : 0) | (r >= 0 ? C : 0);
+    this.setNZ(r & 255);
+    if (this.p & D) {
+      const lo = (a & 15) - (v & 15) - borrow;
+      let t = lo & 16 ? lo - 6 & 15 | (a & 240) - (v & 240) - 16 : lo & 15 | (a & 240) - (v & 240);
+      if (t & 256) t -= 96;
+      this.a = t & 255;
+      return;
+    }
+    this.a = r & 255;
+  }
+  compare(reg, v) {
+    const r = reg - v;
+    this.p = this.p & ~C | (r >= 0 ? C : 0);
+    this.setNZ(r & 255);
+  }
+  asl(v) {
+    this.p = this.p & ~C | v >> 7;
+    return this.setNZ(v << 1 & 255);
+  }
+  lsr(v) {
+    this.p = this.p & ~C | v & 1;
+    return this.setNZ(v >> 1);
+  }
+  rol(v) {
+    const r = (v << 1 | this.p & C) & 255;
+    this.p = this.p & ~C | v >> 7;
+    return this.setNZ(r);
+  }
+  ror(v) {
+    const r = v >> 1 | (this.p & C) << 7;
+    this.p = this.p & ~C | v & 1;
+    return this.setNZ(r);
+  }
+  /** Take the IRQ line: false (nothing done) while I is set. */
+  irq() {
+    if (this.p & I) return false;
+    this.interrupt(65534);
+    return true;
+  }
+  /** Take an NMI (edge): always. */
+  nmi() {
+    this.interrupt(65530);
+  }
+  interrupt(vector) {
+    this.jammed = false;
+    this.push(this.pc >> 8);
+    this.push(this.pc & 255);
+    this.push(this.p & ~B | U);
+    this.p |= I;
+    this.pc = this.bus.read(vector) | this.bus.read(vector + 1) << 8;
+    this.cycles += 7;
+  }
+  /** Run one instruction; its cycles. A jammed CPU stays put (2 cycles a call, so time still passes). */
+  step() {
+    if (this.jammed) {
+      this.cycles += 2;
+      return 2;
+    }
+    const bus = this.bus;
+    const opcode = bus.read(this.pc);
+    let pc = this.pc + 1 & 65535;
+    let cycles = CYCLES[opcode];
+    let addr = 0;
+    let high1 = 0;
+    switch (MODE[opcode]) {
+      case IMM:
+        addr = pc;
+        pc = pc + 1 & 65535;
+        break;
+      case ZP:
+        addr = bus.read(pc);
+        pc = pc + 1 & 65535;
+        break;
+      case ZPX:
+        addr = bus.read(pc) + this.x & 255;
+        pc = pc + 1 & 65535;
+        break;
+      case ZPY:
+        addr = bus.read(pc) + this.y & 255;
+        pc = pc + 1 & 65535;
+        break;
+      case ABS:
+        addr = bus.read(pc) | bus.read(pc + 1 & 65535) << 8;
+        pc = pc + 2 & 65535;
+        break;
+      case ABX: {
+        const base = bus.read(pc) | bus.read(pc + 1 & 65535) << 8;
+        addr = base + this.x & 65535;
+        if (PAGE[opcode] && (base ^ addr) & 65280) cycles++;
+        high1 = (base >> 8) + 1 & 255;
+        pc = pc + 2 & 65535;
+        break;
+      }
+      case ABY: {
+        const base = bus.read(pc) | bus.read(pc + 1 & 65535) << 8;
+        addr = base + this.y & 65535;
+        if (PAGE[opcode] && (base ^ addr) & 65280) cycles++;
+        high1 = (base >> 8) + 1 & 255;
+        pc = pc + 2 & 65535;
+        break;
+      }
+      case IND: {
+        const ptr = bus.read(pc) | bus.read(pc + 1 & 65535) << 8;
+        addr = bus.read(ptr) | bus.read(ptr & 65280 | ptr + 1 & 255) << 8;
+        pc = pc + 2 & 65535;
+        break;
+      }
+      case IZX: {
+        const zp = bus.read(pc) + this.x & 255;
+        addr = bus.read(zp) | bus.read(zp + 1 & 255) << 8;
+        pc = pc + 1 & 65535;
+        break;
+      }
+      case IZY: {
+        const zp = bus.read(pc);
+        const base = bus.read(zp) | bus.read(zp + 1 & 255) << 8;
+        addr = base + this.y & 65535;
+        if (PAGE[opcode] && (base ^ addr) & 65280) cycles++;
+        high1 = (base >> 8) + 1 & 255;
+        pc = pc + 1 & 65535;
+        break;
+      }
+      case REL: {
+        const d = bus.read(pc);
+        pc = pc + 1 & 65535;
+        addr = pc + (d < 128 ? d : d - 256) & 65535;
+        break;
+      }
+      default:
+        break;
+    }
+    this.pc = pc;
+    switch (KIND[opcode]) {
+      case OP.LDA:
+        this.a = this.setNZ(bus.read(addr));
+        break;
+      case OP.LDX:
+        this.x = this.setNZ(bus.read(addr));
+        break;
+      case OP.LDY:
+        this.y = this.setNZ(bus.read(addr));
+        break;
+      case OP.STA:
+        bus.write(addr, this.a);
+        break;
+      case OP.STX:
+        bus.write(addr, this.x);
+        break;
+      case OP.STY:
+        bus.write(addr, this.y);
+        break;
+      case OP.ADC:
+        this.adc(bus.read(addr));
+        break;
+      case OP.SBC:
+        this.sbc(bus.read(addr));
+        break;
+      case OP.AND:
+        this.a = this.setNZ(this.a & bus.read(addr));
+        break;
+      case OP.ORA:
+        this.a = this.setNZ(this.a | bus.read(addr));
+        break;
+      case OP.EOR:
+        this.a = this.setNZ(this.a ^ bus.read(addr));
+        break;
+      case OP.CMP:
+        this.compare(this.a, bus.read(addr));
+        break;
+      case OP.CPX:
+        this.compare(this.x, bus.read(addr));
+        break;
+      case OP.CPY:
+        this.compare(this.y, bus.read(addr));
+        break;
+      case OP.BIT: {
+        const v = bus.read(addr);
+        this.p = this.p & ~(N | V | Z) | v & (N | V) | ((this.a & v) === 0 ? Z : 0);
+        break;
+      }
+      case OP.ASL:
+      case OP.LSR:
+      case OP.ROL:
+      case OP.ROR:
+      case OP.INC:
+      case OP.DEC: {
+        const kind = KIND[opcode];
+        if (MODE[opcode] === ACC) {
+          this.a = this.shift(kind, this.a);
+          break;
+        }
+        const v = bus.read(addr);
+        bus.write(addr, v);
+        bus.write(addr, this.shift(kind, v));
+        break;
+      }
+      case OP.SLO: {
+        const v = bus.read(addr);
+        bus.write(addr, v);
+        const r = this.asl(v);
+        bus.write(addr, r);
+        this.a = this.setNZ(this.a | r);
+        break;
+      }
+      case OP.RLA: {
+        const v = bus.read(addr);
+        bus.write(addr, v);
+        const r = this.rol(v);
+        bus.write(addr, r);
+        this.a = this.setNZ(this.a & r);
+        break;
+      }
+      case OP.SRE: {
+        const v = bus.read(addr);
+        bus.write(addr, v);
+        const r = this.lsr(v);
+        bus.write(addr, r);
+        this.a = this.setNZ(this.a ^ r);
+        break;
+      }
+      case OP.RRA: {
+        const v = bus.read(addr);
+        bus.write(addr, v);
+        const r = this.ror(v);
+        bus.write(addr, r);
+        this.adc(r);
+        break;
+      }
+      case OP.DCP: {
+        const v = bus.read(addr);
+        bus.write(addr, v);
+        const r = v - 1 & 255;
+        bus.write(addr, r);
+        this.compare(this.a, r);
+        break;
+      }
+      case OP.ISC: {
+        const v = bus.read(addr);
+        bus.write(addr, v);
+        const r = v + 1 & 255;
+        bus.write(addr, r);
+        this.sbc(r);
+        break;
+      }
+      case OP.SAX:
+        bus.write(addr, this.a & this.x);
+        break;
+      case OP.LAX:
+        this.a = this.x = this.setNZ(bus.read(addr));
+        break;
+      case OP.LXA:
+        this.a = this.x = this.setNZ((this.a | 238) & bus.read(addr));
+        break;
+      case OP.ANE:
+        this.a = this.setNZ((this.a | 238) & this.x & bus.read(addr));
+        break;
+      case OP.ANC:
+        this.a = this.setNZ(this.a & bus.read(addr));
+        this.p = this.p & ~C | this.a >> 7;
+        break;
+      case OP.ALR:
+        this.a = this.lsr(this.a & bus.read(addr));
+        break;
+      case OP.ARR: {
+        const t = this.a & bus.read(addr);
+        const r = t >> 1 | (this.p & C) << 7;
+        this.setNZ(r);
+        this.p = this.p & ~(C | V) | r >> 6 & 1 | ((r >> 6 ^ r >> 5) & 1 ? V : 0);
+        this.a = r;
+        break;
+      }
+      case OP.SBX: {
+        const t = (this.a & this.x) - bus.read(addr);
+        this.p = this.p & ~C | (t >= 0 ? C : 0);
+        this.x = this.setNZ(t & 255);
+        break;
+      }
+      case OP.LAS:
+        this.a = this.x = this.sp = this.setNZ(bus.read(addr) & this.sp);
+        break;
+      case OP.SHA:
+        bus.write(addr, this.a & this.x & high1);
+        break;
+      case OP.SHX:
+        bus.write(addr, this.x & high1);
+        break;
+      case OP.SHY:
+        bus.write(addr, this.y & high1);
+        break;
+      case OP.TAS:
+        this.sp = this.a & this.x;
+        bus.write(addr, this.sp & high1);
+        break;
+      case OP.NOP:
+        if (MODE[opcode] !== IMP && MODE[opcode] !== IMM) bus.read(addr);
+        break;
+      case OP.INX:
+        this.x = this.setNZ(this.x + 1 & 255);
+        break;
+      case OP.INY:
+        this.y = this.setNZ(this.y + 1 & 255);
+        break;
+      case OP.DEX:
+        this.x = this.setNZ(this.x - 1 & 255);
+        break;
+      case OP.DEY:
+        this.y = this.setNZ(this.y - 1 & 255);
+        break;
+      case OP.TAX:
+        this.x = this.setNZ(this.a);
+        break;
+      case OP.TAY:
+        this.y = this.setNZ(this.a);
+        break;
+      case OP.TXA:
+        this.a = this.setNZ(this.x);
+        break;
+      case OP.TYA:
+        this.a = this.setNZ(this.y);
+        break;
+      case OP.TSX:
+        this.x = this.setNZ(this.sp);
+        break;
+      case OP.TXS:
+        this.sp = this.x;
+        break;
+      case OP.PHA:
+        this.push(this.a);
+        break;
+      case OP.PHP:
+        this.push(this.p | B | U);
+        break;
+      case OP.PLA:
+        this.a = this.setNZ(this.pull());
+        break;
+      case OP.PLP:
+        this.p = this.pull() & ~B | U;
+        break;
+      case OP.CLC:
+        this.p &= ~C;
+        break;
+      case OP.SEC:
+        this.p |= C;
+        break;
+      case OP.CLI:
+        this.p &= ~I;
+        break;
+      case OP.SEI:
+        this.p |= I;
+        break;
+      case OP.CLV:
+        this.p &= ~V;
+        break;
+      case OP.CLD:
+        this.p &= ~D;
+        break;
+      case OP.SED:
+        this.p |= D;
+        break;
+      case OP.BPL:
+        cycles += this.branch(!(this.p & N), addr);
+        break;
+      case OP.BMI:
+        cycles += this.branch((this.p & N) !== 0, addr);
+        break;
+      case OP.BVC:
+        cycles += this.branch(!(this.p & V), addr);
+        break;
+      case OP.BVS:
+        cycles += this.branch((this.p & V) !== 0, addr);
+        break;
+      case OP.BCC:
+        cycles += this.branch(!(this.p & C), addr);
+        break;
+      case OP.BCS:
+        cycles += this.branch((this.p & C) !== 0, addr);
+        break;
+      case OP.BNE:
+        cycles += this.branch(!(this.p & Z), addr);
+        break;
+      case OP.BEQ:
+        cycles += this.branch((this.p & Z) !== 0, addr);
+        break;
+      case OP.JMP:
+        this.pc = addr;
+        break;
+      case OP.JSR: {
+        const ret = this.pc - 1 & 65535;
+        this.push(ret >> 8);
+        this.push(ret & 255);
+        this.pc = addr;
+        break;
+      }
+      case OP.RTS: {
+        const lo = this.pull();
+        this.pc = (this.pull() << 8 | lo) + 1 & 65535;
+        break;
+      }
+      case OP.RTI: {
+        this.p = this.pull() & ~B | U;
+        const lo = this.pull();
+        this.pc = this.pull() << 8 | lo;
+        break;
+      }
+      case OP.BRK: {
+        const ret = this.pc + 1 & 65535;
+        this.push(ret >> 8);
+        this.push(ret & 255);
+        this.push(this.p | B | U);
+        this.p |= I;
+        this.pc = bus.read(65534) | bus.read(65535) << 8;
+        break;
+      }
+      case OP.JAM:
+        this.jammed = true;
+        this.pc = this.pc - 1 & 65535;
+        break;
+      default:
+        break;
+    }
+    this.cycles += cycles;
+    return cycles;
+  }
+  shift(kind, v) {
+    switch (kind) {
+      case OP.ASL:
+        return this.asl(v);
+      case OP.LSR:
+        return this.lsr(v);
+      case OP.ROL:
+        return this.rol(v);
+      case OP.ROR:
+        return this.ror(v);
+      case OP.INC:
+        return this.setNZ(v + 1 & 255);
+      default:
+        return this.setNZ(v - 1 & 255);
+    }
+  }
+  /** A branch to `target` when `taken`: its extra cycles (1, or 2 across a page). */
+  branch(taken, target) {
+    if (!taken) return 0;
+    const extra = (target & 65280) === (this.pc & 65280) ? 1 : 2;
+    this.pc = target;
+    return extra;
+  }
+};
+
+// src/audio/tracker/psid/c64.ts
+var C64_TIMING = {
+  pal: { hz: 985248, cyclesPerLine: 63, lines: 312, kernalCiaLatch: 16421 },
+  ntsc: { hz: 1022727, cyclesPerLine: 65, lines: 263, kernalCiaLatch: 17045 }
+};
+var c64FrameCycles = (t) => t.cyclesPerLine * t.lines;
+var KERNAL_IRQ_ENTRY = 65352;
+var KERNAL_NMI_ENTRY = 65091;
+var KERNAL_IRQ_HANDLER = 59953;
+var KERNAL_NMI_HANDLER = 65095;
+var KERNAL_BRK_HANDLER = 65126;
+var RTS = 96;
+function standInKernal() {
+  const rom = new Uint8Array(8192).fill(RTS);
+  const put = (addr, bytes) => rom.set(bytes, addr - 57344);
+  put(KERNAL_IRQ_ENTRY, [72, 138, 72, 152, 72, 186, 189, 4, 1, 41, 16, 240, 3, 108, 22, 3, 108, 20, 3]);
+  put(KERNAL_NMI_ENTRY, [120, 108, 24, 3]);
+  put(KERNAL_NMI_HANDLER, [72, 173, 13, 221, 104, 64]);
+  put(65212, [104, 168, 104, 170, 104, 64]);
+  put(KERNAL_IRQ_HANDLER, [76, 126, 234]);
+  put(60030, [173, 13, 220, 104, 168, 104, 170, 104, 64]);
+  put(64738, [76, 226, 252]);
+  put(65530, [KERNAL_NMI_ENTRY & 255, KERNAL_NMI_ENTRY >> 8, 226, 252, KERNAL_IRQ_ENTRY & 255, KERNAL_IRQ_ENTRY >> 8]);
+  return rom;
+}
+var STAND_IN_KERNAL = standInKernal();
+var STAND_IN_BASIC = new Uint8Array(8192).fill(RTS);
+function zobrist(k, seed) {
+  let x = Math.imul(k ^ seed, 2654435761);
+  x ^= x >>> 15;
+  x = Math.imul(x, 2246822507);
+  x ^= x >>> 13;
+  x = Math.imul(x, 3266489909);
+  x ^= x >>> 16;
+  return x | 0;
+}
+var SEED_A = 625341585;
+var SEED_B = 1821285621;
+var IO_KEY = 65536;
+var CiaTimer = class {
+  constructor() {
+    __publicField(this, "latch", 65535);
+    /** The counter while stopped. */
+    __publicField(this, "counter", 65535);
+    __publicField(this, "running", false);
+    __publicField(this, "oneShot", false);
+    /** While running: the cycle of the next underflow. */
+    __publicField(this, "nextUnderflow", Infinity);
+    /** Timer B only: counts timer A underflows instead of cycles. */
+    __publicField(this, "countsA", false);
+  }
+};
+var Cia = class {
+  constructor() {
+    __publicField(this, "a", new CiaTimer());
+    __publicField(this, "b", new CiaTimer());
+    __publicField(this, "cra", 0);
+    __publicField(this, "crb", 0);
+    __publicField(this, "mask", 0);
+    __publicField(this, "flags", 0);
+    __publicField(this, "portA", 255);
+    __publicField(this, "portB", 255);
+    __publicField(this, "ddrA", 0);
+    __publicField(this, "ddrB", 0);
+  }
+  /** Bring the timers to cycle `now`, setting the interrupt flags of every underflow up to it. */
+  sync(now) {
+    const a = this.a;
+    const b = this.b;
+    while (a.running && a.nextUnderflow <= now) {
+      const at = a.nextUnderflow;
+      this.flags |= 1;
+      if (b.running && b.countsA) this.countB(at);
+      if (a.oneShot) {
+        a.running = false;
+        a.counter = a.latch;
+        this.cra &= ~1;
+        a.nextUnderflow = Infinity;
+      } else {
+        a.nextUnderflow = at + a.latch + 1;
+      }
+    }
+    while (b.running && !b.countsA && b.nextUnderflow <= now) {
+      const at = b.nextUnderflow;
+      this.flags |= 2;
+      if (b.oneShot) {
+        b.running = false;
+        b.counter = b.latch;
+        this.crb &= ~1;
+        b.nextUnderflow = Infinity;
+      } else {
+        b.nextUnderflow = at + b.latch + 1;
+      }
+    }
+  }
+  countB(_at) {
+    const b = this.b;
+    if (b.counter === 0) {
+      this.flags |= 2;
+      b.counter = b.latch;
+      if (b.oneShot) {
+        b.running = false;
+        this.crb &= ~1;
+      }
+    } else {
+      b.counter--;
+    }
+  }
+  /** The counter's value at `now` (after `sync(now)`). */
+  counterAt(t, now) {
+    if (!t.running || t === this.b && t.countsA) return t.counter;
+    return Math.max(0, Math.min(65535, t.nextUnderflow - now - 1));
+  }
+  /** The next cycle at which an enabled interrupt source fires (Infinity: none). */
+  nextInterrupt() {
+    let next = Infinity;
+    if (this.mask & 1 && this.a.running) next = this.a.nextUnderflow;
+    if (this.mask & 2 && this.b.running && !this.b.countsA) next = Math.min(next, this.b.nextUnderflow);
+    if (this.mask & 2 && this.b.running && this.b.countsA && this.a.running) next = Math.min(next, this.a.nextUnderflow);
+    return next;
+  }
+  get asserted() {
+    return (this.flags & this.mask & 31) !== 0;
+  }
+  read(reg, now) {
+    this.sync(now);
+    switch (reg) {
+      case 0:
+        return (this.portA | ~this.ddrA) & 255;
+      case 1:
+        return (this.portB | ~this.ddrB) & 255;
+      case 2:
+        return this.ddrA;
+      case 3:
+        return this.ddrB;
+      case 4:
+        return this.counterAt(this.a, now) & 255;
+      case 5:
+        return this.counterAt(this.a, now) >> 8;
+      case 6:
+        return this.counterAt(this.b, now) & 255;
+      case 7:
+        return this.counterAt(this.b, now) >> 8;
+      case 13: {
+        const v = this.flags & 31 | (this.asserted ? 128 : 0);
+        this.flags = 0;
+        return v;
+      }
+      case 14:
+        return this.cra & 239;
+      case 15:
+        return this.crb & 239;
+      default:
+        return 0;
+    }
+  }
+  write(reg, v, now) {
+    this.sync(now);
+    const a = this.a;
+    const b = this.b;
+    switch (reg) {
+      case 0:
+        this.portA = v;
+        break;
+      case 1:
+        this.portB = v;
+        break;
+      case 2:
+        this.ddrA = v;
+        break;
+      case 3:
+        this.ddrB = v;
+        break;
+      case 4:
+        a.latch = a.latch & 65280 | v;
+        break;
+      case 5:
+        a.latch = a.latch & 255 | v << 8;
+        if (!a.running) a.counter = a.latch;
+        break;
+      case 6:
+        b.latch = b.latch & 65280 | v;
+        break;
+      case 7:
+        b.latch = b.latch & 255 | v << 8;
+        if (!b.running) b.counter = b.latch;
+        break;
+      case 13:
+        if (v & 128) this.mask |= v & 31;
+        else this.mask &= ~(v & 31);
+        break;
+      case 14:
+        this.control(a, v, now, false);
+        this.cra = v & ~16;
+        break;
+      case 15:
+        this.control(b, v, now, true);
+        this.crb = v & ~16;
+        break;
+      default:
+        break;
+    }
+  }
+  control(t, v, now, isB) {
+    const current = this.counterAt(t, now);
+    t.counter = v & 16 ? t.latch : current;
+    t.oneShot = (v & 8) !== 0;
+    const countsCnt = isB ? (v & 96) === 32 : (v & 32) !== 0;
+    t.countsA = isB && (v & 64) !== 0;
+    t.running = (v & 1) !== 0 && !countsCnt;
+    t.nextUnderflow = t.running && !t.countsA ? now + t.counter + 1 : Infinity;
+  }
+};
+var ENV_PERIOD = [9, 32, 63, 95, 149, 220, 267, 313, 392, 977, 1954, 3126, 3907, 11720, 19532, 31251];
+var Voice3 = class {
+  constructor() {
+    __publicField(this, "freq", 0);
+    __publicField(this, "pw", 0);
+    __publicField(this, "ctrl", 0);
+    __publicField(this, "ad", 0);
+    __publicField(this, "sr", 0);
+    __publicField(this, "acc", 0);
+    __publicField(this, "lfsr", 8388600);
+    /** The cycle `acc` and `lfsr` are at. */
+    __publicField(this, "at", 0);
+    // Envelope.
+    __publicField(this, "env", 0);
+    __publicField(this, "state", "release");
+    __publicField(this, "envAt", 0);
+    __publicField(this, "rateCount", 0);
+    __publicField(this, "expCount", 0);
+    /** The zero freeze: set by a step that lands on 0, cleared only by a gate-on (reSID's `hold_zero`). */
+    __publicField(this, "holdZero", true);
+  }
+  syncOsc(now) {
+    const dt = now - this.at;
+    this.at = now;
+    if (dt <= 0) return;
+    if (this.ctrl & 8) {
+      this.acc = 0;
+      return;
+    }
+    const before = this.acc;
+    const total = before + this.freq * dt;
+    const rises = Math.floor((total + 524288) / 1048576) - Math.floor((before + 524288) / 1048576);
+    for (let i = 0; i < Math.min(rises, 8388607); i++) {
+      const bit = (this.lfsr >> 22 ^ this.lfsr >> 17) & 1;
+      this.lfsr = (this.lfsr << 1 | bit) & 8388607;
+    }
+    this.acc = total % 16777216;
+  }
+  osc(now) {
+    this.syncOsc(now);
+    const acc = this.acc;
+    let out = 255;
+    let any = false;
+    if (this.ctrl & 16) {
+      const tri = (acc & 8388608 ? acc ^ 16777215 : acc) >> 15;
+      out &= tri & 255;
+      any = true;
+    }
+    if (this.ctrl & 32) {
+      out &= acc >> 16;
+      any = true;
+    }
+    if (this.ctrl & 64) {
+      out &= acc >> 12 >= (this.pw & 4095) ? 255 : 0;
+      any = true;
+    }
+    if (this.ctrl & 128) {
+      const l = this.lfsr;
+      const noise = (l >> 22 & 1) << 7 | (l >> 20 & 1) << 6 | (l >> 16 & 1) << 5 | (l >> 13 & 1) << 4 | (l >> 11 & 1) << 3 | (l >> 7 & 1) << 2 | (l >> 4 & 1) << 1 | l >> 2 & 1;
+      out &= noise;
+      any = true;
+    }
+    return any ? out : 0;
+  }
+  /** Step the envelope to `now`, one rate period at a time. */
+  syncEnv(now) {
+    while (true) {
+      const rate = this.state === "attack" ? this.ad >> 4 : this.state === "decay" ? this.ad & 15 : this.sr & 15;
+      const period = ENV_PERIOD[rate];
+      const next = this.envAt + period - this.rateCount;
+      if (next > now) {
+        this.rateCount += now - this.envAt;
+        this.envAt = now;
+        return;
+      }
+      this.envAt = next;
+      this.rateCount = 0;
+      if (this.holdZero) {
+        this.envAt = now;
+        return;
+      }
+      if (this.state === "attack") {
+        this.env = this.env + 1 & 255;
+        if (this.env === 0) this.holdZero = true;
+        if (this.env === 255) this.state = "decay";
+        continue;
+      }
+      const expPeriod = this.env >= 93 ? 1 : this.env >= 54 ? 2 : this.env >= 26 ? 4 : this.env >= 14 ? 8 : this.env >= 6 ? 16 : 30;
+      if (++this.expCount < expPeriod) continue;
+      this.expCount = 0;
+      const sustain = (this.sr >> 4) * 17;
+      if (this.state === "release") this.env = this.env - 1 & 255;
+      else if (this.env > sustain) this.env--;
+      if (this.env === 0) this.holdZero = true;
+      if (this.holdZero || this.state === "decay" && this.env <= sustain) {
+        this.envAt = now;
+        return;
+      }
+    }
+  }
+  writeCtrl(v, now) {
+    this.syncOsc(now);
+    this.syncEnv(now);
+    const gateOn = (v & 1) !== 0 && (this.ctrl & 1) === 0;
+    const gateOff = (v & 1) === 0 && (this.ctrl & 1) !== 0;
+    if (v & 8) this.acc = 0;
+    this.ctrl = v;
+    if (gateOn) {
+      this.state = "attack";
+      this.holdZero = false;
+    }
+    if (gateOff) this.state = "release";
+  }
+};
+var C64 = class {
+  constructor(clock = "pal", extraSids = []) {
+    __publicField(this, "ram", new Uint8Array(65536));
+    __publicField(this, "cpu");
+    __publicField(this, "timing");
+    __publicField(this, "cia1", new Cia());
+    __publicField(this, "cia2", new Cia());
+    /** SID chip base addresses; chip 0 is $D400. */
+    __publicField(this, "sidBases");
+    /** Every SID write: chip index, register (0-31), value, cycle. */
+    __publicField(this, "onSidWrite", null);
+    __publicField(this, "basicIn", true);
+    __publicField(this, "kernalIn", true);
+    __publicField(this, "ioIn", true);
+    __publicField(this, "vic", new Uint8Array(64));
+    __publicField(this, "rasterCompare", 0);
+    __publicField(this, "vicFlags", 0);
+    __publicField(this, "vicMask", 0);
+    /** Cycle of the next raster interrupt event (Infinity while none can fire). */
+    __publicField(this, "nextRaster", Infinity);
+    __publicField(this, "nmiAsserted", false);
+    /** An NMI edge waits to be taken. */
+    __publicField(this, "nmiPending", false);
+    __publicField(this, "sidBus", 0);
+    __publicField(this, "voice3", new Voice3());
+    __publicField(this, "ioShadow", new Uint8Array(4096));
+    /** RAM as the state hash has it: the values of the writes made while hashing. */
+    __publicField(this, "hashedRam", new Uint8Array(65536));
+    __publicField(this, "hashA", 0);
+    __publicField(this, "hashB", 0);
+    /**
+     * While set, writes leave the state hash alone: the capture sets it while
+     * an NMI handler runs, whose sample playback is not the music's state (a
+     * sample pointer that never repeats would hide the song's loop).
+     */
+    __publicField(this, "hashPaused", false);
+    /** Cycle of the next timer/raster event to look at. */
+    __publicField(this, "nextEvent", Infinity);
+    this.timing = C64_TIMING[clock];
+    this.sidBases = [54272, ...extraSids];
+    this.cpu = new Mos6510(this);
+    const ram = this.ram;
+    ram[0] = 47;
+    ram[1] = 55;
+    ram.set([KERNAL_IRQ_HANDLER & 255, KERNAL_IRQ_HANDLER >> 8, KERNAL_BRK_HANDLER & 255, KERNAL_BRK_HANDLER >> 8, KERNAL_NMI_HANDLER & 255, KERNAL_NMI_HANDLER >> 8], 788);
+    ram[678] = clock === "pal" ? 1 : 0;
+    this.hashedRam.set(ram);
+    this.updateBanks();
+    this.cia1.write(4, this.timing.kernalCiaLatch & 255, 0);
+    this.cia1.write(5, this.timing.kernalCiaLatch >> 8, 0);
+    this.cia1.write(13, 129, 0);
+    this.cia1.write(14, 17, 0);
+    this.vic[17] = 27;
+    this.scheduleEvents();
+  }
+  /** The 64-bit state hash as a string key. */
+  stateHash() {
+    return `${(this.hashA >>> 0).toString(36)}.${(this.hashB >>> 0).toString(36)}`;
+  }
+  /** Load `data` at `address` (RAM, whatever the banking). */
+  load(address, data) {
+    for (let i = 0; i < data.length; i++) this.writeRam(address + i & 65535, data[i]);
+  }
+  /** Set the `$01` banking (as a write to $01). */
+  setBanks(value) {
+    this.writeRam(1, value);
+    this.updateBanks();
+  }
+  get banks() {
+    return this.ram[1];
+  }
+  updateBanks() {
+    const bits = (this.ram[1] | ~this.ram[0]) & 7;
+    const lo = (bits & 1) !== 0;
+    const hi = (bits & 2) !== 0;
+    this.basicIn = lo && hi;
+    this.kernalIn = hi;
+    this.ioIn = (lo || hi) && (bits & 4) !== 0;
+  }
+  writeRam(addr, v) {
+    this.ram[addr] = v;
+    if (this.hashPaused) return;
+    const old = this.hashedRam[addr];
+    if (old === v) return;
+    const k = addr << 8;
+    this.hashA ^= zobrist(k | old, SEED_A) ^ zobrist(k | v, SEED_A);
+    this.hashB ^= zobrist(k | old, SEED_B) ^ zobrist(k | v, SEED_B);
+    this.hashedRam[addr] = v;
+  }
+  shadowIo(addr, v) {
+    if (this.hashPaused) return;
+    const i = addr & 4095;
+    const old = this.ioShadow[i];
+    if (old === v) return;
+    const k = (IO_KEY | addr) << 8;
+    this.hashA ^= zobrist(k | old, SEED_A) ^ zobrist(k | v, SEED_A);
+    this.hashB ^= zobrist(k | old, SEED_B) ^ zobrist(k | v, SEED_B);
+    this.ioShadow[i] = v;
+  }
+  read(addr) {
+    if (addr >= 40960) {
+      if (addr < 49152) {
+        if (this.basicIn) return STAND_IN_BASIC[addr - 40960];
+      } else if (addr >= 57344) {
+        if (this.kernalIn) return STAND_IN_KERNAL[addr - 57344];
+      } else if (addr >= 53248 && this.ioIn) {
+        return this.readIo(addr);
+      }
+    }
+    return this.ram[addr];
+  }
+  write(addr, v) {
+    if (addr >= 53248 && addr < 57344 && this.ioIn) {
+      this.writeIo(addr, v);
+      return;
+    }
+    this.writeRam(addr, v);
+    if (addr < 2) this.updateBanks();
+  }
+  sidChip(addr) {
+    for (let i = this.sidBases.length - 1; i > 0; i--) {
+      const base = this.sidBases[i];
+      if (addr >= base && addr < base + 32) return i;
+    }
+    return addr >= 54272 && addr < 55296 ? 0 : -1;
+  }
+  readIo(addr) {
+    const now = this.cpu.cycles;
+    if (addr < 54272) return this.readVic(addr & 63, now);
+    if (addr < 55296 || addr >= 56832) {
+      const chip = this.sidChip(addr);
+      if (chip < 0) return 0;
+      const reg = addr & 31;
+      if (chip === 0 && reg === 27) return this.voice3.osc(now);
+      if (chip === 0 && reg === 28) {
+        this.voice3.syncEnv(now);
+        return this.voice3.env;
+      }
+      if (reg === 25 || reg === 26) return 255;
+      return this.sidBus;
+    }
+    if (addr < 56320) return this.ram[addr] & 15;
+    if (addr < 56576) {
+      const v = this.cia1.read(addr & 15, now);
+      if ((addr & 15) === 13) this.scheduleEvents();
+      return v;
+    }
+    if (addr < 56832) {
+      const v = this.cia2.read(addr & 15, now);
+      if ((addr & 15) === 13) {
+        this.nmiAsserted = this.cia2.asserted;
+        this.scheduleEvents();
+      }
+      return v;
+    }
+    return 0;
+  }
+  writeIo(addr, v) {
+    const now = this.cpu.cycles;
+    this.shadowIo(addr, v);
+    if (addr < 54272) {
+      this.writeVic(addr & 63, v, now);
+      return;
+    }
+    if (addr < 55296 || addr >= 56832) {
+      const chip = this.sidChip(addr);
+      if (chip < 0) return;
+      const reg = addr & 31;
+      this.sidBus = v;
+      if (chip === 0) this.voice3Write(reg, v, now);
+      this.onSidWrite?.(chip, reg, v, now);
+      return;
+    }
+    if (addr < 56320) {
+      this.writeRam(addr, v & 15);
+      return;
+    }
+    if (addr < 56576) {
+      this.cia1.write(addr & 15, v, now);
+      this.scheduleEvents();
+      return;
+    }
+    this.cia2.write(addr & 15, v, now);
+    this.scheduleEvents();
+  }
+  voice3Write(reg, v, now) {
+    const v3 = this.voice3;
+    switch (reg) {
+      case 14:
+        v3.syncOsc(now);
+        v3.freq = v3.freq & 65280 | v;
+        break;
+      case 15:
+        v3.syncOsc(now);
+        v3.freq = v3.freq & 255 | v << 8;
+        break;
+      case 16:
+        v3.pw = v3.pw & 3840 | v;
+        break;
+      case 17:
+        v3.pw = v3.pw & 255 | (v & 15) << 8;
+        break;
+      case 18:
+        v3.writeCtrl(v, now);
+        break;
+      case 19:
+        v3.syncEnv(now);
+        v3.ad = v;
+        break;
+      case 20:
+        v3.syncEnv(now);
+        v3.sr = v;
+        break;
+      default:
+        break;
+    }
+  }
+  // --- VIC-II ---------------------------------------------------------------
+  rasterLine(now) {
+    return Math.floor(now / this.timing.cyclesPerLine) % this.timing.lines;
+  }
+  readVic(reg, now) {
+    this.syncRaster(now);
+    switch (reg) {
+      case 17:
+        return this.vic[17] & 127 | (this.rasterLine(now) & 256) >> 1;
+      case 18:
+        return this.rasterLine(now) & 255;
+      case 25:
+        return this.vicFlags & 15 | 112 | ((this.vicFlags & this.vicMask & 15) !== 0 ? 128 : 0);
+      case 26:
+        return this.vicMask | 240;
+      default:
+        return this.vic[reg];
+    }
+  }
+  writeVic(reg, v, now) {
+    this.syncRaster(now);
+    this.vic[reg] = v;
+    switch (reg) {
+      case 17:
+        this.rasterCompare = this.rasterCompare & 255 | (v & 128) << 1;
+        this.scheduleRaster(now);
+        break;
+      case 18:
+        this.rasterCompare = this.rasterCompare & 256 | v;
+        this.scheduleRaster(now);
+        break;
+      case 25:
+        this.vicFlags &= ~v & 15;
+        break;
+      case 26:
+        this.vicMask = v & 15;
+        break;
+      default:
+        break;
+    }
+    this.scheduleEvents();
+  }
+  /** The start cycle of the next line `rasterCompare` after `now` (Infinity if the line does not exist). */
+  scheduleRaster(now) {
+    const t = this.timing;
+    if (this.rasterCompare >= t.lines) {
+      this.nextRaster = Infinity;
+      return;
+    }
+    const lineNow = Math.floor(now / t.cyclesPerLine);
+    const inFrame = lineNow % t.lines;
+    let delta = (this.rasterCompare - inFrame + t.lines) % t.lines;
+    if (delta === 0) delta = t.lines;
+    this.nextRaster = (lineNow + delta) * t.cyclesPerLine;
+  }
+  syncRaster(now) {
+    while (this.nextRaster <= now) {
+      this.vicFlags |= 1;
+      this.nextRaster += c64FrameCycles(this.timing);
+    }
+  }
+  // --- Interrupts and time --------------------------------------------------
+  scheduleEvents() {
+    const now = this.cpu.cycles;
+    if (this.nextRaster === Infinity && this.rasterCompare < this.timing.lines) this.scheduleRaster(now);
+    const raster = this.vicMask & 1 ? this.nextRaster : Infinity;
+    this.nextEvent = Math.min(raster, this.cia1.nextInterrupt(), this.cia2.nextInterrupt());
+  }
+  /** Whether the IRQ line is held (CIA 1 or the VIC). */
+  get irqLine() {
+    return this.cia1.asserted || (this.vicFlags & this.vicMask & 15) !== 0;
+  }
+  /** Bring the chips to the CPU's cycle: set flags and latch an NMI edge. */
+  service() {
+    const now = this.cpu.cycles;
+    this.syncRaster(now);
+    this.cia1.sync(now);
+    this.cia2.sync(now);
+    const nmi = this.cia2.asserted;
+    if (nmi && !this.nmiAsserted) this.nmiPending = true;
+    this.nmiAsserted = nmi;
+    this.scheduleEvents();
+  }
+  /** The cycle of the next interrupt event (for idling up to it). */
+  get nextEventCycle() {
+    return this.nextEvent;
+  }
+  /**
+   * Whether the CPU would take an interrupt before its next instruction: an
+   * NMI edge, or the IRQ line held with I clear. An idle CPU must not skip
+   * time past one (an IRQ that came while an NMI ran is taken as that NMI
+   * returns, not at the next event).
+   */
+  interruptWaiting() {
+    if (this.cpu.cycles >= this.nextEvent) this.service();
+    return this.nmiPending || this.irqLine && (this.cpu.p & 4) === 0;
+  }
+  /**
+   * Take a waiting interrupt, if any: 'nmi', 'irq' or null. Call before each
+   * instruction (`step` does).
+   */
+  takeInterrupt() {
+    if (this.cpu.cycles >= this.nextEvent) this.service();
+    if (this.nmiPending) {
+      this.nmiPending = false;
+      this.cpu.nmi();
+      return "nmi";
+    }
+    if (this.irqLine && this.cpu.irq()) return "irq";
+    return null;
+  }
+  /** Advance time to `cycle` without running code (an idle CPU). */
+  idleTo(cycle) {
+    if (cycle > this.cpu.cycles) this.cpu.cycles = cycle;
+  }
+  /** Run one instruction (taking an interrupt first if one is due). */
+  step() {
+    const taken = this.takeInterrupt();
+    this.cpu.step();
+    return taken;
+  }
+};
+
+// src/audio/tracker/psid/sid-capture.ts
+var RETURN_TRAP = 57328;
+var IDLE_TRAP = 57336;
+var INIT_MAX_CYCLES = 6e7;
+var PLAY_MAX_CYCLES = 2e6;
+function psidBanksFor(addr) {
+  if (addr < 40960) return 55;
+  if (addr < 53248) return 54;
+  if (addr >= 57344) return 53;
+  return 52;
+}
+var hex42 = (v) => `$${v.toString(16).toUpperCase().padStart(4, "0")}`;
+function enterCall(machine, addr, a) {
+  const cpu = machine.cpu;
+  cpu.a = a;
+  cpu.x = 0;
+  cpu.y = 0;
+  cpu.p = 36;
+  machine.write(511, RETURN_TRAP - 1 >> 8);
+  machine.write(510, RETURN_TRAP - 1 & 255);
+  cpu.sp = 253;
+  cpu.pc = addr;
+  cpu.jammed = false;
+}
+function callRoutine(machine, addr, a, maxCycles) {
+  const cpu = machine.cpu;
+  enterCall(machine, addr, a);
+  const limit = cpu.cycles + maxCycles;
+  while (cpu.cycles < limit) {
+    const pc = cpu.pc;
+    if (pc === RETURN_TRAP) return "return";
+    if (pc >= 59953 && pc <= 60035 && (machine.banks & 2) !== 0) return "kernal-exit";
+    if (pc === KERNAL_BRK_HANDLER && (machine.banks & 2) !== 0) return "brk";
+    if (cpu.jammed) return "jam";
+    if (machine.read(pc) === 64 && cpu.sp >= 253) return "rti";
+    cpu.step();
+  }
+  return "timeout";
+}
+
+// src/audio/tracker/psid/psid-runner.ts
+var NEVER = Number.POSITIVE_INFINITY;
+var PsidRunner = class _PsidRunner {
+  constructor(file, clock, machine, mode, tickCycles) {
+    __publicField(this, "machine");
+    __publicField(this, "clock");
+    __publicField(this, "clockHz");
+    /** Cycles between ticks of a host-driven tune (a video frame, or CIA 1 timer A's period). */
+    __publicField(this, "tickCycles");
+    /** Host-driven (`play`), or left to its own interrupts after init (`irq`). */
+    __publicField(this, "mode");
+    /** Why the tune stopped (its player jammed the CPU, hit a BRK, ran away), or null while it plays. */
+    __publicField(this, "ended", null);
+    __publicField(this, "file");
+    /** Machine cycle that is cycle 0 of the output. */
+    __publicField(this, "origin");
+    /** The machine cycle the next host-driven tick is due on. */
+    __publicField(this, "next");
+    /** Machine cycle before which nothing more will be written. */
+    __publicField(this, "horizonCycle");
+    /** Writes to the first SID, in order: machine cycle, register, value. */
+    __publicField(this, "cycles", new Float64Array(1024));
+    __publicField(this, "regs", new Uint8Array(1024));
+    __publicField(this, "values", new Uint8Array(1024));
+    __publicField(this, "head", 0);
+    __publicField(this, "tail", 0);
+    /** Writes to a second or third SID, dropped (the chip here is one). */
+    __publicField(this, "extraSidWrites", 0);
+    this.file = file;
+    this.machine = machine;
+    this.mode = mode;
+    this.clock = clock;
+    this.clockHz = machine.timing.hz;
+    this.tickCycles = tickCycles;
+    this.origin = machine.cpu.cycles;
+    this.next = machine.cpu.cycles;
+    this.horizonCycle = machine.cpu.cycles;
+  }
+  /** Subsong `subsong` (0-based) of `file`, initialised and ready to `advance`. Never throws for a tune's behaviour. */
+  static create(file, subsong) {
+    const clock = file.clock === "ntsc" ? "ntsc" : "pal";
+    const machine = new C64(clock, file.extraSids);
+    machine.hashPaused = true;
+    const cpu = machine.cpu;
+    machine.load(file.loadAddress, file.data);
+    const song = Math.max(0, Math.min(file.songs - 1, subsong));
+    const irqMode = file.type === "RSID" || file.playAddress === 0;
+    const early = [];
+    let runner = null;
+    machine.onSidWrite = (chip, reg, value, cycle) => {
+      if (runner === null) {
+        if (chip === 0) early.push({ cycle, reg: reg & 31, value });
+        return;
+      }
+      if (chip !== 0) runner.extraSidWrites++;
+      else runner.push(cycle, reg & 31, value);
+    };
+    let tickCycles = c64FrameCycles(machine.timing);
+    if (!irqMode) {
+      machine.setBanks(psidBanksFor(file.initAddress));
+      const end = callRoutine(machine, file.initAddress, song, INIT_MAX_CYCLES);
+      if (end === "jam") return { ok: false, reason: `the tune's init routine (${hex42(file.initAddress)}) stopped the CPU (a JAM opcode at ${hex42(cpu.pc)})` };
+      if (end === "brk") return { ok: false, reason: `the tune's init routine (${hex42(file.initAddress)}) hit a BRK` };
+      if (end === "timeout") {
+        return { ok: false, reason: `the tune's init routine (${hex42(file.initAddress)}) did not return in ${INIT_MAX_CYCLES / 1e6} million cycles` };
+      }
+      if (psidSongUsesCia(file, song + 1)) tickCycles = machine.cia1.a.latch + 1;
+    } else {
+      if (file.type === "PSID") machine.setBanks(psidBanksFor(file.initAddress));
+      enterCall(machine, file.initAddress, song);
+    }
+    runner = new _PsidRunner(file, clock, machine, irqMode ? "irq" : "play", tickCycles);
+    for (const w of early) runner.push(w.cycle, w.reg, w.value);
+    return { ok: true, runner };
+  }
+  /** The cycle (from the start of playback) before which every write is known. */
+  get horizon() {
+    return this.horizonCycle === NEVER ? NEVER : this.horizonCycle - this.origin;
+  }
+  /** How many writes wait to be drained. */
+  get pending() {
+    return this.tail - this.head;
+  }
+  push(machineCycle, reg, value) {
+    if (this.tail === this.cycles.length) this.makeRoom();
+    this.cycles[this.tail] = machineCycle;
+    this.regs[this.tail] = reg;
+    this.values[this.tail] = value;
+    this.tail++;
+  }
+  makeRoom() {
+    const live = this.tail - this.head;
+    if (this.head > 0 && live <= this.cycles.length >> 1) {
+      this.cycles.copyWithin(0, this.head, this.tail);
+      this.regs.copyWithin(0, this.head, this.tail);
+      this.values.copyWithin(0, this.head, this.tail);
+    } else {
+      const size = this.cycles.length * 2;
+      const c = new Float64Array(size);
+      const r = new Uint8Array(size);
+      const v = new Uint8Array(size);
+      c.set(this.cycles.subarray(this.head, this.tail));
+      r.set(this.regs.subarray(this.head, this.tail));
+      v.set(this.values.subarray(this.head, this.tail));
+      this.cycles = c;
+      this.regs = r;
+      this.values = v;
+    }
+    this.tail = live;
+    this.head = 0;
+  }
+  /**
+   * Hand over, in order, the writes made before cycle `until` (from the start
+   * of playback), each with its cycle (never below 0), register and value.
+   * `until` must not be past `horizon`.
+   */
+  drain(until, sink) {
+    const limit = until + this.origin;
+    while (this.head < this.tail && this.cycles[this.head] < limit) {
+      const i = this.head++;
+      sink(Math.max(0, this.cycles[i] - this.origin), this.regs[i], this.values[i]);
+    }
+    if (this.head === this.tail) this.head = this.tail = 0;
+  }
+  end(why) {
+    this.ended = why;
+    this.horizonCycle = NEVER;
+  }
+  /** Run the tune until emulated time reaches cycle `until` (from the start of playback). */
+  advance(until) {
+    if (this.ended !== null) return;
+    const target = until + this.origin;
+    if (this.mode === "play") this.advancePlay(target);
+    else this.advanceIrq(target);
+  }
+  advancePlay(target) {
+    const machine = this.machine;
+    const cpu = machine.cpu;
+    const addr = this.file.playAddress;
+    while (this.horizonCycle < target) {
+      machine.idleTo(this.next);
+      machine.setBanks(psidBanksFor(addr));
+      const e = callRoutine(machine, addr, 0, PLAY_MAX_CYCLES);
+      if (e === "jam") return this.end(`the tune's play routine (${hex42(addr)}) stopped the CPU (JAM at ${hex42(cpu.pc)})`);
+      if (e === "brk") return this.end(`the tune's play routine (${hex42(addr)}) hit a BRK`);
+      if (e === "timeout") return this.end(`the tune's play routine (${hex42(addr)}) did not return`);
+      this.next += this.tickCycles;
+      this.horizonCycle = Math.max(this.next, cpu.cycles);
+    }
+  }
+  advanceIrq(target) {
+    const machine = this.machine;
+    const cpu = machine.cpu;
+    while (cpu.cycles < target) {
+      if (cpu.jammed) return this.end(`the tune stopped the CPU (JAM at ${hex42(cpu.pc)})`);
+      if (cpu.pc === KERNAL_BRK_HANDLER && (machine.banks & 2) !== 0) return this.end("the tune hit a BRK");
+      if (cpu.pc === RETURN_TRAP) {
+        cpu.pc = IDLE_TRAP;
+        cpu.p &= ~4;
+      }
+      if (cpu.pc === IDLE_TRAP && !machine.interruptWaiting()) {
+        machine.idleTo(Math.min(machine.nextEventCycle, target));
+      }
+      if (machine.takeInterrupt() !== null) continue;
+      if (cpu.pc === IDLE_TRAP) {
+        machine.idleTo(target);
+        continue;
+      }
+      cpu.step();
+    }
+    this.horizonCycle = cpu.cycles;
+  }
+};
+
+// src/audio/tracker/psid/psid-playback.ts
+var PsidPlayback = class _PsidPlayback {
+  constructor(runner, chip, sampleRate2) {
+    this.runner = runner;
+    this.chip = chip;
+    this.sampleRate = sampleRate2;
+    __publicField(this, "playing", false);
+    /** Chip cycles rendered so far (the runner's clock, from the start of playback). */
+    __publicField(this, "cycle", 0);
+    __publicField(this, "frac", 0);
+    __publicField(this, "frames", 0);
+    __publicField(this, "cyclesPerSample");
+    this.cyclesPerSample = runner.clockHz / sampleRate2;
+  }
+  /** Subsong `subsong` (0-based) of `file` on a chip of the file's model, paused. */
+  static create(file, subsong, Chip, sampleRate2) {
+    const made = PsidRunner.create(file, subsong);
+    if (!made.ok) return made;
+    let chip;
+    try {
+      chip = new Chip(file.sidModel === "8580", sampleRate2, made.runner.clockHz);
+    } catch (error) {
+      return { ok: false, reason: String(error) };
+    }
+    return { ok: true, player: new _PsidPlayback(made.runner, chip, sampleRate2) };
+  }
+  /** Why the tune stopped (its code jammed the CPU or ran away), or null. */
+  get ended() {
+    return this.runner.ended;
+  }
+  play() {
+    this.playing = true;
+  }
+  pause() {
+    this.playing = false;
+  }
+  is_playing() {
+    return this.playing;
+  }
+  set_gain(gain) {
+    this.chip.set_gain(gain);
+  }
+  set_mute_solo(mute, solo) {
+    this.chip.set_mute_solo(mute, solo);
+  }
+  set_revision(name) {
+    return this.chip.set_revision(name);
+  }
+  render(out, v0, v1, v2) {
+    const n = Math.min(out.length, v0.length, v1.length, v2.length);
+    if (!this.playing) {
+      out.fill(0, 0, n);
+      v0.fill(0, 0, n);
+      v1.fill(0, 0, n);
+      v2.fill(0, 0, n);
+      return n;
+    }
+    let total = 0;
+    for (let i = 0; i < n; i++) {
+      this.frac += this.cyclesPerSample;
+      const whole = Math.floor(this.frac);
+      this.frac -= whole;
+      total += whole;
+    }
+    const start = this.cycle;
+    const end = start + total;
+    this.runner.advance(end);
+    this.runner.drain(end, (cycle, reg, value) => this.chip.write_after(Math.max(0, cycle - start), reg, value));
+    this.cycle = end;
+    this.frames += n;
+    return this.chip.render(out.subarray(0, n), v0.subarray(0, n), v1.subarray(0, n), v2.subarray(0, n));
+  }
+  /** Whole seconds played. */
+  song_row() {
+    return Math.floor(this.frames / this.sampleRate);
+  }
+  song_rows() {
+    return 0;
+  }
+  /** True once the tune's code has stopped (it jammed the CPU or ran away): the worklet reports it as the song's end. */
+  song_end_reached() {
+    return this.runner.ended !== null;
+  }
+  tempo() {
+    return 0;
+  }
+  channels() {
+    return 3;
+  }
+  chip_model() {
+    return this.chip.chip_model();
+  }
+  instrument_count() {
+    return 0;
+  }
+  tap_full_scale() {
+    return this.chip.tap_full_scale();
+  }
+  // A tune has no rows to move to, loop or preview: these are the song player's.
+  seek_row(_row) {
+  }
+  set_loop_rows(_start, _end) {
+  }
+  clear_loop_rows() {
+  }
+  enable_preview() {
+  }
+  preview_note_on(_instrument, _note) {
+    return false;
+  }
+  preview_note_off() {
+  }
+  free() {
+    this.chip.free();
+  }
+};
+
 // src/audio/worklets/sid-core.ts
 var POSITION_INTERVAL_SECONDS = 0.04;
 var END_FADE_FRAMES = 32;
@@ -3797,10 +5776,11 @@ function fadeOutTail(buffer) {
   for (let i = 0; i < n; i++) buffer[start + i] = (buffer[start + i] ?? 0) * (1 - (i + 1) / n);
 }
 var SidProcessorCore = class {
-  constructor(PlayerCtor, sampleRate2, post) {
+  constructor(PlayerCtor, sampleRate2, post, ChipCtor = null) {
     this.PlayerCtor = PlayerCtor;
     this.sampleRate = sampleRate2;
     this.post = post;
+    this.ChipCtor = ChipCtor;
     __publicField(this, "player", null);
     __publicField(this, "gain", 1);
     __publicField(this, "stopAtEnd", false);
@@ -3827,6 +5807,11 @@ var SidProcessorCore = class {
         if (command.id <= this.lastLoadId) break;
         this.lastLoadId = command.id;
         this.loadSong(command.id, command.bytes);
+        break;
+      case "load-psid":
+        if (command.id <= this.lastLoadId) break;
+        this.lastLoadId = command.id;
+        this.loadPsid(command.id, command.bytes, command.subsong);
         break;
       case "play":
         this.player?.play();
@@ -3910,29 +5895,50 @@ var SidProcessorCore = class {
     this.dropPlayer();
     try {
       const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-      const player = new this.PlayerCtor(data, this.sampleRate);
+      this.adopt(id, new this.PlayerCtor(data, this.sampleRate));
+    } catch (error) {
+      this.post({ type: "error", id, message: `SID load failed: ${String(error)}` });
+    }
+  }
+  loadPsid(id, bytes, subsong) {
+    this.dropPlayer();
+    try {
+      if (this.ChipCtor === null) throw new Error("this worklet has no chip to play a .sid on");
+      const parsed = parsePsid(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+      if (!parsed.ok) throw new Error(parsed.reason);
+      const made = PsidPlayback.create(parsed.file, subsong, this.ChipCtor, this.sampleRate);
+      if (!made.ok) throw new Error(made.reason);
+      this.adopt(id, made.player);
+    } catch (error) {
+      this.post({ type: "error", id, message: `SID load failed: ${error instanceof Error ? error.message : String(error)}` });
+    }
+  }
+  /** Make `player` the song: the settings that outlive songs, then the answer to the load. */
+  adopt(id, player) {
+    try {
       player.set_gain(this.gain);
       player.set_mute_solo(this.mute, this.solo);
       player.set_revision(this.revision);
       if (this.preview) player.enable_preview();
-      this.player = player;
-      this.applyLoop();
-      this.resetReporting();
-      this.post({
-        type: "song-loaded",
-        id,
-        info: {
-          songRows: player.song_rows(),
-          channels: player.channels(),
-          chipModel: player.chip_model(),
-          instrumentCount: player.instrument_count(),
-          sampleRate: this.sampleRate,
-          voiceFullScale: player.tap_full_scale()
-        }
-      });
     } catch (error) {
-      this.post({ type: "error", id, message: `SID load failed: ${String(error)}` });
+      player.free();
+      throw error;
     }
+    this.player = player;
+    this.applyLoop();
+    this.resetReporting();
+    this.post({
+      type: "song-loaded",
+      id,
+      info: {
+        songRows: player.song_rows(),
+        channels: player.channels(),
+        chipModel: player.chip_model(),
+        instrumentCount: player.instrument_count(),
+        sampleRate: this.sampleRate,
+        voiceFullScale: player.tap_full_scale()
+      }
+    });
   }
   applyLoop() {
     if (!this.player) return;
@@ -4009,7 +6015,8 @@ var SidAudioProcessor = class extends AudioWorkletProcessor {
       this.core = new SidProcessorCore(
         SidPlayer,
         sampleRate,
-        (event) => this.port.postMessage(event)
+        (event) => this.port.postMessage(event),
+        SidChipPlayer
       );
       this.wasmReady = true;
       this.port.postMessage({ type: "wasm-ready" });

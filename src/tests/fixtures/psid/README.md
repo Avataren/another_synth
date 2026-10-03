@@ -49,3 +49,24 @@ covered, HVSC paths under `/MUSICIANS/`:
 - `F/Follin_Tim/Ghouls_n_Ghosts.sid`
 - `H/Hubbard_Rob/Monty_on_the_Run.sid`, `H/Hubbard_Rob/Delta.sid`, `H/Hubbard_Rob/Sanxion.sid`
 - a GoatTracker 2 tune from HVSC (exact-unpack path), e.g. any of Cadaver's.
+
+## The famous-tunes set (added 2026-10-03)
+
+175 more tunes copied from Morten's High Voltage SID Collection (`~/Downloads/c64/C64Music/MUSICIANS/<letter>/<Composer>/<Title>.sid`, unmodified), chosen as the best-known game and demo tunes of the big C64 composers. Each runs on the native player (`psid-runner.ts`: parses, inits, writes the SID) and is published in the demo browser (`public/demos/sid/`). Copyright stays with the composers.
+
+- `brennan_neil/`: fist_ii_the_legend_continues, judge_dredd
+- `cooksey_mark/`: 1942, airwolf, bomb_jack, commando_86, crack_down, forgotten_worlds, ghosts_n_goblins, jackal, salamander, space_harrier
+- `daglish_ben/`: 720_degrees, blasteroids, deflektor, footballer_of_the_year, future_knight, gauntlet, gauntlet_ii, jack_the_nipper, mask, pac_mania, re_bounder, super_cars, switchblade, technocop, terramex, trap, way_of_the_tiger, wizard_warz
+- `dunn_david/`: daley_thompsons_decathlon, elite, fourth_protocol
+- `follin_tim/`: agent_x_ii_the_mad_profs_back, bionic_commando, black_lamp, gauntlet_iii, ghouls_n_ghosts, l_e_d_storm, sky_shark
+- `galway_martin/`: athena, combat_school, game_over, green_beret, helikopter_jagd, highlander, hunchback_ii, hyper_sports, insects_in_space, kong_strikes_back, match_day, miami_vice, mikie, neverending_story, parallax, ping_pong, rambo_first_blood_part_ii, rastan, rolands_ratrace, short_circuit, slap_fight, street_hawk, swag, terra_cresta, times_of_lore, wizball, yie_ar_kung_fu, yie_ar_kung_fu_ii
+- `gray_fred/`: army_moves, legend_of_kage, mag_max, mutants, nodes_of_yesod, shadowfire
+- `gray_matt/`: atmosphere, deliverance, driller, hunters_moon, last_ninja_2, mean_streak, quedex
+- `hubbard_rob/`: ace_ii, action_biker, arcade_classics, auf_wiedersehen_monty, battle_of_britain, bump_set_spike, confuzion, delta, flash_gordon, gerry_the_germ, gremlins, human_race, hunter_patrol, ik_plus, international_karate, kentilla, last_v8, lightforce, master_of_magic, mega_apocalypse, monty_on_the_run, nemesis_the_warlock, one_man_and_his_droid, phantoms_of_the_asteroid, proteus, rasputin, sanxion, skate_or_die_intro, spellbound, thing_on_a_spring, thrust, thundercats, warhawk, wiz, zoids, zoolook
+- `huelsbeck_chris/`: axel_f, bad_cat, danger_freak, jinks, katakis, madness, planet_of_war, shades, soldier, spherical, wellenreiter
+- `lieblich_russell/`: aliens, ballblazer, ghostbusters, master_of_the_lamps, rampage
+- `ouwehand_reyn/`: last_ninja_3
+- `rowlands_steve/`: creatures, mayhem_in_monsterland, retrograde
+- `tel_jeroen/`: afterburner, alloyrun, battle_valley, cybernoid, cybernoid_ii, eliminator, fun_fun, hawkeye, ikari_union, iron_lord, kinetix, lemmings, myth, navy_moves, north_and_south, outrun_europa, rubicon, savage, smash_tv, super_monaco_grand_prix, supremacy, teenage_mutant_hero_turtles, turbo_outrun
+- `walker_martin/`: armalyte, chameleon, citadel, rodland, speedball_2, swiv
+- `whittaker_david/`: beverly_hills_cop, ghostbusters_ii, glider_rider, last_mission, lazy_jones, real_ghostbusters, rygar, speedball, zub

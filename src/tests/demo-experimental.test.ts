@@ -6,10 +6,9 @@ vi.mock('quasar', () => ({ useQuasar: () => ({ notify: vi.fn() }) }));
 import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
 
 /**
- * The demo browser marks the C64 SID collection as experimental: a `.sid` is
- * transcribed from what its player plays (plan-psid-import.md), so the song
- * approximates the original. Its tab says so, and so does a notice while it
- * is open; the other collections carry neither.
+ * The demo browser's experimental marking (`EXPERIMENTAL_COLLECTIONS`) is
+ * empty: the C64 SID collection lost its tag when `.sid` files began playing
+ * as they are (.ai/plan-psid-playback.md). No tab carries a tag or notice.
  */
 
 const manifest = {
@@ -22,7 +21,7 @@ const manifest = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('the demo browser: experimental collections', () => {
-  it('tags the SID tab and shows the notice only while the SID collection is open', async () => {
+  it('tags no tab and shows no notice, the SID collection included', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(JSON.stringify(manifest), { status: 200 })),
@@ -30,12 +29,9 @@ describe('the demo browser: experimental collections', () => {
     const w = mount(DemoSongBrowser, { props: { modelValue: true } });
     await flushPromises();
     const tabs = w.findAll('.demo-tab');
-    expect(tabs.map((t) => t.find('.demo-tab-experimental').exists())).toEqual([false, true]);
-    // The first collection opens first: no notice.
-    expect(w.find('.demo-experimental-notice').exists()).toBe(false);
+    expect(tabs).toHaveLength(2);
+    expect(tabs.map((t) => t.find('.demo-tab-experimental').exists())).toEqual([false, false]);
     await tabs[1]!.trigger('click');
-    expect(w.find('.demo-experimental-notice').text()).toMatch(/^Experimental: .*approximates the original/);
-    await tabs[0]!.trigger('click');
     expect(w.find('.demo-experimental-notice').exists()).toBe(false);
   });
 });

@@ -29,16 +29,12 @@ export interface DemoCollection {
 
 /**
  * Collections whose import is still experimental, with what the user should
- * expect: a C64 .sid holds a player's code, not a song, so it is transcribed
- * from what the player plays, and the result only approximates the original.
- *
- * Shown with a warning in the demo browser, and left out of the jukebox's
- * standard playlist -- they can still be queued by hand or as a playlist of
- * their own.
+ * expect. Shown with a tag and a warning in the demo browser, and left out of
+ * the jukebox's standard playlist -- they can still be queued by hand or as a
+ * playlist of their own. None at present: the C64 SID collection was one
+ * while `.sid` files were only transcribed; they now play as they are.
  */
-export const EXPERIMENTAL_COLLECTIONS: Readonly<Record<string, string>> = {
-  sid: 'Experimental: C64 .sid files are transcribed into editable GoatTracker songs from what their player plays. The result approximates the original and can sound noticeably different.',
-};
+export const EXPERIMENTAL_COLLECTIONS: Readonly<Record<string, string>> = {};
 
 export function isExperimentalCollection(id: string): boolean {
   return id in EXPERIMENTAL_COLLECTIONS;

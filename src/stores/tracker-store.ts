@@ -86,6 +86,7 @@ import { readModOrigin, type ModOrigin } from 'src/audio/tracker/mod-origin';
 import { readXmOrigin, type XmOrigin } from 'src/audio/tracker/xm-origin';
 import { editSidInstrument, newSidInstrument } from 'src/audio/tracker/sid-instrument-edit';
 import { addSidPreset, applySidPreset } from 'src/audio/tracker/sid-presets';
+import { decodePsidFile, encodePsidFile, type PsidTune } from 'src/audio/tracker/psid-tune';
 import { ahxPresetFits, ahxPresetInstrument } from 'src/audio/tracker/ahx-presets';
 import {
   SID_MAX_INSTRUMENT_NAME_LENGTH,
@@ -275,6 +276,8 @@ interface TrackerSnapshot {
   sidPatternNames?: Record<string, string>;
   /** An A2M song's doc (`data.a2mDoc`): never mutated, so a snapshot holds the reference. */
   a2mDoc?: A2mDoc | null;
+  /** A SID tune kept as the file it is (`psidTune`): never mutated, so a snapshot holds the reference. */
+  psidTune?: PsidTune | null;
 }
 
 interface TrackerStoreState {
@@ -386,6 +389,15 @@ interface TrackerStoreState {
   sidDoc: SidDoc | null;
   /** Counts every change of `sidDoc`, including the one that clears it. */
   sidRevision: number;
+  /**
+   * A C64 `.sid` kept as the file it is, played by running its own code
+   * (`psid-tune.ts`). Set only for a SID song with no `sidDoc`: the grid is a
+   * stand-in the page covers with the visualizers. `markRaw`, replaced (never
+   * mutated) by a subsong change.
+   */
+  psidTune: PsidTune | null;
+  /** Counts every change of `psidTune`, including the one that clears it (what the transport reloads on). */
+  psidRevision: number;
   /**
    * A SID song's structure as the editor edits it (plan-sid-authoring.md
    * phase 2, `sid-doc/flat.ts`): per subsong, song-wide patterns and a
@@ -597,6 +609,15 @@ export interface TrackerSongFile {
      */
     sidFile?: string;
     /**
+     * A C64 tune played as the file it is (`psid-tune.ts`), on a `'sid'` song
+     * with no `sidFile`: the `.sid` as opened, base64 (`encodePsidFile`). What
+     * plays: the SID worklet runs the tune's own code. The grid beside it is a
+     * stand-in. Additive to v5.
+     */
+    psidFile?: string;
+    /** With `psidFile`: the subsong playing (0-based); absent means the file's start song. */
+    psidSubsong?: number;
+    /**
      * A2M songs only (.ai/plan-opl.md O7): the module as opened, base64
      * (`encodeA2mFile`). What plays: the Rust player in the OPL worklet reads
      * it; the grid beside it is display only (D3).
@@ -702,6 +723,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       ahxRevision: 0,
       sidDoc: null,
       sidRevision: 0,
+      psidTune: null,
+      psidRevision: 0,
       sidFlat: markRaw([]),
       sidSubsong: 0,
       a2mDoc: null,
@@ -715,6 +738,10 @@ export const useTrackerStore = defineStore('trackerStore', {
     /** The song is an Adlib Tracker II module: edited as a doc and a grid, played from the module they compile to. */
     isA2mSong(): boolean {
       return this.moduleFormat === 'a2m';
+    },
+    /** A C64 tune played as the file it is (`psidTune`): no doc, no editable grid, visualizers instead of the pattern. */
+    isPsidSong(): boolean {
+      return this.moduleFormat === 'sid' && this.psidTune !== null;
     },
     /** A SID song with a doc: its grid is edited and written back to the doc (S4). */
     isSidEditable(): boolean {
@@ -866,6 +893,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         ahxDoc,
         sidDoc,
         a2mDoc: this.moduleFormat === 'a2m' ? this.a2mDoc : null,
+        psidTune: this.moduleFormat === 'sid' ? this.psidTune : null,
         ...(sidDoc
           ? {
               sidFlat: this.sidFlat,
@@ -904,6 +932,9 @@ export const useTrackerStore = defineStore('trackerStore', {
       const sidDoc = snapshot.moduleFormat === 'sid' ? snapshot.sidDoc ?? null : null;
       if (sidDoc !== this.sidDoc) this.sidRevision += 1;
       this.a2mDoc = snapshot.moduleFormat === 'a2m' ? markRawOrNull(snapshot.a2mDoc) : null;
+      const psidTune = snapshot.moduleFormat === 'sid' ? snapshot.psidTune ?? null : null;
+      if (psidTune !== this.psidTune) this.psidRevision += 1;
+      this.psidTune = psidTune === null ? null : markRaw(psidTune);
       this.sidDoc = sidDoc;
       this.sidFlat = markRaw(sidDoc ? (snapshot.sidFlat ?? flattenSidDoc(sidDoc)) : []);
       this.sidSubsong = sidDoc ? Math.max(0, Math.min(this.sidFlat.length - 1, snapshot.sidSubsong ?? 0)) : 0;
@@ -998,6 +1029,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.redoStack = [];
       this.ahxDoc = null;
       this.sidDoc = null;
+      this.psidTune = null;
+      this.psidRevision += 1;
       this.sidFlat = markRaw([]);
       this.sidSubsong = 0;
       this.a2mDoc = null;
@@ -1628,6 +1661,10 @@ export const useTrackerStore = defineStore('trackerStore', {
       // A SID song's doc is the song: saved as its file, byte for byte what
       // the Rust player reads (`sid-file-codec.ts`).
       if (this.moduleFormat === 'sid' && this.sidDoc !== null) data.sidFile = encodeSidFile(this.sidDoc);
+      if (this.moduleFormat === 'sid' && this.psidTune !== null) {
+        data.psidFile = encodePsidFile(this.psidTune.bytes);
+        data.psidSubsong = this.psidTune.subsong;
+      }
       if (this.moduleFormat === 'a2m' && this.a2mDoc !== null) data.a2mDoc = this.a2mDoc;
       return { version: CURRENT_SONG_FILE_VERSION, data };
     },
@@ -1665,6 +1702,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       // is, it starts without one (an editable AHX or HVL song's is set below).
       this.ahxDoc = null;
       this.sidDoc = null;
+      this.psidTune = null;
+      this.psidRevision += 1;
       this.sidFlat = markRaw([]);
       this.sidSubsong = 0;
       this.a2mDoc = null;
@@ -1803,7 +1842,10 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.editingSlot = null;
 
       if (this.moduleFormat === 'ahx') this.adoptAhxDoc(file, data);
-      if (this.moduleFormat === 'sid') this.adoptSidFile(data);
+      if (this.moduleFormat === 'sid') {
+        if (data.psidFile !== undefined) this.adoptPsidFile(data);
+        else this.adoptSidFile(data);
+      }
       if (this.moduleFormat === 'a2m') this.adoptA2mDoc(data);
     },
     /** Each A2M instrument slot's name from the doc's instruments. */
@@ -1881,6 +1923,31 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
       const oldIndex = (data.patterns ?? []).findIndex((pattern) => pattern.id === data.currentPatternId);
       this.showSidDoc(decoded.doc, oldIndex);
+    },
+    /**
+     * Gives the SID song just loaded its tune, from its embedded `.sid`
+     * (`data.psidFile`). A file that is not a readable `.sid` leaves the song
+     * a display, as `adoptSidFile` does.
+     */
+    adoptPsidFile(data: TrackerSongFile['data']) {
+      const decoded = decodePsidFile(data.psidFile);
+      if (!decoded.ok) {
+        console.warn(`[TrackerStore] SID tune kept as a display: its embedded file is unusable (${decoded.reason})`);
+        return;
+      }
+      const wanted = Number.isInteger(data.psidSubsong) ? (data.psidSubsong as number) : decoded.file.startSong - 1;
+      this.psidTune = markRaw({ bytes: decoded.bytes, file: decoded.file, subsong: Math.max(0, Math.min(decoded.file.songs - 1, wanted)) });
+      this.psidRevision += 1;
+    },
+    /**
+     * Plays subsong `subsong` (0-based) of the tune. Not an edit: no undo step.
+     * The transport plays the subsong the tune names, so it reloads.
+     */
+    selectPsidSubsong(subsong: number) {
+      const tune = this.psidTune;
+      if (tune === null || !Number.isInteger(subsong) || subsong < 0 || subsong >= tune.file.songs || subsong === tune.subsong) return;
+      this.psidTune = markRaw({ ...tune, subsong });
+      this.psidRevision += 1;
     },
     /**
      * Makes `doc` the current song, as a load does (history and every other

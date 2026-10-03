@@ -1,6 +1,8 @@
 import { toRaw } from 'vue';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
-import { importPsid, looksLikePsid, type PsidImport, type PsidImportResult } from 'src/audio/tracker/psid';
+import { CURRENT_SONG_FILE_VERSION } from 'src/stores/tracker-store';
+import { importPsid, looksLikePsid, parsePsid, type PsidFile, type PsidImport, type PsidImportResult } from 'src/audio/tracker/psid';
+import { encodePsidFile } from 'src/audio/tracker/psid-tune';
 import type { PsidWorkerReply, PsidWorkerRequest } from 'src/audio/tracker/psid/psid-import-worker';
 import { fileTitle, sidDocToTrackerSong } from 'src/audio/tracker/sid-import';
 
@@ -109,4 +111,55 @@ function importOffThread(bytes: Uint8Array): Promise<PsidImportResult> {
 /** The song file of a `.sid`, imported off the main thread where the page can. Rejects, with the true reason, for bytes that are not an importable one. */
 export async function importPsidToTrackerSongAsync(buffer: ArrayBuffer, name = ''): Promise<PsidTrackerSong> {
   return trackerSongOf(await importOffThread(new Uint8Array(buffer)), name);
+}
+
+const BLANK_ROWS = 16;
+
+/**
+ * The song file of a `.sid` kept as it is (`psid-tune.ts`): its bytes, the
+ * subsong to start on, and a stand-in grid of three empty voices that the
+ * tracker page covers with the visualizers. `name` titles a tune whose header
+ * has none.
+ */
+export function psidTuneToTrackerSong(bytes: Uint8Array, file: PsidFile, name = ''): TrackerSongFile {
+  const title = file.name.trim() || fileTitle(name) || 'Untitled SID tune';
+  const tracks = [0, 1, 2].map((v) => ({
+    id: `sid-ch-${v + 1}`,
+    name: `Voice ${v + 1}`,
+    entries: [],
+    interpolations: [],
+  }));
+  return {
+    version: CURRENT_SONG_FILE_VERSION,
+    data: {
+      currentSong: { title, author: file.author.trim() || 'Unknown', bpm: 125 },
+      moduleFormat: 'sid',
+      initialSpeed: 6,
+      patternRows: BLANK_ROWS,
+      stepSize: 1,
+      patterns: [{ id: 'psid-tune', name: 'Tune', rows: BLANK_ROWS, tracks }],
+      sequence: ['psid-tune'],
+      currentPatternId: 'psid-tune',
+      instrumentSlots: [],
+      activeInstrumentId: null,
+      currentInstrumentPage: 0,
+      songPatches: {},
+      psidFile: encodePsidFile(bytes),
+      psidSubsong: Math.max(0, Math.min(file.songs - 1, file.startSong - 1)),
+    },
+  };
+}
+
+/**
+ * The song file of a `.sid` as it opens by default: kept as it is, played by
+ * running its own code (`psid-tune.ts`). Instant (only the header is read) and
+ * lossless, unlike `importPsidToTrackerSongAsync`, which the tracker offers as
+ * the explicit "convert to a GoatTracker song". Throws, with the true reason,
+ * for bytes that are not a `.sid` this player can run.
+ */
+export function openPsidAsTune(buffer: ArrayBuffer, name = ''): TrackerSongFile {
+  const bytes = new Uint8Array(buffer);
+  const parsed = parsePsid(bytes);
+  if (!parsed.ok) throw new Error(`Cannot open this SID file: ${parsed.reason}.`);
+  return psidTuneToTrackerSong(bytes, parsed.file, name);
 }

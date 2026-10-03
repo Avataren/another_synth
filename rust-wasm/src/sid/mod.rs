@@ -36,6 +36,7 @@ pub mod noise;
 pub mod player;
 pub mod revision;
 pub mod song;
+pub mod stream;
 pub mod voice;
 pub mod wasm;
 pub mod waveform;

@@ -31,11 +31,11 @@ export interface SessionAutosaveContext {
 /** The song as a record, or `null` for one that cannot be saved or restored. */
 export function snapshotSession(store: TrackerStore): SessionRecord | null {
   if (store.moduleFormat === 'ahx' && !store.isAhxEditable) return null;
-  if (store.moduleFormat === 'sid' && store.sidDoc === null) return null;
+  if (store.moduleFormat === 'sid' && store.sidDoc === null && store.psidTune === null) return null;
   try {
     const file = store.serializeSong();
     if (file.data.moduleFormat === 'ahx' && file.data.ahxFile === undefined) return null;
-    if (file.data.moduleFormat === 'sid' && file.data.sidFile === undefined) return null;
+    if (file.data.moduleFormat === 'sid' && file.data.sidFile === undefined && file.data.psidFile === undefined) return null;
     return {
       savedAt: Date.now(),
       title: store.currentSong.title,

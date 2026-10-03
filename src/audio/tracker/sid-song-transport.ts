@@ -4,12 +4,15 @@ import { SID_INDEX_TO_MIDI, serializeSidFile, sidDocForSubsong, type SidDoc } fr
 import { createSidPlayer, type Sid6581Revision, type SidPlayerClient, type SidPosition } from 'src/audio/tracker/sid-player';
 import { reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
+import type { PsidTune } from 'src/audio/tracker/psid-tune';
 
 export type PlaybackMode = 'pattern' | 'song';
 
 /** The part of the tracker store the SID transport reads. */
 export interface SidSongTransportTracker {
   readonly sidDoc: SidDoc | null;
+  /** A C64 tune played as the file it is, instead of a doc (`psid-tune.ts`). */
+  readonly psidTune: PsidTune | null;
   /** The subsong the grid shows: the one that plays. */
   readonly sidSubsong: number;
   readonly sequence: string[];
@@ -32,6 +35,8 @@ export interface SidSongTransportDeps {
   hasSongLoaded: Ref<boolean>;
   loopSong: Ref<boolean>;
   songEndListeners: Set<() => void>;
+  /** Whole seconds a tune has played (a tune has no rows to report). */
+  psidElapsed: Ref<number>;
   trackerStore: SidSongTransportTracker;
   getSongBank(): TrackerSongBank;
   setPlaybackState(playing: boolean): void;
@@ -81,6 +86,8 @@ export class SidSongTransport {
   private epoch = 0;
   /** The doc the worklet holds (by identity: docs are immutable). */
   private loadedDoc: SidDoc | null = null;
+  /** The tune the worklet holds (by identity: a subsong change makes another). */
+  private loadedTune: PsidTune | null = null;
   /** The song row the player is on, as last reported or set by a seek. */
   private place = 0;
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -255,6 +262,7 @@ export class SidSongTransport {
     this.client?.dispose();
     this.client = null;
     this.loadedDoc = null;
+    this.loadedTune = null;
   }
 
   // ------------------------------------------------------------------
@@ -265,8 +273,9 @@ export class SidSongTransport {
   async load(song: PlaybackSong, mode: PlaybackMode): Promise<boolean> {
     const { trackerStore } = this.deps;
     trackerStore.syncSidWriteBack();
-    const doc = this.playDoc();
-    if (!doc) {
+    const tune = trackerStore.psidTune;
+    const doc = tune === null ? this.playDoc() : null;
+    if (tune === null && !doc) {
       console.warn('[PlaybackStore] SID song has no doc (a .cmod saved without its SID file): cannot play');
       return false;
     }
@@ -277,7 +286,7 @@ export class SidSongTransport {
     const wasActive = this.active;
     this.active = true;
     const epoch = this.epoch;
-    const loading = this.loadDoc(doc);
+    const loading = tune !== null ? this.loadTune(tune) : this.loadDoc(doc as SidDoc);
     if (this.deps.getSongBank().audioContext.state === 'running') {
       try {
         await loading;
@@ -300,8 +309,65 @@ export class SidSongTransport {
     const client = await this.ensureClient();
     if (this.loadedDoc === doc) return;
     this.loadedDoc = null;
+    this.loadedTune = null;
     await client.loadSong(serializeSidFile(doc));
     this.loadedDoc = doc;
+  }
+
+  /** Load a C64 tune into the worklet, which runs its code (`SidPlayerClient.loadPsid`). */
+  private async loadTune(tune: PsidTune): Promise<void> {
+    const client = await this.ensureClient();
+    if (this.loadedTune === tune) return;
+    this.loadedTune = null;
+    this.loadedDoc = null;
+    await client.loadPsid(tune.bytes, tune.subsong);
+    this.loadedTune = tune;
+  }
+
+  /**
+   * Start (or resume) the tune. It has no rows: no position to seek to or
+   * pattern to loop, and a stopped tune starts again from its first note.
+   */
+  private async playTune(song: PlaybackSong, mode: PlaybackMode, tune: PsidTune): Promise<void> {
+    const bank = this.deps.getSongBank();
+    const resuming = this.active && this.deps.isPaused.value && this.client !== null && this.loadedTune === tune;
+    const epoch = this.epoch;
+    this.deps.stopSampleEngine();
+    bank.cancelAllScheduled();
+    bank.allNotesOff();
+    const running = await bank.ensureAudioContextRunning();
+    if (!running || bank.audioContext.state !== 'running') {
+      console.warn(`[PlaybackStore] AudioContext not running; skipping SID playback start (state=${bank.audioContext.state})`);
+      return;
+    }
+    if (epoch !== this.epoch) return;
+    if (!(await this.load(song, mode))) return;
+    const client = await this.ensureClient();
+    if (!resuming) this.deps.psidElapsed.value = 0;
+    client.play();
+    this.setState('playing');
+  }
+
+  /** The store's tune changed (another subsong): a playing tune restarts on it, any other loads at its next Play. */
+  onTuneChange(): void {
+    const tune = this.deps.trackerStore.psidTune;
+    if (!this.active || tune === null || this.loadedTune === tune) return;
+    if (!this.deps.isPlaying.value) {
+      this.loadedTune = null;
+      return;
+    }
+    const client = this.client;
+    if (client === null) return;
+    this.loadedTune = null;
+    this.deps.psidElapsed.value = 0;
+    void client.loadPsid(tune.bytes, tune.subsong).then(
+      () => {
+        if (this.client !== client) return;
+        this.loadedTune = tune;
+        client.play();
+      },
+      (error: unknown) => reportAhxNotice(`The SID player could not run this tune (${error instanceof Error ? error.message : String(error)}).`),
+    );
   }
 
   /**
@@ -311,6 +377,7 @@ export class SidSongTransport {
    */
   async play(song: PlaybackSong, mode: PlaybackMode, startRow: number, startSequenceIndex: number | null): Promise<void> {
     const { trackerStore, isPaused, currentSequenceIndex, selectedSequenceIndex, playbackRow } = this.deps;
+    if (trackerStore.psidTune !== null) return this.playTune(song, mode, trackerStore.psidTune);
     const bank = this.deps.getSongBank();
     const count = Math.max(1, this.positionCount());
     const position = Math.max(0, Math.min(startSequenceIndex ?? this.deps.resolveStartSequenceIndex(song), count - 1));
@@ -355,6 +422,13 @@ export class SidSongTransport {
 
   /** Continue a paused song; edits made while paused are loaded first, at the paused row. */
   resume(): void {
+    const tune = this.deps.trackerStore.psidTune;
+    if (tune !== null) {
+      if (this.loadedTune === tune) this.client?.play();
+      else this.onTuneChange();
+      this.setState('playing');
+      return;
+    }
     if (this.loadedDoc !== this.playDoc()) this.reloadInPlace(true);
     else this.client?.play();
     this.setState('playing');
@@ -364,7 +438,13 @@ export class SidSongTransport {
     this.epoch++;
     this.cancelReload();
     this.client?.pause();
-    this.client?.seek(0);
+    if (this.deps.trackerStore.psidTune !== null) {
+      // A running C64 cannot be wound back: the next Play loads the tune afresh.
+      this.loadedTune = null;
+      this.deps.psidElapsed.value = 0;
+    } else {
+      this.client?.seek(0);
+    }
     this.place = 0;
     this.setState('stopped');
     this.deps.playbackRow.value = 0;
@@ -372,6 +452,7 @@ export class SidSongTransport {
 
   /** Seek to a row of the current position; play/pause is kept. */
   seek(row: number): void {
+    if (this.deps.trackerStore.psidTune !== null) return;
     const { currentSequenceIndex, playbackRow } = this.deps;
     const rows = this.positionRows(currentSequenceIndex.value) || 1;
     const target = Math.max(0, Math.min(Math.round(row), rows - 1));
@@ -440,6 +521,10 @@ export class SidSongTransport {
 
   private handlePosition = (p: SidPosition): void => {
     if (!this.active) return;
+    if (this.deps.trackerStore.psidTune !== null) {
+      this.deps.psidElapsed.value = p.row;
+      return;
+    }
     this.place = p.row;
     if (!this.deps.isPlaying.value) return;
     const at = this.placeOf(p.row);
@@ -447,7 +532,17 @@ export class SidSongTransport {
   };
 
   private handleSongEnd = (): void => {
-    if (!this.active || this.deps.loopSong.value) return;
+    if (!this.active) return;
+    if (this.deps.trackerStore.psidTune !== null) {
+      // The tune's code stopped (it jammed the CPU or ran away): nothing more will sound.
+      this.client?.pause();
+      this.loadedTune = null;
+      this.setState('stopped');
+      reportAhxNotice("The tune's code stopped, so the music ended.");
+      for (const listener of this.deps.songEndListeners) listener();
+      return;
+    }
+    if (this.deps.loopSong.value) return;
     this.client?.pause();
     this.client?.seek(0);
     this.place = 0;

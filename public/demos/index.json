@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-10-03T17:26:51.478Z",
+  "generated": "2026-10-03T19:46:58.148Z",
   "collections": [
     {
       "id": "a2m",
@@ -6731,6 +6731,166 @@
       "name": "C64 SID",
       "songs": [
         {
+          "title": "Fist II - The Legend Continues · Neil Brennan",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/brennan_neil/fist_ii_the_legend_continues.sid",
+          "bytes": 3208
+        },
+        {
+          "title": "Judge Dredd · Neil Brennan",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 5,
+          "file": "sid/brennan_neil/judge_dredd.sid",
+          "bytes": 3451
+        },
+        {
+          "title": "1942 · Mark Cooksey",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/cooksey_mark/1942.sid",
+          "bytes": 7268
+        },
+        {
+          "title": "Airwolf · Mark Cooksey",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/cooksey_mark/airwolf.sid",
+          "bytes": 1280
+        },
+        {
+          "title": "Bomb Jack · Mark Cooksey",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 6,
+          "file": "sid/cooksey_mark/bomb_jack.sid",
+          "bytes": 9177
+        },
+        {
+          "title": "Commando 86 · Mark Cooksey",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/cooksey_mark/commando_86.sid",
+          "bytes": 4352
+        },
+        {
+          "title": "Crack Down · Mark Cooksey (Dr K)",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/cooksey_mark/crack_down.sid",
+          "bytes": 3369
+        },
+        {
+          "title": "Forgotten Worlds · Mark Cooksey",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/cooksey_mark/forgotten_worlds.sid",
+          "bytes": 6862
+        },
+        {
+          "title": "Ghosts'n Goblins · Mark Cooksey",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/cooksey_mark/ghosts_n_goblins.sid",
+          "bytes": 4998
+        },
+        {
+          "title": "Jackal · Mark Cooksey",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/cooksey_mark/jackal.sid",
+          "bytes": 7910
+        },
+        {
+          "title": "Salamander · Mark Cooksey",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 4,
+          "file": "sid/cooksey_mark/salamander.sid",
+          "bytes": 11123
+        },
+        {
+          "title": "Space Harrier · Mark Cooksey",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 4,
+          "file": "sid/cooksey_mark/space_harrier.sid",
+          "bytes": 8357
+        },
+        {
+          "title": "720 Degrees · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/daglish_ben/720_degrees.sid",
+          "bytes": 4053
+        },
+        {
+          "title": "Blasteroids · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/daglish_ben/blasteroids.sid",
+          "bytes": 3164
+        },
+        {
+          "title": "Deflektor · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/daglish_ben/deflektor.sid",
+          "bytes": 4081
+        },
+        {
+          "title": "Footballer of the Year · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/daglish_ben/footballer_of_the_year.sid",
+          "bytes": 4439
+        },
+        {
+          "title": "Future Knight · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 7,
+          "file": "sid/daglish_ben/future_knight.sid",
+          "bytes": 3420
+        },
+        {
+          "title": "Gauntlet · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/daglish_ben/gauntlet.sid",
+          "bytes": 2672
+        },
+        {
+          "title": "Gauntlet II · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/daglish_ben/gauntlet_ii.sid",
+          "bytes": 3059
+        },
+        {
+          "title": "Jack the Nipper · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 22,
+          "file": "sid/daglish_ben/jack_the_nipper.sid",
+          "bytes": 6521
+        },
+        {
           "title": "Krakout · Ben Daglish",
           "format": "PSID",
           "channels": 3,
@@ -6747,12 +6907,188 @@
           "bytes": 35617
         },
         {
+          "title": "Mask · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/daglish_ben/mask.sid",
+          "bytes": 3720
+        },
+        {
+          "title": "Pac-Mania · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 4,
+          "file": "sid/daglish_ben/pac_mania.sid",
+          "bytes": 5167
+        },
+        {
+          "title": "Re-Bounder · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 22,
+          "file": "sid/daglish_ben/re_bounder.sid",
+          "bytes": 5263
+        },
+        {
+          "title": "Super Cars · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/daglish_ben/super_cars.sid",
+          "bytes": 4726
+        },
+        {
+          "title": "Switchblade · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/daglish_ben/switchblade.sid",
+          "bytes": 5626
+        },
+        {
+          "title": "TechnoCop · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 5,
+          "file": "sid/daglish_ben/technocop.sid",
+          "bytes": 4870
+        },
+        {
+          "title": "Terramex · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 9,
+          "file": "sid/daglish_ben/terramex.sid",
+          "bytes": 3524
+        },
+        {
+          "title": "Trap · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/daglish_ben/trap.sid",
+          "bytes": 4478
+        },
+        {
+          "title": "Way of the Tiger · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/daglish_ben/way_of_the_tiger.sid",
+          "bytes": 3109
+        },
+        {
+          "title": "Wizard Warz · Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 5,
+          "file": "sid/daglish_ben/wizard_warz.sid",
+          "bytes": 4234
+        },
+        {
+          "title": "Daley Thompson's Decathlon · David Dunn",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/dunn_david/daley_thompsons_decathlon.sid",
+          "bytes": 2620
+        },
+        {
+          "title": "Elite · David Dunn & Aidan Bell",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/dunn_david/elite.sid",
+          "bytes": 6343
+        },
+        {
+          "title": "The Fourth Protocol · David Dunn",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/dunn_david/fourth_protocol.sid",
+          "bytes": 4246
+        },
+        {
+          "title": "Agent X II: The Mad Prof's Back · Tim Follin",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 6,
+          "file": "sid/follin_tim/agent_x_ii_the_mad_profs_back.sid",
+          "bytes": 21389
+        },
+        {
+          "title": "Bionic Commando · Tim Follin",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 10,
+          "file": "sid/follin_tim/bionic_commando.sid",
+          "bytes": 12158
+        },
+        {
+          "title": "Black Lamp · Tim Follin",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 5,
+          "file": "sid/follin_tim/black_lamp.sid",
+          "bytes": 7043
+        },
+        {
+          "title": "Gauntlet III · Tim & Geoff Follin",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/follin_tim/gauntlet_iii.sid",
+          "bytes": 6642
+        },
+        {
+          "title": "Ghouls 'n' Ghosts · Tim Follin",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 32,
+          "file": "sid/follin_tim/ghouls_n_ghosts.sid",
+          "bytes": 19005
+        },
+        {
+          "title": "L.E.D. Storm · Tim Follin",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 7,
+          "file": "sid/follin_tim/l_e_d_storm.sid",
+          "bytes": 13155
+        },
+        {
+          "title": "Sky Shark · Tim Follin",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 6,
+          "file": "sid/follin_tim/sky_shark.sid",
+          "bytes": 7878
+        },
+        {
           "title": "Arkanoid · Martin Galway",
           "format": "RSID",
           "channels": 3,
           "subsongs": 20,
           "file": "sid/galway_martin/arkanoid.sid",
           "bytes": 9834
+        },
+        {
+          "title": "Athena · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 9,
+          "file": "sid/galway_martin/athena.sid",
+          "bytes": 8516
+        },
+        {
+          "title": "Combat School · Martin Galway",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 16,
+          "file": "sid/galway_martin/combat_school.sid",
+          "bytes": 11390
         },
         {
           "title": "Comic Bakery · Martin Galway",
@@ -6771,6 +7107,102 @@
           "bytes": 4020
         },
         {
+          "title": "Game Over · Martin Galway",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/galway_martin/game_over.sid",
+          "bytes": 8574
+        },
+        {
+          "title": "Green Beret · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 21,
+          "file": "sid/galway_martin/green_beret.sid",
+          "bytes": 12520
+        },
+        {
+          "title": "Helikopter Jagd · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 16,
+          "file": "sid/galway_martin/helikopter_jagd.sid",
+          "bytes": 7742
+        },
+        {
+          "title": "Highlander · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/galway_martin/highlander.sid",
+          "bytes": 6051
+        },
+        {
+          "title": "Hunchback II · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 23,
+          "file": "sid/galway_martin/hunchback_ii.sid",
+          "bytes": 3982
+        },
+        {
+          "title": "Hyper Sports · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 35,
+          "file": "sid/galway_martin/hyper_sports.sid",
+          "bytes": 8318
+        },
+        {
+          "title": "Insects in Space · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 24,
+          "file": "sid/galway_martin/insects_in_space.sid",
+          "bytes": 4213
+        },
+        {
+          "title": "Kong Strikes Back · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/galway_martin/kong_strikes_back.sid",
+          "bytes": 4030
+        },
+        {
+          "title": "Match Day · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 7,
+          "file": "sid/galway_martin/match_day.sid",
+          "bytes": 4702
+        },
+        {
+          "title": "Miami Vice · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/galway_martin/miami_vice.sid",
+          "bytes": 6782
+        },
+        {
+          "title": "Mikie · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 12,
+          "file": "sid/galway_martin/mikie.sid",
+          "bytes": 13158
+        },
+        {
+          "title": "The Neverending Story · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/galway_martin/neverending_story.sid",
+          "bytes": 4758
+        },
+        {
           "title": "Ocean Loader 1 · Martin Galway",
           "format": "PSID",
           "channels": 3,
@@ -6785,6 +7217,270 @@
           "subsongs": 1,
           "file": "sid/galway_martin/ocean_loader_2.sid",
           "bytes": 3449
+        },
+        {
+          "title": "Parallax · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 5,
+          "file": "sid/galway_martin/parallax.sid",
+          "bytes": 7281
+        },
+        {
+          "title": "Ping Pong · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 19,
+          "file": "sid/galway_martin/ping_pong.sid",
+          "bytes": 6180
+        },
+        {
+          "title": "Rambo: First Blood Part II · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 24,
+          "file": "sid/galway_martin/rambo_first_blood_part_ii.sid",
+          "bytes": 16805
+        },
+        {
+          "title": "Rastan · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 6,
+          "file": "sid/galway_martin/rastan.sid",
+          "bytes": 6553
+        },
+        {
+          "title": "Roland's Ratrace · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 20,
+          "file": "sid/galway_martin/rolands_ratrace.sid",
+          "bytes": 7304
+        },
+        {
+          "title": "Short Circuit · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 5,
+          "file": "sid/galway_martin/short_circuit.sid",
+          "bytes": 9559
+        },
+        {
+          "title": "Slap Fight · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 9,
+          "file": "sid/galway_martin/slap_fight.sid",
+          "bytes": 6323
+        },
+        {
+          "title": "Street Hawk · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 26,
+          "file": "sid/galway_martin/street_hawk.sid",
+          "bytes": 10217
+        },
+        {
+          "title": "Swag · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/galway_martin/swag.sid",
+          "bytes": 2904
+        },
+        {
+          "title": "Terra Cresta · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 11,
+          "file": "sid/galway_martin/terra_cresta.sid",
+          "bytes": 8981
+        },
+        {
+          "title": "Times of Lore · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 11,
+          "file": "sid/galway_martin/times_of_lore.sid",
+          "bytes": 13319
+        },
+        {
+          "title": "Wizball · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 9,
+          "file": "sid/galway_martin/wizball.sid",
+          "bytes": 7769
+        },
+        {
+          "title": "Yie Ar Kung Fu · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 19,
+          "file": "sid/galway_martin/yie_ar_kung_fu.sid",
+          "bytes": 7934
+        },
+        {
+          "title": "Yie Ar Kung Fu II · Martin Galway",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 7,
+          "file": "sid/galway_martin/yie_ar_kung_fu_ii.sid",
+          "bytes": 8059
+        },
+        {
+          "title": "Army Moves · Fred Gray",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 6,
+          "file": "sid/gray_fred/army_moves.sid",
+          "bytes": 4190
+        },
+        {
+          "title": "Legend of Kage · Fred Gray",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/gray_fred/legend_of_kage.sid",
+          "bytes": 2292
+        },
+        {
+          "title": "Mag Max · Fred Gray",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 31,
+          "file": "sid/gray_fred/mag_max.sid",
+          "bytes": 2351
+        },
+        {
+          "title": "Mutants · Fred Gray",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/gray_fred/mutants.sid",
+          "bytes": 3892
+        },
+        {
+          "title": "Nodes of Yesod · Fred Gray",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/gray_fred/nodes_of_yesod.sid",
+          "bytes": 3110
+        },
+        {
+          "title": "ShadowFire · Fred Gray",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/gray_fred/shadowfire.sid",
+          "bytes": 2758
+        },
+        {
+          "title": "Atmosphere · Matt Gray",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/gray_matt/atmosphere.sid",
+          "bytes": 9791
+        },
+        {
+          "title": "Deliverance · Matt Gray",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 7,
+          "file": "sid/gray_matt/deliverance.sid",
+          "bytes": 11390
+        },
+        {
+          "title": "Driller · Matt Gray",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/gray_matt/driller.sid",
+          "bytes": 3438
+        },
+        {
+          "title": "Hunter's Moon · Matt Gray & Martin Walker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 20,
+          "file": "sid/gray_matt/hunters_moon.sid",
+          "bytes": 7163
+        },
+        {
+          "title": "Last Ninja 2 · Matt Gray",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 13,
+          "file": "sid/gray_matt/last_ninja_2.sid",
+          "bytes": 43277
+        },
+        {
+          "title": "Mean Streak · Matt Gray",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 5,
+          "file": "sid/gray_matt/mean_streak.sid",
+          "bytes": 3471
+        },
+        {
+          "title": "Quedex · Matt Gray",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 9,
+          "file": "sid/gray_matt/quedex.sid",
+          "bytes": 14418
+        },
+        {
+          "title": "ACE II · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/hubbard_rob/ace_ii.sid",
+          "bytes": 3454
+        },
+        {
+          "title": "Action Biker · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/hubbard_rob/action_biker.sid",
+          "bytes": 3136
+        },
+        {
+          "title": "Arcade Classics · Rob Hubbard",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/hubbard_rob/arcade_classics.sid",
+          "bytes": 7531
+        },
+        {
+          "title": "Auf Wiedersehen Monty · Rob Hubbard & Ben Daglish",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 13,
+          "file": "sid/hubbard_rob/auf_wiedersehen_monty.sid",
+          "bytes": 5544
+        },
+        {
+          "title": "Battle of Britain · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/hubbard_rob/battle_of_britain.sid",
+          "bytes": 4222
+        },
+        {
+          "title": "Bump Set Spike · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/hubbard_rob/bump_set_spike.sid",
+          "bytes": 4222
         },
         {
           "title": "Chimera · Rob Hubbard",
@@ -6803,12 +7499,92 @@
           "bytes": 4165
         },
         {
+          "title": "Confuzion · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/hubbard_rob/confuzion.sid",
+          "bytes": 2508
+        },
+        {
           "title": "Crazy Comets · Rob Hubbard",
           "format": "PSID",
           "channels": 3,
           "subsongs": 17,
           "file": "sid/hubbard_rob/crazy_comets.sid",
           "bytes": 4494
+        },
+        {
+          "title": "Delta · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 13,
+          "file": "sid/hubbard_rob/delta.sid",
+          "bytes": 5246
+        },
+        {
+          "title": "Flash Gordon · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 29,
+          "file": "sid/hubbard_rob/flash_gordon.sid",
+          "bytes": 5291
+        },
+        {
+          "title": "Gerry the Germ · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 23,
+          "file": "sid/hubbard_rob/gerry_the_germ.sid",
+          "bytes": 6742
+        },
+        {
+          "title": "Gremlins · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 26,
+          "file": "sid/hubbard_rob/gremlins.sid",
+          "bytes": 7947
+        },
+        {
+          "title": "The Human Race · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 6,
+          "file": "sid/hubbard_rob/human_race.sid",
+          "bytes": 4663
+        },
+        {
+          "title": "Hunter Patrol · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/hubbard_rob/hunter_patrol.sid",
+          "bytes": 3806
+        },
+        {
+          "title": "IK+ · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/hubbard_rob/ik_plus.sid",
+          "bytes": 4613
+        },
+        {
+          "title": "International Karate · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/hubbard_rob/international_karate.sid",
+          "bytes": 4734
+        },
+        {
+          "title": "Kentilla · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/hubbard_rob/kentilla.sid",
+          "bytes": 4474
         },
         {
           "title": "Knucklebusters · Rob Hubbard",
@@ -6819,12 +7595,228 @@
           "bytes": 7178
         },
         {
+          "title": "The Last V8 · Rob Hubbard",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 17,
+          "file": "sid/hubbard_rob/last_v8.sid",
+          "bytes": 13888
+        },
+        {
+          "title": "Lightforce · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/hubbard_rob/lightforce.sid",
+          "bytes": 3710
+        },
+        {
+          "title": "The Master of Magic · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/hubbard_rob/master_of_magic.sid",
+          "bytes": 3182
+        },
+        {
+          "title": "Mega Apocalypse · Rob Hubbard & Simon Nicol",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 11,
+          "file": "sid/hubbard_rob/mega_apocalypse.sid",
+          "bytes": 21717
+        },
+        {
+          "title": "Monty on the Run · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 19,
+          "file": "sid/hubbard_rob/monty_on_the_run.sid",
+          "bytes": 5694
+        },
+        {
+          "title": "Nemesis the Warlock · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 15,
+          "file": "sid/hubbard_rob/nemesis_the_warlock.sid",
+          "bytes": 4644
+        },
+        {
+          "title": "One Man and his Droid · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 14,
+          "file": "sid/hubbard_rob/one_man_and_his_droid.sid",
+          "bytes": 4100
+        },
+        {
+          "title": "Phantoms of the Asteroid · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 4,
+          "file": "sid/hubbard_rob/phantoms_of_the_asteroid.sid",
+          "bytes": 4370
+        },
+        {
+          "title": "Proteus · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/hubbard_rob/proteus.sid",
+          "bytes": 3582
+        },
+        {
+          "title": "Rasputin · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 18,
+          "file": "sid/hubbard_rob/rasputin.sid",
+          "bytes": 4168
+        },
+        {
+          "title": "Sanxion · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/hubbard_rob/sanxion.sid",
+          "bytes": 7614
+        },
+        {
+          "title": "Skate or Die (intro) · Rob Hubbard",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/hubbard_rob/skate_or_die_intro.sid",
+          "bytes": 16847
+        },
+        {
+          "title": "Spellbound · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 13,
+          "file": "sid/hubbard_rob/spellbound.sid",
+          "bytes": 4221
+        },
+        {
+          "title": "Thing on a Spring · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 17,
+          "file": "sid/hubbard_rob/thing_on_a_spring.sid",
+          "bytes": 3929
+        },
+        {
+          "title": "Thrust · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/hubbard_rob/thrust.sid",
+          "bytes": 3710
+        },
+        {
+          "title": "Thundercats · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 16,
+          "file": "sid/hubbard_rob/thundercats.sid",
+          "bytes": 4771
+        },
+        {
+          "title": "Warhawk · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 18,
+          "file": "sid/hubbard_rob/warhawk.sid",
+          "bytes": 4065
+        },
+        {
+          "title": "Wiz · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/hubbard_rob/wiz.sid",
+          "bytes": 4222
+        },
+        {
+          "title": "Zoids · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/hubbard_rob/zoids.sid",
+          "bytes": 2814
+        },
+        {
+          "title": "Zoolook · Rob Hubbard",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/hubbard_rob/zoolook.sid",
+          "bytes": 3251
+        },
+        {
+          "title": "Axel F. · Chris Hülsbeck",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/huelsbeck_chris/axel_f.sid",
+          "bytes": 11346
+        },
+        {
+          "title": "Bad Cat · Chris Hülsbeck",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 19,
+          "file": "sid/huelsbeck_chris/bad_cat.sid",
+          "bytes": 40408
+        },
+        {
+          "title": "Danger Freak · Chris Hülsbeck",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 30,
+          "file": "sid/huelsbeck_chris/danger_freak.sid",
+          "bytes": 32401
+        },
+        {
           "title": "The Great Giana Sisters · Chris Hülsbeck",
           "format": "RSID",
           "channels": 3,
           "subsongs": 23,
           "file": "sid/huelsbeck_chris/great_giana_sisters.sid",
           "bytes": 23445
+        },
+        {
+          "title": "Jinks · Chris Hülsbeck",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 14,
+          "file": "sid/huelsbeck_chris/jinks.sid",
+          "bytes": 24331
+        },
+        {
+          "title": "Katakis · Chris Hülsbeck",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 34,
+          "file": "sid/huelsbeck_chris/katakis.sid",
+          "bytes": 27201
+        },
+        {
+          "title": "Madness · Chris Hülsbeck",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/huelsbeck_chris/madness.sid",
+          "bytes": 15913
+        },
+        {
+          "title": "Planet of War · Chris Hülsbeck",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/huelsbeck_chris/planet_of_war.sid",
+          "bytes": 3216
         },
         {
           "title": "R-Type · Chris Hülsbeck & Ramiro Vaca",
@@ -6835,12 +7827,172 @@
           "bytes": 40666
         },
         {
+          "title": "Shades · Chris Hülsbeck",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/huelsbeck_chris/shades.sid",
+          "bytes": 10942
+        },
+        {
+          "title": "Soldier · Chris Hülsbeck & Hans Ippisch",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/huelsbeck_chris/soldier.sid",
+          "bytes": 22142
+        },
+        {
+          "title": "Spherical · Chris Hülsbeck & Ramiro Vaca",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 8,
+          "file": "sid/huelsbeck_chris/spherical.sid",
+          "bytes": 18729
+        },
+        {
+          "title": "Wellenreiter · Chris Hülsbeck",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/huelsbeck_chris/wellenreiter.sid",
+          "bytes": 5960
+        },
+        {
           "title": "Defender of the Crown · Richard Joseph",
           "format": "PSID",
           "channels": 3,
           "subsongs": 10,
           "file": "sid/joseph_richard/defender_of_the_crown.sid",
           "bytes": 10956
+        },
+        {
+          "title": "Aliens · Russell Lieblich",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/lieblich_russell/aliens.sid",
+          "bytes": 4263
+        },
+        {
+          "title": "Ballblazer · Russell Lieblich",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/lieblich_russell/ballblazer.sid",
+          "bytes": 3454
+        },
+        {
+          "title": "Ghostbusters · Russell Lieblich",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 5,
+          "file": "sid/lieblich_russell/ghostbusters.sid",
+          "bytes": 6310
+        },
+        {
+          "title": "Master of the Lamps · Russell Lieblich",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 20,
+          "file": "sid/lieblich_russell/master_of_the_lamps.sid",
+          "bytes": 6219
+        },
+        {
+          "title": "Rampage · Russell Lieblich",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/lieblich_russell/rampage.sid",
+          "bytes": 2149
+        },
+        {
+          "title": "Last Ninja 3 · Reyn Ouwehand",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 10,
+          "file": "sid/ouwehand_reyn/last_ninja_3.sid",
+          "bytes": 30179
+        },
+        {
+          "title": "Creatures · Steve Rowlands",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 18,
+          "file": "sid/rowlands_steve/creatures.sid",
+          "bytes": 14494
+        },
+        {
+          "title": "Mayhem in Monsterland · Steve Rowlands",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 24,
+          "file": "sid/rowlands_steve/mayhem_in_monsterland.sid",
+          "bytes": 9039
+        },
+        {
+          "title": "Retrograde · Steve Rowlands",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 17,
+          "file": "sid/rowlands_steve/retrograde.sid",
+          "bytes": 9536
+        },
+        {
+          "title": "Afterburner · Jeroen Tel",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 8,
+          "file": "sid/tel_jeroen/afterburner.sid",
+          "bytes": 31054
+        },
+        {
+          "title": "Alloyrun · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/tel_jeroen/alloyrun.sid",
+          "bytes": 4681
+        },
+        {
+          "title": "Battle Valley · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/tel_jeroen/battle_valley.sid",
+          "bytes": 3680
+        },
+        {
+          "title": "Cybernoid · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/tel_jeroen/cybernoid.sid",
+          "bytes": 4734
+        },
+        {
+          "title": "Cybernoid II · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/tel_jeroen/cybernoid_ii.sid",
+          "bytes": 4502
+        },
+        {
+          "title": "Eliminator · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 4,
+          "file": "sid/tel_jeroen/eliminator.sid",
+          "bytes": 6298
+        },
+        {
+          "title": "Fun Fun · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/tel_jeroen/fun_fun.sid",
+          "bytes": 3285
         },
         {
           "title": "Golden Axe · Jeroen Tel",
@@ -6851,12 +8003,260 @@
           "bytes": 14196
         },
         {
+          "title": "Hawkeye · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 12,
+          "file": "sid/tel_jeroen/hawkeye.sid",
+          "bytes": 8894
+        },
+        {
+          "title": "Ikari Union · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/tel_jeroen/ikari_union.sid",
+          "bytes": 2486
+        },
+        {
+          "title": "Iron Lord · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/tel_jeroen/iron_lord.sid",
+          "bytes": 4887
+        },
+        {
+          "title": "Kinetix · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/tel_jeroen/kinetix.sid",
+          "bytes": 5841
+        },
+        {
+          "title": "Lemmings · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 15,
+          "file": "sid/tel_jeroen/lemmings.sid",
+          "bytes": 28583
+        },
+        {
+          "title": "Myth · Jeroen Tel",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/tel_jeroen/myth.sid",
+          "bytes": 17022
+        },
+        {
+          "title": "Navy Moves · Jeroen Tel",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 9,
+          "file": "sid/tel_jeroen/navy_moves.sid",
+          "bytes": 8244
+        },
+        {
+          "title": "North & South · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 48,
+          "file": "sid/tel_jeroen/north_and_south.sid",
+          "bytes": 14462
+        },
+        {
+          "title": "Outrun Europa · Jeroen Tel",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 27,
+          "file": "sid/tel_jeroen/outrun_europa.sid",
+          "bytes": 50042
+        },
+        {
           "title": "RoboCop 3 · Jeroen Tel",
           "format": "PSID",
           "channels": 3,
           "subsongs": 20,
           "file": "sid/tel_jeroen/robocop_3.sid",
           "bytes": 10590
+        },
+        {
+          "title": "Rubicon · Jeroen Tel & Reyn Ouwehand",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 11,
+          "file": "sid/tel_jeroen/rubicon.sid",
+          "bytes": 35454
+        },
+        {
+          "title": "Savage · Jeroen Tel",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 4,
+          "file": "sid/tel_jeroen/savage.sid",
+          "bytes": 26569
+        },
+        {
+          "title": "Smash TV · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 20,
+          "file": "sid/tel_jeroen/smash_tv.sid",
+          "bytes": 8879
+        },
+        {
+          "title": "Super Monaco Grand Prix · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 11,
+          "file": "sid/tel_jeroen/super_monaco_grand_prix.sid",
+          "bytes": 6940
+        },
+        {
+          "title": "Supremacy · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/tel_jeroen/supremacy.sid",
+          "bytes": 4382
+        },
+        {
+          "title": "Teenage Mutant Hero Turtles · Jeroen Tel",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 39,
+          "file": "sid/tel_jeroen/teenage_mutant_hero_turtles.sid",
+          "bytes": 14551
+        },
+        {
+          "title": "Turbo Outrun · Jeroen Tel",
+          "format": "RSID",
+          "channels": 3,
+          "subsongs": 12,
+          "file": "sid/tel_jeroen/turbo_outrun.sid",
+          "bytes": 56430
+        },
+        {
+          "title": "Armalyte · Martin Walker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 4,
+          "file": "sid/walker_martin/armalyte.sid",
+          "bytes": 4096
+        },
+        {
+          "title": "Chameleon · Martin Walker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/walker_martin/chameleon.sid",
+          "bytes": 6299
+        },
+        {
+          "title": "Citadel · Martin Walker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 4,
+          "file": "sid/walker_martin/citadel.sid",
+          "bytes": 3757
+        },
+        {
+          "title": "Rodland · Martin Walker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 5,
+          "file": "sid/walker_martin/rodland.sid",
+          "bytes": 8830
+        },
+        {
+          "title": "Speedball 2 · Martin Walker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/walker_martin/speedball_2.sid",
+          "bytes": 3343
+        },
+        {
+          "title": "SWIV · Martin Walker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/walker_martin/swiv.sid",
+          "bytes": 4478
+        },
+        {
+          "title": "Beverly Hills Cop · David Whittaker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 1,
+          "file": "sid/whittaker_david/beverly_hills_cop.sid",
+          "bytes": 2784
+        },
+        {
+          "title": "Ghostbusters II · David Whittaker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 5,
+          "file": "sid/whittaker_david/ghostbusters_ii.sid",
+          "bytes": 7269
+        },
+        {
+          "title": "Glider Rider · David Whittaker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 3,
+          "file": "sid/whittaker_david/glider_rider.sid",
+          "bytes": 6270
+        },
+        {
+          "title": "Last Mission · David Whittaker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 2,
+          "file": "sid/whittaker_david/last_mission.sid",
+          "bytes": 3254
+        },
+        {
+          "title": "Lazy Jones · David Whittaker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 21,
+          "file": "sid/whittaker_david/lazy_jones.sid",
+          "bytes": 3454
+        },
+        {
+          "title": "The Real Ghostbusters · David Whittaker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 4,
+          "file": "sid/whittaker_david/real_ghostbusters.sid",
+          "bytes": 4329
+        },
+        {
+          "title": "Rygar · David Whittaker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 6,
+          "file": "sid/whittaker_david/rygar.sid",
+          "bytes": 3833
+        },
+        {
+          "title": "Speedball · David Whittaker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 7,
+          "file": "sid/whittaker_david/speedball.sid",
+          "bytes": 5118
+        },
+        {
+          "title": "Zub · David Whittaker",
+          "format": "PSID",
+          "channels": 3,
+          "subsongs": 8,
+          "file": "sid/whittaker_david/zub.sid",
+          "bytes": 4226
         }
       ]
     }

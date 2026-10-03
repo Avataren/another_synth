@@ -329,6 +329,16 @@ impl Chip {
         self.pending.push((self.cycles + delay, reg, val));
     }
 
+    /// Runs the digital core at `hz` chip cycles per second instead of the PAL
+    /// clock: a C64 tune made for an NTSC machine (1 022 727 Hz) plays at the
+    /// pitch and speed its player was written for. Only the cycles each output
+    /// sample spans change; the registers mean the same cycles on either.
+    pub fn set_clock_hz(&mut self, hz: f64) {
+        if hz.is_finite() && hz > 0.0 {
+            self.cycles_per_sample = hz / self.sample_rate;
+        }
+    }
+
     /// Sets the output level trim (1.0 = the S1/S2 reference level). For the
     /// tests that pin absolute levels; the app plays the model's own trim.
     #[cfg(test)]

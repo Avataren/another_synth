@@ -8,10 +8,17 @@
  * it, obeys a handful of commands and reports where the song is. It
  * interprets no song data.
  *
+ * A `.sid` file plays through the same core (`load-psid`): `PsidPlayback`
+ * (`../tracker/psid/psid-playback.ts`) stands in for the Rust song player,
+ * running the tune's 6502 code and feeding a bare Rust chip.
+ *
  * Outputs: 0 is the mix, stereo (the chip is mono: both sides carry it);
  * 1..3 are the three voices' own signals, mono (`Chip::render_taps`: before
  * the filter), what the tracker's per-track scopes and spectrum analyse.
  */
+
+import { parsePsid } from '../tracker/psid/psid-file';
+import { PsidPlayback, type SidChipWasmCtor } from '../tracker/psid/psid-playback';
 
 /** The slice of the wasm `SidPlayer` class this core uses. */
 export interface SidWasmPlayer {
@@ -75,6 +82,15 @@ export type SidCommand =
       id: number;
       /** A SID song file (`serializeSidFile`), what the Rust `SidSong::parse` reads. */
       bytes: ArrayBuffer | Uint8Array;
+    }
+  | {
+      type: 'load-psid';
+      /** Same ids as `load-song`: the newest load's answer is the one that settles. */
+      id: number;
+      /** A C64 `.sid` file (PSID or RSID), played as it is. */
+      bytes: ArrayBuffer | Uint8Array;
+      /** 0-based. */
+      subsong: number;
     }
   | { type: 'play' }
   | { type: 'pause' }
@@ -140,6 +156,8 @@ export class SidProcessorCore {
     private readonly PlayerCtor: SidWasmPlayerCtor,
     private readonly sampleRate: number,
     private readonly post: (event: SidEvent) => void,
+    /** The wasm chip a `.sid` plays on; without it `load-psid` is refused. */
+    private readonly ChipCtor: SidChipWasmCtor | null = null,
   ) {}
 
   get disposed(): boolean {
@@ -153,6 +171,11 @@ export class SidProcessorCore {
         if (command.id <= this.lastLoadId) break;
         this.lastLoadId = command.id;
         this.loadSong(command.id, command.bytes);
+        break;
+      case 'load-psid':
+        if (command.id <= this.lastLoadId) break;
+        this.lastLoadId = command.id;
+        this.loadPsid(command.id, command.bytes, command.subsong);
         break;
       case 'play':
         this.player?.play();
@@ -239,30 +262,53 @@ export class SidProcessorCore {
     this.dropPlayer();
     try {
       const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-      const player = new this.PlayerCtor(data, this.sampleRate);
-      player.set_gain(this.gain);
-      player.set_mute_solo(this.mute, this.solo);
-      player.set_revision(this.revision);
-      if (this.preview) player.enable_preview();
-      this.player = player;
-      this.applyLoop();
-      this.resetReporting();
-      this.post({
-        type: 'song-loaded',
-        id,
-        info: {
-          songRows: player.song_rows(),
-          channels: player.channels(),
-          chipModel: player.chip_model(),
-          instrumentCount: player.instrument_count(),
-          sampleRate: this.sampleRate,
-          voiceFullScale: player.tap_full_scale(),
-        },
-      });
+      this.adopt(id, new this.PlayerCtor(data, this.sampleRate));
     } catch (error) {
       // The constructor's `Result<_, String>` arrives as the thrown string.
       this.post({ type: 'error', id, message: `SID load failed: ${String(error)}` });
     }
+  }
+
+  private loadPsid(id: number, bytes: ArrayBuffer | Uint8Array, subsong: number): void {
+    this.dropPlayer();
+    try {
+      if (this.ChipCtor === null) throw new Error('this worklet has no chip to play a .sid on');
+      const parsed = parsePsid(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+      if (!parsed.ok) throw new Error(parsed.reason);
+      const made = PsidPlayback.create(parsed.file, subsong, this.ChipCtor, this.sampleRate);
+      if (!made.ok) throw new Error(made.reason);
+      this.adopt(id, made.player);
+    } catch (error) {
+      this.post({ type: 'error', id, message: `SID load failed: ${error instanceof Error ? error.message : String(error)}` });
+    }
+  }
+
+  /** Make `player` the song: the settings that outlive songs, then the answer to the load. */
+  private adopt(id: number, player: SidWasmPlayer): void {
+    try {
+      player.set_gain(this.gain);
+      player.set_mute_solo(this.mute, this.solo);
+      player.set_revision(this.revision);
+      if (this.preview) player.enable_preview();
+    } catch (error) {
+      player.free();
+      throw error;
+    }
+    this.player = player;
+    this.applyLoop();
+    this.resetReporting();
+    this.post({
+      type: 'song-loaded',
+      id,
+      info: {
+        songRows: player.song_rows(),
+        channels: player.channels(),
+        chipModel: player.chip_model(),
+        instrumentCount: player.instrument_count(),
+        sampleRate: this.sampleRate,
+        voiceFullScale: player.tap_full_scale(),
+      },
+    });
   }
 
   private applyLoop(): void {
