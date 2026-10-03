@@ -6,6 +6,7 @@ import { encodeSidFile, importGtSong, setSidSongTexts, type SidDoc } from 'src/a
 import { importGtSongToTrackerSong } from 'src/audio/tracker/sid-import';
 import {
   binExporter,
+  BIN_USAGE_NOTE,
   binSpeedNote,
   describeSongExporter,
   PRG_SCREEN_TEXT_NOTE,
@@ -106,7 +107,7 @@ describe('the .prg and .bin exporters', () => {
     expect(prgExporter.serialize(song)).toEqual(prg.ok && prg.bytes);
     expect(binExporter.serialize(song)).toEqual(bin.ok && bin.bytes);
     expect(prgExporter.warnings?.(song)).toEqual(sidExporter.warnings?.(song));
-    expect(binExporter.warnings?.(song)).toEqual(sidExporter.warnings?.(song));
+    expect(binExporter.warnings?.(song)).toEqual([BIN_USAGE_NOTE, ...(sidExporter.warnings?.(song) ?? [])]);
   });
 
   it('note a text that did not fit, and one the C64 screen shows differently', () => {
@@ -116,7 +117,7 @@ describe('the .prg and .bin exporters', () => {
     expect(prgExporter.warnings?.(retitled(song, 'Björk'))).toEqual([PRG_SCREEN_TEXT_NOTE]);
     expect(prgExporter.warnings?.(retitled(song, 'Bj\u00f6rk\u20ac'))).toEqual([PRG_TEXT_NOTE, PRG_SCREEN_TEXT_NOTE]);
     // A .bin holds no text.
-    expect(binExporter.warnings?.(retitled(song, 'x'.repeat(40)))).toEqual([]);
+    expect(binExporter.warnings?.(retitled(song, 'x'.repeat(40)))).toEqual([BIN_USAGE_NOTE]);
   });
 
   it('note subsongs past 9, which no key picks', () => {
@@ -131,7 +132,7 @@ describe('the .prg and .bin exporters', () => {
 
   it("note a multispeed song's play rate for the .bin", () => {
     const song = songOf('cadaver/mw_title_remix_2x_speed.sng');
-    expect(binExporter.warnings?.(song)).toEqual([binSpeedNote(2)]);
+    expect(binExporter.warnings?.(song)).toEqual([BIN_USAGE_NOTE, binSpeedNote(2)]);
     expect(binSpeedNote(2)).toBe(
       'The song runs at 2x speed: call play 2 times per frame, evenly spaced (e.g. from a CIA timer every 9828 cycles on a PAL C64).',
     );

@@ -11,7 +11,12 @@ import { canEditSlot, isAhxSlot } from 'src/audio/tracker/instrument-types';
  * to edit. Any other slot: `null`, the caller's own route stands.
  */
 export function ahxSlotRedirect(slotNumber: number): RouteLocationRaw | null {
-  const slot = useTrackerStore().instrumentSlots.find((s) => s.slot === slotNumber);
+  const store = useTrackerStore();
+  const slot = store.instrumentSlots.find((s) => s.slot === slotNumber);
+  // A ProTracker slot is a module sample, edited in the sample editor (empty ones too).
+  if (store.moduleFormat === 'protracker' && slotNumber >= 1 && slotNumber <= 31) {
+    return { name: 'mod-sample-editor', params: { slot: slotNumber } };
+  }
   // A SID slot has no patch either: its instrument is the song doc's (S4).
   if (slot?.instrumentFormat === 'sid') return { name: 'sid-instrument-editor', params: { slot: slotNumber } };
   if (!slot || !isAhxSlot(slot)) return null;

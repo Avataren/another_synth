@@ -142,11 +142,13 @@ export function inferSlotTags(
  *                   envelope, PList) on its own page. Task 5 builds the real
  *                   editor behind this id. It never shares a page with the
  *                   synth patch editor: an AHX instrument is not a `Patch`.
+ *   'mod-sample'    the ProTracker sample editor: 8-bit data, volume, finetune and
+ *                   loop, as a .mod holds them. Its own page, not the synth's.
  *   'sid-editor'    the SID instrument editor (plan-sid-tracking.md S4): the
  *                   song doc's instrument (`SidDoc.instruments`), its own page,
  *                   for the same reason.
  */
-export type InstrumentEditorId = 'synth-patch' | 'sampler-patch' | 'ahx-display' | 'sid-editor';
+export type InstrumentEditorId = 'synth-patch' | 'sampler-patch' | 'ahx-display' | 'sid-editor' | 'mod-sample';
 
 /**
  * Editor by `instrumentFormat`: the format decides whose data model it is.
@@ -154,7 +156,7 @@ export type InstrumentEditorId = 'synth-patch' | 'sampler-patch' | 'ahx-display'
  */
 export const INSTRUMENT_EDITOR_BY_FORMAT: Readonly<Record<InstrumentFormat, InstrumentEditorId | null>> = {
   native: 'synth-patch',
-  protracker: 'sampler-patch',
+  protracker: 'mod-sample',
   xm: 'sampler-patch',
   s3m: 'sampler-patch',
   ahx: 'ahx-display',
@@ -173,6 +175,7 @@ export const INSTRUMENT_EDITOR_ROUTE: Readonly<Record<InstrumentEditorId, string
   'sampler-patch': 'patch-instrument-editor',
   'ahx-display': 'ahx-instrument-display',
   'sid-editor': 'sid-instrument-editor',
+  'mod-sample': 'mod-sample-editor',
 };
 
 /**
@@ -200,6 +203,8 @@ export function canEditSlot(slot: TaggableSlot): boolean {
   if (!editor) return false;
   // A SID slot is tagged only for an instrument the song's doc holds (`showSidDoc`).
   if (editor === 'sid-editor') return true;
+  // A ProTracker slot opens its sample editor even when empty: that is where a sample is loaded.
+  if (editor === 'mod-sample') return true;
   return editor === 'ahx-display' ? !!slot.ahxData : !!slot.patchId;
 }
 

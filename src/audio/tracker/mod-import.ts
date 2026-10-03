@@ -5,6 +5,7 @@ import { modOriginOf } from 'src/audio/tracker/mod-origin';
 import {
   looksLikeMod as looksLikeModInternal,
   parseMod,
+  writeMod,
   buildModTrackerPatterns,
   buildModTrackerSamples,
   formatInstrumentId,
@@ -73,6 +74,19 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
     category: 'Imported/MOD',
     format: 'protracker',
   });
+  // Header facts the sampler patch has no place for, kept so the module can be
+  // written back out: the sample's default volume, and the names of samples
+  // that hold no audio (composers use those for text).
+  mod.samples.forEach((sample, i) => {
+    const slot = slots[i];
+    if (!slot) return;
+    slot.modVolume = sample.volume;
+    if (!slot.patchId && sample.name) {
+      slot.patchName = sample.name;
+      slot.instrumentName = sample.name;
+      slot.instrumentFormat = 'protracker';
+    }
+  });
 
   const songFile: TrackerSongFile = {
     version: CURRENT_SONG_FILE_VERSION,
@@ -123,3 +137,35 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
  * that every position shares. Resolving that properly means latching at
  * playback time rather than at import; see the note on `channelSamples`.
  */
+
+/** An empty four-channel ProTracker module: one blank pattern, 31 empty samples. */
+export function createNewModTrackerSong(): TrackerSongFile {
+  const blank: ModSong = {
+    title: '',
+    numChannels: 4,
+    songLength: 1,
+    orders: new Array<number>(128).fill(0),
+    patterns: [
+      {
+        rows: Array.from({ length: MOD_PATTERN_ROWS }, () =>
+          Array.from({ length: 4 }, () => ({ period: 0, sampleNumber: 0, effectCmd: 0, effectParam: 0 })),
+        ),
+      },
+    ],
+    samples: Array.from({ length: 31 }, () => ({
+      name: '',
+      length: 0,
+      finetune: 0,
+      volume: 64,
+      loopStart: 0,
+      loopLength: 0,
+      data: new Int8Array(0),
+    })),
+    signature: 'M.K.',
+    trackerFlavor: 'ProTracker',
+    amigaLimits: true,
+  };
+  const song = importModToTrackerSong(writeMod(blank).slice().buffer);
+  song.data.currentSong.title = 'Untitled module';
+  return song;
+}

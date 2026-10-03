@@ -20,8 +20,6 @@ export interface SongExporter {
   /** With the dot: `.ahx`. */
   extension: string;
   mimeType: string;
-  /** One plain sentence the dialog shows as is, or `''` for none: every claim in it has to be true of `serialize`. */
-  description: string;
   /** Whether a writer exists at all. `false`: the row is disabled and `check` and `serialize` are never used. */
   available: boolean;
   /** Can this writer export this song? Only consulted when `available`. */

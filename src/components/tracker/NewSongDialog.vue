@@ -26,6 +26,11 @@
           <span class="new-song-format-note">This app's synth and sampler instruments.</span>
         </label>
         <label class="new-song-format">
+          <input v-model="format" type="radio" value="protracker" data-testid="new-song-format-protracker" />
+          <span class="new-song-format-name">ProTracker</span>
+          <span class="new-song-format-note">Four sample channels; exports as a .mod.</span>
+        </label>
+        <label class="new-song-format">
           <input v-model="format" type="radio" value="sid" data-testid="new-song-format-sid" />
           <span class="new-song-format-name">SID (GoatTracker)</span>
           <span class="new-song-format-note">Three C64 voices; saves as a GoatTracker 2 .sng.</span>
@@ -149,6 +154,7 @@ export type NewAhxSongChoiceOptions = Required<Pick<NewAhxDocOptions, 'trackLeng
  */
 export type NewSongChoice =
   | { format: 'native' }
+  | { format: 'protracker' }
   | { format: 'sid'; options: NewSidDocOptions }
   | { format: 'ahx' | 'hvl'; options: NewAhxSongChoiceOptions };
 
@@ -236,6 +242,8 @@ function choice(): NewSongChoice {
         format: 'hvl',
         options: { trackLength: trackLength.value, speedMultiplier: ahxSpeedMultiplier.value, channels: channels.value },
       };
+    case 'protracker':
+      return { format: 'protracker' };
     default:
       return { format: 'native' };
   }

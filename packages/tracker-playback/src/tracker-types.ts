@@ -62,6 +62,22 @@ export interface TrackerEntryData {
    */
   effectCommand?: number;
   effectParam?: number;
+  /**
+   * MOD only: the file's own cell, `[period, sampleNumber, effectCmd,
+   * effectParam]`, kept so a .mod export can write back exactly what was read
+   * (the importer folds Cxx into the volume column and drops the sample number
+   * from tone-portamento rows, neither of which can be undone from the entry
+   * alone). Only trusted while `modSig` still matches the entry; editing the
+   * row changes the signature and the exporter derives the cell instead.
+   */
+  modCell?: [number, number, number, number];
+  /** `modEntrySignature(entry)` as the importer left it. */
+  modSig?: string;
+}
+
+/** The fields an edit changes, joined: what `modCell` is valid for. */
+export function modEntrySignature(entry: TrackerEntryData): string {
+  return [entry.note ?? '', entry.instrument ?? '', entry.volume ?? '', entry.macro ?? ''].join('|');
 }
 
 export interface TrackerInterpolationRange {

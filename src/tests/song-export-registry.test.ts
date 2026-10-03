@@ -34,7 +34,7 @@ describe('the exporter registry', () => {
     expect(new Set(SONG_EXPORTERS.map((e) => e.id)).size).toBe(SONG_EXPORTERS.length);
   });
 
-  it('has a writer for ahx, hvl, sng, sid, prg and bin only', () => {
+  it('has a writer for ahx, hvl, sng, sid, prg, bin and mod only', () => {
     expect(SONG_EXPORTERS.map((e) => [e.id, e.available])).toEqual([
       ['ahx', true],
       ['hvl', true],
@@ -42,7 +42,7 @@ describe('the exporter registry', () => {
       ['sid', true],
       ['prg', true],
       ['bin', true],
-      ['mod', false],
+      ['mod', true],
       ['xm', false],
       ['s3m', false],
     ]);
@@ -55,20 +55,13 @@ describe('the exporter registry', () => {
     expect(getSongExporter('xm')?.extension).toBe('.xm');
   });
 
-  it('gives every row a label, a dotted extension and a mime type; only rows with a writer have a description', () => {
+  it('gives every row a label, a dotted extension and a mime type', () => {
     for (const e of SONG_EXPORTERS) {
       expect(e.label.length, e.id).toBeGreaterThan(0);
       expect(e.extension, e.id).toBe(`.${e.id}`);
       expect(e.mimeType, e.id).toBe('application/octet-stream');
-      expect(e.description.length > 0, e.id).toBe(e.available);
     }
     expect(getSongExporter('hvl')?.label).toBe('HVL (Hively Tracker)');
-  });
-
-  it('pins the row descriptions: one short plain sentence, nothing about Author, BPM or the format', () => {
-    expect(ahxExporter.description).toBe('Saves the song as an .ahx file, with your instrument and title changes.');
-    expect(hvlExporter.description).toBe('Saves the song as an .hvl file, with your pattern, transpose and title changes.');
-    for (const e of SONG_EXPORTERS) expect(e.description, e.id).not.toMatch(/author|bpm|speed multiplier|tempo|no place/i);
   });
 
   it('states every row for every kind of song', () => {
@@ -85,7 +78,7 @@ describe('the exporter registry', () => {
       sid: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .sid." },
       prg: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .prg." },
       bin: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .bin." },
-      mod: notYet,
+      mod: { state: 'unavailable', reason: 'Only ProTracker songs can be saved as a .mod.' },
       xm: notYet,
       s3m: notYet,
     });
@@ -98,7 +91,7 @@ describe('the exporter registry', () => {
       sid: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .sid." },
       prg: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .prg." },
       bin: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .bin." },
-      mod: notYet,
+      mod: { state: 'unavailable', reason: 'Only ProTracker songs can be saved as a .mod.' },
       xm: notYet,
       s3m: notYet,
     });
@@ -151,7 +144,7 @@ describe('the exporter registry', () => {
   });
 
   it('states every placeholder as not implemented, whatever the song, without asking it to check', () => {
-    for (const id of ['mod', 'xm', 's3m'] as const) {
+    for (const id of ['xm', 's3m'] as const) {
       const exporter = getSongExporter(id)!;
       const check = vi.spyOn(exporter, 'check');
       expect(describeSongExporter(exporter, ahxSong()), id).toEqual({
@@ -164,7 +157,7 @@ describe('the exporter registry', () => {
   });
 
   it('makes a placeholder serialize throw a SongExportError', () => {
-    for (const id of ['mod', 'xm', 's3m'] as const) {
+    for (const id of ['xm', 's3m'] as const) {
       const exporter = getSongExporter(id)!;
       expect(() => exporter.serialize(ahxSong()), id).toThrow(SongExportError);
       expect(() => exporter.serialize(ahxSong()), id).toThrow(`${exporter.label} export isn't available yet.`);

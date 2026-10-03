@@ -20,7 +20,6 @@
           v-for="row in rows"
           :key="row.exporter.id"
           class="song-export-row"
-          :class="{ 'is-disabled': row.state.state !== 'enabled' }"
           :data-testid="`song-export-row-${row.exporter.id}`"
         >
           <div class="song-export-row-head">
@@ -30,42 +29,24 @@
               type="button"
               class="song-export-download"
               :data-testid="`song-export-download-${row.exporter.id}`"
-              :disabled="row.state.state !== 'enabled'"
-              :aria-disabled="row.state.state !== 'enabled'"
               @click="download(row.exporter)"
             >
               Download
             </button>
           </div>
           <p
-            v-if="row.exporter.description"
-            class="song-export-description"
-            :data-testid="`song-export-description-${row.exporter.id}`"
+            v-for="(line, index) in row.warnings"
+            :key="index"
+            class="song-export-warning"
+            :data-testid="`song-export-warning-${row.exporter.id}`"
           >
-            {{ row.exporter.description }}
+            {{ line }}
           </p>
-          <p
-            v-if="row.state.reason"
-            class="song-export-reason"
-            :data-testid="`song-export-reason-${row.exporter.id}`"
-          >
-            {{ row.state.reason }}
-          </p>
-          <template v-else>
-            <p
-              v-for="(line, index) in row.warnings"
-              :key="index"
-              class="song-export-warning"
-              :data-testid="`song-export-warning-${row.exporter.id}`"
-            >
-              {{ line }}
-            </p>
-            <p class="song-export-filename" :data-testid="`song-export-filename-${row.exporter.id}`">
-              Saves as: {{ row.fileName }}
-            </p>
-          </template>
         </li>
       </ul>
+      <p v-if="!rows.length" class="song-export-status" data-testid="song-export-empty">
+        No file format can hold this song.
+      </p>
       <p v-if="status" class="song-export-status" role="status" data-testid="song-export-status">
         {{ status }}
       </p>
@@ -114,16 +95,10 @@ let opener: HTMLElement | null = null;
 const rows = computed(() => {
   const current = song.value;
   if (!current) return [];
-  const title = current.data.currentSong.title;
-  return props.exporters.map((exporter) => {
-    const state = describeSongExporter(exporter, current);
-    return {
-      exporter,
-      state,
-      warnings: state.state === 'enabled' ? (exporter.warnings?.(current) ?? []) : [],
-      fileName: exportFileName(title, exporter.extension),
-    };
-  });
+  // Only formats that can hold this song are listed; the rest are hidden.
+  return props.exporters
+    .filter((exporter) => describeSongExporter(exporter, current).state === 'enabled')
+    .map((exporter) => ({ exporter, warnings: exporter.warnings?.(current) ?? [] }));
 });
 
 const focusables = (): HTMLElement[] =>

@@ -68,7 +68,7 @@ function build(format: Format, song: TrackerSongFile): Built {
 
 function c64Exporter(
   format: Format,
-  row: Pick<SongExporter, 'label' | 'extension' | 'description'>,
+  row: Pick<SongExporter, 'label' | 'extension'>,
   notes: (built: Extract<Built, { ok: true }>) => string[],
 ): SongExporter {
   return {
@@ -97,8 +97,6 @@ export const sidExporter: SongExporter = c64Exporter(
   {
     label: 'Commodore 64 SID',
     extension: '.sid',
-    description:
-      "Saves the song as a PSID file that plays on a C64 and in SID players, with GoatTracker's playroutine (as GoatTracker's own export does).",
   },
   (b) => (b.altered ? [SID_TEXT_NOTE] : []),
 );
@@ -108,8 +106,6 @@ export const prgExporter: SongExporter = c64Exporter(
   {
     label: 'Commodore 64 program',
     extension: '.prg',
-    description:
-      "Saves the song as a C64 program you LOAD and RUN, with GoatTracker's playroutine and the song's name on screen; the keys 1-9 pick a subsong.",
   },
   (b) => [
     ...(b.altered ? [PRG_TEXT_NOTE] : []),
@@ -118,13 +114,14 @@ export const prgExporter: SongExporter = c64Exporter(
   ],
 );
 
+/** What a raw .bin is for: the one thing about it a C64 programmer can't guess. */
+export const BIN_USAGE_NOTE = 'Loads at $1000, no load address. Init at $1000 with the subsong in A; play at $1003 once per frame; zero page $FC-$FD.';
+
 export const binExporter: SongExporter = c64Exporter(
   'bin',
   {
     label: 'Commodore 64 player + song, raw',
     extension: '.bin',
-    description:
-      "Saves GoatTracker's playroutine and the song as raw bytes for $1000, without a load address, for your own C64 program: init at $1000 with the subsong in A, play at $1003 once per frame; zero page $FC-$FD.",
   },
-  (b) => (b.speed > 1 ? [binSpeedNote(b.speed)] : []),
+  (b) => [BIN_USAGE_NOTE, ...(b.speed > 1 ? [binSpeedNote(b.speed)] : [])],
 );

@@ -3,6 +3,7 @@ import type {
   TrackerEntryData,
   TrackerPattern,
 } from './tracker-types';
+import { modEntrySignature } from './tracker-types';
 import {
   parseTrackerNoteSymbol,
   parseTrackerVolume,
@@ -88,6 +89,13 @@ export interface PlaybackSongSource {
    */
   defaultPatternRows: number;
   normalizeInstrumentId: (instrumentId?: string) => string | undefined;
+  /**
+   * ProTracker only: an instrument's default volume as a 0-255 velocity, which
+   * a row that names the instrument without a volume resets to (a tracker
+   * loads the sample's volume on every sample number). Only asked for rows
+   * the importer did not write, which carry their volume already.
+   */
+  sampleDefaultVelocity?: (instrumentId: string) => number | undefined;
 }
 
 /**
@@ -357,6 +365,17 @@ export function buildPlaybackStepsForTrack(
       // channel 3 shadowing channel 1 at volume 11 against the lead's 24 --
       // into 64 on every row that omitted the sample number.
       step.velocity = 255;
+    } else if (
+      midi !== undefined &&
+      entry?.instrument &&
+      source.moduleFormat === 'protracker' &&
+      source.sampleDefaultVelocity &&
+      !(entry.modCell && entry.modSig === modEntrySignature(entry))
+    ) {
+      // A row written in this editor, not read from a .mod: it resets to the
+      // sample's own volume, as ProTracker would.
+      const fallback = source.sampleDefaultVelocity(instrumentId ?? entry.instrument);
+      if (fallback !== undefined) step.velocity = fallback;
     }
 
     // Handle macro automation (from explicit macro commands or interpolations)

@@ -13,6 +13,7 @@ import type {
   TrackerTrackData,
   TrackerEntryData,
 } from '../tracker-types';
+import { modEntrySignature } from '../tracker-types';
 import { formatInstrumentId } from '../instrument-ids';
 import { midiToTrackerNote } from '../note-utils';
 import { AMIGA_CLOCK, PAULA_TO_SYNTH_SCALE } from '../pitch-model';
@@ -474,6 +475,13 @@ function modCellToTrackerEntry(
   }
   if (panMacro) {
     entry.macro2 = panMacro;
+  }
+
+  // The file's own cell, for a faithful .mod export (see `modCell`). Not kept
+  // for Ultimate Soundtracker, whose commands were translated above.
+  if (mod.trackerFlavor !== 'UltimateSoundtracker') {
+    entry.modCell = [period, sampleNumber, cell.effectCmd, cell.effectParam];
+    entry.modSig = modEntrySignature(entry);
   }
 
   return entry;

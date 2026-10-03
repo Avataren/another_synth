@@ -105,6 +105,11 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       currentPattern: context.currentPattern.value,
       defaultPatternRows: context.defaultPatternRows.value,
       normalizeInstrumentId: context.normalizeInstrumentId,
+      sampleDefaultVelocity: (instrumentId) => {
+        const slotNumber = Number.parseInt(instrumentId, 10);
+        const volume = context.instrumentSlots.value.find((s) => s.slot === slotNumber)?.modVolume;
+        return volume === undefined ? undefined : Math.round((volume / 64) * 255);
+      },
       ...(context.initialSpeed
         ? { initialSpeed: context.initialSpeed.value }
         : {}),

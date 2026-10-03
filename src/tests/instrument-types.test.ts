@@ -114,7 +114,7 @@ describe('editor routing table', () => {
   it('routes by instrumentFormat', () => {
     expect(INSTRUMENT_EDITOR_BY_FORMAT).toEqual({
       native: 'synth-patch',
-      protracker: 'sampler-patch',
+      protracker: 'mod-sample',
       xm: 'sampler-patch',
       s3m: 'sampler-patch',
       ahx: 'ahx-display',

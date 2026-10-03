@@ -40,6 +40,43 @@ const MOD_SAMPLE_RATE = 44100;
 const MOD_ROOT_NOTE =
   69 + 12 * Math.log2(MOD_SAMPLE_RATE / PAULA_TO_SYNTH_SCALE / 440);
 
+/**
+ * One MOD sample as a `TrackerSample` in `slot`: the importer's conversion, and
+ * what an editor writes back after changing a sample, so both land on the same
+ * numbers. `channelCount` is how many channels play it (voices to allocate).
+ */
+export function trackerSampleFromModSample(
+  sample: ModSample,
+  slot: number,
+  channelCount = 4,
+): TrackerSample {
+  const sampleLengthFrames = Math.max(1, sample.length);
+  // ProTracker marks "no loop" with a loop length of 2 words or less.
+  const loopEnabled = sample.loopLength > 2;
+  return {
+    slot,
+    sourceIndex: slot,
+    name: sample.name,
+    data: convertSampleToFloat32(sample),
+    sampleRate: MOD_SAMPLE_RATE,
+    // Per-sample finetune is baked into detune rather than the root.
+    rootNote: MOD_ROOT_NOTE,
+    // MOD finetune is -8..7 in 1/8 semitone steps.
+    detuneCents: ((sample.finetune ?? 0) / 8) * 100,
+    // Unity. The sample's default volume (0-64) is a *channel* volume in
+    // ProTracker, not a property of the sample: it reaches playback through
+    // the volume column (every note with a sample number is stamped with it
+    // at import), so baking it in here would double-apply it.
+    gain: 1,
+    loop: loopEnabled ? 'forward' : 'off',
+    loopStartFrames: loopEnabled ? sample.loopStart : 0,
+    loopLengthFrames: loopEnabled ? sample.loopLength : sampleLengthFrames,
+    // One voice per channel that ever plays this sample, so every channel
+    // owns one and none has to steal.
+    voiceCount: Math.max(4, Math.min(32, channelCount)),
+  };
+}
+
 /** 8-bit signed PCM as the file stores it, to -1..1 floats. */
 export function convertSampleToFloat32(sample: ModSample): Float32Array {
   const data = sample.data;
@@ -71,7 +108,8 @@ function measureChannelsPerSample(mod: ModSong): Map<number, Set<number>> {
 }
 
 /**
- * One `TrackerSample` per sample the pattern data actually references.
+ * One `TrackerSample` per sample that holds audio or that the pattern data
+ * references.
  *
  * MOD keeps the file's own numbering rather than packing: sample 7 lands in
  * slot 7, because a cell's sample byte *is* the instrument id (see
@@ -81,7 +119,12 @@ function measureChannelsPerSample(mod: ModSong): Map<number, Set<number>> {
 export function buildModTrackerSamples(mod: ModSong): TrackerSampleSet {
   const channelsPerSample = measureChannelsPerSample(mod);
 
+  // Every sample that holds audio, played or not: an unused sample is still
+  // part of the module, and a .mod export has to write it back.
   const usedSamples = new Set<number>();
+  mod.samples.forEach((sample, i) => {
+    if (sample.length > 0) usedSamples.add(i + 1);
+  });
   for (const pattern of mod.patterns) {
     for (const row of pattern.rows) {
       for (const cell of row) {
@@ -104,39 +147,10 @@ export function buildModTrackerSamples(mod: ModSong): TrackerSampleSet {
     const sample = mod.samples[sampleNumber - 1];
     if (!sample) continue;
 
-    const sampleLengthFrames = Math.max(1, sample.length);
-    // ProTracker marks "no loop" with a loop length of 2 words or less.
-    const loopEnabled = sample.loopLength > 2;
     const channelCount = channelsPerSample.get(sampleNumber)?.size ?? 1;
-
-    samples.push({
-      slot: sampleNumber,
-      sourceIndex: sampleNumber,
-      name: sample.name,
-      data: convertSampleToFloat32(sample),
-      sampleRate: MOD_SAMPLE_RATE,
-      // Per-sample finetune is baked into detune rather than the root.
-      rootNote: MOD_ROOT_NOTE,
-      // MOD finetune is -8..7 in 1/8 semitone steps.
-      detuneCents: ((sample.finetune ?? 0) / 8) * 100,
-      // Unity. The sample's default volume (0-64) is a *channel* volume in
-      // ProTracker, not a property of the sample, and it already reaches
-      // playback through the volume column -- every note with a sample number
-      // is stamped with it at import. Baking it in here as well made the
-      // instrument permanently quiet everywhere the volume column is not in
-      // charge, most visibly when auditioning it from the keyboard: sample 23
-      // of GSLINGER.MOD has a header volume of 8, so it played at an eighth of
-      // the level of any sample whose header says 64, with no way to turn it
-      // up.
-      gain: 1,
-      loop: loopEnabled ? 'forward' : 'off',
-      loopStartFrames: loopEnabled ? sample.loopStart : 0,
-      loopLengthFrames: loopEnabled ? sample.loopLength : sampleLengthFrames,
-      // One voice per channel that ever plays this sample, so every channel
-      // owns one and none has to steal. Four is right for a classic 4-channel
-      // module and badly short for the multi-channel ones.
-      voiceCount: Math.max(4, Math.min(32, channelCount)),
-    });
+    samples.push(
+      trackerSampleFromModSample(sample, sampleNumber, channelCount),
+    );
     slotForInstrument.set(sampleNumber, sampleNumber);
   }
 

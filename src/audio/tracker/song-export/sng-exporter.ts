@@ -100,7 +100,6 @@ export const sngExporter: SongExporter = {
   label: 'GoatTracker 2 song',
   extension: '.sng',
   mimeType: 'application/octet-stream',
-  description: 'Saves the song as a GoatTracker 2 .sng file, with all your edits.',
   available: true,
   check,
   warnings,

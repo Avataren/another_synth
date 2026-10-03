@@ -77,6 +77,7 @@ import {
 import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import { defaultAhxInstrument } from 'src/audio/tracker/ahx-instrument-edit';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
+import { createNewModTrackerSong } from 'src/audio/tracker/mod-import';
 import { readModOrigin, type ModOrigin } from 'src/audio/tracker/mod-origin';
 import { editSidInstrument, newSidInstrument } from 'src/audio/tracker/sid-instrument-edit';
 import { addSidPreset, applySidPreset } from 'src/audio/tracker/sid-presets';
@@ -168,6 +169,12 @@ export interface InstrumentSlot {
    * No mapping toward the main synth's FM primitives is designed or wanted.
    */
   oplData?: OplInstrumentData;
+  /**
+   * ProTracker sample's default volume, 0-64: the header field the sampler
+   * patch has no place for (it reaches playback through the volume column).
+   * Absent means 64.
+   */
+  modVolume?: number;
   /**
    * The AHX instrument this slot lists, exactly as the parser decoded it
    * (envelope, filter/square/vibrato settings, the PList), kept for the AHX
@@ -1244,6 +1251,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         slot.instrumentFormat = undefined;
         delete slot.oplData;
         delete slot.ahxData;
+        delete slot.modVolume;
       }
     },
     /** Add or update a patch in the song's patch library */
@@ -1254,6 +1262,37 @@ export const useTrackerStore = defineStore('trackerStore', {
     /** Get a patch from the song's library */
     getSongPatch(patchId: string): Patch | undefined {
       return this.songPatches[patchId];
+    },
+    /**
+     * Writes a ProTracker sample into a slot: `patch` is the sampler that plays
+     * it (null for an empty sample), `meta` the header fields the patch has no
+     * place for. The ProTracker sample editor's one way into the song.
+     */
+    setModSample(slotNumber: number, patch: Patch | null, meta: { name: string; volume: number }) {
+      const slot = this.instrumentSlots.find((s) => s.slot === slotNumber);
+      if (!slot) return;
+      const previous = slot.patchId;
+      if (patch?.metadata?.id) {
+        this.songPatches[patch.metadata.id] = JSON.parse(JSON.stringify(patch));
+        slot.patchId = patch.metadata.id;
+        slot.patchName = patch.metadata.name ?? '';
+        slot.bankName = 'MOD Import';
+        slot.source = 'song';
+        slot.instrumentType = 'sampler';
+        slot.volume = 1.0;
+      } else {
+        slot.patchId = undefined;
+        slot.patchName = '';
+        slot.bankName = '';
+        slot.source = undefined;
+        slot.instrumentType = undefined;
+      }
+      slot.instrumentFormat = 'protracker';
+      slot.instrumentName = meta.name || (patch ? `Instrument ${String(slotNumber).padStart(2, '0')}` : '');
+      slot.modVolume = Math.max(0, Math.min(64, Math.round(meta.volume)));
+      if (previous && previous !== slot.patchId && !this.instrumentSlots.some((s) => s.patchId === previous)) {
+        delete this.songPatches[previous];
+      }
     },
     /** Start editing a slot's patch */
     startEditingSlot(slotNumber: number) {
@@ -1638,6 +1677,9 @@ export const useTrackerStore = defineStore('trackerStore', {
         if (slot?.volume !== undefined) {
           mapped.volume = slot.volume;
         }
+        if (typeof slot?.modVolume === 'number') {
+          mapped.modVolume = Math.max(0, Math.min(64, Math.round(slot.modVolume)));
+        }
         return mapped;
       });
 
@@ -1730,6 +1772,11 @@ export const useTrackerStore = defineStore('trackerStore', {
      */
     resetToNewSidSong(options: NewSidDocOptions = {}) {
       this.adoptSidDoc(createNewSidDoc(options));
+    },
+    /** A new, empty four-channel ProTracker module, loaded as an opened .mod is. */
+    resetToNewModSong() {
+      clearLoadedSongHash();
+      this.loadSongFile(createNewModTrackerSong());
     },
     /**
      * A new AHX or HVL song from scratch: `createNewAhxDoc`'s song (or

@@ -82,7 +82,7 @@ const MAX_EXTENDED_MOD_PERIOD = 3424;
  * semitone offsets, glissando snapping). Normal note playback uses the literal
  * period read from the MOD file and never consults this table.
  */
-const PT_PERIOD_TABLE: readonly number[] = [
+export const PT_PERIOD_TABLE: readonly number[] = [
   856, 808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453, // C-1..B-1
   428, 404, 381, 360, 339, 320, 302, 285, 269, 254, 240, 226, // C-2..B-2
   214, 202, 190, 180, 170, 160, 151, 143, 135, 127, 120, 113, // C-3..B-3
@@ -111,7 +111,7 @@ const PT_PERIOD_TABLE: readonly number[] = [
  * notes sit above B-3 and 29 below C-1, so 48% of the module was being
  * pinned to a single clamped pitch by the three-octave table.
  */
-const MOD_EXTENDED_PERIOD_TABLE: readonly number[] = [
+export const MOD_EXTENDED_PERIOD_TABLE: readonly number[] = [
   3424, 3232, 3048, 2880, 2712, 2560, 2416, 2280, 2152, 2032, 1920, 1812, // C-(-1)..B-(-1)
   1712, 1616, 1524, 1440, 1356, 1280, 1208, 1140, 1076, 1016, 960, 907, // C-0..B-0
   856, 808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453, // C-1..B-1

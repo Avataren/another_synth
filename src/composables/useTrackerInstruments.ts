@@ -261,6 +261,11 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
       await pending.catch(() => undefined);
     }
     const slot = context.instrumentSlots.value.find((s) => s.slot === slotNumber);
+    // A ProTracker slot opens the sample editor even while empty: that is where a sample is loaded.
+    if (context.trackerStore.moduleFormat === 'protracker' && slotNumber >= 1 && slotNumber <= 31) {
+      void context.router.push({ name: 'mod-sample-editor', params: { slot: slotNumber.toString() } });
+      return;
+    }
     if (!slot || !canEditSlot(slot)) return;
 
     // The slot's format picks the editor (see INSTRUMENT_EDITOR_BY_FORMAT).

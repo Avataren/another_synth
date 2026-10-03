@@ -149,7 +149,6 @@ export const ahxExporter: SongExporter = {
   label: "AHX (Abyss' Highest eXperience)",
   extension: '.ahx',
   mimeType: 'application/octet-stream',
-  description: 'Saves the song as an .ahx file, with your instrument and title changes.',
   available: true,
   check,
   warnings,

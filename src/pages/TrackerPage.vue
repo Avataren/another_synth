@@ -707,7 +707,7 @@
                 />
                 <!-- An AHX/HVL or SID song's instruments are its doc's: no synth patch goes in (assignPatchToSlot refuses one). -->
                 <PatchPicker
-                  v-else-if="!hasDocStructure"
+                  v-else-if="!hasDocStructure && !isProtrackerSong"
                   :model-value="slot.patchId ?? null"
                   :patches="availablePatches"
                   placeholder="Select patch"
@@ -756,7 +756,7 @@
                   <button
                     type="button"
                     class="icon-action-button"
-                    :title="isReadOnly ? readOnlyHint : canAddSidInstrumentAt(slot.slot) ? 'New SID instrument' : hasDocStructure ? ahxInstrumentsHint : 'New patch'"
+                    :title="isReadOnly ? readOnlyHint : canAddSidInstrumentAt(slot.slot) ? 'New SID instrument' : isProtrackerSong ? 'New sample' : hasDocStructure ? ahxInstrumentsHint : 'New patch'"
                     :disabled="isReadOnly || (hasDocStructure && !canAddSidInstrumentAt(slot.slot))"
                     @click.stop="
                       onAddInstrumentClick(slot.slot);
@@ -768,8 +768,8 @@
                   <button
                     type="button"
                     class="icon-action-button"
-                    :title="isAhxSlot(slot) || slot.instrumentFormat === 'sid' ? 'Edit instrument' : 'Edit patch'"
-                    :disabled="!canEditSlot(slot)"
+                    :title="isAhxSlot(slot) || slot.instrumentFormat === 'sid' || isProtrackerSong ? 'Edit instrument' : 'Edit patch'"
+                    :disabled="isProtrackerSong ? slot.slot > 31 : !canEditSlot(slot)"
                     @click.stop="editSlotPatch(slot.slot)"
                   >
                     <q-icon name="edit" size="16px" />
@@ -1185,6 +1185,8 @@ import type { TrackerNavigationContext } from 'src/composables/useTrackerNavigat
 import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
 import BugReportDialog from 'src/components/tracker/BugReportDialog.vue';
 import SongExportDialog from 'src/components/tracker/SongExportDialog.vue';
+import { emptyModSample, patchFromModSample } from 'src/audio/tracker/mod-sample-codec';
+import { generateWave } from 'src/audio/tracker/mod-sample-ops';
 import NewSongDialog, { type NewSongChoice } from 'src/components/tracker/NewSongDialog.vue';
 import { snapshotEditorSong } from 'src/audio/tracker/ahx-source';
 import type { AhxEditGate } from 'src/audio/tracker/ahx-doc/edit-guard';
@@ -1549,6 +1551,10 @@ function onAhxPresetSelect(slotNumber: number, id: string): void {
   if (done) setActiveInstrument(slotNumber);
 }
 function onAddInstrumentClick(slotNumber: number): void {
+  if (isProtrackerSong.value) {
+    void addModSample(slotNumber);
+    return;
+  }
   if (!isSidSong.value) {
     void createNewSongPatch(slotNumber);
     return;
@@ -1557,6 +1563,29 @@ function onAddInstrumentClick(slotNumber: number): void {
   const added = trackerStore.addSidInstrument();
   if (added !== null) setActiveInstrument(added);
 }
+/**
+ * A new ProTracker instrument: a looped square wave in the clicked slot, or the
+ * first free one when that slot already holds a sample, opened in the sample editor.
+ */
+async function addModSample(clicked: number): Promise<void> {
+  const free = (n: number) => {
+    const slot = trackerStore.instrumentSlots.find((s) => s.slot === n);
+    return !!slot && !slot.patchId;
+  };
+  let target = clicked <= 31 && free(clicked) ? clicked : 0;
+  for (let n = 1; target === 0 && n <= 31; n++) if (free(n)) target = n;
+  if (target === 0) {
+    $q.notify({ type: 'warning', message: 'All 31 sample slots are in use.', timeout: 3000 });
+    return;
+  }
+  const sample = generateWave(emptyModSample(), 'square', 64);
+  trackerStore.pushHistory();
+  trackerStore.setModSample(target, patchFromModSample(target, sample), { name: '', volume: sample.volume });
+  setActiveInstrument(target);
+  await syncSongBankFromSlots();
+  editSlotPatch(target);
+}
+const isProtrackerSong = computed(() => trackerStore.moduleFormat === 'protracker');
 const ahxInstrumentsHint = computed(() =>
   isSidSong.value
     ? 'SID instruments are numbered in order: add one in the first free slot, edit it in its own editor'
@@ -2742,6 +2771,15 @@ async function createNewSong(choice: NewSongChoice) {
     } catch (err) {
       console.error('[New song] could not create the SID song', err);
       $q.notify({ type: 'negative', message: `Could not create the SID song: ${(err as Error).message}`, timeout: 5000 });
+    }
+    return;
+  }
+  if (choice.format === 'protracker') {
+    try {
+      await applyNewSong(() => trackerStore.resetToNewModSong());
+    } catch (err) {
+      console.error('[New song] could not create the ProTracker module', err);
+      $q.notify({ type: 'negative', message: `Could not create the module: ${(err as Error).message}`, timeout: 5000 });
     }
     return;
   }

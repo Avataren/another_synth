@@ -3,6 +3,7 @@ import { ahxExporter } from './ahx-exporter';
 import { hvlExporter } from './hvl-exporter';
 import { binExporter, prgExporter, sidExporter } from './sid-exporter';
 import { sngExporter } from './sng-exporter';
+import { modExporter } from './mod-exporter';
 import { SongExportError, type SongExportFormatId, type SongExporter } from './types';
 
 export const NOT_IMPLEMENTED_REASON = 'Not available yet.';
@@ -18,7 +19,6 @@ function createPlaceholderExporter(
     label,
     extension,
     mimeType: 'application/octet-stream',
-    description: '',
     available: false,
     check: () => ({ ok: false, reason: NOT_IMPLEMENTED_REASON }),
     serialize: () => {
@@ -35,7 +35,7 @@ export const SONG_EXPORTERS: readonly SongExporter[] = [
   sidExporter,
   prgExporter,
   binExporter,
-  createPlaceholderExporter('mod', 'ProTracker MOD', '.mod'),
+  modExporter,
   createPlaceholderExporter('xm', 'FastTracker 2 XM', '.xm'),
   createPlaceholderExporter('s3m', 'Scream Tracker 3 S3M', '.s3m'),
 ];

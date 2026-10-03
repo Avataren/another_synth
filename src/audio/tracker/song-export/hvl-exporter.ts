@@ -93,7 +93,6 @@ export const hvlExporter: SongExporter = {
   label: 'HVL (Hively Tracker)',
   extension: '.hvl',
   mimeType: 'application/octet-stream',
-  description: 'Saves the song as an .hvl file, with your pattern, transpose and title changes.',
   available: true,
   check,
   warnings,

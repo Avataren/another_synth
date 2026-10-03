@@ -47,6 +47,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/AhxInstrumentPage.vue'),
       },
       {
+        // The ProTracker sample editor: a .mod sample is 8-bit data with a
+        // header, not a synth `Patch`, so it has its own page.
+        path: 'mod/sample/:slot(\\d+)',
+        name: 'mod-sample-editor',
+        component: () => import('pages/ModSampleEditorPage.vue'),
+      },
+      {
         // The SID instrument editor (plan-sid-tracking.md S4): edits the song
         // doc's instrument, never a synth `Patch`, so it has its own page too.
         path: 'sid/instrument/:slot(\\d+)',

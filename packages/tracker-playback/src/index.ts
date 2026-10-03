@@ -72,6 +72,7 @@ export * from './playback-song-builder';
 
 // Binary parsers. `looksLike*` sniff a buffer; `parse*` decode one.
 export * from './mod-parser';
+export * from './mod-writer';
 export * from './mod-vblank';
 export * from './formats/xm';
 export * from './formats/s3m';
