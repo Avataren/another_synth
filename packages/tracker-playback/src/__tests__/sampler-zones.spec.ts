@@ -106,6 +106,15 @@ describe('multi-sample instrument', () => {
     expect(calls.at(-1)![0]).toBeCloseTo(2, 6);
   });
 
+  it('keeps a voice on its own sample for tick-scheduled pitch changes', async () => {
+    const { instrument, sources } = await loaded();
+    const low = instrument.noteOnAtTime(59, 100, 11, { trackIndex: 0, frequency: 440 })!;
+    instrument.noteOnAtTime(60, 100, 11, { trackIndex: 1, frequency: 440 });
+    // Vibrato, arpeggio and portamento arrive through this path every tick.
+    instrument.setVoiceFrequencyAtTime(low, 880, 12);
+    expect(sources[0]!.playbackRate.setValueAtTime.mock.calls.at(-1)![0]).toBeCloseTo(2, 6);
+  });
+
   it('is an ordinary one-sample instrument through load()', async () => {
     resetSampleQuality();
     setSampleQuality({ oversampleFactor: 1, removeDcOffset: false });

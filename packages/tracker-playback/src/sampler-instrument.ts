@@ -2051,6 +2051,9 @@ export class TrackerSamplerInstrument {
       return;
     }
 
+    // The rate is relative to the root note of the sample this voice started
+    // on, not whichever zone the last note-on left active.
+    this.activateZone(voice.zone);
     const playbackRate = this.calculatePlaybackRate(frequency);
 
     // Tracker playback schedules a whole row's worth of ticks synchronously,
