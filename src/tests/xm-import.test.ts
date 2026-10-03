@@ -133,8 +133,8 @@ describe('XM import', () => {
     expect(tracks[2]!.entries[0]!.macro).toBe('G20');
   });
 
-  it('allocates slots only for instruments the patterns actually use', () => {
-    // XM files routinely declare far more instruments than they use.
+  it('keeps every instrument at its own number', () => {
+    // The slot is the instrument number, so an edited song writes back the same list.
     const instruments = Array.from({ length: 40 }, () => ({
       samples: [{ frames: [0, 1, 2] }],
     }));
@@ -152,14 +152,12 @@ describe('XM import', () => {
     );
 
     const used = song.data.instrumentSlots.filter((s) => s.patchId);
-    expect(used).toHaveLength(2);
-    expect(Object.keys(song.data.songPatches)).toHaveLength(2);
-    // Referenced instruments are packed into the lowest slots in order.
-    expect(used[0]!.slot).toBe(1);
-    expect(used[1]!.slot).toBe(2);
+    expect(used).toHaveLength(40);
+    expect(Object.keys(song.data.songPatches)).toHaveLength(40);
+    expect(used.map((s) => s.slot)).toEqual(Array.from({ length: 40 }, (_, i) => i + 1));
   });
 
-  it('remaps pattern entries onto the slots it allocated', () => {
+  it('addresses pattern entries by the instrument number', () => {
     const instruments = Array.from({ length: 10 }, () => ({
       samples: [{ frames: [0, 1, 2] }],
     }));
@@ -177,9 +175,8 @@ describe('XM import', () => {
     );
 
     const entries = song.data.patterns[0]!.tracks[0]!.entries;
-    // XM instrument 7 became slot 1, and 9 became slot 2.
-    expect(entries[0]!.instrument).toBe('01');
-    expect(entries[1]!.instrument).toBe('02');
+    expect(entries[0]!.instrument).toBe('07');
+    expect(entries[1]!.instrument).toBe('09');
   });
 
   it('skips instruments that declare no sample data', () => {

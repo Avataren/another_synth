@@ -22,7 +22,8 @@ import type {
   TrackerEnvelopeShape,
   TrackerAutoVibrato,
 } from './tracker-sample';
-import { sampleToConfig } from './tracker-sample';
+import { sampleToConfig, sampleToZoneSet } from './tracker-sample';
+import type { TrackerZoneSet } from './tracker-sample';
 import {
   crossfadeLoop,
   lowpassForRate,
@@ -172,6 +173,8 @@ interface ActiveVoice {
    */
   basePan: number;
   noteNumber: number;
+  /** The sample (zone) this voice was started on. */
+  zone: number;
   startTime: number;
   /** Tick duration in force when this voice started, for envelope release. */
   tickSeconds: number;
@@ -189,6 +192,20 @@ interface ActiveVoice {
 }
 
 const MIP_LEVELS = 4;
+
+/** Everything `load` derives for one sample; swapped in wholesale per note. */
+interface ZoneState {
+  samplerState: TrackerSamplerConfig;
+  audioBuffer: AudioBuffer | null;
+  sampleFrames: number;
+  loopEnabled: boolean;
+  loopStartSeconds: number;
+  loopEndSeconds: number;
+  oversampleFactor: number;
+  conditionedMono: Float32Array | null;
+  conditionedLoop: LoopRegion | null;
+  mipBuffers: (AudioBuffer | null)[];
+}
 
 export class TrackerSamplerInstrument {
   /**
@@ -211,6 +228,11 @@ export class TrackerSamplerInstrument {
 
   private audioContext: AudioContext;
   private audioBuffer: AudioBuffer | null = null;
+  /** One snapshot per sample; a plain sampler instrument has exactly one. */
+  private zones: ZoneState[] = [];
+  /** Note (MIDI 12..107) -> zone index, or null for a single-sample instrument. */
+  private zoneMap: number[] | null = null;
+  private activeZone = 0;
   private samplerState: TrackerSamplerConfig | null = null;
   private activeVoices: Map<number, ActiveVoice> = new Map();
   private voiceRoundRobinIndex = 0;
@@ -329,6 +351,9 @@ export class TrackerSamplerInstrument {
   async loadSample(sample: TrackerSample): Promise<void> {
     const { config, data, sampleRate, channels, voiceCount } =
       sampleToConfig(sample);
+    if (sample.zones && sample.zoneMap) {
+      return this.loadZones(sampleToZoneSet(sample), voiceCount);
+    }
     return this.load(config, data, sampleRate, channels, voiceCount);
   }
 
@@ -345,11 +370,67 @@ export class TrackerSamplerInstrument {
     channels = 1,
     voiceCount?: number,
   ): Promise<void> {
-    this.samplerState = config;
     this.voiceCount = Math.max(
       1,
       Math.min(MAX_VOICE_COUNT, voiceCount ?? DEFAULT_VOICE_COUNT),
     );
+    this.zones = [this.buildZone(config, data, sampleRate, channels)];
+    this.zoneMap = null;
+    this.activateZone(0);
+    this.ready = true;
+  }
+
+  /**
+   * Load a multi-sample instrument (XM): several samples and a 96-entry
+   * note-to-sample table. Envelopes, fadeout and autovibrato are the
+   * instrument's, so they are read from zone 0's config for every zone.
+   */
+  async loadZones(set: TrackerZoneSet, voiceCount?: number): Promise<void> {
+    if (set.zones.length === 0) throw new Error('loadZones needs a zone');
+    this.voiceCount = Math.max(
+      1,
+      Math.min(MAX_VOICE_COUNT, voiceCount ?? DEFAULT_VOICE_COUNT),
+    );
+    this.zones = set.zones.map((z) =>
+      this.buildZone(z.config, z.data, z.sampleRate, z.channels ?? 1),
+    );
+    this.zoneMap = set.zones.length > 1 ? set.map.slice(0, 96) : null;
+    this.activateZone(0);
+    this.ready = true;
+  }
+
+  /** Which zone plays a MIDI note; XM note 1 (C-0) is MIDI 12. */
+  private zoneForNote(noteNumber: number): number {
+    if (!this.zoneMap) return 0;
+    const index = Math.max(0, Math.min(95, Math.round(noteNumber) - 12));
+    const zone = this.zoneMap[index] ?? 0;
+    return zone < this.zones.length ? zone : 0;
+  }
+
+  /** Point the working fields at a zone's snapshot. */
+  private activateZone(index: number): void {
+    const zone = this.zones[index];
+    if (!zone) return;
+    this.activeZone = index;
+    this.samplerState = zone.samplerState;
+    this.audioBuffer = zone.audioBuffer;
+    this.sampleFrames = zone.sampleFrames;
+    this.loopEnabled = zone.loopEnabled;
+    this.loopStartSeconds = zone.loopStartSeconds;
+    this.loopEndSeconds = zone.loopEndSeconds;
+    this.oversampleFactor = zone.oversampleFactor;
+    this.conditionedMono = zone.conditionedMono;
+    this.conditionedLoop = zone.conditionedLoop;
+    this.mipBuffers = zone.mipBuffers;
+  }
+
+  private buildZone(
+    config: TrackerSamplerConfig,
+    data: Float32Array,
+    sampleRate: number,
+    channels: number,
+  ): ZoneState {
+    this.samplerState = config;
 
     // Empty samples (0 length) become one frame of silence.
     const frameCount = Math.max(1, Math.floor(data.length / channels));
@@ -424,7 +505,18 @@ export class TrackerSamplerInstrument {
     // afford it. Same filtered buffers, built earlier; nothing audible moves.
     this.buildMipLevels();
 
-    this.ready = true;
+    return {
+      samplerState: config,
+      audioBuffer: this.audioBuffer,
+      sampleFrames: this.sampleFrames,
+      loopEnabled: this.loopEnabled,
+      loopStartSeconds: this.loopStartSeconds,
+      loopEndSeconds: this.loopEndSeconds,
+      oversampleFactor: this.oversampleFactor,
+      conditionedMono: this.conditionedMono,
+      conditionedLoop: this.conditionedLoop,
+      mipBuffers: this.mipBuffers,
+    };
   }
 
   /**
@@ -827,6 +919,7 @@ export class TrackerSamplerInstrument {
       );
       return;
     }
+    this.activateZone(this.zoneForNote(noteNumber));
 
     // Stop existing voice if playing (unless allowDuplicate is true)
     if (!options?.allowDuplicate) {
@@ -922,6 +1015,7 @@ export class TrackerSamplerInstrument {
       panNode,
       tickSeconds: DEFAULT_TICK_SECONDS,
       noteNumber,
+      zone: this.activeZone,
       startTime: this.audioContext.currentTime,
       frequency: frequency ?? 440,
       targetGain: noteGain, // Track scheduled gain
@@ -1023,6 +1117,7 @@ export class TrackerSamplerInstrument {
       return;
     }
 
+    this.activateZone(voice.zone);
     const playbackRate = this.calculatePlaybackRate(frequency);
     const now = this.audioContext.currentTime;
 
@@ -1144,6 +1239,8 @@ export class TrackerSamplerInstrument {
 
     // Clear the audio buffer reference for GC
     this.audioBuffer = null;
+    this.zones = [];
+    this.zoneMap = null;
     this.samplerState = null;
     this.ready = false;
 
@@ -1593,6 +1690,7 @@ export class TrackerSamplerInstrument {
       );
       return undefined;
     }
+    this.activateZone(this.zoneForNote(noteNumber));
 
     // Stop existing voice with same note number if playing (unless allowDuplicate is true)
     if (!options?.allowDuplicate) {
@@ -1744,6 +1842,7 @@ export class TrackerSamplerInstrument {
       panNode,
       tickSeconds,
       noteNumber,
+      zone: this.activeZone,
       startTime: startTime,
       frequency: frequency ?? 440,
       targetGain: noteGain, // Track scheduled gain

@@ -9,3 +9,4 @@ export * from './download';
 export * from './file-name';
 export * from './registry';
 export * from './types';
+export * from './xm-exporter';

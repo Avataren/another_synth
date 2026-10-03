@@ -4,6 +4,7 @@ import { hvlExporter } from './hvl-exporter';
 import { binExporter, prgExporter, sidExporter } from './sid-exporter';
 import { sngExporter } from './sng-exporter';
 import { modExporter } from './mod-exporter';
+import { xmExporter } from './xm-exporter';
 import { SongExportError, type SongExportFormatId, type SongExporter } from './types';
 
 export const NOT_IMPLEMENTED_REASON = 'Not available yet.';
@@ -36,7 +37,7 @@ export const SONG_EXPORTERS: readonly SongExporter[] = [
   prgExporter,
   binExporter,
   modExporter,
-  createPlaceholderExporter('xm', 'FastTracker 2 XM', '.xm'),
+  xmExporter,
   createPlaceholderExporter('s3m', 'Scream Tracker 3 S3M', '.s3m'),
 ];
 

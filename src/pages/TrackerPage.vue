@@ -707,7 +707,7 @@
                 />
                 <!-- An AHX/HVL or SID song's instruments are its doc's: no synth patch goes in (assignPatchToSlot refuses one). -->
                 <PatchPicker
-                  v-else-if="!hasDocStructure && !isProtrackerSong"
+                  v-else-if="!hasDocStructure && !isProtrackerSong && !isXmSong"
                   :model-value="slot.patchId ?? null"
                   :patches="availablePatches"
                   placeholder="Select patch"
@@ -756,7 +756,7 @@
                   <button
                     type="button"
                     class="icon-action-button"
-                    :title="isReadOnly ? readOnlyHint : canAddSidInstrumentAt(slot.slot) ? 'New SID instrument' : isProtrackerSong ? 'New sample' : hasDocStructure ? ahxInstrumentsHint : 'New patch'"
+                    :title="isReadOnly ? readOnlyHint : canAddSidInstrumentAt(slot.slot) ? 'New SID instrument' : isProtrackerSong ? 'New sample' : isXmSong ? 'New instrument' : hasDocStructure ? ahxInstrumentsHint : 'New patch'"
                     :disabled="isReadOnly || (hasDocStructure && !canAddSidInstrumentAt(slot.slot))"
                     @click.stop="
                       onAddInstrumentClick(slot.slot);
@@ -768,8 +768,8 @@
                   <button
                     type="button"
                     class="icon-action-button"
-                    :title="isAhxSlot(slot) || slot.instrumentFormat === 'sid' || isProtrackerSong ? 'Edit instrument' : 'Edit patch'"
-                    :disabled="isProtrackerSong ? slot.slot > 31 : !canEditSlot(slot)"
+                    :title="isAhxSlot(slot) || slot.instrumentFormat === 'sid' || isProtrackerSong || isXmSong ? 'Edit instrument' : 'Edit patch'"
+                    :disabled="isProtrackerSong ? slot.slot > 31 : isXmSong ? slot.slot > 128 : !canEditSlot(slot)"
                     @click.stop="editSlotPatch(slot.slot)"
                   >
                     <q-icon name="edit" size="16px" />
@@ -1186,6 +1186,9 @@ import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
 import BugReportDialog from 'src/components/tracker/BugReportDialog.vue';
 import SongExportDialog from 'src/components/tracker/SongExportDialog.vue';
 import { emptyModSample, patchFromModSample } from 'src/audio/tracker/mod-sample-codec';
+import { patchFromXmInstrument } from 'src/audio/tracker/xm-instrument-codec';
+import { newXmInstrument } from 'src/audio/tracker/xm-sample-ops';
+import { xmMetaOf } from '@another-synth/tracker-playback';
 import { generateWave } from 'src/audio/tracker/mod-sample-ops';
 import NewSongDialog, { type NewSongChoice } from 'src/components/tracker/NewSongDialog.vue';
 import { snapshotEditorSong } from 'src/audio/tracker/ahx-source';
@@ -1555,6 +1558,10 @@ function onAddInstrumentClick(slotNumber: number): void {
     void addModSample(slotNumber);
     return;
   }
+  if (isXmSong.value) {
+    void addXmInstrument(slotNumber);
+    return;
+  }
   if (!isSidSong.value) {
     void createNewSongPatch(slotNumber);
     return;
@@ -1585,6 +1592,33 @@ async function addModSample(clicked: number): Promise<void> {
   await syncSongBankFromSlots();
   editSlotPatch(target);
 }
+/**
+ * A new FastTracker 2 instrument: one looped square-wave sample in the clicked
+ * slot, or the first free one when that slot is taken, opened in the editor.
+ */
+async function addXmInstrument(clicked: number): Promise<void> {
+  const free = (n: number) => {
+    const slot = trackerStore.instrumentSlots.find((s) => s.slot === n);
+    return !!slot && !slot.patchId;
+  };
+  let target = clicked <= 128 && free(clicked) ? clicked : 0;
+  for (let n = 1; target === 0 && n <= 128; n++) if (free(n)) target = n;
+  if (target === 0) {
+    $q.notify({ type: 'warning', message: 'All 128 instrument slots are in use.', timeout: 3000 });
+    return;
+  }
+  const instrument = newXmInstrument();
+  trackerStore.pushHistory();
+  trackerStore.setXmInstrument(
+    target,
+    patchFromXmInstrument(target, instrument, undefined, trackerStore.patterns[0]?.tracks.length ?? 8),
+    xmMetaOf(instrument),
+  );
+  setActiveInstrument(target);
+  await syncSongBankFromSlots();
+  editSlotPatch(target);
+}
+const isXmSong = computed(() => trackerStore.moduleFormat === 'xm');
 const isProtrackerSong = computed(() => trackerStore.moduleFormat === 'protracker');
 const ahxInstrumentsHint = computed(() =>
   isSidSong.value
@@ -2779,6 +2813,15 @@ async function createNewSong(choice: NewSongChoice) {
       await applyNewSong(() => trackerStore.resetToNewModSong());
     } catch (err) {
       console.error('[New song] could not create the ProTracker module', err);
+      $q.notify({ type: 'negative', message: `Could not create the module: ${(err as Error).message}`, timeout: 5000 });
+    }
+    return;
+  }
+  if (choice.format === 'xm') {
+    try {
+      await applyNewSong(() => trackerStore.resetToNewXmSong());
+    } catch (err) {
+      console.error('[New song] could not create the FastTracker 2 module', err);
       $q.notify({ type: 'negative', message: `Could not create the module: ${(err as Error).message}`, timeout: 5000 });
     }
     return;

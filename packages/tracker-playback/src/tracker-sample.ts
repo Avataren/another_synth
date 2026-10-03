@@ -164,6 +164,57 @@ export interface TrackerSample {
    * needs a re-parse.
    */
   opl?: OplInstrumentData;
+  /**
+   * XM multi-sample instruments: the samples beyond this one (this sample is
+   * zone 0) and the 96-entry note-to-zone table (note 0 = C-0; values index
+   * `[this, ...zones]`). Envelopes, fadeout and autovibrato stay instrument
+   * level, taken from this sample.
+   */
+  zones?: TrackerSampleZone[];
+  zoneMap?: number[];
+}
+
+/** One extra sample of a multi-sample instrument; see `TrackerSample.zones`. */
+export interface TrackerSampleZone {
+  name: string;
+  data: Float32Array;
+  sampleRate: number;
+  rootNote: number;
+  detuneCents: number;
+  gain: number;
+  pan?: number;
+  loop: TrackerSampleLoop;
+  loopStartFrames: number;
+  loopLengthFrames: number;
+}
+
+/** What the sampler plays for a multi-sample instrument. */
+export interface TrackerZoneSet {
+  /** Note (C-0 = index 0) -> index into `zones`. */
+  map: number[];
+  zones: Array<{
+    config: TrackerSamplerConfig;
+    data: Float32Array;
+    sampleRate: number;
+    channels?: number;
+  }>;
+}
+
+/** All of a multi-sample `TrackerSample`'s zones as sampler input. */
+export function sampleToZoneSet(sample: TrackerSample): TrackerZoneSet {
+  const primary = sampleToConfig(sample);
+  const zones: TrackerZoneSet['zones'] = [
+    { config: primary.config, data: primary.data, sampleRate: primary.sampleRate },
+  ];
+  for (const z of sample.zones ?? []) {
+    const c = sampleToConfig({
+      ...sample,
+      ...z,
+      volumeEnvelope: sample.volumeEnvelope,
+    } as TrackerSample);
+    zones.push({ config: c.config, data: c.data, sampleRate: c.sampleRate });
+  }
+  return { map: sample.zoneMap ?? [], zones };
 }
 
 /** What an importer's instrument half returns. */

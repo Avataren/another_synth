@@ -363,6 +363,12 @@ function normalizeSamplerStateWithDefaults(
     ...(sampler.trackerAutoVibrato
       ? { trackerAutoVibrato: sampler.trackerAutoVibrato }
       : {}),
+    ...(sampler.trackerZones
+      ? { trackerZones: sampler.trackerZones }
+      : {}),
+    ...(sampler.trackerZoneMap
+      ? { trackerZoneMap: sampler.trackerZoneMap }
+      : {}),
   };
 
   return normalizeSamplerState(base);

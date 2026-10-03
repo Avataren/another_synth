@@ -115,7 +115,7 @@ describe('editor routing table', () => {
     expect(INSTRUMENT_EDITOR_BY_FORMAT).toEqual({
       native: 'synth-patch',
       protracker: 'mod-sample',
-      xm: 'sampler-patch',
+      xm: 'xm-instrument',
       s3m: 'sampler-patch',
       ahx: 'ahx-display',
       // plan-sid-tracking.md S4: the SID instrument editor.
@@ -136,8 +136,11 @@ describe('editor routing table', () => {
       resolveInstrumentEditor({ patchId: 'p', instrumentType: 'synth', instrumentFormat: 'native' }),
     ).toBe('synth-patch');
     expect(
-      resolveInstrumentEditor({ patchId: 'p', instrumentType: 'sampler', instrumentFormat: 'xm' }),
+      resolveInstrumentEditor({ patchId: 'p', instrumentType: 'sampler', instrumentFormat: 's3m' }),
     ).toBe('sampler-patch');
+    expect(
+      resolveInstrumentEditor({ patchId: 'p', instrumentType: 'sampler', instrumentFormat: 'xm' }),
+    ).toBe('xm-instrument');
     expect(
       resolveInstrumentEditor({ instrumentType: 'ahx', instrumentFormat: 'ahx' }),
     ).toBe('ahx-display');
@@ -164,15 +167,18 @@ describe('editor routing table', () => {
       resolveInstrumentEditorRoute({ instrumentType: 'ahx', instrumentFormat: 'ahx' }),
     ).toBe('ahx-instrument-display');
     expect(
-      resolveInstrumentEditorRoute({ patchId: 'p', instrumentType: 'sampler', instrumentFormat: 'xm' }),
+      resolveInstrumentEditorRoute({ patchId: 'p', instrumentType: 'sampler', instrumentFormat: 's3m' }),
     ).toBe('patch-instrument-editor');
+    expect(INSTRUMENT_EDITOR_ROUTE['xm-instrument']).toBe('xm-instrument-editor');
   });
 });
 
 describe('canEditSlot', () => {
   it('needs a patch for the patch editors and the AHX payload for the AHX display', () => {
     expect(canEditSlot({ patchId: 'p', instrumentType: 'synth', instrumentFormat: 'native' })).toBe(true);
-    expect(canEditSlot({ instrumentType: 'sampler', instrumentFormat: 'xm' })).toBe(false);
+    expect(canEditSlot({ instrumentType: 'sampler', instrumentFormat: 's3m' })).toBe(false);
+    // An XM slot opens its instrument editor even while empty: that is where one is made.
+    expect(canEditSlot({ instrumentType: 'sampler', instrumentFormat: 'xm' })).toBe(true);
     expect(canEditSlot({ instrumentType: 'ahx', instrumentFormat: 'ahx', ahxData: {} })).toBe(true);
     expect(canEditSlot({ instrumentType: 'ahx', instrumentFormat: 'ahx' })).toBe(false);
     expect(canEditSlot({ instrumentType: 'opl', instrumentFormat: 's3m', oplData: {} })).toBe(false);

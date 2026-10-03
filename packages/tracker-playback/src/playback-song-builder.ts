@@ -3,7 +3,7 @@ import type {
   TrackerEntryData,
   TrackerPattern,
 } from './tracker-types';
-import { modEntrySignature } from './tracker-types';
+import { modEntrySignature, xmEntrySignature } from './tracker-types';
 import {
   parseTrackerNoteSymbol,
   parseTrackerVolume,
@@ -90,12 +90,12 @@ export interface PlaybackSongSource {
   defaultPatternRows: number;
   normalizeInstrumentId: (instrumentId?: string) => string | undefined;
   /**
-   * ProTracker only: an instrument's default volume as a 0-255 velocity, which
+   * ProTracker and XM: an instrument's default volume as a 0-255 velocity, which
    * a row that names the instrument without a volume resets to (a tracker
    * loads the sample's volume on every sample number). Only asked for rows
    * the importer did not write, which carry their volume already.
    */
-  sampleDefaultVelocity?: (instrumentId: string) => number | undefined;
+  sampleDefaultVelocity?: (instrumentId: string, midi?: number) => number | undefined;
 }
 
 /**
@@ -368,13 +368,16 @@ export function buildPlaybackStepsForTrack(
     } else if (
       midi !== undefined &&
       entry?.instrument &&
-      source.moduleFormat === 'protracker' &&
       source.sampleDefaultVelocity &&
-      !(entry.modCell && entry.modSig === modEntrySignature(entry))
+      ((source.moduleFormat === 'protracker' &&
+        !(entry.modCell && entry.modSig === modEntrySignature(entry))) ||
+        (source.moduleFormat === 'xm' &&
+          !(entry.xmCell && entry.xmSig === xmEntrySignature(entry))))
     ) {
-      // A row written in this editor, not read from a .mod: it resets to the
-      // sample's own volume, as ProTracker would.
-      const fallback = source.sampleDefaultVelocity(instrumentId ?? entry.instrument);
+      // A row written in this editor, not read from a module: it resets to the
+      // sample's own volume, as the tracker would. An XM instrument keeps one
+      // per sample, so the note picks it through the keymap.
+      const fallback = source.sampleDefaultVelocity(instrumentId ?? entry.instrument, midi);
       if (fallback !== undefined) step.velocity = fallback;
     }
 

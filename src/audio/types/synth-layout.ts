@@ -151,6 +151,24 @@ export interface SamplerState {
   trackerEnvelope?: TrackerVolumeEnvelope;
   trackerPanEnvelope?: TrackerPanningEnvelope;
   trackerAutoVibrato?: TrackerAutoVibrato;
+  /**
+   * XM multi-sample instruments: the samples beyond this node's own (which is
+   * zone 0), each in `patch.audioAssets` under `assetId`, and the 96-entry
+   * note-to-zone table (index 0 = C-0; values index `[this, ...trackerZones]`).
+   */
+  trackerZones?: TrackerPatchZone[];
+  trackerZoneMap?: number[];
+}
+
+export interface TrackerPatchZone {
+  assetId: string;
+  rootNote: number;
+  detune: number;
+  gain: number;
+  pan?: number;
+  loopMode: SamplerLoopMode;
+  loopStart: number;
+  loopEnd: number;
 }
 
 /**

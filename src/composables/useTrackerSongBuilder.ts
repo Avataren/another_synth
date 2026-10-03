@@ -4,7 +4,7 @@ import type { TrackerPattern, InstrumentSlot } from 'src/stores/tracker-store';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type { SongBankSlot } from 'src/audio/tracker/song-bank';
 import type { Patch } from 'src/audio/types/preset-types';
-import type { ModuleFormat, OplInstrumentData } from '@another-synth/tracker-playback';
+import { xmSampleForNote, type ModuleFormat, type OplInstrumentData } from '@another-synth/tracker-playback';
 import {
   buildPlaybackSong as buildSong,
   buildPlaybackPatterns as buildPatterns,
@@ -105,9 +105,15 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       currentPattern: context.currentPattern.value,
       defaultPatternRows: context.defaultPatternRows.value,
       normalizeInstrumentId: context.normalizeInstrumentId,
-      sampleDefaultVelocity: (instrumentId) => {
+      sampleDefaultVelocity: (instrumentId, midi) => {
         const slotNumber = Number.parseInt(instrumentId, 10);
-        const volume = context.instrumentSlots.value.find((s) => s.slot === slotNumber)?.modVolume;
+        const slot = context.instrumentSlots.value.find((s) => s.slot === slotNumber);
+        // An XM instrument holds a default volume per sample; the note picks one.
+        const sample =
+          slot?.xmInstrument && midi !== undefined
+            ? xmSampleForNote(slot.xmInstrument, midi - 11)
+            : undefined;
+        const volume = sample?.volume ?? slot?.modVolume;
         return volume === undefined ? undefined : Math.round((volume / 64) * 255);
       },
       ...(context.initialSpeed

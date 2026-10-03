@@ -262,7 +262,9 @@ function float32ArrayToWav(
   const offset = 44;
   for (let i = 0; i < samples.length; i++) {
     const sample = Math.max(-1, Math.min(1, samples[i] ?? 0));
-    const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+    // Symmetric about zero and rounded, so a value on the 16-bit grid
+    // (k / 32768, which is what an XM or WAV sample holds) comes back exactly.
+    const int16 = Math.max(-0x8000, Math.min(0x7fff, Math.round(sample * 0x8000)));
     view.setInt16(offset + i * 2, int16, true);
   }
 
@@ -318,7 +320,7 @@ function wavToFloat32Array(arrayBuffer: ArrayBuffer): Float32Array {
   if (bitsPerSample === 16) {
     for (let i = 0; i < numSamples; i++) {
       const int16 = view.getInt16(dataOffset + i * 2, true);
-      samples[i] = int16 / (int16 < 0 ? 0x8000 : 0x7fff);
+      samples[i] = int16 / 0x8000;
     }
   } else if (bitsPerSample === 8) {
     for (let i = 0; i < numSamples; i++) {

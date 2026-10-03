@@ -3866,3 +3866,41 @@ Tests: `pattern-canvas.test.ts` playback-follow frame pin (new). Suite 1448
 | 2026-08-28 | fix | **Verified by ear on the test deploy — 9xx now correct.** 9xx sample offset fixed end to end (D11): offset now rides on the noteOn and is applied at voice start; `ModInstrument` honours macro 1 with ProTracker-style offset memory; `PooledInstrument.setVoiceMacroAtTime` implemented (also restores per-channel pan on the pooled path). Tests: `src/tests/mod-sample-offset-playback.test.ts`, `src/tests/mod-instrument-sample-offset.test.ts`. |
 | 2026-08-28 | 1 | MOD parser accepts up to 32 channels (`channelsForSignature`: `<n>CHN`, `<nn>CH/CN`, `TDZ<n>`, CD81/OKTA/OCTA); FLT8 explicitly rejected (D9). Importer derives track count from the module and repeats L-R-R-L panning past 4 channels (D10). Verified `misc/peacedroid.mod` parses byte-identically before/after. Tests: `src/tests/mod-parser-multichannel.test.ts` (includes per-channel effect-routing coverage). |
 | 2026-08-28 | 1 | Row count moved onto `TrackerPattern.rows`; song file v3 backfills pre-v3 files from `data.patternRows` (D7). `engine.setLength` no longer flattens pattern lengths; added `setPatternLength` (D8). Song builder, playback store, export duration and the pattern UI all read per-pattern counts. Tests: `src/tests/stores/tracker-store-pattern-rows.test.ts`, `src/tests/tracker-engine-pattern-length.test.ts`. |
+
+### D108 — XM authoring: multi-sample zones, instrument meta on the slot, native .xm export
+
+Supersedes D99 (which parsed the keymap and ignored it).
+
+- **Zones in the sampler.** `TrackerSamplerInstrument` keeps one snapshot per
+  sample (`ZoneState`) and swaps the working fields in at note-on from the
+  note's keymap entry (`loadZones`, `zoneForNote`); a voice remembers its zone,
+  so `setFrequency` (portamento, vibrato) uses that sample's root note. One
+  slot is still one instrument — per-voice effects keep addressing it by
+  instrument id. In a `Patch`, zone 0 is the sampler node, the rest are
+  `SamplerState.trackerZones` (assets in `audioAssets`) plus `trackerZoneMap`.
+- **Slot = instrument number.** `buildXmTrackerSamples` no longer packs the
+  referenced instruments down: instrument n is slot n (130 slots cover XM's
+  128), so an edited song writes back the same list. Only a file declaring more
+  than 130 instruments still packs. This changed every XM golden event stream's
+  instrument ids (regenerated; 62 files differ in ids only, 5 multi-sample files
+  also differ in default velocity, which now follows the note's keymap sample).
+- **What the patch cannot hold lives on the slot** (`InstrumentSlot.xmInstrument`,
+  `XmInstrumentMeta`): keymap, both envelopes incl. switched-off ones, fadeout,
+  autovibrato, per-sample default volume / panning / relative note / finetune /
+  bit depth / the reserved header byte. PCM and loop points stay in the patch.
+  Song-level header facts are `xmOrigin` (tracker name, restart order, which
+  empty instruments had the short 29-byte header). Rows keep `xmCell`/`xmSig`
+  like MOD's `modCell`.
+- **Audio-asset codec** now rounds symmetrically (`k/32768`), so 16-bit XM data
+  survives a patch exactly; before, positive values were truncated against
+  32767.
+- **Verified against OpenMPT** (`openmpt123 --render`, first 30 s, PCM
+  md5): 35 corpus files re-exported through the app render byte-identical to the
+  originals. What it took: the tracker name (players key quirks on it), space-
+  padded names, an empty instrument's header size (29 vs 33 — OpenMPT renders a
+  module differently), the sample header's "reserved" byte, and loop type 3
+  (both bits) meaning ping-pong.
+- Editor: `XmInstrumentEditorPage.vue` (sample list, keymap strip, draggable
+  volume/panning envelopes, fadeout, autovibrato, wave/PWM/drum generators,
+  WAV/AIFF/8SVX/raw import and export). Playback of an authored row with an
+  instrument and no volume uses the keymap sample's default volume.

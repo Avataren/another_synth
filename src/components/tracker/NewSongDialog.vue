@@ -31,6 +31,11 @@
           <span class="new-song-format-note">Four sample channels; exports as a .mod.</span>
         </label>
         <label class="new-song-format">
+          <input v-model="format" type="radio" value="xm" data-testid="new-song-format-xm" />
+          <span class="new-song-format-name">FastTracker 2</span>
+          <span class="new-song-format-note">Eight channels, multi-sample instruments; exports as an .xm.</span>
+        </label>
+        <label class="new-song-format">
           <input v-model="format" type="radio" value="sid" data-testid="new-song-format-sid" />
           <span class="new-song-format-name">SID (GoatTracker)</span>
           <span class="new-song-format-note">Three C64 voices; saves as a GoatTracker 2 .sng.</span>
@@ -155,6 +160,7 @@ export type NewAhxSongChoiceOptions = Required<Pick<NewAhxDocOptions, 'trackLeng
 export type NewSongChoice =
   | { format: 'native' }
   | { format: 'protracker' }
+  | { format: 'xm' }
   | { format: 'sid'; options: NewSidDocOptions }
   | { format: 'ahx' | 'hvl'; options: NewAhxSongChoiceOptions };
 
@@ -244,6 +250,8 @@ function choice(): NewSongChoice {
       };
     case 'protracker':
       return { format: 'protracker' };
+    case 'xm':
+      return { format: 'xm' };
     default:
       return { format: 'native' };
   }

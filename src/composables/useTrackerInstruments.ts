@@ -266,6 +266,11 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
       void context.router.push({ name: 'mod-sample-editor', params: { slot: slotNumber.toString() } });
       return;
     }
+    // An XM slot opens the instrument editor even while empty: that is where one is made.
+    if (context.trackerStore.moduleFormat === 'xm' && slotNumber >= 1 && slotNumber <= 128) {
+      void context.router.push({ name: 'xm-instrument-editor', params: { slot: slotNumber.toString() } });
+      return;
+    }
     if (!slot || !canEditSlot(slot)) return;
 
     // The slot's format picks the editor (see INSTRUMENT_EDITOR_BY_FORMAT).

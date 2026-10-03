@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { deserializePatch } from 'src/audio/serialization/patch-serializer';
 import ModInstrument from 'src/audio/mod-instrument';
@@ -202,36 +202,29 @@ describe('the note-to-sample keymap', () => {
     expect(new Set(xm.instruments[0]!.keymap).size).toBe(2);
   });
 
-  it('imports only the first audible sample, and says so (D99)', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const song = importXmToTrackerSong(
-        buildXm({
-          numChannels: 1,
-          instruments: [
-            {
-              keymap: KEYMAP,
-              samples: [
-                { frames: [0, 1, 0, -1], name: 'low' },
-                { frames: [0, -1, 0, 1], name: 'high' },
-              ],
-            },
-          ],
-          patterns: [{ numRows: 1, cells: [[cell(49, { instrument: 1 })]] }],
-        }).buffer as ArrayBuffer,
-      );
+  it('imports every sample as a zone and keeps the keymap (D99 superseded)', () => {
+    const song = importXmToTrackerSong(
+      buildXm({
+        numChannels: 1,
+        instruments: [
+          {
+            keymap: KEYMAP,
+            samples: [
+              { frames: [0, 1, 0, -1], name: 'low' },
+              { frames: [0, -1, 0, 1], name: 'high' },
+            ],
+          },
+        ],
+        patterns: [{ numRows: 1, cells: [[cell(49, { instrument: 1 })]] }],
+      }).buffer as ArrayBuffer,
+    );
 
-      const patch = Object.values(song.data.songPatches!)[0]!;
-      // The imported sample is the keymap's first target ('low'), not a merge
-      // or the last one.
-      expect(patch.metadata.name).toBe('low');
-      expect(
-        warn.mock.calls.some((call) =>
-          String(call[0]).includes('multi-sample'),
-        ),
-      ).toBe(true);
-    } finally {
-      warn.mockRestore();
-    }
+    const patch = Object.values(song.data.songPatches!)[0]!;
+    // The primary sampler is sample 0; sample 1 is a zone with its own asset.
+    expect(patch.metadata.name).toBe('low');
+    const sampler = Object.values(patch.synthState.samplers)[0]!;
+    expect(sampler.trackerZones).toHaveLength(1);
+    expect(sampler.trackerZoneMap).toEqual(KEYMAP.map((n) => n));
+    expect(patch.audioAssets[sampler.trackerZones![0]!.assetId]).toBeDefined();
   });
 });

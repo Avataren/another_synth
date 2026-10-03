@@ -15,7 +15,6 @@ import type {
   TrackerAutoVibrato,
 } from '../tracker-sample';
 import { TOTAL_SLOTS } from '../song-constants';
-import { firstSampleOf } from './xm-patterns';
 
 /**
  * The sample buffer is declared at this rate regardless of its true rate, and
@@ -37,7 +36,7 @@ const ASSET_SAMPLE_RATE = 44100;
  * mod-import's empirically calibrated root note of 65 comes from -- a useful
  * check that this is the right relation rather than a fitted number.
  */
-const XM_ROOT_NOTE =
+export const XM_ROOT_NOTE =
   69 + 12 * Math.log2(ASSET_SAMPLE_RATE / 32 / 440);
 
 /** XM finetune spans -128..127 across one semitone. */
@@ -158,74 +157,79 @@ function toAutoVibrato(
 }
 
 /**
- * One `TrackerSample` per instrument the pattern data actually references.
+ * One `TrackerSample` per instrument, at the slot with the instrument's own
+ * number.
  *
  * XM files routinely declare far more instruments than they use --
- * jt_letgo.xm declares 128 and uses 8 -- so the referenced ones are packed
- * down into consecutive slots rather than allocated by their file numbering.
- * `slotForInstrument` carries that mapping to the pattern half, which needs it
- * to resolve a cell's instrument byte.
+ * jt_letgo.xm declares 128 and uses 8 -- but a slot table sized to XM's own
+ * maximum holds them all, and keeping the file's numbering is what lets an
+ * edited song be written back as the same instrument list. Instruments with
+ * no sample take no slot. Only a file declaring more instruments than there
+ * are slots falls back to packing the referenced ones down.
+ * `slotForInstrument` carries the mapping to the pattern half.
  */
 export function buildXmTrackerSamples(xm: XmSong): TrackerSampleSet {
-  const referenced = new Set<number>();
-  for (const pattern of xm.patterns) {
-    for (const row of pattern.rows) {
-      for (const cell of row) {
-        if (cell.instrument > 0) referenced.add(cell.instrument);
-      }
-    }
-  }
-
+  const channelsPerInstrument = measureChannelsPerInstrument(xm);
   const samples: TrackerSample[] = [];
   const slotForInstrument = new Map<number, number>();
-  const channelsPerInstrument = measureChannelsPerInstrument(xm);
+
+  let order: number[];
+  let identity = true;
+  if (xm.instruments.length <= TOTAL_SLOTS) {
+    order = xm.instruments.map((_, i) => i + 1);
+  } else {
+    identity = false;
+    const referenced = new Set<number>();
+    for (const pattern of xm.patterns) {
+      for (const row of pattern.rows) {
+        for (const cell of row) {
+          if (cell.instrument > 0) referenced.add(cell.instrument);
+        }
+      }
+    }
+    order = [...referenced].sort((a, b) => a - b);
+  }
 
   let nextSlot = 1;
-  for (const instrumentNumber of [...referenced].sort((a, b) => a - b)) {
+  for (const instrumentNumber of order) {
     const instrument = xm.instruments[instrumentNumber - 1];
-    const sample = firstSampleOf(instrument);
-    if (!instrument || !sample || sample.data.length === 0) continue;
-    if (nextSlot > TOTAL_SLOTS) {
+    if (!instrument || instrument.samples.length === 0) continue;
+    const slot = identity ? instrumentNumber : nextSlot;
+    if (slot > TOTAL_SLOTS) {
       // eslint-disable-next-line no-console
       console.warn(
         `[XM Import] Out of instrument slots; dropping instrument ${instrumentNumber}`,
       );
       break;
     }
-
     samples.push(
-      toTrackerSample(
+      trackerSampleFromXm(
         instrument,
-        sample,
-        nextSlot,
+        slot,
         instrumentNumber,
         channelsPerInstrument.get(instrumentNumber)?.size ?? 1,
       ),
     );
-    slotForInstrument.set(instrumentNumber, nextSlot);
+    slotForInstrument.set(instrumentNumber, slot);
     nextSlot++;
   }
 
   return { samples, slotForInstrument };
 }
 
-function toTrackerSample(
-  instrument: XmInstrument,
-  sample: XmSample,
-  slot: number,
-  instrumentNumber: number,
-  channelCount: number,
-): TrackerSample {
+/** XM keymap (note 0 = C-0) -> the sample's index, clamped to what exists. */
+export function xmZoneMap(instrument: XmInstrument): number[] {
+  const last = Math.max(0, instrument.samples.length - 1);
+  return Array.from({ length: 96 }, (_, n) =>
+    Math.min(last, instrument.keymap[n] ?? 0),
+  );
+}
+
+function zoneFields(sample: XmSample) {
   const sampleLengthFrames = Math.max(1, sample.data.length);
   const loopEnabled = sample.loopType !== 'none' && sample.loopLength > 0;
-  const envelope = toTrackerEnvelope(instrument);
-  const autoVibrato = toAutoVibrato(instrument);
-  const panEnvelope = toPanningEnvelope(instrument);
-
   return {
-    slot,
-    sourceIndex: instrumentNumber,
-    name: instrument.name || sample.name,
+    name: sample.name,
     data: sample.data,
     sampleRate: ASSET_SAMPLE_RATE,
     // relativeNote transposes the sample, which is equivalent to moving the
@@ -233,29 +237,64 @@ function toTrackerSample(
     // of per-sample tuning.
     rootNote: XM_ROOT_NOTE - sample.relativeNote,
     detuneCents: (sample.finetune / FINETUNE_UNITS_PER_SEMITONE) * 100,
+    // Unity -- the sample's default volume reaches playback through the
+    // volume column, which stamps it on every note carrying an instrument.
+    // Baking it in here too left quiet-headered samples permanently
+    // attenuated; see the same note in mod-samples.ts.
+    gain: 1,
     // The sample header's default panning (byte 15), FT2's `s->panning`:
     // reset on every trigger, offset around by the panning envelope while it
-    // runs, replaced outright by Cxx/8xx. 0..255 -> 0..1; FT2's pan table
-    // (L=sqrt((256-p)/256), R=sqrt(p/256), 0..256) centres byte 128 exactly,
-    // so centre (128) is left unset -- the engine's historical default.
+    // runs, replaced outright by Cxx/8xx. 0..255 -> 0..1; centre (128) is
+    // left unset -- the engine's historical default.
     ...(sample.panning !== 128 ? { pan: sample.panning / 255 } : {}),
-    // Unity -- the sample's default volume reaches playback through the volume
-    // column, which stamps it on every note carrying an instrument. Baking it
-    // in here too left quiet-headered samples permanently attenuated; see the
-    // same note in mod-samples.ts.
-    gain: 1,
     loop: loopEnabled
       ? sample.loopType === 'pingpong'
-        ? 'pingpong'
-        : 'forward'
-      : 'off',
+        ? ('pingpong' as const)
+        : ('forward' as const)
+      : ('off' as const),
     loopStartFrames: loopEnabled ? sample.loopStart : 0,
     loopLengthFrames: loopEnabled ? sample.loopLength : sampleLengthFrames,
+  };
+}
+
+/**
+ * An XM instrument as the tracker instrument model: sample 0 is the primary
+ * sample, the rest are zones reached through the keymap. A single-sample
+ * instrument carries no zones.
+ */
+export function trackerSampleFromXm(
+  instrument: XmInstrument,
+  slot: number,
+  instrumentNumber: number,
+  channelCount: number,
+): TrackerSample {
+  const first = instrument.samples[0];
+  if (!first) throw new Error('XM instrument has no sample');
+  const envelope = toTrackerEnvelope(instrument);
+  const autoVibrato = toAutoVibrato(instrument);
+  const panEnvelope = toPanningEnvelope(instrument);
+
+  const map = xmZoneMap(instrument);
+  // Every sample travels, even ones the keymap never reaches: the editor and
+  // the .xm exporter need them.
+  const multi = instrument.samples.length > 1;
+
+  return {
+    slot,
+    sourceIndex: instrumentNumber,
+    ...zoneFields(first),
+    name: instrument.name || first.name,
     // One voice per channel that ever plays this instrument, so every channel
     // owns one and none has to steal.
     voiceCount: Math.max(1, Math.min(32, channelCount)),
     ...(envelope ? { volumeEnvelope: envelope } : {}),
     ...(panEnvelope ? { panEnvelope } : {}),
     ...(autoVibrato ? { autoVibrato } : {}),
+    ...(multi
+      ? {
+          zones: instrument.samples.slice(1).map(zoneFields),
+          zoneMap: map,
+        }
+      : {}),
   };
 }

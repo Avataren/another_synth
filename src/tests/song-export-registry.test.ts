@@ -34,7 +34,7 @@ describe('the exporter registry', () => {
     expect(new Set(SONG_EXPORTERS.map((e) => e.id)).size).toBe(SONG_EXPORTERS.length);
   });
 
-  it('has a writer for ahx, hvl, sng, sid, prg, bin and mod only', () => {
+  it('has a writer for ahx, hvl, sng, sid, prg, bin, mod and xm only', () => {
     expect(SONG_EXPORTERS.map((e) => [e.id, e.available])).toEqual([
       ['ahx', true],
       ['hvl', true],
@@ -43,7 +43,7 @@ describe('the exporter registry', () => {
       ['prg', true],
       ['bin', true],
       ['mod', true],
-      ['xm', false],
+      ['xm', true],
       ['s3m', false],
     ]);
     expect(getSongExporter('ahx')).toBe(ahxExporter);
@@ -79,7 +79,7 @@ describe('the exporter registry', () => {
       prg: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .prg." },
       bin: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .bin." },
       mod: { state: 'unavailable', reason: 'Only ProTracker songs can be saved as a .mod.' },
-      xm: notYet,
+      xm: { state: 'unavailable', reason: 'Only FastTracker 2 songs can be saved as a .xm.' },
       s3m: notYet,
     });
     // chiprolled.hvl left the corpus 2026-09-23 (byte-identical dupe);
@@ -92,7 +92,7 @@ describe('the exporter registry', () => {
       prg: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .prg." },
       bin: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .bin." },
       mod: { state: 'unavailable', reason: 'Only ProTracker songs can be saved as a .mod.' },
-      xm: notYet,
+      xm: { state: 'unavailable', reason: 'Only FastTracker 2 songs can be saved as a .xm.' },
       s3m: notYet,
     });
     expect(rows(xm)).toMatchObject({
@@ -144,7 +144,7 @@ describe('the exporter registry', () => {
   });
 
   it('states every placeholder as not implemented, whatever the song, without asking it to check', () => {
-    for (const id of ['xm', 's3m'] as const) {
+    for (const id of ['s3m'] as const) {
       const exporter = getSongExporter(id)!;
       const check = vi.spyOn(exporter, 'check');
       expect(describeSongExporter(exporter, ahxSong()), id).toEqual({
@@ -157,7 +157,7 @@ describe('the exporter registry', () => {
   });
 
   it('makes a placeholder serialize throw a SongExportError', () => {
-    for (const id of ['xm', 's3m'] as const) {
+    for (const id of ['s3m'] as const) {
       const exporter = getSongExporter(id)!;
       expect(() => exporter.serialize(ahxSong()), id).toThrow(SongExportError);
       expect(() => exporter.serialize(ahxSong()), id).toThrow(`${exporter.label} export isn't available yet.`);

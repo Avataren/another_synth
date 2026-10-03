@@ -54,6 +54,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/ModSampleEditorPage.vue'),
       },
       {
+        // The FastTracker 2 instrument editor: an XM instrument is up to 16
+        // samples with a keymap and envelopes, not a synth `Patch`.
+        path: 'xm/instrument/:slot(\\d+)',
+        name: 'xm-instrument-editor',
+        component: () => import('pages/XmInstrumentEditorPage.vue'),
+      },
+      {
         // The SID instrument editor (plan-sid-tracking.md S4): edits the song
         // doc's instrument, never a synth `Patch`, so it has its own page too.
         path: 'sid/instrument/:slot(\\d+)',

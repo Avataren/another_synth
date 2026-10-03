@@ -57,6 +57,11 @@ export interface XmSample {
   /** Semitone offset applied to played notes. */
   relativeNote: number;
   bits: 8 | 16;
+  /**
+   * Header byte 17, which the spec calls reserved. Players read it (0xAD marks
+   * ADPCM and some trackers leave other values there), so a writer keeps it.
+   */
+  reserved?: number;
   /** Decoded PCM, normalised to -1..1. */
   data: Float32Array;
 }
@@ -73,6 +78,12 @@ export interface XmInstrument {
   vibratoSweep: number;
   vibratoDepth: number;
   vibratoRate: number;
+  /**
+   * The instrument header size the file declared, kept only for an instrument
+   * with no samples: FT2 writes 33 there, some trackers 29, and OpenMPT
+   * renders a module differently depending on which, so a writer repeats it.
+   */
+  emptyHeaderSize?: number;
 }
 
 export interface XmPatternCell {
@@ -411,13 +422,15 @@ export function parseXm(buffer: Uint8Array): XmSong {
       const type = buffer[sampleHeaderAt + 14] ?? 0;
       const panning = buffer[sampleHeaderAt + 15] ?? 128;
       const relativeRaw = buffer[sampleHeaderAt + 16] ?? 0;
+      const reserved = buffer[sampleHeaderAt + 17] ?? 0;
       const sampleName = readAscii(buffer, sampleHeaderAt + 18, 22);
 
       const bits: 8 | 16 = (type & 0x10) !== 0 ? 16 : 8;
       const bytesPerFrame = bits === 16 ? 2 : 1;
       const loopBits = type & 0x03;
+      // Both bits set is ping-pong, as FT2 and OpenMPT play it (the bidi bit wins).
       const loopType: XmLoopType =
-        loopBits === 1 ? 'forward' : loopBits === 2 ? 'pingpong' : 'none';
+        (loopBits & 2) !== 0 ? 'pingpong' : loopBits === 1 ? 'forward' : 'none';
 
       headers.push({
         name: sampleName,
@@ -431,6 +444,7 @@ export function parseXm(buffer: Uint8Array): XmSong {
         panning,
         relativeNote: relativeRaw >= 0x80 ? relativeRaw - 0x100 : relativeRaw,
         bits,
+        ...(reserved !== 0 ? { reserved } : {}),
       });
 
       sampleHeaderAt += sampleHeaderSize;
@@ -458,6 +472,7 @@ export function parseXm(buffer: Uint8Array): XmSong {
       vibratoSweep,
       vibratoDepth,
       vibratoRate,
+      ...(numSamples === 0 ? { emptyHeaderSize: instrumentHeaderSize } : {}),
     });
 
     at = sampleDataAt;

@@ -73,6 +73,27 @@ export interface TrackerEntryData {
   modCell?: [number, number, number, number];
   /** `modEntrySignature(entry)` as the importer left it. */
   modSig?: string;
+  /**
+   * XM only: the file's own cell, `[note, instrument, volumeColumn,
+   * effectType, effectParam]`, kept for a lossless .xm export. Trusted only
+   * while `xmSig` still matches the entry.
+   */
+  xmCell?: [number, number, number, number, number];
+  /** `xmEntrySignature(entry)` as the importer left it. */
+  xmSig?: string;
+}
+
+/** What `xmCell` is valid for: every field the XM cell is derived from. */
+export function xmEntrySignature(entry: TrackerEntryData): string {
+  return [
+    entry.note ?? '',
+    entry.instrument ?? '',
+    entry.volume ?? '',
+    entry.volumeCommand ?? '',
+    entry.effectCommand ?? '',
+    entry.effectParam ?? '',
+    entry.macro ?? '',
+  ].join('|');
 }
 
 /** The fields an edit changes, joined: what `modCell` is valid for. */

@@ -17,6 +17,10 @@ export function ahxSlotRedirect(slotNumber: number): RouteLocationRaw | null {
   if (store.moduleFormat === 'protracker' && slotNumber >= 1 && slotNumber <= 31) {
     return { name: 'mod-sample-editor', params: { slot: slotNumber } };
   }
+  // An XM slot is a FastTracker 2 instrument (empty ones too: that is where one is made).
+  if (store.moduleFormat === 'xm' && slotNumber >= 1 && slotNumber <= 128) {
+    return { name: 'xm-instrument-editor', params: { slot: slotNumber } };
+  }
   // A SID slot has no patch either: its instrument is the song doc's (S4).
   if (slot?.instrumentFormat === 'sid') return { name: 'sid-instrument-editor', params: { slot: slotNumber } };
   if (!slot || !isAhxSlot(slot)) return null;

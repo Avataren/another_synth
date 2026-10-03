@@ -9,6 +9,7 @@
 import type { XmSong, XmPatternCell, XmInstrument, XmSample } from '../formats/xm';
 import { XM_KEY_OFF } from '../formats/xm';
 import type { PitchModel } from '../pitch-model';
+import { xmEntrySignature } from '../tracker-types';
 import type {
   TrackerPattern,
   TrackerTrackData,
@@ -95,6 +96,15 @@ function xmCellToTrackerEntry(
   }
 
   const entry: TrackerEntryData = { row };
+  // The file's own cell, kept so a .xm export writes back exactly what was
+  // read; trusted only while `xmSig` still matches the row (see modCell).
+  const rawCell: [number, number, number, number, number] = [
+    cell.note,
+    cell.instrument,
+    cell.volumeColumn,
+    cell.effectType,
+    cell.effectParam,
+  ];
 
   // Only a row that starts a note switches which instrument this channel is
   // playing. An instrument number on a *key-off* row selects the sample for the
@@ -158,7 +168,9 @@ function xmCellToTrackerEntry(
   } else if (hasNote && hasInstrument) {
     // A note with an instrument and no explicit volume plays at the sample's
     // default, as in ProTracker.
-    const sample = firstSampleOf(xm.instruments[cell.instrument - 1]);
+    const instrument = xm.instruments[cell.instrument - 1];
+    const sample = instrument?.samples[instrument.keymap[cell.note - 1] ?? 0]
+      ?? firstSampleOf(instrument);
     if (sample) {
       entry.volume = Math.round((sample.volume / 64) * 255)
         .toString(16)
@@ -176,6 +188,9 @@ function xmCellToTrackerEntry(
   }
   const macro = xmEffectToMacro(cell.effectType, cell.effectParam);
   if (macro) entry.macro = macro;
+
+  entry.xmCell = rawCell;
+  entry.xmSig = xmEntrySignature(entry);
 
   return entry;
 }

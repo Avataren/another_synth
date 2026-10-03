@@ -21,6 +21,7 @@ import {
   TrackerSamplerInstrument,
   type TrackerSamplerConfig,
   type TrackerSampleLoop,
+  type TrackerZoneSet,
 } from '@another-synth/tracker-playback';
 import type { BankInstrument } from './tracker/bank-instrument';
 
@@ -99,6 +100,43 @@ export default class ModInstrument extends TrackerSamplerInstrument
 
     if (asset.type !== AudioAssetType.Sample) {
       throw new Error(`Asset ${assetId} is not a sample (type: ${asset.type})`);
+    }
+
+    if (samplerState.trackerZones?.length && samplerState.trackerZoneMap) {
+      const primary = toSamplerConfig(samplerState);
+      const zones: TrackerZoneSet['zones'] = [
+        {
+          config: primary,
+          data: decodeAudioAssetToFloat32Array(asset),
+          sampleRate: asset.sampleRate,
+          channels: asset.channels,
+        },
+      ];
+      for (const z of samplerState.trackerZones) {
+        const za = patch.audioAssets[z.assetId];
+        if (!za || za.type !== AudioAssetType.Sample) continue;
+        zones.push({
+          config: {
+            ...primary,
+            id: z.assetId,
+            rootNote: z.rootNote,
+            detune: z.detune,
+            gain: z.gain,
+            ...(z.pan !== undefined ? { pan: z.pan } : {}),
+            loopMode: toTrackerLoop(z.loopMode),
+            loopStart: z.loopStart,
+            loopEnd: z.loopEnd,
+          },
+          data: decodeAudioAssetToFloat32Array(za),
+          sampleRate: za.sampleRate,
+          channels: za.channels,
+        });
+      }
+      await this.loadZones(
+        { map: samplerState.trackerZoneMap, zones },
+        patch.synthState.layout?.voiceCount,
+      );
+      return;
     }
 
     await this.load(

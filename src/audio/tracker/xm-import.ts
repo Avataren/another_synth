@@ -3,13 +3,17 @@ import {
   CURRENT_SONG_FILE_VERSION,
   clampPatternRows,
 } from 'src/stores/tracker-store';
+import { xmOriginOf } from 'src/audio/tracker/xm-origin';
 import { buildSlotsAndPatches } from 'src/audio/tracker/instrument-slots';
 import {
   looksLikeXm as looksLikeXmInternal,
   parseXm,
+  writeXm,
+  FT2_TRACKER_NAME,
   buildXmTrackerPatterns,
   buildXmTrackerSamples,
   formatInstrumentId,
+  xmMetaOf,
   type XmSong,
 } from '@another-synth/tracker-playback';
 import {
@@ -43,8 +47,6 @@ export function importXmToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
     linearFrequency: xm.linearFrequency,
   });
 
-  warnIfMultiSample(xm);
-
   const pitch: PitchModel = xm.linearFrequency
     ? createLinearPitchModel()
     : createXmAmigaPitchModel();
@@ -55,6 +57,24 @@ export function importXmToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
     category: 'Imported/XM',
     format: 'xm',
   });
+
+  // Header fields the patch has no place for, kept so the module can be
+  // written back out (envelopes switched off, per-sample default volume, the
+  // keymap, bit depth ...). Also instruments with a name but no audio.
+  for (const [index, instrument] of xm.instruments.entries()) {
+    const slot = slots[(slotForInstrument.get(index + 1) ?? 0) - 1];
+    if (slot) {
+      slot.xmInstrument = xmMetaOf(instrument);
+    } else if (xm.instruments.length <= slots.length && instrument.name) {
+      const empty = slots[index];
+      if (empty && !empty.patchId) {
+        empty.patchName = instrument.name;
+        empty.instrumentName = instrument.name;
+        empty.instrumentFormat = 'xm';
+        empty.xmInstrument = xmMetaOf(instrument);
+      }
+    }
+  }
 
   const patterns = buildXmTrackerPatterns(xm, pitch, slotForInstrument);
 
@@ -74,6 +94,8 @@ export function importXmToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
         bpm: xm.defaultBpm || 125,
       },
       moduleFormat: 'xm',
+      // Header facts a re-export has to keep (see xm-origin.ts).
+      xmOrigin: xmOriginOf(xm),
       // XM declares its own ticks-per-row; most modules use something other
       // than the tracker default of 6.
       initialSpeed: xm.defaultSpeed || 6,
@@ -100,25 +122,38 @@ export function importXmToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
 }
 
 
-/**
- * How many of the instrument's 96 keymap entries point at a *different*
- * sample than the one we import. XM's keymap (note-to-sample table) is
- * parsed into `XmInstrument.keymap`, but the patch model is one sample per
- * instrument (D99): the scheduler routes notes to a patch by instrument
- * number only, so honouring splits would need per-note patch selection --
- * a bigger refactor than 6/882 corpus instruments justify. We import the
- * first audible sample, exactly as before, and say so once per song.
- */
-function warnIfMultiSample(xm: XmSong): void {
-  for (const [index, instrument] of xm.instruments.entries()) {
-    if (!instrument || instrument.samples.length < 2) continue;
-    const used = new Set(instrument.keymap);
-    if (used.size <= 1) continue;
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[XM Import] Instrument ${index + 1} is multi-sample (keymap covers ` +
-        `${used.size} samples); importing only its first audible sample ` +
-        '(D99 -- per-note sample selection needs patch-per-range routing).',
-    );
-  }
+/** An empty eight-channel XM module: one blank 64-row pattern and no instruments. */
+export function createNewXmTrackerSong(): TrackerSongFile {
+  const channels = 8;
+  const rows = 64;
+  const blank: XmSong = {
+    title: '',
+    trackerName: FT2_TRACKER_NAME,
+    version: 0x0104,
+    numChannels: channels,
+    songLength: 1,
+    restartPosition: 0,
+    orders: new Array<number>(256).fill(0),
+    patterns: [
+      {
+        numRows: rows,
+        rows: Array.from({ length: rows }, () =>
+          Array.from({ length: channels }, () => ({
+            note: 0,
+            instrument: 0,
+            volumeColumn: 0,
+            effectType: 0,
+            effectParam: 0,
+          })),
+        ),
+      },
+    ],
+    instruments: [],
+    linearFrequency: true,
+    defaultSpeed: 6,
+    defaultBpm: 125,
+  };
+  const song = importXmToTrackerSong(writeXm(blank).slice().buffer);
+  song.data.currentSong.title = 'Untitled module';
+  return song;
 }

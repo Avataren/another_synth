@@ -150,6 +150,40 @@ export function createSamplerPatch(
   // it with a 0.5 (centre) default for patches that predate the field.
   samplerState.pan = sample.pan ?? 0.5;
 
+  // Multi-sample (XM) instruments: every sample after the first is a zone, an
+  // audio asset of its own plus the config the sampler needs to play it.
+  const zoneAssets: Record<string, ReturnType<typeof encodeFloat32ArrayToBase64>> = {};
+  if (sample.zones && sample.zoneMap) {
+    samplerState.trackerZoneMap = [...sample.zoneMap];
+    samplerState.trackerZones = sample.zones.map((zone, i) => {
+      const assetId = `${samplerNodeId}_z${i + 1}`;
+      zoneAssets[assetId] = encodeFloat32ArrayToBase64(
+        zone.data,
+        zone.sampleRate,
+        1,
+        AudioAssetType.Sample,
+        assetId,
+        zone.name || undefined,
+        60,
+      );
+      const zoneLoop = toSamplerLoopMode(zone.loop);
+      const zoneLength = Math.max(1, zone.data.length);
+      const zoneLooping = zoneLoop !== SamplerLoopMode.Off;
+      const zoneStart = Math.min(zone.loopStartFrames, zoneLength - 1);
+      const zoneEnd = Math.min(zoneStart + zone.loopLengthFrames, zoneLength);
+      return {
+        assetId,
+        rootNote: zone.rootNote,
+        detune: zone.detuneCents,
+        gain: zone.gain,
+        ...(zone.pan !== undefined ? { pan: zone.pan } : {}),
+        loopMode: zoneLoop,
+        loopStart: zoneLooping ? zoneStart / zoneLength : 0,
+        loopEnd: zoneLooping ? zoneEnd / zoneLength : 1,
+      };
+    });
+  }
+
   const canonicalVoice: VoiceLayout = {
     id: 0,
     nodes: {
@@ -431,6 +465,7 @@ export function createSamplerPatch(
     },
     audioAssets: {
       [audioAsset.id]: audioAsset,
+      ...zoneAssets,
     },
   };
 

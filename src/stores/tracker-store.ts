@@ -24,6 +24,7 @@ import {
   type ModuleFormat,
   type TrackerPattern,
   type OplInstrumentData,
+  type XmInstrumentMeta,
   type AhxInstrument,
   type AhxSongFormat,
   ahxInstrumentProblem,
@@ -78,7 +79,9 @@ import { clearAhxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-e
 import { defaultAhxInstrument } from 'src/audio/tracker/ahx-instrument-edit';
 import { importAhxToTrackerSong } from 'src/audio/tracker/ahx-import';
 import { createNewModTrackerSong } from 'src/audio/tracker/mod-import';
+import { createNewXmTrackerSong } from 'src/audio/tracker/xm-import';
 import { readModOrigin, type ModOrigin } from 'src/audio/tracker/mod-origin';
+import { readXmOrigin, type XmOrigin } from 'src/audio/tracker/xm-origin';
 import { editSidInstrument, newSidInstrument } from 'src/audio/tracker/sid-instrument-edit';
 import { addSidPreset, applySidPreset } from 'src/audio/tracker/sid-presets';
 import { ahxPresetFits, ahxPresetInstrument } from 'src/audio/tracker/ahx-presets';
@@ -176,6 +179,14 @@ export interface InstrumentSlot {
    */
   modVolume?: number;
   /**
+   * XM instrument header fields the sampler patch has no place for: keymap,
+   * envelopes (switched off ones too), fadeout, autovibrato and each sample's
+   * default volume, panning, relative note and bit depth. The audio and loop
+   * points stay in the patch (zone 0 = the sampler node, the rest its
+   * `trackerZones`); `xmInstrumentOfSlot` joins the two.
+   */
+  xmInstrument?: XmInstrumentMeta;
+  /**
    * The AHX instrument this slot lists, exactly as the parser decoded it
    * (envelope, filter/square/vibrato settings, the PList), kept for the AHX
    * instrument editor (Task 5) the way `oplData` is kept for OPL. The whole
@@ -238,6 +249,7 @@ interface TrackerSnapshot {
    */
   oplGain: number | null;
   modOrigin: ModOrigin | null;
+  xmOrigin: XmOrigin | null;
   defaultPatternRows: number;
   stepSize: number;
   baseOctave: number;
@@ -325,6 +337,8 @@ interface TrackerStoreState {
   oplGain: number | null;
   /** MOD only: where the file came from (`ModOrigin`); null for every other song. */
   modOrigin: ModOrigin | null;
+  /** XM only: the header's tracker name and restart order, kept for the .xm export; null for every other song. */
+  xmOrigin: XmOrigin | null;
   /**
    * Row count applied to newly created patterns. Existing patterns carry
    * their own `rows`; this is only a seed for new ones.
@@ -537,6 +551,8 @@ export interface TrackerSongFile {
      * songs saved before it was kept, which show plain "MOD".
      */
     modOrigin?: ModOrigin;
+    /** XM only: the header's tracker name and restart order. */
+    xmOrigin?: XmOrigin;
     /**
      * Pre-v3: the row count for every pattern in the song.
      * v3+: only the default applied to newly created patterns. Per-pattern
@@ -651,6 +667,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       oplChannels: [],
       oplGain: null,
       modOrigin: null,
+      xmOrigin: null,
       baseOctave: 4,
       defaultPatternRows: DEFAULT_PATTERN_ROWS,
       stepSize: 1,
@@ -815,6 +832,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         oplChannels: [...this.oplChannels],
         oplGain: this.oplGain,
         modOrigin: this.modOrigin,
+        xmOrigin: this.xmOrigin,
         defaultPatternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         baseOctave: this.baseOctave,
@@ -853,6 +871,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.oplChannels = [...(snapshot.oplChannels ?? [])];
       this.oplGain = snapshot.oplGain ?? null;
       this.modOrigin = snapshot.modOrigin ?? null;
+      this.xmOrigin = snapshot.xmOrigin ?? null;
       this.defaultPatternRows = clampPatternRows(snapshot.defaultPatternRows);
       this.stepSize = snapshot.stepSize;
       this.baseOctave = snapshot.baseOctave;
@@ -946,6 +965,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.oplChannels = [];
       this.oplGain = null;
       this.modOrigin = null;
+      this.xmOrigin = null;
       this.baseOctave = 4;
       this.defaultPatternRows = DEFAULT_PATTERN_ROWS;
       this.stepSize = 1;
@@ -1252,6 +1272,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         delete slot.oplData;
         delete slot.ahxData;
         delete slot.modVolume;
+        delete slot.xmInstrument;
       }
     },
     /** Add or update a patch in the song's patch library */
@@ -1290,6 +1311,42 @@ export const useTrackerStore = defineStore('trackerStore', {
       slot.instrumentFormat = 'protracker';
       slot.instrumentName = meta.name || (patch ? `Instrument ${String(slotNumber).padStart(2, '0')}` : '');
       slot.modVolume = Math.max(0, Math.min(64, Math.round(meta.volume)));
+      if (previous && previous !== slot.patchId && !this.instrumentSlots.some((s) => s.patchId === previous)) {
+        delete this.songPatches[previous];
+      }
+    },
+    /**
+     * Write an XM instrument into a slot: `patch` plays it (null for an
+     * instrument with no samples), `meta` holds the header fields the patch
+     * has no place for. The XM instrument editor's one way into the song.
+     */
+    setXmInstrument(slotNumber: number, patch: Patch | null, meta: XmInstrumentMeta | null) {
+      const slot = this.instrumentSlots.find((s) => s.slot === slotNumber);
+      if (!slot) return;
+      const previous = slot.patchId;
+      if (patch?.metadata?.id) {
+        this.songPatches[patch.metadata.id] = JSON.parse(JSON.stringify(patch));
+        slot.patchId = patch.metadata.id;
+        slot.patchName = patch.metadata.name ?? '';
+        slot.bankName = 'XM Import';
+        slot.source = 'song';
+        slot.instrumentType = 'sampler';
+        slot.volume = 1.0;
+      } else {
+        slot.patchId = undefined;
+        slot.patchName = '';
+        slot.bankName = '';
+        slot.source = undefined;
+        slot.instrumentType = undefined;
+      }
+      slot.instrumentFormat = 'xm';
+      if (meta) {
+        slot.xmInstrument = JSON.parse(JSON.stringify(meta)) as XmInstrumentMeta;
+        slot.instrumentName = meta.name || (patch ? `Instrument ${String(slotNumber).padStart(2, '0')}` : '');
+      } else {
+        delete slot.xmInstrument;
+        slot.instrumentName = '';
+      }
       if (previous && previous !== slot.patchId && !this.instrumentSlots.some((s) => s.patchId === previous)) {
         delete this.songPatches[previous];
       }
@@ -1521,6 +1578,7 @@ export const useTrackerStore = defineStore('trackerStore', {
           : {}),
         ...(this.moduleFormat === 's3m' && this.oplGain !== null ? { oplGain: this.oplGain } : {}),
         ...(this.moduleFormat === 'protracker' && this.modOrigin ? { modOrigin: { ...this.modOrigin } } : {}),
+        ...(this.moduleFormat === 'xm' && this.xmOrigin ? { xmOrigin: { ...this.xmOrigin } } : {}),
         patternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         patterns: JSON.parse(JSON.stringify(this.patterns)),
@@ -1621,6 +1679,7 @@ export const useTrackerStore = defineStore('trackerStore', {
           ? (data.oplGain as number)
           : null;
       this.modOrigin = this.moduleFormat === 'protracker' ? readModOrigin(data.modOrigin) : null;
+      this.xmOrigin = this.moduleFormat === 'xm' ? readXmOrigin(data.xmOrigin) : null;
       const legacySongRows = clampPatternRows(data.patternRows);
       this.defaultPatternRows = legacySongRows;
       this.stepSize = Number.isFinite(data.stepSize) ? data.stepSize : 1;
@@ -1676,6 +1735,9 @@ export const useTrackerStore = defineStore('trackerStore', {
         }
         if (slot?.volume !== undefined) {
           mapped.volume = slot.volume;
+        }
+        if (slot?.xmInstrument && Array.isArray(slot.xmInstrument.samples)) {
+          mapped.xmInstrument = JSON.parse(JSON.stringify(slot.xmInstrument)) as XmInstrumentMeta;
         }
         if (typeof slot?.modVolume === 'number') {
           mapped.modVolume = Math.max(0, Math.min(64, Math.round(slot.modVolume)));
@@ -1777,6 +1839,11 @@ export const useTrackerStore = defineStore('trackerStore', {
     resetToNewModSong() {
       clearLoadedSongHash();
       this.loadSongFile(createNewModTrackerSong());
+    },
+    /** A new, empty eight-channel FastTracker 2 module, loaded as an opened .xm is. */
+    resetToNewXmSong() {
+      clearLoadedSongHash();
+      this.loadSongFile(createNewXmTrackerSong());
     },
     /**
      * A new AHX or HVL song from scratch: `createNewAhxDoc`'s song (or
