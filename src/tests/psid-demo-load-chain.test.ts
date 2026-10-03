@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { demoSongUrl, type DemoCollection } from 'src/composables/useDemoManifest';
 import { SID_CYCLES_PER_FRAME, SID_PAL_CLOCK_HZ } from 'src/audio/tracker/sid-instrument-visuals';
+import type { SidCommand } from 'src/audio/worklets/sid-core';
 import { initSidWasm, peak, setupSidApp, sidWorkletNodes, teardownSidApp, until, type FakeSidWorkletNode } from './helpers/sid-worklet-harness';
 
 /**
@@ -85,6 +86,38 @@ describe('the C64 SID demo collection', () => {
     const node = sidWorkletNodes[0] as FakeSidWorkletNode;
     node.pump(ROW);
     expect(peak(node.pump(32 * ROW).mix)).toBeGreaterThan(0.05);
+    await player.dispose();
+  }, 60000);
+
+  it('the jukebox starts a multi-subsong tune on a random subsong (the setting), and exposes the picker', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const song = sids?.songs.find((s) => s.file === 'sid/tel_jeroen/robocop_3.sid');
+    if (!song) throw new Error('robocop_3.sid is not in the manifest');
+    const app = await setupSidApp();
+    serveFromPublic();
+    const { useJukeboxPlayer } = await import('src/composables/useJukeboxPlayer');
+    const { useUserSettingsStore } = await import('src/stores/user-settings-store');
+    const settings = useUserSettingsStore();
+    const player = useJukeboxPlayer(app.host);
+    // 20 subsongs, the start song is the first: a random pick never repeats it. 0.5 * 19 -> index 9, +1 past the current.
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const index = player.addSong(song);
+    await player.playIndex(index);
+    random.mockRestore();
+    expect(player.subsongs.count.value).toBe(20);
+    expect(app.trackerStore.psidTune!.subsong).toBe(10);
+    await until(() => sidWorkletNodes[0]?.received.some((c) => c.type === 'load-psid') ?? false, 'load');
+    const node = sidWorkletNodes[0] as FakeSidWorkletNode;
+    const loads = node.received.filter((c): c is Extract<SidCommand, { type: 'load-psid' }> => c.type === 'load-psid');
+    expect(loads[loads.length - 1]!.subsong).toBe(10);
+    // The picker moves it.
+    player.subsongs.select(4);
+    expect(app.trackerStore.psidTune!.subsong).toBe(4);
+    // Switched off, the next song starts on the tune's own first subsong.
+    settings.updateSetting('jukeboxRandomSubsong', false);
+    await player.playIndex(index);
+    expect(app.trackerStore.psidTune!.subsong).toBe(0);
     await player.dispose();
   }, 60000);
 });

@@ -42,8 +42,15 @@ export class PsidRunner {
   readonly machine: C64;
   readonly clock: C64Clock;
   readonly clockHz: number;
-  /** Cycles between ticks of a host-driven tune (a video frame, or CIA 1 timer A's period). */
-  readonly tickCycles: number;
+  /**
+   * Cycles between ticks of a host-driven tune: a video frame, or CIA 1 timer
+   * A's period, which a CIA-timed tune may reprogram while it plays (Rubicon
+   * starts at 60 Hz and sets about 124 Hz in its first play call), so it is
+   * read again after every tick.
+   */
+  tickCycles: number;
+  /** The song is timed by CIA 1 timer A (the header's speed bit), not by the video frame. */
+  private readonly ciaTimed: boolean;
   /** Host-driven (`play`), or left to its own interrupts after init (`irq`). */
   readonly mode: 'play' | 'irq';
   /** Why the tune stopped (its player jammed the CPU, hit a BRK, ran away), or null while it plays. */
@@ -65,13 +72,14 @@ export class PsidRunner {
   /** Writes to a second or third SID, dropped (the chip here is one). */
   extraSidWrites = 0;
 
-  private constructor(file: PsidFile, clock: C64Clock, machine: C64, mode: 'play' | 'irq', tickCycles: number) {
+  private constructor(file: PsidFile, clock: C64Clock, machine: C64, mode: 'play' | 'irq', tickCycles: number, ciaTimed: boolean) {
     this.file = file;
     this.machine = machine;
     this.mode = mode;
     this.clock = clock;
     this.clockHz = machine.timing.hz;
     this.tickCycles = tickCycles;
+    this.ciaTimed = ciaTimed;
     this.origin = machine.cpu.cycles;
     this.next = machine.cpu.cycles;
     this.horizonCycle = machine.cpu.cycles;
@@ -99,6 +107,7 @@ export class PsidRunner {
     };
 
     let tickCycles = c64FrameCycles(machine.timing);
+    let ciaTimed = false;
     if (!irqMode) {
       machine.setBanks(psidBanksFor(file.initAddress));
       const end = callRoutine(machine, file.initAddress, song, INIT_MAX_CYCLES);
@@ -107,13 +116,16 @@ export class PsidRunner {
       if (end === 'timeout') {
         return { ok: false, reason: `the tune's init routine (${hex4(file.initAddress)}) did not return in ${INIT_MAX_CYCLES / 1e6} million cycles` };
       }
-      if (psidSongUsesCia(file, song + 1)) tickCycles = machine.cia1.a.latch + 1;
+      if (psidSongUsesCia(file, song + 1)) {
+        ciaTimed = true;
+        tickCycles = machine.cia1.a.latch + 1;
+      }
     } else {
       if (file.type === 'PSID') machine.setBanks(psidBanksFor(file.initAddress));
       enterCall(machine, file.initAddress, song);
     }
 
-    runner = new PsidRunner(file, clock, machine, irqMode ? 'irq' : 'play', tickCycles);
+    runner = new PsidRunner(file, clock, machine, irqMode ? 'irq' : 'play', tickCycles, ciaTimed);
     // What init wrote before playback began is the chip's state at cycle 0.
     for (const w of early) runner.push(w.cycle, w.reg, w.value);
     return { ok: true, runner };
@@ -197,6 +209,8 @@ export class PsidRunner {
       if (e === 'jam') return this.end(`the tune's play routine (${hex4(addr)}) stopped the CPU (JAM at ${hex4(cpu.pc)})`);
       if (e === 'brk') return this.end(`the tune's play routine (${hex4(addr)}) hit a BRK`);
       if (e === 'timeout') return this.end(`the tune's play routine (${hex4(addr)}) did not return`);
+      // A CIA-timed tune may have reprogrammed the timer during this call: the next tick follows it.
+      if (this.ciaTimed) this.tickCycles = Math.max(1, machine.cia1.a.latch + 1);
       this.next += this.tickCycles;
       // The next call starts no earlier than this: a play that overran its tick starts when it ended.
       this.horizonCycle = Math.max(this.next, cpu.cycles);

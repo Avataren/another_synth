@@ -195,6 +195,11 @@ export interface UserSettings {
    * on it once chosen. `null`: none chosen yet, each song plays on its own chip.
    */
   sidChipPreference: '6581' | '8580' | null;
+  /**
+   * The jukebox starts a SID song (a C64 tune or a GoatTracker song with
+   * several subsongs) on a random subsong, not its first.
+   */
+  jukeboxRandomSubsong: boolean;
 }
 
 /**
@@ -277,6 +282,7 @@ export const defaultSettings: UserSettings = {
   },
   sid6581Revision: 'gt',
   sidChipPreference: null,
+  jukeboxRandomSubsong: true,
 };
 
 const STORAGE_KEY = 'synth-user-settings';

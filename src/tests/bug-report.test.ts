@@ -309,6 +309,8 @@ describe('jukebox warmed-load path (regression)', () => {
       applied,
       host: {
         isLoadingSong: ref(false),
+        // No SID song: the jukebox's subsong picker finds nothing to pick.
+        trackerStore: { psidTune: null, isSidEditable: false, sidFlat: [], sidSubsong: 0 },
         playbackStore: { setLoopSong: vi.fn() },
         parseSongBuffer: vi.fn(async () => parsedSong),
         applySongFile: vi.fn(async (songFile: TrackerSongFile) => {

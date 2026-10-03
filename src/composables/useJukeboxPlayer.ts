@@ -12,6 +12,8 @@ import {
 import { recordLoadedSongHash } from 'src/composables/song-identity';
 import type { TrackerSongHost } from 'src/composables/useTrackerSongHost';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
+import { useSongSubsongs } from 'src/composables/useSongSubsongs';
 
 /**
  * A load that failed for a reason that may not be true a moment from now.
@@ -79,6 +81,8 @@ async function fetchModuleBytes(url: string): Promise<ArrayBuffer> {
  */
 export function useJukeboxPlayer(host: TrackerSongHost) {
   const jukebox = useJukeboxStore();
+  const userSettingsStore = useUserSettingsStore();
+  const subsongs = useSongSubsongs(host.trackerStore);
   const {
     collections: demoCollections,
     load: loadDemoManifest,
@@ -276,6 +280,10 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
       } finally {
         host.isLoadingSong.value = false;
       }
+
+      // A SID song with several subsongs starts on a random one (the setting), so a
+      // game soundtrack is not always its first jingle; the picker can still change it.
+      if (userSettingsStore.settings.jukeboxRandomSubsong) subsongs.selectRandom();
 
       // A playlist entry always starts at the top of the song.
       await host.play('song', 0);
@@ -478,6 +486,7 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
 
   return {
     jukebox,
+    subsongs,
     busy,
     isBusy,
     queuedFiles,

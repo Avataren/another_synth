@@ -62,6 +62,20 @@
         <button
           type="button"
           class="bar-btn"
+          :class="{ active: userSettings.jukeboxRandomSubsong }"
+          data-testid="jukebox-random-subsong"
+          :title="
+            userSettings.jukeboxRandomSubsong
+              ? 'Start SID songs on a random subsong (on)'
+              : 'Start SID songs on their first subsong (random subsong is off)'
+          "
+          @click="userSettings.jukeboxRandomSubsong = !userSettings.jukeboxRandomSubsong"
+        >
+          <q-icon name="casino" size="18px" />
+        </button>
+        <button
+          type="button"
+          class="bar-btn"
           :class="{ active: jukebox.repeat }"
           :title="
             jukebox.repeat ? 'Repeat the playlist' : 'Stop after the last song'
@@ -84,6 +98,18 @@
           <span v-if="isBusy" class="loading-tag">loading…</span>
         </div>
         <div class="now-playing-meta">{{ nowPlayingMeta }}</div>
+        <label v-if="player.subsongs.count.value > 1" class="subsong-picker" title="Subsong of this SID song">
+          <span class="subsong-picker__label">Subsong</span>
+          <select
+            data-testid="jukebox-subsong"
+            :value="player.subsongs.current.value"
+            @change="player.subsongs.select(Number(($event.target as HTMLSelectElement).value))"
+          >
+            <option v-for="n in player.subsongs.count.value" :key="n" :value="n - 1">
+              {{ n }} / {{ player.subsongs.count.value }}
+            </option>
+          </select>
+        </label>
       </div>
 
       <div class="position">
@@ -927,6 +953,18 @@ onBeforeUnmount(() => {
   font-size: 11px;
   color: var(--text-secondary, rgba(255, 255, 255, 0.55));
   white-space: nowrap;
+}
+
+.subsong-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+}
+
+.subsong-picker select {
+  font-size: 11px;
 }
 
 .position {

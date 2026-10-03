@@ -101,6 +101,25 @@ describe('PsidRunner: a host-driven tune', () => {
     expect(w[1]!.cycle - w[0]!.cycle).toBe(10000);
   });
 
+  it('follows a CIA-timed tune that reprograms the timer while it plays (Rubicon: 60 Hz after init, about 124 Hz in play)', () => {
+    // Init: latch 9999 (a tick every 10000 cycles). Play: count to $D400, then set the latch to 4999 (every 5000).
+    const retimed = buildPsid(
+      { init: 0x1000, play: 0x1010, speed: 1 },
+      placeCode([
+        [0x00, [0xa9, 0x0f, 0x8d, 0x04, 0xdc, 0xa9, 0x27, 0x8d, 0x05, 0xdc, 0x60]],
+        [0x10, [...COUNT_TO_D400, 0xa9, 0x87, 0x8d, 0x04, 0xdc, 0xa9, 0x13, 0x8d, 0x05, 0xdc, 0x60]],
+      ]),
+    );
+    const runner = created(fileOf(retimed));
+    expect(runner.tickCycles).toBe(10000);
+    const w = writesOver(runner, 60_000, 700).filter((x) => x.reg === 0);
+    expect(runner.tickCycles).toBe(5000);
+    // The first tick set the faster timer: every gap after the first is the new period.
+    const gaps = w.slice(1).map((x, i) => x.cycle - w[i]!.cycle);
+    expect(gaps.slice(1).every((g) => g === 5000)).toBe(true);
+    expect(gaps.length).toBeGreaterThan(5);
+  });
+
   it('stops, and says why, when the player jams the CPU; the horizon is then unbounded', () => {
     const jam = buildPsid(
       { init: 0x1000, play: 0x1005 },

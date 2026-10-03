@@ -31,6 +31,8 @@ function entry(file: string): JukeboxEntry {
 function makeHost(overrides: Partial<Record<string, unknown>> = {}) {
   const host = {
     isLoadingSong: ref(false),
+    // No SID song: the jukebox's subsong picker finds nothing to pick.
+    trackerStore: { psidTune: null, isSidEditable: false, sidFlat: [], sidSubsong: 0 },
     playbackStore: {
       setLoopSong: vi.fn(),
       isPlaying: false,

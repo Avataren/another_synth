@@ -5479,12 +5479,19 @@ function callRoutine(machine, addr, a, maxCycles) {
 // src/audio/tracker/psid/psid-runner.ts
 var NEVER = Number.POSITIVE_INFINITY;
 var PsidRunner = class _PsidRunner {
-  constructor(file, clock, machine, mode, tickCycles) {
+  constructor(file, clock, machine, mode, tickCycles, ciaTimed) {
     __publicField(this, "machine");
     __publicField(this, "clock");
     __publicField(this, "clockHz");
-    /** Cycles between ticks of a host-driven tune (a video frame, or CIA 1 timer A's period). */
+    /**
+     * Cycles between ticks of a host-driven tune: a video frame, or CIA 1 timer
+     * A's period, which a CIA-timed tune may reprogram while it plays (Rubicon
+     * starts at 60 Hz and sets about 124 Hz in its first play call), so it is
+     * read again after every tick.
+     */
     __publicField(this, "tickCycles");
+    /** The song is timed by CIA 1 timer A (the header's speed bit), not by the video frame. */
+    __publicField(this, "ciaTimed");
     /** Host-driven (`play`), or left to its own interrupts after init (`irq`). */
     __publicField(this, "mode");
     /** Why the tune stopped (its player jammed the CPU, hit a BRK, ran away), or null while it plays. */
@@ -5510,6 +5517,7 @@ var PsidRunner = class _PsidRunner {
     this.clock = clock;
     this.clockHz = machine.timing.hz;
     this.tickCycles = tickCycles;
+    this.ciaTimed = ciaTimed;
     this.origin = machine.cpu.cycles;
     this.next = machine.cpu.cycles;
     this.horizonCycle = machine.cpu.cycles;
@@ -5534,6 +5542,7 @@ var PsidRunner = class _PsidRunner {
       else runner.push(cycle, reg & 31, value);
     };
     let tickCycles = c64FrameCycles(machine.timing);
+    let ciaTimed = false;
     if (!irqMode) {
       machine.setBanks(psidBanksFor(file.initAddress));
       const end = callRoutine(machine, file.initAddress, song, INIT_MAX_CYCLES);
@@ -5542,12 +5551,15 @@ var PsidRunner = class _PsidRunner {
       if (end === "timeout") {
         return { ok: false, reason: `the tune's init routine (${hex42(file.initAddress)}) did not return in ${INIT_MAX_CYCLES / 1e6} million cycles` };
       }
-      if (psidSongUsesCia(file, song + 1)) tickCycles = machine.cia1.a.latch + 1;
+      if (psidSongUsesCia(file, song + 1)) {
+        ciaTimed = true;
+        tickCycles = machine.cia1.a.latch + 1;
+      }
     } else {
       if (file.type === "PSID") machine.setBanks(psidBanksFor(file.initAddress));
       enterCall(machine, file.initAddress, song);
     }
-    runner = new _PsidRunner(file, clock, machine, irqMode ? "irq" : "play", tickCycles);
+    runner = new _PsidRunner(file, clock, machine, irqMode ? "irq" : "play", tickCycles, ciaTimed);
     for (const w of early) runner.push(w.cycle, w.reg, w.value);
     return { ok: true, runner };
   }
@@ -5622,6 +5634,7 @@ var PsidRunner = class _PsidRunner {
       if (e === "jam") return this.end(`the tune's play routine (${hex42(addr)}) stopped the CPU (JAM at ${hex42(cpu.pc)})`);
       if (e === "brk") return this.end(`the tune's play routine (${hex42(addr)}) hit a BRK`);
       if (e === "timeout") return this.end(`the tune's play routine (${hex42(addr)}) did not return`);
+      if (this.ciaTimed) this.tickCycles = Math.max(1, machine.cia1.a.latch + 1);
       this.next += this.tickCycles;
       this.horizonCycle = Math.max(this.next, cpu.cycles);
     }
