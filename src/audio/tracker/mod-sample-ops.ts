@@ -110,7 +110,7 @@ export function toWav(sample: ModSample): Uint8Array {
   return out;
 }
 
-export const MOD_WAVE_KINDS = ['sine', 'triangle', 'saw', 'square', 'noise'] as const;
+export const MOD_WAVE_KINDS = ['sine', 'triangle', 'saw', 'square', 'pulse', 'noise'] as const;
 export type ModWaveKind = (typeof MOD_WAVE_KINDS)[number];
 export const MOD_WAVE_LENGTHS = [32, 64, 128, 256, 512, 1024, 2048] as const;
 
@@ -137,6 +137,9 @@ export function generateWave(sample: ModSample, kind: ModWaveKind, length: numbe
       case 'square':
         v = t < 0.5 ? 1 : -1;
         break;
+      case 'pulse':
+        v = t < 0.25 ? 1 : -1;
+        break;
       case 'noise':
         v = random() * 2 - 1;
         break;
@@ -144,4 +147,38 @@ export function generateWave(sample: ModSample, kind: ModWaveKind, length: numbe
     data[i] = Math.max(-128, Math.min(127, Math.round(v * 127)));
   }
   return withLoop({ ...sample, name: sample.name || kind, data, length: n, loopStart: 0, loopLength: 0 }, 0, n);
+}
+
+export interface PulseParams {
+  /** Frames in one cycle. */
+  cycleLength: number;
+  /** How many cycles the sample holds: the sweep is spread over them. */
+  cycles: number;
+  /** Duty cycle at the start and at the far end of the sweep, 1-99 %. */
+  dutyStart: number;
+  dutyEnd: number;
+  /** `pingpong` returns to the start duty by the end, so the loop is seamless. */
+  sweep: 'up' | 'pingpong';
+}
+
+/**
+ * A pulse wave whose width moves through the sample (pulse-width modulation),
+ * looped. A module has no PWM; the sweep is baked into several cycles.
+ */
+export function generatePulse(sample: ModSample, params: PulseParams): ModSample {
+  const cycle = Math.max(4, params.cycleLength);
+  const cycles = Math.max(1, Math.round(params.cycles));
+  const n = Math.min(MOD_MAX_SAMPLE_BYTES, evenDown(cycle * cycles));
+  const data = new Int8Array(n);
+  for (let c = 0; c < cycles; c++) {
+    const p = cycles === 1 ? 0 : c / cycles;
+    const along = params.sweep === 'pingpong' ? 1 - Math.abs(2 * p - 1) : cycles === 1 ? 0 : c / (cycles - 1);
+    const duty = (params.dutyStart + (params.dutyEnd - params.dutyStart) * along) / 100;
+    const high = Math.max(1, Math.min(cycle - 1, Math.round(duty * cycle)));
+    for (let i = 0; i < cycle; i++) {
+      const at = c * cycle + i;
+      if (at < n) data[at] = i < high ? 127 : -127;
+    }
+  }
+  return withLoop({ ...sample, name: sample.name || 'pulse', data, length: n, loopStart: 0, loopLength: 0 }, 0, n);
 }

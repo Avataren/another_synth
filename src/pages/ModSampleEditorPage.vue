@@ -87,14 +87,55 @@
               </select>
             </label>
             <label class="mod-field">
-              <span class="mod-field__label">Length</span>
+              <span class="mod-field__label">{{ waveKind === 'pulse' ? 'Cycle' : 'Length' }}</span>
               <select v-model.number="waveLength" class="mod-select" data-testid="mod-new-length">
                 <option v-for="n in MOD_WAVE_LENGTHS" :key="n" :value="n">{{ n }}</option>
               </select>
             </label>
-            <button type="button" class="mod-btn" data-testid="mod-new-create" @click="edit((s) => generateWave(s, waveKind, waveLength))">
+            <template v-if="waveKind === 'pulse'">
+              <AhxSliderField label="Duty from" suffix="%" :model-value="pulse.dutyStart" :min="1" :max="99" testid="mod-pulse-from" @update:model-value="(v: number) => (pulse.dutyStart = v)" />
+              <AhxSliderField label="Duty to" suffix="%" :model-value="pulse.dutyEnd" :min="1" :max="99" testid="mod-pulse-to" @update:model-value="(v: number) => (pulse.dutyEnd = v)" />
+              <label class="mod-field">
+                <span class="mod-field__label">Cycles</span>
+                <select v-model.number="pulse.cycles" class="mod-select" data-testid="mod-pulse-cycles">
+                  <option v-for="n in PULSE_CYCLES" :key="n" :value="n">{{ n }}</option>
+                </select>
+              </label>
+              <label class="mod-field">
+                <span class="mod-field__label">Sweep</span>
+                <select v-model="pulse.sweep" class="mod-select" data-testid="mod-pulse-sweep">
+                  <option value="pingpong">there and back</option>
+                  <option value="up">one way</option>
+                </select>
+              </label>
+            </template>
+            <button type="button" class="mod-btn" data-testid="mod-new-create" @click="createWave">
               {{ empty ? 'Create' : 'Replace with new' }}
             </button>
+          </section>
+
+          <section class="mod-card" data-testid="mod-card-drum">
+            <h3>Drum</h3>
+            <label class="mod-field">
+              <span class="mod-field__label">Kind</span>
+              <select :value="drumKind" class="mod-select" data-testid="mod-drum-kind" @change="onDrumKind(($event.target as HTMLSelectElement).value as DrumKind)">
+                <option v-for="k in DRUM_KINDS" :key="k" :value="k">{{ k }}</option>
+              </select>
+            </label>
+            <label class="mod-field">
+              <span class="mod-field__label">Plays at</span>
+              <select v-model.number="drumPeriod" class="mod-select" data-testid="mod-drum-rate" @change="regenDrum">
+                <option v-for="r in DRUM_RATES" :key="r.period" :value="r.period">{{ r.label }}</option>
+              </select>
+            </label>
+            <AhxSliderField v-if="drumKind !== 'clap'" label="Pitch" suffix="Hz" :model-value="drum.pitch" :min="DRUM_RANGES.pitch.min" :max="DRUM_RANGES.pitch.max" testid="mod-drum-pitch" @update:model-value="(v: number) => setDrum('pitch', v)" />
+            <AhxSliderField label="Decay" suffix="ms" :model-value="drum.decay" :min="DRUM_RANGES.decay.min" :max="DRUM_RANGES.decay.max" testid="mod-drum-decay" @update:model-value="(v: number) => setDrum('decay', v)" />
+            <AhxSliderField label="Noise" suffix="%" :model-value="drum.noise" :min="0" :max="100" testid="mod-drum-noise" @update:model-value="(v: number) => setDrum('noise', v)" />
+            <AhxSliderField label="Filter" suffix="Hz" :model-value="drum.cutoff" :min="DRUM_RANGES.cutoff.min" :max="DRUM_RANGES.cutoff.max" testid="mod-drum-cutoff" @update:model-value="(v: number) => setDrum('cutoff', v)" />
+            <AhxSliderField label="Snap" suffix="%" :model-value="drum.snap" :min="0" :max="100" testid="mod-drum-snap" @update:model-value="(v: number) => setDrum('snap', v)" />
+            <div class="mod-tools">
+              <button type="button" class="mod-btn" data-testid="mod-drum-create" @click="createDrum">{{ empty || !drumLive ? 'Create' : 'Re-roll' }}</button>
+            </div>
           </section>
 
           <section class="mod-card" data-testid="mod-card-loop">
@@ -133,7 +174,7 @@
               :loop-length="draft.loopLength"
               :draw="drawMode"
               @update:loop="onLoop"
-              @update:data="(d: Int8Array) => commit(withData(draft, d))"
+              @update:data="onDraw"
             />
             <div class="mod-tools" data-testid="mod-tools">
               <label class="mod-check" title="Drag on the waveform to draw it by hand">
@@ -169,7 +210,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { formatInstrumentId, type ModSample } from '@another-synth/tracker-playback';
 import { useTrackerStore } from 'src/stores/tracker-store';
@@ -189,7 +230,9 @@ import {
 import {
   clampModName,
   fromPcm,
+  generatePulse,
   generateWave,
+  type PulseParams,
   MOD_WAVE_KINDS,
   MOD_WAVE_LENGTHS,
   type ModWaveKind,
@@ -201,6 +244,15 @@ import {
   withData,
   withLoop,
 } from 'src/audio/tracker/mod-sample-ops';
+import {
+  DRUM_KINDS,
+  DRUM_PRESETS,
+  DRUM_RANGES,
+  DRUM_RATES,
+  generateDrum,
+  type DrumKind,
+  type DrumParams,
+} from 'src/audio/tracker/mod-drum-synth';
 import AhxAuditionBar from 'src/components/ahx/AhxAuditionBar.vue';
 import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
 import AhxSliderField from 'src/components/ahx/AhxSliderField.vue';
@@ -237,6 +289,44 @@ const loadPeriod = ref(214);
 const drawMode = ref(false);
 const waveKind = ref<ModWaveKind>('square');
 const waveLength = ref(64);
+const PULSE_CYCLES = [4, 8, 16, 32, 64];
+const pulse = reactive<Pick<PulseParams, 'dutyStart' | 'dutyEnd' | 'cycles' | 'sweep'>>({ dutyStart: 12, dutyEnd: 50, cycles: 16, sweep: 'pingpong' });
+
+// A drum stays editable ("live") until something else changes the audio.
+const drumKind = ref<DrumKind>('kick');
+const drum = reactive<DrumParams>({ ...DRUM_PRESETS.kick });
+const drumPeriod = ref(214);
+const drumLive = ref(false);
+let drumSeed = 1;
+
+function renderDrum(): void {
+  commit(withData({ ...draft.value, loopStart: 0, loopLength: 0, name: draft.value.name || drumKind.value }, generateDrum(drumKind.value, drum, drumPeriod.value, drumSeed)));
+}
+function createDrum(): void {
+  drumSeed = (drumSeed * 1103515245 + 12345) >>> 0;
+  drumLive.value = true;
+  renderDrum();
+}
+function regenDrum(): void {
+  if (drumLive.value) renderDrum();
+}
+function setDrum(key: keyof DrumParams, value: number): void {
+  drum[key] = value;
+  regenDrum();
+}
+function onDrumKind(kind: DrumKind): void {
+  drumKind.value = kind;
+  Object.assign(drum, DRUM_PRESETS[kind]);
+  regenDrum();
+}
+function createWave(): void {
+  drumLive.value = false;
+  if (waveKind.value === 'pulse') {
+    commit(generatePulse(draft.value, { ...pulse, cycleLength: waveLength.value }));
+  } else {
+    commit(generateWave(draft.value, waveKind.value, waveLength.value));
+  }
+}
 const fileEl = ref<HTMLInputElement | null>(null);
 const error = ref('');
 
@@ -291,7 +381,10 @@ function commit(next: ModSample): void {
   schedule();
 }
 
-const edit = (op: (s: ModSample) => ModSample): void => commit(op(draft.value));
+const edit = (op: (s: ModSample) => ModSample): void => {
+  drumLive.value = false;
+  commit(op(draft.value));
+};
 const onName = (value: string): void => commit({ ...draft.value, name: clampModName(value) });
 const onVolume = (value: number): void => commit({ ...draft.value, volume: value });
 const onFinetune = (value: number): void => commit({ ...draft.value, finetune: value });
@@ -300,7 +393,12 @@ function onLoopToggle(event: Event): void {
   const on = (event.target as HTMLInputElement).checked;
   commit(on ? withLoop(draft.value, 0, draft.value.data.length) : { ...draft.value, loopStart: 0, loopLength: 0 });
 }
+function onDraw(d: Int8Array): void {
+  drumLive.value = false;
+  commit(withData(draft.value, d));
+}
 function clear(): void {
+  drumLive.value = false;
   commit({ ...emptyModSample(draft.value.volume), name: draft.value.name });
 }
 
@@ -310,6 +408,7 @@ async function onFile(event: Event): Promise<void> {
   input.value = '';
   if (!file) return;
   error.value = '';
+  drumLive.value = false;
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const stem = clampModName(file.name.replace(/\.[^.]+$/, ''));
@@ -539,6 +638,11 @@ onBeforeUnmount(() => {
 .mod-error {
   margin: 0;
   color: #ff8a8a;
+}
+
+/* Drum decay and filter run to four and five digits. */
+.mod-card :deep(.ahx-field--compact .ahx-field__input) {
+  width: 68px;
 }
 
 @media (max-width: 900px) {
