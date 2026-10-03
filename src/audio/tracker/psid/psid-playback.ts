@@ -50,14 +50,21 @@ export class PsidPlayback implements SidWasmPlayer {
     this.cyclesPerSample = runner.clockHz / sampleRate;
   }
 
-  /** Subsong `subsong` (0-based) of `file` on a chip of the file's model, paused. */
-  static create(file: PsidFile, subsong: number, Chip: SidChipWasmCtor, sampleRate: number): PsidPlaybackCreate {
+  /** Subsong `subsong` (0-based) of `file` on `model` (or the file's chip), paused. */
+  static create(
+    file: PsidFile,
+    subsong: number,
+    Chip: SidChipWasmCtor,
+    sampleRate: number,
+    /** The chip to play on; the file's own when absent. */
+    model?: '6581' | '8580',
+  ): PsidPlaybackCreate {
     const made = PsidRunner.create(file, subsong);
     if (!made.ok) return made;
     let chip: SidChipWasm;
     try {
       // A file that does not say is played on a 6581, as the players of HVSC do.
-      chip = new Chip(file.sidModel === '8580', sampleRate, made.runner.clockHz);
+      chip = new Chip((model ?? file.sidModel) === '8580', sampleRate, made.runner.clockHz);
     } catch (error) {
       return { ok: false, reason: String(error) };
     }

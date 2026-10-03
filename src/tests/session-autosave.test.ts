@@ -141,6 +141,22 @@ describe('useSessionAutosave', () => {
     expect(applySongFile).toHaveBeenCalledTimes(1);
   });
 
+  it('dismissing the offer deletes the saved session, so a later page load does not offer it again', async () => {
+    const storage = memoryStorage(record('Old tune'));
+    const first = setup(storage);
+    await first.api.start();
+    expect(first.offerRestore).toHaveBeenCalledTimes(1);
+    await first.offerRestore.mock.calls[0]![2]();
+    expect(await storage.get()).toBeNull();
+
+    // The next page load (a new module state): nothing left to offer.
+    resetSessionRestoreOffered();
+    setActivePinia(createPinia());
+    const next = setup(storage);
+    await next.api.start();
+    expect(next.offerRestore).not.toHaveBeenCalled();
+  });
+
   it('does not offer it again when the page mounts again, over a song already edited, or under a deep link', async () => {
     const storage = memoryStorage(record());
     const first = setup(storage);

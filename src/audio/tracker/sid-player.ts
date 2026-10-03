@@ -108,14 +108,14 @@ export class SidPlayerClient {
    * Resolves once it can `play()`; rejects with the reason it cannot run.
    * Supersedes any earlier load, like `loadSong`.
    */
-  loadPsid(bytes: Uint8Array, subsong: number): Promise<SidSongInfo> {
+  loadPsid(bytes: Uint8Array, subsong: number, model?: '6581' | '8580'): Promise<SidSongInfo> {
     if (this.unusable) return Promise.reject(this.unusable);
     this.pendingLoad?.reject(new Error('superseded by a newer load'));
     const id = this.nextLoadId++;
     return new Promise<SidSongInfo>((resolve, reject) => {
       this.pendingLoad = { id, resolve, reject };
       const copy = bytes.slice();
-      this.send({ type: 'load-psid', id, bytes: copy.buffer, subsong }, [copy.buffer]);
+      this.send({ type: 'load-psid', id, bytes: copy.buffer, subsong, ...(model === undefined ? {} : { model }) }, [copy.buffer]);
     });
   }
 

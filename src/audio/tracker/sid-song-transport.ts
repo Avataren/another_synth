@@ -4,7 +4,7 @@ import { SID_INDEX_TO_MIDI, serializeSidFile, sidDocForSubsong, type SidDoc } fr
 import { createSidPlayer, type Sid6581Revision, type SidPlayerClient, type SidPosition } from 'src/audio/tracker/sid-player';
 import { reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
-import type { PsidTune } from 'src/audio/tracker/psid-tune';
+import { psidTuneChip, type PsidTune } from 'src/audio/tracker/psid-tune';
 
 export type PlaybackMode = 'pattern' | 'song';
 
@@ -320,7 +320,7 @@ export class SidSongTransport {
     if (this.loadedTune === tune) return;
     this.loadedTune = null;
     this.loadedDoc = null;
-    await client.loadPsid(tune.bytes, tune.subsong);
+    await client.loadPsid(tune.bytes, tune.subsong, psidTuneChip(tune));
     this.loadedTune = tune;
   }
 
@@ -360,7 +360,7 @@ export class SidSongTransport {
     if (client === null) return;
     this.loadedTune = null;
     this.deps.psidElapsed.value = 0;
-    void client.loadPsid(tune.bytes, tune.subsong).then(
+    void client.loadPsid(tune.bytes, tune.subsong, psidTuneChip(tune)).then(
       () => {
         if (this.client !== client) return;
         this.loadedTune = tune;

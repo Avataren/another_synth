@@ -103,6 +103,7 @@ describe('TrackerPage shows the toggle in both layouts, for a SID song only', ()
     const transport = src.slice(src.indexOf('class="transport-controls"'), src.indexOf('class="volume-control"'));
     expect(transport).toContain('<SidChipModelToggle');
     // `null` (no toggle) for any song that is not SID.
-    expect(src).toMatch(/const sidChipModel = computed\(\(\) => \(isSidSong\.value \? trackerStore\.sidDoc\?\.chipModel \?\? null : null\)\)/);
+    expect(src).toMatch(/const sidChipModel = computed\(\(\) => \{\s+if \(!isSidSong\.value\) return null;/);
+    expect(src).toContain('return trackerStore.sidDoc?.chipModel ?? null;');
   });
 });

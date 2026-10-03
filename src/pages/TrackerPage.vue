@@ -1276,6 +1276,7 @@ import { ahxPresetOptions } from 'src/audio/tracker/ahx-presets';
 import { AHX_MAX_INSTRUMENTS, fileInstruments } from 'src/audio/tracker/ahx-doc';
 import { useSessionAutosave } from 'src/composables/useSessionAutosave';
 import { sidCommandHint } from 'src/audio/tracker/sid-command-help';
+import { psidTuneChip } from 'src/audio/tracker/psid-tune';
 import { ahxEditNotice, reportAhxEditNotice } from 'src/audio/tracker/ahx-edit-notice';
 import {
   channelsFromSelection,
@@ -1422,7 +1423,7 @@ const sessionAutosave = useSessionAutosave({
   parseSongBuffer,
   applySongFile,
   suppressRestore: () => deepLinkPending.value,
-  offerRestore: (record, restore) => {
+  offerRestore: (record, restore, dismiss) => {
     const when = new Date(record.savedAt).toLocaleString();
     $q.notify({
       type: 'info',
@@ -1441,7 +1442,12 @@ const sessionAutosave = useSessionAutosave({
             });
           },
         },
-        { label: 'Dismiss' },
+        {
+          label: 'Dismiss',
+          handler: () => {
+            void dismiss();
+          },
+        },
       ],
     });
   },
@@ -1483,9 +1489,16 @@ const cursorHint = computed(() => {
  * the toggle beside the transport shows it and retags the doc, which a
  * playing song reloads with, back at its row (`setSidChip`).
  */
-const sidChipModel = computed(() => (isSidSong.value ? trackerStore.sidDoc?.chipModel ?? null : null));
+const sidChipModel = computed(() => {
+  if (!isSidSong.value) return null;
+  if (trackerStore.psidTune !== null) return psidTuneChip(trackerStore.psidTune);
+  return trackerStore.sidDoc?.chipModel ?? null;
+});
+/** The choice is remembered: every SID song loaded afterwards plays on it (`applySidChipPreference`). */
 function onSidChipSelect(model: SidChipModel): void {
-  trackerStore.setSidChip(model);
+  userSettingsStore.updateSetting('sidChipPreference', model);
+  if (trackerStore.psidTune !== null) trackerStore.selectPsidChip(model);
+  else trackerStore.setSidChip(model);
   refocusTracker();
 }
 /** Which 6581 plays a 6581 song: the user's setting, heard at once (useTrackerSongHost applies it). */

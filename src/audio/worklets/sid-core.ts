@@ -91,6 +91,8 @@ export type SidCommand =
       bytes: ArrayBuffer | Uint8Array;
       /** 0-based. */
       subsong: number;
+      /** The chip to play on; the file's own when absent. */
+      model?: '6581' | '8580';
     }
   | { type: 'play' }
   | { type: 'pause' }
@@ -175,7 +177,7 @@ export class SidProcessorCore {
       case 'load-psid':
         if (command.id <= this.lastLoadId) break;
         this.lastLoadId = command.id;
-        this.loadPsid(command.id, command.bytes, command.subsong);
+        this.loadPsid(command.id, command.bytes, command.subsong, command.model);
         break;
       case 'play':
         this.player?.play();
@@ -269,13 +271,13 @@ export class SidProcessorCore {
     }
   }
 
-  private loadPsid(id: number, bytes: ArrayBuffer | Uint8Array, subsong: number): void {
+  private loadPsid(id: number, bytes: ArrayBuffer | Uint8Array, subsong: number, model?: '6581' | '8580'): void {
     this.dropPlayer();
     try {
       if (this.ChipCtor === null) throw new Error('this worklet has no chip to play a .sid on');
       const parsed = parsePsid(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
       if (!parsed.ok) throw new Error(parsed.reason);
-      const made = PsidPlayback.create(parsed.file, subsong, this.ChipCtor, this.sampleRate);
+      const made = PsidPlayback.create(parsed.file, subsong, this.ChipCtor, this.sampleRate, model);
       if (!made.ok) throw new Error(made.reason);
       this.adopt(id, made.player);
     } catch (error) {

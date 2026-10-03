@@ -14,6 +14,7 @@ import { importA2mToTrackerSong, looksLikeA2m, upgradeLegacyA2mSongFile } from '
 import { importPsidToTrackerSongAsync, looksLikePsidFile, openPsidAsTune, psidImportSummaryOf } from 'src/audio/tracker/psid-import';
 import { recordLoadedSongHash } from 'src/composables/song-identity';
 import { usePostFxStore } from 'src/stores/post-fx-store';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
 
 /**
  * File picker types for File System Access API
@@ -519,6 +520,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     // Load song data and rebuild instruments
     console.log('[FileIO] Loading song data');
     put();
+    applySidChipPreference();
     // An AHX/HVL song is played from its file, not from the store: keep the
     // bytes the import attached for the playback store to hand to the worklet.
     // Any other song clears them.
@@ -586,6 +588,19 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     console.log('[FileIO] Initializing playback');
     await context.initializePlayback(context.playbackMode.value, false);
     console.log('[FileIO] Song loaded successfully');
+  }
+
+  /**
+   * A SID song loads on the chip the user last chose with the tracker's chip
+   * toggle, not its own tag (`sidChipPreference`; none chosen: its own). A
+   * GoatTracker song is retagged, a C64 tune plays on it.
+   */
+  function applySidChipPreference(): void {
+    const chip = useUserSettingsStore().settings.sidChipPreference;
+    if (chip === null || chip === undefined) return;
+    const store = context.trackerStore;
+    if (store.psidTune !== null) store.selectPsidChip(chip);
+    else if (store.sidDoc !== null && store.sidDoc.chipModel !== chip) store.setSidChip(chip);
   }
 
   /**

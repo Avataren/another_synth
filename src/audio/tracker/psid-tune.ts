@@ -19,6 +19,13 @@ export interface PsidTune {
   readonly file: PsidFile;
   /** 0-based. */
   readonly subsong: number;
+  /** The chip the user chose for it; the file's own when absent (`psidTuneChip`). */
+  readonly chip?: '6581' | '8580';
+}
+
+/** The chip a tune plays on: the user's choice, else the file's tag, else (as HVSC's players do) a 6581. */
+export function psidTuneChip(tune: PsidTune): '6581' | '8580' {
+  return tune.chip ?? (tune.file.sidModel === '8580' ? '8580' : '6581');
 }
 
 /** The largest `.sid` kept: the C64's 64 KiB plus a header, as base64. */

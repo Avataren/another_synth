@@ -189,6 +189,12 @@ export interface UserSettings {
    * r4. Applied live, mid-song.
    */
   sid6581Revision: Sid6581Revision;
+  /**
+   * The SID chip the user chose with the tracker's chip toggle, remembered
+   * across songs: every SID song (a C64 tune, a GoatTracker song) is played
+   * on it once chosen. `null`: none chosen yet, each song plays on its own chip.
+   */
+  sidChipPreference: '6581' | '8580' | null;
 }
 
 /**
@@ -270,6 +276,7 @@ export const defaultSettings: UserSettings = {
     releaseMs: 150,
   },
   sid6581Revision: 'gt',
+  sidChipPreference: null,
 };
 
 const STORAGE_KEY = 'synth-user-settings';

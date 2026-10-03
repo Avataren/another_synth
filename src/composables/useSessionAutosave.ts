@@ -21,8 +21,12 @@ export interface SessionAutosaveContext {
   /** Parse a song's bytes into a song file (`useTrackerFileIO.parseSongBuffer`). */
   parseSongBuffer: (data: ArrayBuffer, name?: string) => Promise<TrackerSongFile>;
   applySongFile: (file: TrackerSongFile) => Promise<void>;
-  /** Show the restore offer; call `restore` if they accept. */
-  offerRestore: (record: SessionRecord, restore: () => Promise<void>) => void;
+  /**
+   * Show the restore offer; call `restore` if they accept, `dismiss` if they
+   * turn it down (the saved session is then deleted, so the offer does not
+   * come back at the next page load).
+   */
+  offerRestore: (record: SessionRecord, restore: () => Promise<void>, dismiss: () => Promise<void>) => void;
   /** Skip the restore offer (a demo deep link is about to load a song). */
   suppressRestore?: () => boolean;
   storage?: SessionStorage | null;
@@ -102,7 +106,17 @@ export function useSessionAutosave(context: SessionAutosaveContext) {
     try {
       const record = await storage!.get();
       if (record && isPristine() && !context.isLoadingSong.value) {
-        context.offerRestore(record, () => restore(record));
+        context.offerRestore(
+          record,
+          () => restore(record),
+          async () => {
+            try {
+              await storage!.clear();
+            } catch (error) {
+              console.warn('[session-autosave] could not forget the dismissed session', error);
+            }
+          },
+        );
       }
     } catch (error) {
       console.warn('[session-autosave] could not read the last session', error);

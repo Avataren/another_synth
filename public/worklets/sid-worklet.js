@@ -5664,13 +5664,13 @@ var PsidPlayback = class _PsidPlayback {
     __publicField(this, "cyclesPerSample");
     this.cyclesPerSample = runner.clockHz / sampleRate2;
   }
-  /** Subsong `subsong` (0-based) of `file` on a chip of the file's model, paused. */
-  static create(file, subsong, Chip, sampleRate2) {
+  /** Subsong `subsong` (0-based) of `file` on `model` (or the file's chip), paused. */
+  static create(file, subsong, Chip, sampleRate2, model) {
     const made = PsidRunner.create(file, subsong);
     if (!made.ok) return made;
     let chip;
     try {
-      chip = new Chip(file.sidModel === "8580", sampleRate2, made.runner.clockHz);
+      chip = new Chip((model ?? file.sidModel) === "8580", sampleRate2, made.runner.clockHz);
     } catch (error) {
       return { ok: false, reason: String(error) };
     }
@@ -5811,7 +5811,7 @@ var SidProcessorCore = class {
       case "load-psid":
         if (command.id <= this.lastLoadId) break;
         this.lastLoadId = command.id;
-        this.loadPsid(command.id, command.bytes, command.subsong);
+        this.loadPsid(command.id, command.bytes, command.subsong, command.model);
         break;
       case "play":
         this.player?.play();
@@ -5900,13 +5900,13 @@ var SidProcessorCore = class {
       this.post({ type: "error", id, message: `SID load failed: ${String(error)}` });
     }
   }
-  loadPsid(id, bytes, subsong) {
+  loadPsid(id, bytes, subsong, model) {
     this.dropPlayer();
     try {
       if (this.ChipCtor === null) throw new Error("this worklet has no chip to play a .sid on");
       const parsed = parsePsid(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
       if (!parsed.ok) throw new Error(parsed.reason);
-      const made = PsidPlayback.create(parsed.file, subsong, this.ChipCtor, this.sampleRate);
+      const made = PsidPlayback.create(parsed.file, subsong, this.ChipCtor, this.sampleRate, model);
       if (!made.ok) throw new Error(made.reason);
       this.adopt(id, made.player);
     } catch (error) {

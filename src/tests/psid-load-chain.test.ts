@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { importPsid } from 'src/audio/tracker/psid';
+import { psidTuneChip } from 'src/audio/tracker/psid-tune';
 import { hasSongFileExtension } from 'src/composables/useTrackerFileIO';
 import type { SidCommand } from 'src/audio/worklets/sid-core';
 import { SID_CYCLES_PER_FRAME, SID_PAL_CLOCK_HZ } from 'src/audio/tracker/sid-instrument-visuals';
@@ -86,6 +87,42 @@ describe('a C64 .sid through the real load path', () => {
     await app.host.play('song', 0);
     await until(() => loads().length === 3, 'a fresh load after stop');
     expect(loads()[2]!.subsong).toBe(2);
+  }, 60000);
+
+  it('the chip can be chosen for a tune: it restarts on it, is saved with it, and the choice is remembered for the next song', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const app = await setupSidApp();
+    const { useUserSettingsStore } = await import('src/stores/user-settings-store');
+    const settings = useUserSettingsStore();
+    await app.host.loadSongFromFile(fileOf(fixture(PROOF), 'Commando.sid'));
+    // Commando's header does not name a chip: a 6581, as HVSC's players do.
+    await app.host.play('song', 0);
+    await until(() => sidWorkletNodes[0]?.received.some((c) => c.type === 'play') ?? false, 'play');
+    const node = sidWorkletNodes[0] as FakeSidWorkletNode;
+    const loads = () => node.received.filter((c): c is Extract<SidCommand, { type: 'load-psid' }> => c.type === 'load-psid');
+    expect(loads()[0]!.model).toBe('6581');
+    // What the page's toggle does:
+    settings.updateSetting('sidChipPreference', '8580');
+    app.trackerStore.selectPsidChip('8580');
+    await until(() => loads().length === 2, 'the reload');
+    expect(loads()[1]!.model).toBe('8580');
+    expect(app.trackerStore.serializeSong().data.psidChip).toBe('8580');
+    // Another tune opens on the chosen chip, whatever its own tag.
+    await app.host.loadSongFromFile(fileOf(fixture('tel_jeroen/golden_axe.sid'), 'Golden_Axe.sid'));
+    expect(psidTuneChip(app.trackerStore.psidTune!)).toBe('8580');
+    settings.updateSetting('sidChipPreference', '6581');
+    await app.host.loadSongFromFile(fileOf(fixture('tel_jeroen/golden_axe.sid'), 'Golden_Axe.sid'));
+    expect(psidTuneChip(app.trackerStore.psidTune!)).toBe('6581');
+    settings.updateSetting('sidChipPreference', '8580');
+    // And so does a GoatTracker song, which is retagged.
+    const sng = new Uint8Array(readFileSync(resolve(__dirname, 'fixtures/gt-songs/stinsen/ballad.sng')));
+    await app.host.loadSongFromFile(fileOf(sng, 'ballad.sng'));
+    expect(app.trackerStore.isPsidSong).toBe(false);
+    expect(app.trackerStore.sidDoc!.chipModel).toBe('8580');
+    settings.updateSetting('sidChipPreference', '6581');
+    await app.host.loadSongFromFile(fileOf(sng, 'ballad.sng'));
+    expect(app.trackerStore.sidDoc!.chipModel).toBe('6581');
   }, 60000);
 
   it('is saved and restored as the .sid it is (a .cmod round trip keeps the tune and its subsong)', async () => {

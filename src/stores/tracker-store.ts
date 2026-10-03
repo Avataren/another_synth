@@ -86,7 +86,7 @@ import { readModOrigin, type ModOrigin } from 'src/audio/tracker/mod-origin';
 import { readXmOrigin, type XmOrigin } from 'src/audio/tracker/xm-origin';
 import { editSidInstrument, newSidInstrument } from 'src/audio/tracker/sid-instrument-edit';
 import { addSidPreset, applySidPreset } from 'src/audio/tracker/sid-presets';
-import { decodePsidFile, encodePsidFile, type PsidTune } from 'src/audio/tracker/psid-tune';
+import { decodePsidFile, encodePsidFile, psidTuneChip, type PsidTune } from 'src/audio/tracker/psid-tune';
 import { ahxPresetFits, ahxPresetInstrument } from 'src/audio/tracker/ahx-presets';
 import {
   SID_MAX_INSTRUMENT_NAME_LENGTH,
@@ -617,6 +617,8 @@ export interface TrackerSongFile {
     psidFile?: string;
     /** With `psidFile`: the subsong playing (0-based); absent means the file's start song. */
     psidSubsong?: number;
+    /** With `psidFile`: the chip the user chose for the tune; absent means the file's own. */
+    psidChip?: '6581' | '8580';
     /**
      * A2M songs only (.ai/plan-opl.md O7): the module as opened, base64
      * (`encodeA2mFile`). What plays: the Rust player in the OPL worklet reads
@@ -1664,6 +1666,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       if (this.moduleFormat === 'sid' && this.psidTune !== null) {
         data.psidFile = encodePsidFile(this.psidTune.bytes);
         data.psidSubsong = this.psidTune.subsong;
+        if (this.psidTune.chip !== undefined) data.psidChip = this.psidTune.chip;
       }
       if (this.moduleFormat === 'a2m' && this.a2mDoc !== null) data.a2mDoc = this.a2mDoc;
       return { version: CURRENT_SONG_FILE_VERSION, data };
@@ -1936,7 +1939,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         return;
       }
       const wanted = Number.isInteger(data.psidSubsong) ? (data.psidSubsong as number) : decoded.file.startSong - 1;
-      this.psidTune = markRaw({ bytes: decoded.bytes, file: decoded.file, subsong: Math.max(0, Math.min(decoded.file.songs - 1, wanted)) });
+      this.psidTune = markRaw({ bytes: decoded.bytes, file: decoded.file, subsong: Math.max(0, Math.min(decoded.file.songs - 1, wanted)), ...(data.psidChip === '6581' || data.psidChip === '8580' ? { chip: data.psidChip } : {}) });
       this.psidRevision += 1;
     },
     /**
@@ -1947,6 +1950,13 @@ export const useTrackerStore = defineStore('trackerStore', {
       const tune = this.psidTune;
       if (tune === null || !Number.isInteger(subsong) || subsong < 0 || subsong >= tune.file.songs || subsong === tune.subsong) return;
       this.psidTune = markRaw({ ...tune, subsong });
+      this.psidRevision += 1;
+    },
+    /** Plays the tune on `chip`, restarting it. Not an edit: no undo step. */
+    selectPsidChip(chip: '6581' | '8580') {
+      const tune = this.psidTune;
+      if (tune === null || psidTuneChip(tune) === chip) return;
+      this.psidTune = markRaw({ ...tune, chip });
       this.psidRevision += 1;
     },
     /**
