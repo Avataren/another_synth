@@ -34,7 +34,9 @@ const FOV_Y = (34 * Math.PI) / 180;
  */
 const ROW_WIDTH = 11.2;
 const VIEW_WIDTH = 5.6;
-const MAX_HEIGHT = 2.85;
+const MAX_HEIGHT = 3.6;
+/** How much of its cell a bar fills across (the rest is the gap to its neighbour); a peak cap is 0.8 of that. */
+const BAR_FILL = 0.63;
 const MAX_BARS = RAYMARCH_MAX_BARS;
 const SKY_WIDTH = 384;
 const SKY_HEIGHT = 96;
@@ -53,6 +55,18 @@ const ROW_FILL = 0.97;
 const ASPECT_REF = 2.3;
 const DISTANCE_REF = 6.2;
 const ASPECT_POWER = 0.35;
+/**
+ * Up to FIT_ASPECT_FULL the camera backs off far enough to show the whole row
+ * (a 16:9 screen); from there to FIT_ASPECT_CROP it eases back to framing
+ * VIEW_WIDTH alone, so a very wide strip still gets the big, cropped picture.
+ */
+const FIT_ASPECT_FULL = 2.0;
+const FIT_ASPECT_CROP = 2.4;
+/** Room the fit leaves for the camera's sideways drift (see `eye`). It looks at the row's centre, so the drift moves the ends far less than its own size. */
+const EYE_DRIFT = 0.5;
+/** The camera sweeps left and right along a sine: how far (world units) and how fast (radians a second, about 25 s a sweep). */
+const EYE_SWAY = 2.0;
+const EYE_SWAY_SPEED = 0.25;
 /** Where the camera looks and how high it sits, tied to how tall the bars get. */
 const LOOK_HEIGHT = MAX_HEIGHT * 0.26;
 const EYE_HEIGHT = 1.25;
@@ -422,13 +436,24 @@ export class RaymarchRenderer {
     // The camera: low and wide, drifting a little so the depth reads.
     const aspect = width / Math.max(1, height);
     const t = frame.timeMs / 1000;
-    const fitWidth = VIEW_WIDTH / 2 / ROW_FILL / (Math.tan(FOV_Y / 2) * aspect);
+    const showAll = Math.min(
+      1,
+      Math.max(
+        0,
+        (FIT_ASPECT_CROP - aspect) / (FIT_ASPECT_CROP - FIT_ASPECT_FULL),
+      ),
+    );
+    const viewWidth = VIEW_WIDTH + (ROW_WIDTH - VIEW_WIDTH) * showAll;
+    const fitWidth =
+      (viewWidth / 2 + EYE_DRIFT * showAll) /
+      ROW_FILL /
+      (Math.tan(FOV_Y / 2) * aspect);
     const backOff =
       DISTANCE_REF *
       Math.pow(Math.max(aspect, ASPECT_REF) / ASPECT_REF, ASPECT_POWER);
     const distance = Math.max(fitWidth, backOff);
     const eye = [
-      Math.sin(t * 0.17) * 0.9,
+      Math.sin(t * EYE_SWAY_SPEED) * EYE_SWAY,
       EYE_HEIGHT + Math.sin(t * 0.11) * 0.05,
       distance,
     ] as const;
@@ -499,9 +524,9 @@ export class RaymarchRenderer {
     gl.uniform1f(u.uTime ?? null, t);
     gl.uniform1i(u.uBands ?? null, bands);
     gl.uniform1f(u.uPitch ?? null, pitch);
-    gl.uniform1f(u.uHalf ?? null, pitch * 0.75 * 0.5);
-    gl.uniform1f(u.uCapHalf ?? null, pitch * 0.6 * 0.5);
-    gl.uniform1f(u.uHalfZ ?? null, pitch * 0.75 * 0.5 * OCTAGON_CORNER);
+    gl.uniform1f(u.uHalf ?? null, pitch * BAR_FILL * 0.5);
+    gl.uniform1f(u.uCapHalf ?? null, pitch * BAR_FILL * 0.8 * 0.5);
+    gl.uniform1f(u.uHalfZ ?? null, pitch * BAR_FILL * 0.5 * OCTAGON_CORNER);
     gl.uniform1f(u.uMaxH ?? null, MAX_HEIGHT);
     gl.uniform1f(u.uLoud ?? null, loud);
     gl.uniform1i(u.uBarData ?? null, 3);
@@ -545,7 +570,10 @@ export class RaymarchRenderer {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
     smear(target.refl, reflTmp, 1.6, 0);
-    smear(reflTmp, reflBlur, 0, 3.6);
+    // Two vertical passes with closer taps (about the old 3.6 texel spread in all): taps further
+    // apart than a texel step over fine detail in the mirror, which then crawls as a ladder of lines.
+    smear(reflTmp, reflBlur, 0, 2.5);
+    smear(reflBlur, reflTmp, 0, 2.5);
 
     // Scene plus reflection, then the bloom onto the canvas.
     combined.use(gl, rw, rh);
@@ -555,7 +583,7 @@ export class RaymarchRenderer {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, target.refl.texture);
     gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, reflBlur.texture);
+    gl.bindTexture(gl.TEXTURE_2D, reflTmp.texture);
     gl.uniform1i(this.combineUniforms.uScene ?? null, 0);
     gl.uniform1i(this.combineUniforms.uSharp ?? null, 1);
     gl.uniform1i(this.combineUniforms.uBlur ?? null, 2);

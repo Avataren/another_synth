@@ -719,6 +719,10 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
       const float e = 0.012;
       float r0 = barRipple(p.xz);
       vec2 rg = vec2(barRipple(p.xz + vec2(e, 0.0)) - r0, barRipple(p.xz + vec2(0.0, e)) - r0) / e;
+      // Rings finer than a few pixels only alias into moire: fade them out by how much floor a pixel covers
+      // (grazing views stretch it), measured against the rings' wavelength.
+      float footprint = h.t * 2.0 / (uRes.y * uFocal * max(abs(rd.y), 0.03));
+      rg *= 1.0 - smoothstep(0.03, 0.14, footprint * RIPPLE_K / 6.2831853);
       n = normalize(vec3(n.x - rg.x, n.y, n.z - rg.y));
     }
     vec3 irradiance = bodyLight(p, n, v, full, 0.002, 0.01, 10.0, true, shadow, spec);
@@ -796,7 +800,10 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
   col += spec;
   // Self-light, so a colour is never dead, brighter towards the tip.
   col += albedo * (0.10 + 0.22 * height) * (cap ? 2.5 : 1.0);
-  float edge = 1.0 - smoothstep(0.0, 0.006, abs(hitDistance(p, h)));
+  // The edge line is no thinner than a pixel and gets dimmer as it widens, or it is a sub-pixel shimmer.
+  float pixelSize = h.t * 2.0 / (uRes.y * uFocal);
+  float edgeWidth = max(0.006, pixelSize * 1.5);
+  float edge = (1.0 - smoothstep(0.0, edgeWidth, abs(hitDistance(p, h)))) * (0.006 / edgeWidth);
   col += albedo * fres * 0.3;
   col += albedo * (0.2 + 0.5 * height) * max(n.y, 0.0) * 0.12 * edge;
   if (cap) col = mix(col * 1.5, vec3(1.0), 0.1) + albedo * 0.35;   // bright, but still the bar's colour
@@ -865,20 +872,69 @@ vec3 encodeHdr(vec3 x) {
   return pow(max(x, 0.0) / (1.0 + max(x, 0.0)), vec3(1.0 / 2.2));
 }
 
-void main() {
-  vec2 frag = gl_FragCoord.xy;
+vec3 primaryDir(vec2 frag) {
   vec2 uv = (2.0 * frag - uRes) / uRes.y;
   vec3 ww = normalize(uTarget - uEye);
   vec3 uu = normalize(cross(ww, vec3(0.0, 1.0, 0.0)));
   vec3 vv = cross(uu, ww);
-  vec3 rd = normalize(uv.x * uu + uv.y * vv + uFocal * ww);
+  return normalize(uv.x * uu + uv.y * vv + uFocal * ww);
+}
 
-  vec3 col = render(uEye, rd);
+/** What the primary ray at a sub-pixel position hits: material and bar (-1 for no bar), and its normal. */
+int probeKey(vec2 frag, out vec3 n) {
+  vec3 rd = primaryDir(frag);
+  Hit h = trace(uEye, rd, false);
+  n = vec3(0.0, 1.0, 0.0);
+  if (h.mat == 2 || h.mat == 3) {
+    n = barNormal(uEye + rd * h.t, h);
+    return h.mat * 1024 + h.bar;
+  }
+  if (h.mat == 4) n = normalize(uEye + rd * h.t - uBall.xyz);
+  return h.mat * 1024;
+}
 
-  // Both targets are 8 bit, so keep the wide range in them: a Reinhard curve
-  // under a gamma (dark values keep their precision); the combine pass undoes it.
-  outColor = vec4(encodeHdr(col), gWater);
-  outRefl = vec4(encodeHdr(gRefl), gWater);
+// The 8 bit targets keep the wide range under a Reinhard curve and a gamma; the combine pass undoes it.
+void shadeSample(vec2 frag, out vec4 sceneOut, out vec4 reflOut) {
+  gRefl = vec3(0.0);
+  gWater = 0.0;
+  gShadow = 1.0;
+  vec3 col = render(uEye, primaryDir(frag));
+  sceneOut = vec4(encodeHdr(col), gWater);
+  reflOut = vec4(encodeHdr(gRefl), gWater);
+}
+
+void main() {
+  vec2 frag = gl_FragCoord.xy;
+  // Adaptive supersampling: a bar or ball, whose outline and bevel facets a few pixels wide, shimmer
+  // against the pixel grid (moire along the row of bars). Probe four sub-pixel rays, which is cheap,
+  // and shade four samples, spread over the whole pixel (rotated grid), wherever they touch a bar or ball or disagree.
+  const vec2 OFFSETS[4] = vec2[4](vec2(-0.375, -0.125), vec2(0.125, -0.375), vec2(0.375, 0.125), vec2(-0.125, 0.375));
+  bool edge = false;
+  vec3 n0;
+  int k0 = probeKey(frag + OFFSETS[0], n0);
+  for (int i = 1; i < 4; i++) {
+    vec3 ni;
+    int ki = probeKey(frag + OFFSETS[i], ni);
+    if (ki != k0 || dot(n0, ni) < 0.985) edge = true;
+  }
+  // Anything on a bar or the ball is supersampled, not only its outline: a pixel that flips between
+  // one sample and four as the camera drifts is a flicker of its own.
+  if (k0 >= 2 * 1024) edge = true;
+  vec4 sceneOut, reflOut;
+  if (!edge) {
+    shadeSample(frag, sceneOut, reflOut);
+  } else {
+    sceneOut = vec4(0.0);
+    reflOut = vec4(0.0);
+    for (int i = 0; i < 4; i++) {
+      vec4 s, r;
+      shadeSample(frag + OFFSETS[i], s, r);
+      sceneOut += s * 0.25;
+      reflOut += r * 0.25;
+    }
+  }
+  outColor = sceneOut;
+  outRefl = reflOut;
 }
 `;
 
@@ -916,8 +972,39 @@ vec3 aces(vec3 color) {
   return clamp(ACES_OUT * (a / b), 0.0, 1.0);
 }
 
+float lumaOf(vec3 c) {
+  return dot(c, vec3(0.299, 0.587, 0.114));
+}
+
+// Cheap FXAA (Lottes' two-tap form) on the scene. It runs on the encoded values,
+// which sit under a gamma, so edges are judged about as the eye sees them. Flat
+// areas bail out after the first taps; only the edge pixels pay for the rest.
+vec4 antiAlias(vec2 uv) {
+  vec2 px = 1.0 / vec2(textureSize(uScene, 0));
+  vec4 m = texture(uScene, uv);
+  float lM = lumaOf(m.rgb);
+  float lNW = lumaOf(texture(uScene, uv + vec2(-1.0, 1.0) * px).rgb);
+  float lNE = lumaOf(texture(uScene, uv + vec2(1.0, 1.0) * px).rgb);
+  float lSW = lumaOf(texture(uScene, uv + vec2(-1.0, -1.0) * px).rgb);
+  float lSE = lumaOf(texture(uScene, uv + vec2(1.0, -1.0) * px).rgb);
+  float lo = min(lM, min(min(lNW, lNE), min(lSW, lSE)));
+  float hi = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
+  if (hi - lo < max(0.03, hi * 0.1)) return m;
+
+  vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
+  float reduce = max((lNW + lNE + lSW + lSE) * 0.03125, 1.0 / 128.0);
+  dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + reduce), -8.0, 8.0) * px;
+
+  vec4 a = 0.5 * (texture(uScene, uv + dir * (1.0 / 3.0 - 0.5))
+                + texture(uScene, uv + dir * (2.0 / 3.0 - 0.5)));
+  vec4 b = a * 0.5 + 0.25 * (texture(uScene, uv + dir * -0.5)
+                           + texture(uScene, uv + dir * 0.5));
+  float lB = lumaOf(b.rgb);
+  return (lB < lo || lB > hi) ? a : b;
+}
+
 void main() {
-  vec4 sceneSample = texture(uScene, vUv);
+  vec4 sceneSample = antiAlias(vUv);
   vec3 scene = decodeHdr(sceneSample.rgb);
   float below = max(0.0, uBaseV - vUv.y);
   vec3 sharp = decodeHdr(texture(uSharp, vUv).rgb);
