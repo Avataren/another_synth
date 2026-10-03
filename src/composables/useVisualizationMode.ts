@@ -2,7 +2,9 @@ import { computed, type ComputedRef } from 'vue';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import {
   sanitizeVisualizationMode,
+  sanitizeVisualizationPlacement,
   type VisualizationMode,
+  type VisualizationPlacement,
 } from 'src/components/tracker/visualization-modes';
 
 /**
@@ -15,11 +17,19 @@ import {
 export function useVisualizationMode(): {
   mode: ComputedRef<VisualizationMode>;
   setMode: (next: VisualizationMode) => void;
+  placement: ComputedRef<VisualizationPlacement>;
+  setPlacement: (next: VisualizationPlacement) => void;
 } {
   const settingsStore = useUserSettingsStore();
   const mode = computed(() => sanitizeVisualizationMode(settingsStore.settings.visualizationMode));
   function setMode(next: VisualizationMode): void {
     settingsStore.updateSetting('visualizationMode', next);
   }
-  return { mode, setMode };
+  const placement = computed(() =>
+    sanitizeVisualizationPlacement(settingsStore.settings.visualizationPlacement),
+  );
+  function setPlacement(next: VisualizationPlacement): void {
+    settingsStore.updateSetting('visualizationPlacement', next);
+  }
+  return { mode, setMode, placement, setPlacement };
 }

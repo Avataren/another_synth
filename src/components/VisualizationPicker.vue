@@ -31,6 +31,26 @@
           </q-item-section>
           <q-item-section>{{ option.label }}</q-item-section>
         </q-item>
+        <template v-if="showPlacement">
+          <q-separator dark />
+          <q-item-label header class="viz-picker-header">Show in</q-item-label>
+          <q-item
+            v-for="option in PLACEMENT_OPTIONS"
+            :key="option.id"
+            v-close-popup
+            clickable
+            :active="option.id === placement"
+            active-class="viz-picker-active"
+            :data-testid="`visualization-placement-${option.id}`"
+            :title="option.title"
+            @click="setPlacement(option.id)"
+          >
+            <q-item-section avatar class="viz-picker-icon">
+              <q-icon :name="option.icon" size="18px" />
+            </q-item-section>
+            <q-item-section>{{ option.label }}</q-item-section>
+          </q-item>
+        </template>
       </q-list>
     </q-menu>
   </button>
@@ -42,9 +62,27 @@ import { useVisualizationMode } from 'src/composables/useVisualizationMode';
 import {
   VISUALIZATION_MODES,
   type VisualizationMode,
+  type VisualizationPlacement,
 } from 'src/components/tracker/visualization-modes';
 
-const { mode, setMode } = useVisualizationMode();
+withDefaults(defineProps<{ showPlacement?: boolean }>(), { showPlacement: false });
+
+const { mode, setMode, placement, setPlacement } = useVisualizationMode();
+
+const PLACEMENT_OPTIONS: readonly {
+  id: VisualizationPlacement;
+  label: string;
+  icon: string;
+  title: string;
+}[] = [
+  { id: 'pattern', label: 'Pattern area', icon: 'view_list', title: 'Replace the pattern grid' },
+  {
+    id: 'top',
+    label: 'Top panels',
+    icon: 'vertical_align_top',
+    title: 'Replace the sequence, song and instrument panels, keeping the pattern visible',
+  },
+];
 
 // The table is never empty and `mode` is sanitised against it.
 const current = computed(
@@ -99,6 +137,14 @@ function select(next: VisualizationMode): void {
 .viz-picker-list .viz-picker-icon {
   min-width: 26px;
   padding-right: 8px;
+}
+
+.viz-picker-list .viz-picker-header {
+  padding: 6px 16px 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .viz-picker-list .viz-picker-active {

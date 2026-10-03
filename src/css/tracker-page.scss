@@ -1413,3 +1413,18 @@
   color: var(--text-primary, #e8f3ff);
   font-size: 12px;
 }
+
+/* The visualization wall's slot. Over the pattern it adds no box of its own;
+   over the top panels it takes the band they leave, so the pattern stays on
+   screen beneath it. */
+.viz-wall-slot {
+  display: contents;
+}
+
+.viz-wall-slot--top {
+  display: flex;
+  flex: 0 0 auto;
+  height: clamp(220px, 38vh, 520px);
+  min-height: 0;
+  width: 100%;
+}

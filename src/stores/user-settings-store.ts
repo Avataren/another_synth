@@ -10,7 +10,9 @@ import { setSampleQuality } from 'src/audio/sample-quality';
 import type { Sid6581Revision } from 'src/audio/worklets/sid-core';
 import {
   DEFAULT_VISUALIZATION_MODE,
+  DEFAULT_VISUALIZATION_PLACEMENT,
   type VisualizationMode,
+  type VisualizationPlacement,
 } from 'src/components/tracker/visualization-modes';
 
 /**
@@ -35,6 +37,8 @@ export interface UserSettings {
    * which falls back to the default for a value this build does not know.
    */
   visualizationMode: VisualizationMode;
+  /** Where the tracker page draws a wall view: over the pattern, or over the top panels. */
+  visualizationPlacement: VisualizationPlacement;
   /**
    * Draw the Pattern view's channel scopes and the Scopes wall with the WebGL
    * glow shader. Off uses the canvas 2D scopes there, for a machine where the
@@ -231,6 +235,7 @@ export const defaultSettings: UserSettings = {
   showSpectrumAnalyzer: true,
   showWaveformVisualizers: true,
   visualizationMode: DEFAULT_VISUALIZATION_MODE,
+  visualizationPlacement: DEFAULT_VISUALIZATION_PLACEMENT,
   webglScopes: true,
   ahxScopeGain: 1,
   masterVolume: 1,

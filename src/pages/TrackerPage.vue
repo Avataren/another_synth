@@ -267,7 +267,7 @@
             Jukebox
           </button>
           <PostFxFilterControl />
-          <VisualizationPicker />
+          <VisualizationPicker show-placement />
           <label class="toggle toolbar-toggle">
             <input
               v-model="autoScroll"
@@ -316,7 +316,7 @@
         all while none is -- the pattern is what the screen is for.
       -->
       <div
-        v-show="!isFullscreen && (!isMobileLayout || mobilePanel !== null)"
+        v-show="!isFullscreen && !wallInTop && (!isMobileLayout || mobilePanel !== null)"
         class="top-grid"
         :class="{ 'top-grid-sheet': isMobileLayout }"
       >
@@ -798,6 +798,10 @@
         </div>
       </div>
 
+      <!-- `display: contents` when the wall replaces the pattern, so the walls
+           lay out as before; a fixed-height band in place of the top panels
+           when it replaces those. -->
+      <div v-if="scopeWallVisible" class="viz-wall-slot" :class="{ 'viz-wall-slot--top': wallInTop }">
       <ScopeWall
         v-if="scopeWallVisible && visualizationMode === 'scopes'"
         :track-count="trackCount"
@@ -865,6 +869,8 @@
         @toggle-solo="toggleSolo"
       />
 
+      </div>
+
       <div
         v-if="waveformVisualizersVisible"
         ref="visualizerRowRef"
@@ -926,7 +932,7 @@
 
       <!-- Hidden, not unmounted, while the scope wall shows: the scroll sync,
            selection and editing state all hang off this subtree. -->
-      <div v-show="!scopeWallVisible" class="pattern-area-wrapper" ref="patternAreaWrapperRef">
+      <div v-show="!wallReplacesPattern" class="pattern-area-wrapper" ref="patternAreaWrapperRef">
         <TrackerSpectrumAnalyzer
           v-if="spectrumAnalyzerVisible"
           :node="masterOutputNode"
@@ -1750,18 +1756,25 @@ watch(
  * row *and* the pattern grid (and the spectrum strips beside it), so those go
  * quiet while it shows. Like the rest, it is a desktop-only view.
  */
-const { mode: visualizationMode } = useVisualizationMode();
+const { mode: visualizationMode, placement: visualizationPlacement } = useVisualizationMode();
 const scopeWallVisible = computed(
   () => isScopeWallMode(visualizationMode.value) && !isMobileLayout.value,
 );
 
+/** The wall stands in for the top panels, leaving the pattern (and its strips) on screen. */
+const wallInTop = computed(() => scopeWallVisible.value && visualizationPlacement.value === 'top');
+/** The wall stands in for the pattern grid, the original placement. */
+const wallReplacesPattern = computed(() => scopeWallVisible.value && !wallInTop.value);
+
 const spectrumAnalyzerVisible = computed(
   () =>
-    userSettings.value.showSpectrumAnalyzer && !isMobileLayout.value && !scopeWallVisible.value,
+    userSettings.value.showSpectrumAnalyzer && !isMobileLayout.value && !wallReplacesPattern.value,
 );
 const waveformVisualizersVisible = computed(
   () =>
-    userSettings.value.showWaveformVisualizers && !isMobileLayout.value && !scopeWallVisible.value,
+    userSettings.value.showWaveformVisualizers &&
+    !isMobileLayout.value &&
+    !scopeWallVisible.value,
 );
 
 // An AHX/HVL song's visualizers are fed by the worklet's per-voice capture,
@@ -1784,8 +1797,8 @@ function scopeFullScaleFor(index: number): (() => number | null) | null {
 // The pattern area is hidden while the wall shows, and a hidden element
 // measures as zero: `updatePatternAreaHeight` skips those, so this measures it
 // again once it is back.
-watch(scopeWallVisible, async (wall) => {
-  if (wall) return;
+watch([wallReplacesPattern, wallInTop], async ([replaces]) => {
+  if (replaces) return;
   await nextTick();
   updatePatternAreaHeight();
   refreshVisualizerAlignment();

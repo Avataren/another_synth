@@ -17,6 +17,19 @@ export interface VisualizationModeOption {
   title: string;
 }
 
+/**
+ * Where a wall view (`isScopeWallMode`) is drawn on the tracker page: in place
+ * of the pattern grid (the original), or in place of the top panels (sequence,
+ * song, instruments), leaving the pattern on screen beneath it.
+ */
+export type VisualizationPlacement = 'pattern' | 'top';
+
+export const DEFAULT_VISUALIZATION_PLACEMENT: VisualizationPlacement = 'pattern';
+
+export function sanitizeVisualizationPlacement(value: unknown): VisualizationPlacement {
+  return value === 'top' || value === 'pattern' ? value : DEFAULT_VISUALIZATION_PLACEMENT;
+}
+
 export const DEFAULT_VISUALIZATION_MODE: VisualizationMode = 'pattern';
 
 export const VISUALIZATION_MODES: readonly VisualizationModeOption[] = [
