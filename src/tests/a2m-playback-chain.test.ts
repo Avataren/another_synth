@@ -6,7 +6,7 @@ import { toRaw } from 'vue';
 import JSZip from 'jszip';
 // Relative on purpose: the `app/public/wasm/audio_processor.js` alias is
 // mocked for every other test, and this one is about the real bytes.
-import { A2Player, OplRenderer, initSync } from '../../public/wasm/audio_processor.js';
+import { A2Player, OplRenderer, a2m_from_json, a2m_new_json, a2m_to_json, initSync } from '../../public/wasm/audio_processor.js';
 import { resetPostFxRegistryForTests } from '@another-synth/tracker-playback';
 import {
   OPL_TAP_OUTPUTS,
@@ -17,7 +17,7 @@ import {
   type OplWasmRendererCtor,
 } from 'src/audio/worklets/opl-core';
 import { a2mEffectText, looksLikeA2m } from 'src/audio/tracker/a2m-import';
-import { decodeA2mFile } from 'src/audio/tracker/a2m-file-codec';
+import { setA2mCodecBackend } from 'src/audio/tracker/a2m-codec';
 import { demoSongUrl, type DemoCollection } from 'src/composables/useDemoManifest';
 
 /**
@@ -47,6 +47,8 @@ const COT = 'NAB622/corridors of time.a2m';
 
 beforeAll(() => {
   initSync({ module: new Uint8Array(readFileSync(resolve(ROOT, 'public/wasm/audio_processor_bg.wasm'))) });
+  // The app loads the same wasm on the main thread; here it is already up.
+  setA2mCodecBackend({ a2m_to_json, a2m_from_json, a2m_new_json });
 });
 
 // ---------------------------------------------------------------------------
@@ -183,6 +185,13 @@ class FakeAudioContextStub {
   }
 }
 
+/** The song a module holds, as the codec reads it, but for the spare patterns past the file's count. */
+function songOf(bytes: Uint8Array): unknown {
+  const song = JSON.parse(a2m_to_json(bytes)) as { spare_patterns: unknown };
+  song.spare_patterns = [];
+  return song;
+}
+
 const settle = () => new Promise<void>((r) => setTimeout(r, 5));
 async function until(what: () => boolean, label: string): Promise<void> {
   for (let i = 0; i < 400; i++) {
@@ -275,22 +284,23 @@ describe('A2M display helpers', () => {
 });
 
 describe('an A2M module opens and plays through the host, the playback store and the OPL worklet', () => {
-  it('opening reads the module in a worklet and builds a read-only grid from its answer', async () => {
+  it('opening reads the module (the player must accept it) and builds an editable song from it', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const h = await setup();
     // The import's worklet is a throwaway: disposed once it answered.
     expect(workletNodes[0]?.disposed).toBe(true);
     expect(h.trackerStore.moduleFormat).toBe('a2m');
-    expect(h.trackerStore.isReadOnly).toBe(true);
-    expect(h.trackerStore.hasFixedSequence).toBe(true);
+    expect(h.trackerStore.isReadOnly).toBe(false);
+    expect(h.trackerStore.hasFixedSequence).toBe(false);
     const bytes = new Uint8Array(corpus(COT));
-    const saved = decodeA2mFile(h.trackerStore.a2mFile);
-    expect(saved.ok && Array.from(saved.bytes)).toEqual(Array.from(bytes));
+    expect(h.trackerStore.a2mDoc?.instruments).toHaveLength(255);
     // What the player says of the song: 18 tracks, the order list as the sequence.
     const player = new A2Player(bytes, SAMPLE_RATE);
     const orders = Array.from({ length: player.order_count() }, (_, i) => player.order_entry(i));
     expect(h.trackerStore.sequence).toEqual(orders.map((o) => `a2m-pat-${o}`));
-    expect(new Set(h.trackerStore.patterns.map((p) => p.id))).toEqual(new Set(orders.map((o) => `a2m-pat-${o}`)));
+    // Every pattern of the file is in the grid, the ordered ones among them.
+    const ids = new Set(h.trackerStore.patterns.map((p) => p.id));
+    for (const o of orders) expect(ids.has(`a2m-pat-${o}`)).toBe(true);
     const first = h.trackerStore.patterns.find((p) => p.id === `a2m-pat-${orders[0]}`)!;
     expect(first.tracks).toHaveLength(player.track_count());
     expect(first.rows).toBe(player.rows_per_pattern());
@@ -317,12 +327,17 @@ describe('an A2M module opens and plays through the host, the playback store and
     }
     expect(notes).toBeGreaterThan(0);
     expect(h.trackerStore.currentSong.title).toBe(player.song_name().trim());
-    const named = h.trackerStore.instrumentSlots.filter((s) => s.instrumentFormat === 'a2m');
-    expect(named.length).toBe(player.instrument_count());
+    // Every instrument the player names is a populated slot of that name.
+    for (let i = 0; i < Math.min(player.instrument_count(), h.trackerStore.instrumentSlots.length); i++) {
+      const slot = h.trackerStore.instrumentSlots[i]!;
+      expect(slot.instrumentFormat).toBe('a2m');
+      const name = player.instrument_name(i).trim();
+      if (name) expect(slot.instrumentName).toBe(name);
+    }
     player.free();
   }, 30000);
 
-  it('a v1 module shows its effects in the v9+ letters the engine plays', async () => {
+  it("a v1 module shows its effects as the module numbers them (AT2's letters)", async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const h = await setup('Subz3ro/intro-tune coop.a2m');
     const macros = h.trackerStore.patterns.flatMap((p) => p.tracks.flatMap((t) => t.entries.map((e) => e.macro).filter(Boolean)));
@@ -348,7 +363,8 @@ describe('an A2M module opens and plays through the host, the playback store and
     const node = await startPlaying(h);
     expect(node.options).toMatchObject({ numberOfOutputs: 1 + OPL_TAP_OUTPUTS });
     const load = node.received.find((c) => c.type === 'load-a2m') as Extract<OplCommand, { type: 'load-a2m' }>;
-    expect(Array.from(new Uint8Array(load.bytes as ArrayBuffer))).toEqual(Array.from(new Uint8Array(corpus(COT))));
+    // What plays is the song compiled from the doc and the grid: the same song as the file, not its bytes.
+    expect(songOf(new Uint8Array(load.bytes as ArrayBuffer))).toEqual(songOf(new Uint8Array(corpus(COT))));
     expect(node.received.map((c) => c.type)).toEqual(expect.arrayContaining(['load-a2m', 'set-loop-order', 'seek', 'play']));
     expect(node.received).toContainEqual({ type: 'set-loop-order', order: -1 });
     const { left, right } = node.pump(SAMPLE_RATE * 2);
@@ -450,11 +466,12 @@ describe('an A2M module opens and plays through the host, the playback store and
     expect(h.playbackStore.isPlaying).toBe(false);
   }, 60000);
 
-  it('a saved .cmod keeps the module and plays it again', async () => {
+  it('a saved .cmod keeps the song (doc and grid) and plays it again', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const h = await setup();
     const saved = h.trackerStore.serializeSong();
-    expect(saved.data.a2mFile).toBe(h.trackerStore.a2mFile);
+    expect(saved.data.a2mDoc).toEqual(h.trackerStore.a2mDoc);
+    expect(saved.data.a2mFile).toBeUndefined();
     const zip = new JSZip();
     zip.file('song.json', JSON.stringify(saved));
     const bytes = await zip.generateAsync({ type: 'uint8array' });
@@ -462,7 +479,7 @@ describe('an A2M module opens and plays through the host, the playback store and
     const file = await h2.host.parseSongBuffer(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
     await h2.host.applySongFile(file);
     expect(h2.trackerStore.moduleFormat).toBe('a2m');
-    expect(h2.trackerStore.a2mFile).toBe(saved.data.a2mFile);
+    expect(h2.trackerStore.a2mDoc).toEqual(saved.data.a2mDoc);
     const node = await startPlaying({ ...h2, file });
     expect(peak(node.pump(SAMPLE_RATE).left)).toBeGreaterThan(0.01);
   }, 60000);

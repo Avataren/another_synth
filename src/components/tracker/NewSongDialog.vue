@@ -36,6 +36,11 @@
           <span class="new-song-format-note">Eight channels, multi-sample instruments; exports as an .xm.</span>
         </label>
         <label class="new-song-format">
+          <input v-model="format" type="radio" value="a2m" data-testid="new-song-format-a2m" />
+          <span class="new-song-format-name">AdLib Tracker 2</span>
+          <span class="new-song-format-note">OPL FM instruments you design; exports as an .a2m.</span>
+        </label>
+        <label class="new-song-format">
           <input v-model="format" type="radio" value="sid" data-testid="new-song-format-sid" />
           <span class="new-song-format-name">SID (GoatTracker)</span>
           <span class="new-song-format-note">Three C64 voices; saves as a GoatTracker 2 .sng.</span>
@@ -90,6 +95,19 @@
         </label>
         <p v-if="tempoNote" class="new-song-note" data-testid="new-song-tempo-note">{{ tempoNote }}</p>
         <p v-if="sidProblem" class="new-song-problem" role="alert" data-testid="new-song-problem">{{ sidProblem }}</p>
+      </div>
+
+      <div v-if="format === 'a2m'" class="new-song-options" data-testid="new-song-a2m-options">
+        <label class="new-song-field">
+          <span>Chip mode</span>
+          <select v-model="a2mChip" data-testid="new-song-a2m-chip">
+            <option value="opl3">OPL3: 18 tracks, stereo</option>
+            <option value="opl2">OPL2: 9 tracks</option>
+          </select>
+        </label>
+        <p class="new-song-note" data-testid="new-song-a2m-note">
+          Starts with one plain FM instrument, tempo 50, speed 6 and 64-row patterns. Edit it from the instrument list.
+        </p>
       </div>
 
       <div v-if="format === 'ahx' || format === 'hvl'" class="new-song-options" data-testid="new-song-ahx-options">
@@ -161,6 +179,7 @@ export type NewSongChoice =
   | { format: 'native' }
   | { format: 'protracker' }
   | { format: 'xm' }
+  | { format: 'a2m'; opl3: boolean }
   | { format: 'sid'; options: NewSidDocOptions }
   | { format: 'ahx' | 'hvl'; options: NewAhxSongChoiceOptions };
 
@@ -185,6 +204,7 @@ const HVL_CHANNEL_COUNTS = Array.from({ length: HVL_MAX_CHANNELS - HVL_MIN_CHANN
 const ahxSpeedMultiplier = ref<NewAhxSongChoiceOptions['speedMultiplier']>(1);
 const trackLength = ref<NewAhxSongChoiceOptions['trackLength']>(64);
 const channels = ref(HVL_MIN_CHANNELS);
+const a2mChip = ref<'opl2' | 'opl3'>('opl3');
 let opener: HTMLElement | null = null;
 
 // GoatTracker's start tempo follows the multispeed (6 frames per row per 1x) until the user sets one.
@@ -252,6 +272,8 @@ function choice(): NewSongChoice {
       return { format: 'protracker' };
     case 'xm':
       return { format: 'xm' };
+    case 'a2m':
+      return { format: 'a2m', opl3: a2mChip.value === 'opl3' };
     default:
       return { format: 'native' };
   }

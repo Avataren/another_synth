@@ -1,29 +1,35 @@
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { CURRENT_SONG_FILE_VERSION, TOTAL_SLOTS } from 'src/stores/tracker-store';
 import type { InstrumentSlot } from 'src/stores/tracker-store';
+import { formatInstrumentId } from '@another-synth/tracker-playback';
+import { createA2mPlayer, type A2mPlayerClient } from 'src/audio/tracker/a2m-player';
+import { decodeA2mFile } from 'src/audio/tracker/a2m-file-codec';
 import {
-  formatInstrumentId,
-  midiToTrackerNote,
-  type TrackerEntryData,
-  type TrackerPattern,
-} from '@another-synth/tracker-playback';
-import { createA2mPlayer, type A2mPlayerClient, type A2mSongInfo } from 'src/audio/tracker/a2m-player';
-import { encodeA2mFile } from 'src/audio/tracker/a2m-file-codec';
+  a2mDocOf,
+  a2mSongFromBytes,
+  a2mText,
+  newA2mSong,
+  type A2mInstrumentJson,
+  type A2mSongJson,
+} from 'src/audio/tracker/a2m-codec';
+import { a2mEffectColumnText, a2mGridOf, a2mPatternId } from 'src/audio/tracker/a2m-grid';
+import { a2mInstrumentName, isEmptyA2mInstrument } from 'src/audio/tracker/a2m-instrument';
+
+export { a2mPatternId };
 
 /**
- * Adlib Tracker II (`.a2m`, .ai/plan-opl.md O7 step 4): playback only (D3),
- * like AHX. Assembly only, like the other `*-import.ts` files, except that
- * the parser is the Rust one: the module is loaded into an OPL worklet in
- * song mode (`A2Player`), and the grid is built from what it answers
- * (`song-loaded`: the order list, the tracks, and each ordered pattern's cells
- * as the engine plays them). So a module the player refuses is refused here,
- * with its one sentence, before anything is shown. The file's bytes travel
- * in the song file (`data.a2mFile`): they are what plays.
+ * Adlib Tracker II (`.a2m`, .ai/plan-opl.md O7, and the editor that followed
+ * it): assembly only, like the other `*-import.ts` files. The Rust parser
+ * (`rust-wasm/src/opl/a2`, here through `a2m-codec.ts`) reads the module into
+ * a song; `a2m-grid.ts` makes the grid of its patterns, the song's doc keeps
+ * the rest, and the module is compiled back from the two to play and to
+ * export. A module the player refuses (it has to play what it opens) is
+ * refused here with the player's sentence, before anything is shown.
  *
  * What the grid shows: notes (AT2's note 1 is C-0), key-off as `###`, the
  * instrument number, and both effect columns in AT2's own letters (`0`..`Z`,
  * `&`, `%`, `!`, `@`, `=`, `#`, `$`, `~`, `^`, `` ` ``, `>`, `<`) with the
- * parameter in hex: display text, decoded by nothing.
+ * parameter in hex.
  */
 
 /** `_A2module_`: every A2M file's first ten bytes. */
@@ -42,123 +48,96 @@ export function looksLikeA2m(bytes: Uint8Array): boolean {
   return startsWith(bytes, A2M_MAGIC) || startsWith(bytes, A2T_MAGIC);
 }
 
-/** AT2's effect letters by v9+ effect number (`techinfo.htm`'s table: 0x00..0x2F). */
-const EFFECT_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ&%!@=#$~^`><';
 /** The engine's number for a v5-8 manual slide (0x16), which AT2 converts to &4x/&5y on load. */
 const OLD_RAW_FINE = 0xf0;
-const KEY_OFF = 255;
-/** AT2's note 1 is C-0: MIDI 12. */
-const NOTE_TO_MIDI = 11;
-const CELL_BYTES = 6;
-
-const hex2 = (v: number) => v.toString(16).toUpperCase().padStart(2, '0');
 
 /** One effect column as AT2 writes it, or undefined for an empty one. */
 export function a2mEffectText(fx: number, param: number): string | undefined {
-  if (fx === 0 && param === 0) return undefined;
-  if (fx === OLD_RAW_FINE) {
+  if (fx === OLD_RAW_FINE && param !== 0) {
     const up = param >> 4;
     return up !== 0 ? `&4${up.toString(16).toUpperCase()}` : `&5${(param & 15).toString(16).toUpperCase()}`;
   }
-  const letter = EFFECT_CHARS[fx];
-  return letter === undefined ? `?${hex2(param)}` : `${letter}${hex2(param)}`;
+  return a2mEffectColumnText(fx, param);
 }
 
-/** The id of pattern `pattern`'s grid pattern (stable, so a reload keeps a selection). */
-export function a2mPatternId(pattern: number): string {
-  return `a2m-pat-${pattern}`;
+/**
+ * Make `slot` the one the doc's `instrument` is: its name, and an empty one
+ * left empty (it opens the editor all the same: that is where one is made).
+ */
+export function applyA2mSlot(slot: InstrumentSlot, instrument: A2mInstrumentJson): void {
+  const name = a2mInstrumentName(instrument);
+  slot.instrumentFormat = 'a2m';
+  if (isEmptyA2mInstrument(instrument) && name === '') {
+    slot.bankName = '';
+    slot.patchName = '';
+    slot.instrumentName = '';
+    delete slot.source;
+    delete slot.instrumentType;
+    return;
+  }
+  const shown = name || `Instrument ${formatInstrumentId(slot.slot)}`;
+  slot.bankName = 'AdLib FM';
+  slot.patchName = shown;
+  slot.instrumentName = shown;
+  slot.source = 'song';
+  slot.instrumentType = 'opl';
 }
 
-function entryFor(row: number, cell: Uint8Array | number[], at: number): TrackerEntryData | undefined {
-  const note = cell[at] ?? 0;
-  const instrument = cell[at + 1] ?? 0;
-  const fx1 = a2mEffectText(cell[at + 2] ?? 0, cell[at + 3] ?? 0);
-  const fx2 = a2mEffectText(cell[at + 4] ?? 0, cell[at + 5] ?? 0);
-  if (note === 0 && instrument === 0 && fx1 === undefined && fx2 === undefined) return undefined;
-  const entry: TrackerEntryData = { row };
-  if (note === KEY_OFF) entry.note = '###';
-  else if (note > 0) entry.note = midiToTrackerNote(note + NOTE_TO_MIDI);
-  if (instrument > 0) entry.instrument = formatInstrumentId(instrument);
-  if (fx1 !== undefined) entry.macro = fx1;
-  if (fx2 !== undefined) entry.macro2 = fx2;
-  return entry;
-}
-
-/** The grid pattern for pattern `pattern`'s cells. */
-function buildPattern(info: A2mSongInfo, pattern: number, cells: Uint8Array): TrackerPattern {
-  const tracks = info.tracks;
-  const rows = info.rowsPerPattern;
-  return {
-    id: a2mPatternId(pattern),
-    name: `Pattern ${pattern}`,
-    rows,
-    tracks: Array.from({ length: tracks }, (_, t) => {
-      const entries: TrackerEntryData[] = [];
-      for (let r = 0; r < rows; r++) {
-        const at = (r * tracks + t) * CELL_BYTES;
-        if (at + CELL_BYTES > cells.length) break;
-        const entry = entryFor(r, cells, at);
-        if (entry) entries.push(entry);
-      }
-      return { id: `a2m-pat-${pattern}-t${t}`, name: `Ch ${t + 1}`, entries };
-    }),
-  };
-}
-
-/** Name-only slots (`opl`/`a2m`, no patch, no data): the worklet plays the file's instruments. */
-function buildA2mSlots(info: A2mSongInfo): InstrumentSlot[] {
+/** Name-only slots (`opl`/`a2m`, no patch): the instrument itself is the song doc's. */
+function buildA2mSlots(song: A2mSongJson): InstrumentSlot[] {
   const slots: InstrumentSlot[] = Array.from({ length: TOTAL_SLOTS }, (_, i) => ({
     slot: i + 1,
     bankName: '',
     patchName: '',
     instrumentName: '',
+    instrumentFormat: 'a2m' as const,
   }));
-  info.instrumentNames.forEach((raw, i) => {
+  song.instruments.forEach((instrument, i) => {
     const slot = slots[i];
-    if (!slot) return;
-    const name = raw.trim() || `Instrument ${formatInstrumentId(i + 1)}`;
-    slot.bankName = 'A2M Import';
-    slot.patchName = name;
-    slot.instrumentName = name;
-    slot.source = 'song';
-    slot.instrumentType = 'opl';
-    slot.instrumentFormat = 'a2m';
+    if (slot) applyA2mSlot(slot, instrument);
   });
   return slots;
 }
 
-/** The display song for a module the worklet loaded and described as `info`. */
-export function buildA2mTrackerSong(bytes: Uint8Array, info: A2mSongInfo): TrackerSongFile {
-  const patterns = info.patterns.map((p) => buildPattern(info, p.pattern, p.cells));
-  const sequence = info.orders.map(a2mPatternId);
+/** The display song for `song`: the grid, the slots' names and the doc that, with the grid, is the module. */
+export function buildA2mTrackerSong(song: A2mSongJson): TrackerSongFile {
+  const { patterns, sequence } = a2mGridOf(song);
   return {
     version: CURRENT_SONG_FILE_VERSION,
     data: {
       currentSong: {
-        title: info.name.trim() || 'Untitled A2M module',
-        author: info.composer.trim() || 'Unknown',
+        title: a2mText(song.name).trim() || 'Untitled A2M module',
+        author: a2mText(song.composer).trim() || 'Unknown',
         bpm: 125,
       },
       moduleFormat: 'a2m',
-      patternRows: info.rowsPerPattern,
+      patternRows: song.pattern_len,
       stepSize: 1,
       patterns,
       sequence,
       currentPatternId: sequence[0] ?? null,
-      instrumentSlots: buildA2mSlots(info),
+      instrumentSlots: buildA2mSlots(song),
       activeInstrumentId: null,
       currentInstrumentPage: 0,
       songPatches: {},
-      a2mFile: encodeA2mFile(bytes),
+      a2mDoc: a2mDocOf(song),
     },
   };
 }
 
+/** An empty module: one blank pattern, one usable instrument, AT2's tempo and speed. 9 tracks (OPL2) or 18 (OPL3). */
+export async function createNewA2mTrackerSong(opl3: boolean): Promise<TrackerSongFile> {
+  const song = buildA2mTrackerSong(await newA2mSong(opl3));
+  song.data.currentSong.title = 'Untitled module';
+  song.data.currentSong.author = '';
+  return song;
+}
+
 /**
- * Load `data` in a throwaway OPL worklet and build the display song from its
- * answer. Rejects with the player's refusal (`Cannot play this A2M module:
- * ...`) for a module it will not play. The context must be able to run (a
- * suspended one is resumed; a file open is a gesture).
+ * Open `data`: parse it, and load it in a throwaway OPL worklet so a module
+ * the player refuses is refused here, with its one sentence (`Cannot play
+ * this A2M module: ...`). The context must be able to run (a suspended one is
+ * resumed; a file open is a gesture).
  */
 export async function importA2mToTrackerSong(
   data: ArrayBuffer,
@@ -171,9 +150,22 @@ export async function importA2mToTrackerSong(
   }
   const client = await createPlayer(audioContext);
   try {
-    const info = await client.loadSong(bytes);
-    return buildA2mTrackerSong(bytes, info);
+    await client.loadSong(bytes);
   } finally {
     client.dispose();
   }
+  return buildA2mTrackerSong(await a2mSongFromBytes(bytes));
+}
+
+/**
+ * A song file an older build saved (`data.a2mFile`: the module's bytes and a
+ * read-only grid) becomes today's (`data.a2mDoc` and an editable grid), by
+ * reading its module again. A file with a doc, or no module, is returned as is.
+ */
+export async function upgradeLegacyA2mSongFile(songFile: TrackerSongFile): Promise<TrackerSongFile> {
+  const data = songFile.data;
+  if (data?.moduleFormat !== 'a2m' || data.a2mDoc !== undefined || data.a2mFile === undefined) return songFile;
+  const decoded = decodeA2mFile(data.a2mFile);
+  if (!decoded.ok) return songFile;
+  return buildA2mTrackerSong(await a2mSongFromBytes(decoded.bytes));
 }

@@ -41,7 +41,7 @@ describe('isReadOnly audit (B2a)', () => {
     expect(count(src('stores/tracker-store.ts'), /isReadOnly/)).toBe(4);
     expect(count(src('composables/useTrackerSelection.ts'), /isReadOnly/)).toBe(7);
     expect(count(src('pages/JukeboxPage.vue'), /isReadOnly/)).toBe(0);
-    expect(count(src('pages/TrackerPage.vue'), /isReadOnly/)).toBe(30);
+    expect(count(src('pages/TrackerPage.vue'), /isReadOnly/)).toBe(32);
   });
 
   it('the "is AHX" questions ask isAhxSong', () => {

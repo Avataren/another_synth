@@ -5,6 +5,8 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use super::{aplib, lzh, sixpack, DepackError};
 
 pub const ID: &[u8; 10] = b"_A2module_";
@@ -32,22 +34,22 @@ impl fmt::Display for Packer {
 
 /// Everything that makes a version's layout differ.
 #[derive(Debug, Clone, Copy)]
-struct Layout {
-    packer: Packer,
+pub(super) struct Layout {
+    pub(super) packer: Packer,
     /// Length fields in the header: 5 or 9 u16, or 17 u32.
-    length_fields: usize,
-    wide_lengths: bool,
-    patterns_per_block: usize,
-    max_patterns: usize,
-    rows: usize,
-    channels: usize,
-    cell_bytes: usize,
+    pub(super) length_fields: usize,
+    pub(super) wide_lengths: bool,
+    pub(super) patterns_per_block: usize,
+    pub(super) max_patterns: usize,
+    pub(super) rows: usize,
+    pub(super) channels: usize,
+    pub(super) cell_bytes: usize,
     /// Rows outermost (v1–4) or channels outermost (v5+).
-    row_major: bool,
-    songdata_len: usize,
+    pub(super) row_major: bool,
+    pub(super) songdata_len: usize,
 }
 
-fn layout(version: u8) -> Result<Layout, A2mError> {
+pub(super) fn layout(version: u8) -> Result<Layout, A2mError> {
     let old = |packer, fields, per_block, channels, row_major, songdata_len| Layout {
         packer,
         length_fields: fields,
@@ -207,7 +209,7 @@ impl fmt::Display for A2mError {
 /// One pattern cell. Effect numbers are stored as the file has them; v1–8
 /// use a narrower effect set than v9+ (`techinfo.htm`: 0–15 for v1–4, 0–35 for
 /// v5–8), which the player maps.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cell {
     /// 0 = none, 1–96 notes, +0x90 fixed note (v9+), 255 = key off.
     pub note: u8,
@@ -216,7 +218,8 @@ pub struct Cell {
     pub effects: [(u8, u8); 2],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "PatternRepr", into = "PatternRepr")]
 pub struct Pattern {
     pub rows: usize,
     pub channels: usize,
@@ -231,7 +234,7 @@ impl Pattern {
 }
 
 /// Instrument: the 11 FM register bytes and the extras of each version.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Instrument {
     pub name: Vec<u8>,
     /// AM/VIB/EG, KSL/TL, AR/DR, SL/RR, WS for modulator then carrier,
@@ -245,7 +248,7 @@ pub struct Instrument {
     pub voice_type: u8,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FmMacroStep {
     pub fm: [u8; 11],
     pub freq_slide: i16,
@@ -253,7 +256,7 @@ pub struct FmMacroStep {
     pub duration: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FmMacro {
     pub length: u8,
     pub loop_begin: u8,
@@ -261,10 +264,11 @@ pub struct FmMacro {
     pub keyoff_pos: u8,
     pub arpeggio_table: u8,
     pub vibrato_table: u8,
+    #[serde(with = "trimmed")]
     pub steps: Vec<FmMacroStep>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArpeggioMacro {
     pub length: u8,
     pub speed: u8,
@@ -272,10 +276,11 @@ pub struct ArpeggioMacro {
     pub loop_length: u8,
     pub keyoff_pos: u8,
     /// 0 = base note, 1–96 semitones up, +0x80 fixed note.
+    #[serde(with = "trimmed")]
     pub data: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VibratoMacro {
     pub length: u8,
     pub speed: u8,
@@ -284,10 +289,11 @@ pub struct VibratoMacro {
     pub loop_length: u8,
     pub keyoff_pos: u8,
     /// Signed frequency units to add.
+    #[serde(with = "trimmed")]
     pub data: Vec<i8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct A2mSong {
     pub version: u8,
     pub name: Vec<u8>,
@@ -301,6 +307,7 @@ pub struct A2mSong {
     pub vibrato_macros: Vec<VibratoMacro>,
     /// Raw order bytes as stored (128 entries). Their meaning (pattern index,
     /// jump, end) is the player's business.
+    #[serde(with = "order_bytes")]
     pub order: [u8; 128],
     pub tempo: u8,
     pub speed: u8,
@@ -435,6 +442,13 @@ pub fn unpack(file: &[u8]) -> Result<(u8, usize, Vec<Vec<u8>>), A2mError> {
                 packer: lay.packer,
                 error,
             })?;
+        // A stored v4 songdata block carries one spare byte (11717, the v5-8
+        // size): AdPlug copies a stored block only when it is at least that
+        // big, so `write` pads it. AT2 reads either.
+        let mut out = out;
+        if lay.packer == Packer::None && block == 0 && out.len() == expected + 1 {
+            out.truncate(expected);
+        }
         if used != len {
             return Err(A2mError::PackedTail {
                 block,
@@ -655,4 +669,125 @@ pub fn cp437(bytes: &[u8]) -> String {
             }
         })
         .collect()
+}
+
+/// How a pattern crosses the JSON boundary: only the cells that hold
+/// something, as `(row, channel, note, instrument, fx1, param1, fx2, param2)`.
+/// A full pattern is 5 120 cells, and a song has up to 128.
+#[derive(Serialize, Deserialize)]
+struct PatternRepr {
+    rows: usize,
+    channels: usize,
+    cells: Vec<(u16, u8, u8, u8, u8, u8, u8, u8)>,
+}
+
+impl From<Pattern> for PatternRepr {
+    fn from(p: Pattern) -> Self {
+        let mut cells = Vec::new();
+        for row in 0..p.rows {
+            for ch in 0..p.channels {
+                let c = p.cells[row * p.channels + ch];
+                if c != Cell::default() {
+                    cells.push((
+                        row as u16,
+                        ch as u8,
+                        c.note,
+                        c.instrument,
+                        c.effects[0].0,
+                        c.effects[0].1,
+                        c.effects[1].0,
+                        c.effects[1].1,
+                    ));
+                }
+            }
+        }
+        PatternRepr {
+            rows: p.rows,
+            channels: p.channels,
+            cells,
+        }
+    }
+}
+
+impl TryFrom<PatternRepr> for Pattern {
+    type Error = String;
+    fn try_from(r: PatternRepr) -> Result<Self, String> {
+        if r.rows == 0 || r.rows > 256 || r.channels == 0 || r.channels > 20 {
+            return Err(format!(
+                "a pattern of {} rows by {} channels is out of range",
+                r.rows, r.channels
+            ));
+        }
+        let mut cells = vec![Cell::default(); r.rows * r.channels];
+        for (row, ch, note, instrument, f1, p1, f2, p2) in r.cells {
+            let (row, ch) = (row as usize, ch as usize);
+            if row >= r.rows || ch >= r.channels {
+                return Err(format!(
+                    "cell at row {row}, channel {ch} is outside its pattern"
+                ));
+            }
+            cells[row * r.channels + ch] = Cell {
+                note,
+                instrument,
+                effects: [(f1, p1), (f2, p2)],
+            };
+        }
+        Ok(Pattern {
+            rows: r.rows,
+            channels: r.channels,
+            cells,
+        })
+    }
+}
+
+/// The order list is 128 bytes, past what serde's array impls cover.
+mod order_bytes {
+    use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(a: &[u8; 128], s: S) -> Result<S::Ok, S::Error> {
+        a.as_slice().serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<[u8; 128], D::Error> {
+        let v = Vec::<u8>::deserialize(d)?;
+        let len = v.len();
+        v.try_into()
+            .map_err(|_| D::Error::custom(format!("the order list has {len} entries, not 128")))
+    }
+}
+
+/// Macro tables are always 255 entries long in the file and mostly default;
+/// the JSON drops the trailing default entries and puts them back.
+mod trimmed {
+    use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
+
+    pub const LEN: usize = 255;
+
+    pub fn serialize<S, T>(v: &[T], s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        T: Serialize + Default + PartialEq,
+    {
+        let end = v
+            .iter()
+            .rposition(|x| *x != T::default())
+            .map_or(0, |i| i + 1);
+        v[..end].serialize(s)
+    }
+
+    pub fn deserialize<'de, D, T>(d: D) -> Result<Vec<T>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: Deserialize<'de> + Default + Clone,
+    {
+        let mut v = Vec::<T>::deserialize(d)?;
+        if v.len() > LEN {
+            return Err(D::Error::custom(format!(
+                "a macro table has {} entries, at most {LEN}",
+                v.len()
+            )));
+        }
+        v.resize(LEN, T::default());
+        Ok(v)
+    }
 }

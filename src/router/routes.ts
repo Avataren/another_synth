@@ -61,6 +61,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/XmInstrumentEditorPage.vue'),
       },
       {
+        // The Adlib Tracker II instrument editor: an A2M instrument is two OPL
+        // operators and a name in the song's doc, not a synth `Patch`.
+        path: 'a2m/instrument/:slot(\\d+)',
+        name: 'a2m-instrument-editor',
+        component: () => import('pages/A2mInstrumentEditorPage.vue'),
+      },
+      {
         // The SID instrument editor (plan-sid-tracking.md S4): edits the song
         // doc's instrument, never a synth `Patch`, so it has its own page too.
         path: 'sid/instrument/:slot(\\d+)',

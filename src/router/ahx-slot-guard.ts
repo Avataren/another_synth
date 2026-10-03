@@ -21,6 +21,10 @@ export function ahxSlotRedirect(slotNumber: number): RouteLocationRaw | null {
   if (store.moduleFormat === 'xm' && slotNumber >= 1 && slotNumber <= 128) {
     return { name: 'xm-instrument-editor', params: { slot: slotNumber } };
   }
+  // An A2M slot is an OPL instrument of the song's doc (empty ones too: that is where one is made).
+  if (store.moduleFormat === 'a2m' && slotNumber >= 1 && slotNumber <= 255) {
+    return { name: 'a2m-instrument-editor', params: { slot: slotNumber } };
+  }
   // A SID slot has no patch either: its instrument is the song doc's (S4).
   if (slot?.instrumentFormat === 'sid') return { name: 'sid-instrument-editor', params: { slot: slotNumber } };
   if (!slot || !isAhxSlot(slot)) return null;

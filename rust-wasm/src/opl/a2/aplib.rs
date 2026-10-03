@@ -157,3 +157,138 @@ fn copy_match(
     }
     Ok(())
 }
+
+/// A tag-bit writer: the same stream `Bits` reads, with each tag byte
+/// reserved where the reader will first want it.
+struct BitWriter {
+    out: Vec<u8>,
+    tag_at: usize,
+    left: u8,
+}
+
+impl BitWriter {
+    fn bit(&mut self, b: u32) {
+        if self.left == 0 {
+            self.tag_at = self.out.len();
+            self.out.push(0);
+            self.left = 8;
+        }
+        self.left -= 1;
+        if b != 0 {
+            self.out[self.tag_at] |= 1 << self.left;
+        }
+    }
+
+    fn gamma(&mut self, v: u32) {
+        debug_assert!(v >= 2);
+        let top = 31 - v.leading_zeros();
+        for i in (0..top).rev() {
+            self.bit((v >> i) & 1);
+            self.bit(u32::from(i > 0));
+        }
+    }
+}
+
+const MAX_OFFSET: usize = 31_999;
+const MAX_MATCH: usize = 1 << 14;
+const CHAIN: usize = 48;
+
+/// Compresses `src` into a stream `depack` (and AT2's own reader) takes. A
+/// greedy hash-chain matcher: nothing like aPLib's optimal parse, but a run
+/// of zeros (most of a song's data) costs a few bytes, and the output is the
+/// plain aPLib bitstream. Not byte-identical to what AT2 writes. `src` must
+/// not be empty.
+pub fn pack(src: &[u8]) -> Vec<u8> {
+    let mut w = BitWriter {
+        out: Vec::with_capacity(src.len() / 4 + 16),
+        tag_at: 0,
+        left: 0,
+    };
+    w.out.push(src[0]);
+    let n = src.len();
+    let hash = |i: usize| -> usize {
+        ((src[i] as usize) << 16 | (src[i + 1] as usize) << 8 | src[i + 2] as usize)
+            .wrapping_mul(0x9E37_79B1)
+            >> 12
+            & 0xFFFFF
+    };
+    let mut head = vec![usize::MAX; 1 << 20];
+    let mut prev = vec![usize::MAX; n];
+    let insert = |head: &mut Vec<usize>, prev: &mut Vec<usize>, i: usize| {
+        if i + 3 <= n {
+            let h = hash(i);
+            prev[i] = head[h];
+            head[h] = i;
+        }
+    };
+    insert(&mut head, &mut prev, 0);
+    let mut pos = 1;
+    while pos < n {
+        let (mut best_len, mut best_off) = (0usize, 0usize);
+        if pos + 3 <= n {
+            let mut cand = head[hash(pos)];
+            let mut tries = 0;
+            let limit = (n - pos).min(MAX_MATCH);
+            while cand != usize::MAX && tries < CHAIN {
+                let off = pos - cand;
+                if off > MAX_OFFSET {
+                    break;
+                }
+                let mut l = 0;
+                while l < limit && src[cand + l] == src[pos + l] {
+                    l += 1;
+                }
+                if l > best_len {
+                    best_len = l;
+                    best_off = off;
+                }
+                cand = prev[cand];
+                tries += 1;
+            }
+        }
+        // The shortest length each offset class can code.
+        let min_len = if best_off < 128 {
+            2
+        } else if best_off >= 1280 {
+            3
+        } else {
+            2
+        };
+        if best_len >= min_len.max(3) {
+            let (len, off) = (best_len, best_off);
+            if off < 128 && len <= 3 {
+                w.bit(1);
+                w.bit(1);
+                w.bit(0);
+                w.out.push(((off << 1) | (len - 2)) as u8);
+            } else {
+                w.bit(1);
+                w.bit(0);
+                w.gamma((off >> 8) as u32 + 3);
+                w.out.push((off & 255) as u8);
+                let adj = if off < 128 {
+                    2
+                } else if off >= 1280 {
+                    1
+                } else {
+                    0
+                };
+                w.gamma((len - adj) as u32);
+            }
+            for i in pos..pos + len {
+                insert(&mut head, &mut prev, i);
+            }
+            pos += len;
+        } else {
+            w.bit(0);
+            w.out.push(src[pos]);
+            insert(&mut head, &mut prev, pos);
+            pos += 1;
+        }
+    }
+    w.bit(1);
+    w.bit(1);
+    w.bit(0);
+    w.out.push(0);
+    w.out
+}

@@ -81,6 +81,20 @@ export interface TrackerEntryData {
   xmCell?: [number, number, number, number, number];
   /** `xmEntrySignature(entry)` as the importer left it. */
   xmSig?: string;
+  /**
+   * Adlib Tracker II only: the file's own cell, `[note, instrument, effect1,
+   * param1, effect2, param2]`, kept where the text columns cannot say it (a
+   * fixed note, a note number past the keyboard) so an export writes back
+   * what was read. Trusted only while `a2mSig` still matches the entry.
+   */
+  a2mCell?: [number, number, number, number, number, number];
+  /** `a2mEntrySignature(entry)` as the importer left it. */
+  a2mSig?: string;
+}
+
+/** What `a2mCell` is valid for: every field an A2M cell is derived from. */
+export function a2mEntrySignature(entry: TrackerEntryData): string {
+  return [entry.note ?? '', entry.instrument ?? '', entry.macro ?? '', entry.macro2 ?? ''].join('|');
 }
 
 /** What `xmCell` is valid for: every field the XM cell is derived from. */

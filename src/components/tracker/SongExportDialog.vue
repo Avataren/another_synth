@@ -123,7 +123,7 @@ watch(
   { immediate: true },
 );
 
-function download(exporter: SongExporter): void {
+async function download(exporter: SongExporter): Promise<void> {
   status.value = '';
   error.value = '';
   try {
@@ -131,6 +131,7 @@ function download(exporter: SongExporter): void {
     song.value = fresh;
     const state = describeSongExporter(exporter, fresh);
     if (state.state !== 'enabled') throw new SongExportError(state.reason ?? "This song can't be exported.");
+    await exporter.prepare?.();
     const bytes = exporter.serialize(fresh);
     const fileName = exportFileName(fresh.data.currentSong.title, exporter.extension);
     downloadBytes(bytes, fileName, exporter.mimeType);

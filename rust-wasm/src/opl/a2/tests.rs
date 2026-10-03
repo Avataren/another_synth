@@ -712,3 +712,320 @@ fn engine_state_matches_adplug_on_probes() {
     );
     assert!(n >= 290);
 }
+
+// ---------------------------------------------------------------------------
+// The writer
+// ---------------------------------------------------------------------------
+
+/// Header check value, recomputed from the file: AT2's own algorithm
+/// (`_a2m_saver.pas`) reproduces every corpus file's stored value.
+#[test]
+fn crc_matches_corpus() {
+    use super::model::{layout, unpack};
+    let mut bad = Vec::new();
+    for rel in corpus() {
+        let file = read(&rel);
+        let version = file[14];
+        let lay = layout(version).unwrap();
+        let (_, npat, blocks) = unpack(&file).unwrap();
+        let field = if lay.wide_lengths { 4 } else { 2 };
+        let lengths: Vec<u32> = (0..lay.length_fields)
+            .map(|i| {
+                let at = 16 + i * field;
+                if lay.wide_lengths {
+                    u32::from_le_bytes(file[at..at + 4].try_into().unwrap())
+                } else {
+                    u16::from_le_bytes(file[at..at + 2].try_into().unwrap()) as u32
+                }
+            })
+            .collect();
+        let start = 16 + lay.length_fields * field;
+        let mut at = start;
+        let mut packed: Vec<&[u8]> = Vec::new();
+        for &len in lengths
+            .iter()
+            .take(1 + npat.div_ceil(lay.patterns_per_block))
+        {
+            packed.push(&file[at..at + len as usize]);
+            at += len as usize;
+        }
+        let _ = blocks;
+        let want = u32::from_le_bytes(file[10..14].try_into().unwrap());
+        let got = write::header_crc(&packed, &lengths);
+        if got != want {
+            bad.push(format!("{rel} v{version}: {got:08x} != {want:08x}"));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "{} files:\n{}",
+        bad.len(),
+        bad[..bad.len().min(10)].join("\n")
+    );
+}
+
+#[test]
+fn packers_round_trip() {
+    let mut samples: Vec<Vec<u8>> = vec![
+        vec![0; 1],
+        vec![7; 2],
+        vec![0; 100_000],
+        (0..70_000u32).map(|i| (i * 7 % 251) as u8).collect(),
+        b"abcabcabcabcabcabcabc and then some different text abcabc".to_vec(),
+    ];
+    // Noise, so literals dominate and the 16-bit block count is exceeded.
+    let mut x = 12345u32;
+    samples.push(
+        (0..200_000)
+            .map(|_| {
+                x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+                (x >> 24) as u8
+            })
+            .collect(),
+    );
+    for s in &samples {
+        let a = aplib::pack(s);
+        assert_eq!(
+            aplib::depack(&a, s.len()).unwrap(),
+            (s.clone(), a.len()),
+            "aplib {}",
+            s.len()
+        );
+        let l = lzh::pack(s);
+        assert_eq!(
+            lzh::depack(&l, s.len()).unwrap(),
+            (s.clone(), l.len()),
+            "lzh {}",
+            s.len()
+        );
+    }
+}
+
+/// Real blocks, through each of the two encoders and back.
+#[test]
+fn corpus_blocks_survive_the_encoders() {
+    use super::model::unpack;
+    for rel in corpus() {
+        let (version, _, blocks) = unpack(&read(&rel)).unwrap();
+        if version < 9 {
+            continue;
+        }
+        for (i, b) in blocks.iter().enumerate() {
+            let a = aplib::pack(b);
+            assert_eq!(
+                aplib::depack(&a, b.len()).unwrap().0,
+                *b,
+                "{rel} block {i} aplib"
+            );
+            let l = lzh::pack(b);
+            assert_eq!(
+                lzh::depack(&l, b.len()).unwrap().0,
+                *b,
+                "{rel} block {i} lzh"
+            );
+        }
+    }
+}
+
+/// parse -> write -> parse is the identity (the version aside: v1 and v5 are
+/// written as the stored v4 and v8), through the JSON the app uses too.
+#[test]
+fn every_corpus_file_round_trips() {
+    let mut bad = Vec::new();
+    for rel in corpus() {
+        let file = read(&rel);
+        let song = match parse(&file) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let written = write::write(&song).unwrap_or_else(|e| panic!("{rel}: {e}"));
+        let again = parse(&written).unwrap_or_else(|e| panic!("{rel}: rewritten file: {e}"));
+        let mut want = song.clone();
+        want.version = write::output_version(song.version);
+        if again != want {
+            bad.push(rel.clone());
+            continue;
+        }
+        let json = serde_json::to_string(&song).unwrap();
+        let back: A2mSong = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, song, "{rel}: JSON");
+    }
+    assert!(
+        bad.is_empty(),
+        "{} files differ: {:?}",
+        bad.len(),
+        &bad[..bad.len().min(10)]
+    );
+}
+
+/// What the model does not hold: the rewritten songdata equals the original
+/// block except in the unused tail of each Pascal string (stale bytes), and
+/// the reserved kilobyte of v12+ files. Anything else is listed and fails.
+#[test]
+fn the_model_holds_every_byte() {
+    use super::model::unpack;
+    let mut stale = 0usize;
+    let mut unexplained = Vec::new();
+    for rel in corpus() {
+        let file = read(&rel);
+        let Ok(song) = parse(&file) else { continue };
+        let (version, _, a) = unpack(&file).unwrap();
+        let (_, _, b) = unpack(&write::write(&song).unwrap()).unwrap();
+        // (start, slot length) of every Pascal slot in songdata.
+        let mut slots = vec![(0usize, 43usize), (0x2b, 43)];
+        let (n, w) = if version < 9 { (250, 33) } else { (255, 43) };
+        slots.extend((0..n).map(|i| (0x56 + i * w, w)));
+        if version >= 11 {
+            slots.extend((0..128).map(|i| (0x1128ba + i * 43, 43)));
+        }
+        for (i, (x, y)) in a.iter().zip(b.iter()).enumerate() {
+            for k in (0..x.len()).filter(|&k| x[k] != y[k]) {
+                let in_tail = i == 0
+                    && slots
+                        .iter()
+                        .any(|&(at, len)| k > at && k < at + len && k > at + x[at] as usize);
+                let in_reserved = i == 0 && version >= 12 && (0x115a9f..0x115e9f).contains(&k);
+                if in_tail || in_reserved {
+                    stale += 1;
+                } else if unexplained.len() < 20 {
+                    unexplained.push(format!("{rel} block {i} at {k:#x}"));
+                }
+            }
+        }
+    }
+    println!("{stale} stale bytes ignored");
+    assert!(
+        unexplained.is_empty(),
+        "bytes the model drops:\n{}",
+        unexplained.join("\n")
+    );
+}
+
+#[test]
+fn a_new_song_parses_and_plays() {
+    for opl3 in [false, true] {
+        let song = write::new_song(opl3);
+        let bytes = write::write(&song).unwrap();
+        let again = parse(&bytes).unwrap();
+        assert_eq!(again, song);
+        assert_eq!(again.tracks, if opl3 { 18 } else { 9 });
+        let mut player = player::A2Player::new(&bytes, 48_000.0).unwrap();
+        player.play();
+        let (mut l, mut r) = (vec![0.0f32; 4096], vec![0.0f32; 4096]);
+        for _ in 0..4 {
+            player.render(&mut l, &mut r);
+        }
+    }
+}
+
+/// Writes every corpus file's rewrite to `$A2M_DUMP_DIR` (for the AdPlug
+/// black-box check in `oracle/check-written.sh`).
+#[test]
+#[ignore]
+fn dump_rewritten_corpus() {
+    let dir = std::env::var("A2M_DUMP_DIR").expect("set A2M_DUMP_DIR");
+    std::fs::create_dir_all(&dir).unwrap();
+    for (i, rel) in corpus().iter().enumerate() {
+        let Ok(song) = parse(&read(rel)) else {
+            continue;
+        };
+        let bytes = write::write(&song).unwrap();
+        std::fs::write(Path::new(&dir).join(format!("{i:03}.a2m")), bytes).unwrap();
+    }
+}
+
+#[test]
+fn the_json_door_round_trips_and_stays_small() {
+    let json = write::a2m_new_json(true).unwrap();
+    assert!(
+        json.len() < 120_000,
+        "a new song's JSON is {} bytes",
+        json.len()
+    );
+    let bytes = write::a2m_from_json(&json).unwrap();
+    let back = write::a2m_to_json(&bytes).unwrap();
+    assert_eq!(
+        serde_json::from_str::<A2mSong>(&back).unwrap(),
+        write::new_song(true)
+    );
+    assert!(write::a2m_from_json("{}")
+        .unwrap_err()
+        .contains("not an A2M song"));
+    let big = read("NAB622/corridors of time.a2m");
+    let json = write::a2m_to_json(&big).unwrap();
+    println!(
+        "corridors of time: {} bytes of JSON for {} bytes of file",
+        json.len(),
+        big.len()
+    );
+}
+
+/// The registers a song writes over its first `ticks` ticks.
+fn register_writes(song: &A2mSong, ticks: usize) -> Vec<(u16, u8)> {
+    use super::engine::A2Engine;
+    let mut engine = A2Engine::new(song.clone());
+    let mut writes: Vec<(u16, u8)> = Vec::new();
+    engine.reset(&mut writes);
+    for _ in 0..ticks {
+        engine.update(&mut writes);
+    }
+    writes
+}
+
+/// The instrument editor's promise: an edit changes what the chip is told.
+/// A note on track 1 with instrument 1 loads that instrument's eleven bytes
+/// into that track's OPL channel (AT2 puts track 1 on channel 3: operators
+/// 0x08 and 0x0B, feedback register 0xC3); changing them in the model changes
+/// those registers, and the change survives the write and re-parse that export
+/// and re-import make.
+#[test]
+fn an_instrument_edit_changes_the_register_writes() {
+    const MOD: u16 = 0x08;
+    const CAR: u16 = 0x0b;
+    let mut song = write::new_song(true);
+    song.patterns[0].cells[0] = Cell {
+        note: 49, // C-4
+        instrument: 1,
+        effects: [(0, 0), (0, 0)],
+    };
+    // The last write to a register in the first 12 ticks (the note's own).
+    let last =
+        |writes: &[(u16, u8)], reg: u16| writes.iter().rev().find(|w| w.0 == reg).map(|w| w.1);
+    let play = |song: &A2mSong| register_writes(&parse(&write::write(song).unwrap()).unwrap(), 12);
+    let before = play(&song);
+
+    let mut edited = song.clone();
+    edited.instruments[0].fm = [
+        0x01, 0x32, 0x1d, 0x08, 0xa3, 0xc5, 0x4b, 0x66, 0x02, 0x05, 0x0d,
+    ];
+    let reread = parse(&write::write(&edited).unwrap()).unwrap();
+    assert_eq!(
+        reread.instruments[0].fm, edited.instruments[0].fm,
+        "the edit survives export and re-import"
+    );
+    let after = register_writes(&reread, 12);
+
+    // Flags, attack/decay, sustain/release and waveform go to the operators as stored.
+    for (base, i) in [(0x20u16, 0usize), (0x60, 4), (0x80, 6), (0xe0, 8)] {
+        for (op, k) in [(MOD, i), (CAR, i + 1)] {
+            assert_eq!(
+                last(&before, base + op),
+                Some(song.instruments[0].fm[k]),
+                "reg {:#x} before",
+                base + op
+            );
+            assert_eq!(
+                last(&after, base + op),
+                Some(edited.instruments[0].fm[k]),
+                "reg {:#x} after",
+                base + op
+            );
+        }
+    }
+    // Feedback and connection: the low nibble of the channel's 0xC0 (OPL3 panning sits above it).
+    assert_eq!(last(&before, 0xc3).map(|v| v & 0x0f), Some(0x00));
+    assert_eq!(last(&after, 0xc3).map(|v| v & 0x0f), Some(0x0d));
+    // The carrier's level goes through the note's volume, so it is not the raw byte, but it moves.
+    assert_ne!(last(&before, 0x40 + CAR), last(&after, 0x40 + CAR));
+    assert_ne!(before, after);
+}

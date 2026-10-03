@@ -266,3 +266,185 @@ pub fn depack(src: &[u8], max_out: usize) -> Result<(Vec<u8>, usize), DepackErro
     }
     Ok((out, 5 + bits.bit.div_ceil(8)))
 }
+
+// ---------------------------------------------------------------------------
+// The writing side
+// ---------------------------------------------------------------------------
+
+struct BitSink {
+    out: Vec<u8>,
+    bits: usize,
+}
+
+impl BitSink {
+    fn put(&mut self, value: u32, n: u32) {
+        for i in (0..n).rev() {
+            if self.bits & 7 == 0 {
+                self.out.push(0);
+            }
+            if (value >> i) & 1 != 0 {
+                let last = self.out.len() - 1;
+                self.out[last] |= 0x80 >> (self.bits & 7);
+            }
+            self.bits += 1;
+        }
+    }
+}
+
+/// `(code, length)` per symbol of a complete canonical code, as `Code::decode`
+/// reads it.
+fn canonical(lens: &[u8]) -> Vec<(u32, u8)> {
+    let mut codes = vec![(0u32, 0u8); lens.len()];
+    let mut first = 0u32;
+    for len in 1..=MAX_CODE_LEN as u8 {
+        let mut next = first;
+        for (sym, &l) in lens.iter().enumerate() {
+            if l == len {
+                codes[sym] = (next, len);
+                next += 1;
+            }
+        }
+        first = next << 1;
+    }
+    codes
+}
+
+/// The two fixed codes every block uses. The literal/length alphabet has 511
+/// symbols: 510 of 9 bits and one (symbol 0) of 8 fill the code exactly. The
+/// 15 distance classes get one 3-bit and fourteen 4-bit codes. Nothing is
+/// tuned to the data, which the format allows (each block carries its own
+/// tables); runs of zeros, the bulk of a song, still match at 256 a time.
+fn static_c_lens() -> Vec<u8> {
+    let mut lens = vec![9u8; NC];
+    lens[0] = 8;
+    lens
+}
+
+fn static_p_lens() -> Vec<u8> {
+    let mut lens = vec![4u8; NP];
+    lens[0] = 3;
+    lens
+}
+
+enum Token {
+    Literal(u8),
+    /// Match length 3..=256 and distance - 1.
+    Match(usize, usize),
+}
+
+const WINDOW: usize = 1 << DICBIT;
+const CHAIN: usize = 48;
+
+fn tokenize(src: &[u8]) -> Vec<Token> {
+    let n = src.len();
+    let hash = |i: usize| -> usize {
+        (((src[i] as usize) << 16 | (src[i + 1] as usize) << 8 | src[i + 2] as usize)
+            .wrapping_mul(0x9E37_79B1)
+            >> 12)
+            & 0xFFFFF
+    };
+    let mut head = vec![usize::MAX; 1 << 20];
+    let mut prev = vec![usize::MAX; n];
+    let mut tokens = Vec::new();
+    let mut pos = 0;
+    while pos < n {
+        let (mut best_len, mut best_dist) = (0usize, 0usize);
+        if pos + 3 <= n {
+            let mut cand = head[hash(pos)];
+            let limit = (n - pos).min(MAXMATCH);
+            let mut tries = 0;
+            while cand != usize::MAX && tries < CHAIN {
+                let dist = pos - cand;
+                if dist > WINDOW {
+                    break;
+                }
+                let mut l = 0;
+                while l < limit && src[cand + l] == src[pos + l] {
+                    l += 1;
+                }
+                if l > best_len {
+                    best_len = l;
+                    best_dist = dist - 1;
+                }
+                cand = prev[cand];
+                tries += 1;
+            }
+        }
+        let take = if best_len >= 3 { best_len } else { 1 };
+        for i in pos..pos + take {
+            if i + 3 <= n {
+                let h = hash(i);
+                prev[i] = head[h];
+                head[h] = i;
+            }
+        }
+        tokens.push(if best_len >= 3 {
+            Token::Match(best_len, best_dist)
+        } else {
+            Token::Literal(src[pos])
+        });
+        pos += take;
+    }
+    tokens
+}
+
+/// Compresses `src` into one AT2 LZH block (flag byte, u32 size, bitstream)
+/// that `depack` reads. Static codes and a greedy matcher: valid, compact on
+/// song data, not byte-identical to AT2's own packer. `src` must not be empty.
+pub fn pack(src: &[u8]) -> Vec<u8> {
+    let c_lens = static_c_lens();
+    let c_codes = canonical(&c_lens);
+    let p_lens = static_p_lens();
+    let p_codes = canonical(&p_lens);
+    let mut sink = BitSink {
+        out: Vec::new(),
+        bits: 0,
+    };
+    let tokens = tokenize(src);
+    for block in tokens.chunks(65_535) {
+        sink.put(block.len() as u32, 16);
+        // Code-length code: symbols 10 and 11 (a length of 8 and 9, plus 2),
+        // one bit each.
+        sink.put(12, TBIT);
+        for i in 0..12 {
+            sink.put(u32::from(i >= 10), 3);
+            if i + 1 == 3 {
+                sink.put(0, 2);
+            }
+        }
+        sink.put(NC as u32, CBIT);
+        for &l in &c_lens {
+            sink.put(u32::from(l == 9), 1);
+        }
+        sink.put(NP as u32, PBIT);
+        for &l in &p_lens {
+            sink.put(l as u32, 3);
+        }
+        for token in block {
+            match *token {
+                Token::Literal(b) => {
+                    let (code, len) = c_codes[b as usize];
+                    sink.put(code, len as u32);
+                }
+                Token::Match(len, dist) => {
+                    let (code, clen) = c_codes[256 + len - THRESHOLD];
+                    sink.put(code, clen as u32);
+                    let class = if dist == 0 {
+                        0
+                    } else {
+                        usize::BITS as usize - dist.leading_zeros() as usize
+                    };
+                    let (pcode, plen) = p_codes[class];
+                    sink.put(pcode, plen as u32);
+                    if class > 1 {
+                        sink.put((dist - (1 << (class - 1))) as u32, class as u32 - 1);
+                    }
+                }
+            }
+        }
+    }
+    let mut out = vec![0u8];
+    out.extend_from_slice(&(src.len() as u32).to_le_bytes());
+    out.extend_from_slice(&sink.out);
+    out
+}

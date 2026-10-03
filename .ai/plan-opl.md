@@ -746,3 +746,32 @@ report. That is the case for one of the three packers the corpus needs.
 - **Open:** the chip level/clipping call above; Morten's ears; no A2M keyboard preview or
   instrument view (D3); pattern names (v11+) are not shown; orders after the first jump
   marker are not in the sequence (the playhead holds still if a jump plays one).
+
+### A2M editing and export (2026-10-03; after O7; not committed)
+
+Decisions (Morten): D3 is over, so instruments *and* patterns are editable; compression
+on export "stored for now" (1a); the model and writer live in Rust/wasm (2b).
+
+- **Writer** (`rust-wasm/src/opl/a2/write.rs`, plus `aplib::pack`, `lzh::pack`): `A2mSong` back to
+  an `.a2m`, in the song's own version. v9-11 aPLib and v12-14 LZH are written by small encoders
+  (greedy matcher; LZH with fixed codes) so a 1.1 MB songdata block is a few KB; the streams are valid
+  but not AT2's bytes. v1/v5 (SIXPACK) are written as the stored layout twins v4/v8 (1a); a stored v4
+  songdata block carries one spare byte, because AdPlug copies a stored block only if it is >= 11717.
+- **Header check value, solved** (it was UNVERIFIED in O6): reflected CRC-32, init 0xFFFFFFFF, no final
+  xor, over the *packed* blocks and then the low two bytes of every length field (AT2
+  `_a2m_saver.pas`, `parserio/Update32.c`). Reproduces all 279 corpus headers (`crc_matches_corpus`).
+- **Model over JSON** (`a2m_to_json` / `a2m_from_json` / `a2m_new_json`): patterns cross sparsely, macro
+  tables trimmed. The app's `A2mSongJson` (`a2m-codec.ts`); `a2m-grid.ts` is grid <-> cells and
+  `compileA2mSong`; `a2m-instrument.ts` the OPL fields. A song file keeps `data.a2mDoc` (everything but
+  the patterns, which are the grid); an older `.cmod` with `a2mFile` is converted on open.
+- **Gates**: `cargo test --lib opl::a2` (16): every corpus file parses -> writes -> parses to the same
+  song (and through JSON); every byte of songdata is in the model except Pascal-string tails and v12+'s
+  reserved kilobyte; AdPlug-identical register traces (`oracle/check-written.sh`, 4000 ticks, 279/279
+  via the Rust writer and 278/278 via the app's compile path); an instrument edit changes exactly the
+  operator registers the engine writes (`an_instrument_edit_changes_the_register_writes`).
+  `a2m-editing.test.ts`: the 278 playable files survive bytes -> grid+doc -> compile -> bytes, and
+  render sample for sample like the original in the same player.
+- **Not kept**: cells below the song's pattern length or past its track count (the player never reaches
+  them), spare patterns, name tails. Instruments 131-255 are kept and playable but the slot table is 130
+  long (the editor route takes 1-255). Pattern names (v11+) are kept, not editable. The editor's
+  keyboard drives the chip directly (no macros).

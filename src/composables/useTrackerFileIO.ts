@@ -10,7 +10,7 @@ import { looksLikeAhxModule, importAhxToTrackerSong } from 'src/audio/tracker/ah
 import { attachAhxSource, ahxSourceRecordOf, setCurrentAhxSource, type AhxSource } from 'src/audio/tracker/ahx-source';
 import { decodeAhxFile } from 'src/audio/tracker/ahx-doc';
 import { importGtSongToTrackerSong, looksLikeGtSongFile } from 'src/audio/tracker/sid-import';
-import { importA2mToTrackerSong, looksLikeA2m } from 'src/audio/tracker/a2m-import';
+import { importA2mToTrackerSong, looksLikeA2m, upgradeLegacyA2mSongFile } from 'src/audio/tracker/a2m-import';
 import { importPsidToTrackerSongAsync, looksLikePsidFile, psidImportSummaryOf } from 'src/audio/tracker/psid-import';
 import { recordLoadedSongHash } from 'src/composables/song-identity';
 import { usePostFxStore } from 'src/stores/post-fx-store';
@@ -354,7 +354,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
         throw new Error('No JSON file found in song archive');
       }
       const text = await zipFile.async('string');
-      return finishSongFile(JSON.parse(text) as TrackerSongFile);
+      return await finishSongFile(JSON.parse(text) as TrackerSongFile);
     }
     if (looksLikePsidFile(buffer)) {
       // C64 .sid (PSID/RSID, plan-psid-import.md): the tune's player is run on
@@ -392,7 +392,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     }
     // Plain JSON .cmod/.json file
     const decoder = new TextDecoder('utf-8');
-    return finishSongFile(JSON.parse(decoder.decode(buffer)) as TrackerSongFile);
+    return await finishSongFile(JSON.parse(decoder.decode(buffer)) as TrackerSongFile);
   }
 
   /**
@@ -405,11 +405,19 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
    * unusable file is left for the store, which warns and keeps the song
    * read-only.
    */
-  function finishSongFile(songFile: TrackerSongFile): TrackerSongFile {
+  async function finishSongFile(songFile: TrackerSongFile): Promise<TrackerSongFile> {
     const data = songFile?.data;
     if (data?.moduleFormat === 'ahx' && data.ahxFile !== undefined) {
       const decoded = decodeAhxFile(data.ahxFile);
       if (decoded.ok) attachAhxSource(songFile, decoded.bytes);
+    }
+    // An A2M song saved before the editor kept its module, not its doc: read it again.
+    if (data?.moduleFormat === 'a2m' && data.a2mDoc === undefined && data.a2mFile !== undefined) {
+      try {
+        return await upgradeLegacyA2mSongFile(songFile);
+      } catch (error) {
+        console.warn('[TrackerFileIO] could not convert an older A2M song', error);
+      }
     }
     return songFile;
   }

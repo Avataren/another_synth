@@ -361,6 +361,42 @@
                 </div>
               </div>
             </template>
+            <template v-else-if="trackerStore.isA2mSong">
+              <div class="field a2m-setting-field">
+                <label for="a2m-tempo">Tempo</label>
+                <input
+                  id="a2m-tempo"
+                  class="bpm-input"
+                  type="number"
+                  min="1"
+                  max="255"
+                  :value="trackerStore.a2mDoc?.tempo ?? ''"
+                  :disabled="isReadOnly || isLoadingSong"
+                  title="Ticks per second (Adlib Tracker II's tempo). 50 with speed 6 is 125 BPM."
+                  data-testid="a2m-tempo"
+                  @change="onA2mTimingInput($event, 'tempo')"
+                  @blur="refocusTracker"
+                  @keydown.enter="($event.target as HTMLInputElement).blur()"
+                />
+              </div>
+              <div class="field a2m-setting-field">
+                <label for="a2m-speed">Speed</label>
+                <input
+                  id="a2m-speed"
+                  class="bpm-input"
+                  type="number"
+                  min="1"
+                  max="255"
+                  :value="trackerStore.a2mDoc?.speed ?? ''"
+                  :disabled="isReadOnly || isLoadingSong"
+                  title="Ticks per row."
+                  data-testid="a2m-speed"
+                  @change="onA2mTimingInput($event, 'speed')"
+                  @blur="refocusTracker"
+                  @keydown.enter="($event.target as HTMLInputElement).blur()"
+                />
+              </div>
+            </template>
             <div v-else class="field">
               <label for="song-bpm">BPM</label>
               <input
@@ -745,8 +781,8 @@
                   <button
                     type="button"
                     class="icon-action-button"
-                    :title="isReadOnly ? readOnlyHint : canAddSidInstrumentAt(slot.slot) ? 'New SID instrument' : isProtrackerSong ? 'New sample' : isXmSong ? 'New instrument' : hasDocStructure ? ahxInstrumentsHint : 'New patch'"
-                    v-if="!(isReadOnly || (hasDocStructure && !canAddSidInstrumentAt(slot.slot)))"
+                    :title="isReadOnly ? readOnlyHint : canAddSidInstrumentAt(slot.slot) ? 'New SID instrument' : isProtrackerSong ? 'New sample' : isXmSong || isA2mSong ? 'New instrument' : hasDocStructure ? ahxInstrumentsHint : 'New patch'"
+                    v-if="!(isReadOnly || (hasDocStructure && !canAddSidInstrumentAt(slot.slot) && !(isA2mSong && !slot.instrumentName)))"
                     @click.stop="
                       onAddInstrumentClick(slot.slot);
                       refocusTracker();
@@ -757,8 +793,8 @@
                   <button
                     type="button"
                     class="icon-action-button"
-                    :title="isAhxSlot(slot) || slot.instrumentFormat === 'sid' || isProtrackerSong || isXmSong ? 'Edit instrument' : 'Edit patch'"
-                    v-if="!(isProtrackerSong ? slot.slot > 31 : isXmSong ? slot.slot > 128 : !canEditSlot(slot))"
+                    :title="isAhxSlot(slot) || slot.instrumentFormat === 'sid' || isProtrackerSong || isXmSong || isA2mSong ? 'Edit instrument' : 'Edit patch'"
+                    v-if="!(isProtrackerSong ? slot.slot > 31 : isXmSong ? slot.slot > 128 : isA2mSong ? false : !canEditSlot(slot))"
                     @click.stop="editSlotPatch(slot.slot)"
                   >
                     <q-icon name="edit" size="16px" />
@@ -1175,6 +1211,8 @@ import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
 import BugReportDialog from 'src/components/tracker/BugReportDialog.vue';
 import SongExportDialog from 'src/components/tracker/SongExportDialog.vue';
 import { emptyModSample, patchFromModSample } from 'src/audio/tracker/mod-sample-codec';
+import { createNewA2mTrackerSong } from 'src/audio/tracker/a2m-import';
+import { defaultA2mInstrument } from 'src/audio/tracker/a2m-instrument';
 import { patchFromXmInstrument } from 'src/audio/tracker/xm-instrument-codec';
 import { newXmInstrument } from 'src/audio/tracker/xm-sample-ops';
 import { xmMetaOf } from '@another-synth/tracker-playback';
@@ -1543,6 +1581,14 @@ function onAhxPresetSelect(slotNumber: number, id: string): void {
   if (done) setActiveInstrument(slotNumber);
 }
 function onAddInstrumentClick(slotNumber: number): void {
+  if (isA2mSong.value) {
+    // An empty A2M slot gets a plain FM voice and opens in the editor, where it is made into something.
+    trackerStore.pushHistory();
+    trackerStore.setA2mInstrument(slotNumber, defaultA2mInstrument());
+    setActiveInstrument(slotNumber);
+    editSlotPatch(slotNumber);
+    return;
+  }
   if (isProtrackerSong.value) {
     void addModSample(slotNumber);
     return;
@@ -1608,6 +1654,7 @@ async function addXmInstrument(clicked: number): Promise<void> {
   editSlotPatch(target);
 }
 const isXmSong = computed(() => trackerStore.moduleFormat === 'xm');
+const isA2mSong = computed(() => trackerStore.moduleFormat === 'a2m');
 const isProtrackerSong = computed(() => trackerStore.moduleFormat === 'protracker');
 const ahxInstrumentsHint = computed(() =>
   isSidSong.value
@@ -2779,6 +2826,18 @@ function openJukebox() {
 
 // New Song: the dialog asks for the format (and a SID song's options).
 const showNewSong = ref(false);
+/** An A2M song's tempo or speed typed into the song panel: kept in the doc, and heard on the next play. */
+function onA2mTimingInput(event: Event, field: 'tempo' | 'speed') {
+  const input = event.target as HTMLInputElement;
+  const value = Math.round(Number(input.value));
+  if (!Number.isFinite(value)) {
+    input.value = String(trackerStore.a2mDoc?.[field] ?? '');
+    return;
+  }
+  trackerStore.setA2mTiming({ [field]: value });
+  input.value = String(trackerStore.a2mDoc?.[field] ?? '');
+}
+
 function handleNewSong() {
   showNewSong.value = true;
 }
@@ -2811,6 +2870,16 @@ async function createNewSong(choice: NewSongChoice) {
       await applyNewSong(() => trackerStore.resetToNewXmSong());
     } catch (err) {
       console.error('[New song] could not create the FastTracker 2 module', err);
+      $q.notify({ type: 'negative', message: `Could not create the module: ${(err as Error).message}`, timeout: 5000 });
+    }
+    return;
+  }
+  if (choice.format === 'a2m') {
+    try {
+      const song = await createNewA2mTrackerSong(choice.opl3);
+      await applyNewSong(() => trackerStore.resetToNewA2mSong(song));
+    } catch (err) {
+      console.error('[New song] could not create the Adlib Tracker II module', err);
       $q.notify({ type: 'negative', message: `Could not create the module: ${(err as Error).message}`, timeout: 5000 });
     }
     return;

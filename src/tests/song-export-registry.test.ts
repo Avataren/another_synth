@@ -29,12 +29,12 @@ const ahxSong = (): TrackerSongFile => importAhxToTrackerSong(demo('karma.ahx'))
 const withoutSource = (song: TrackerSongFile): TrackerSongFile => ({ ...song, data: { ...song.data } });
 
 describe('the exporter registry', () => {
-  it('lists ahx, hvl, sng, sid, prg, bin, mod, xm, s3m in that order with unique ids', () => {
-    expect(SONG_EXPORTERS.map((e) => e.id)).toEqual(['ahx', 'hvl', 'sng', 'sid', 'prg', 'bin', 'mod', 'xm', 's3m']);
+  it('lists ahx, hvl, sng, sid, prg, bin, mod, xm, a2m, s3m in that order with unique ids', () => {
+    expect(SONG_EXPORTERS.map((e) => e.id)).toEqual(['ahx', 'hvl', 'sng', 'sid', 'prg', 'bin', 'mod', 'xm', 'a2m', 's3m']);
     expect(new Set(SONG_EXPORTERS.map((e) => e.id)).size).toBe(SONG_EXPORTERS.length);
   });
 
-  it('has a writer for ahx, hvl, sng, sid, prg, bin, mod and xm only', () => {
+  it('has a writer for ahx, hvl, sng, sid, prg, bin, mod, xm and a2m only', () => {
     expect(SONG_EXPORTERS.map((e) => [e.id, e.available])).toEqual([
       ['ahx', true],
       ['hvl', true],
@@ -44,6 +44,7 @@ describe('the exporter registry', () => {
       ['bin', true],
       ['mod', true],
       ['xm', true],
+      ['a2m', true],
       ['s3m', false],
     ]);
     expect(getSongExporter('ahx')).toBe(ahxExporter);
@@ -53,6 +54,7 @@ describe('the exporter registry', () => {
     expect(getSongExporter('prg')).toBe(prgExporter);
     expect(getSongExporter('bin')).toBe(binExporter);
     expect(getSongExporter('xm')?.extension).toBe('.xm');
+    expect(getSongExporter('a2m')?.extension).toBe('.a2m');
   });
 
   it('gives every row a label, a dotted extension and a mime type', () => {
@@ -80,6 +82,7 @@ describe('the exporter registry', () => {
       bin: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .bin." },
       mod: { state: 'unavailable', reason: 'Only ProTracker songs can be saved as a .mod.' },
       xm: { state: 'unavailable', reason: 'Only FastTracker 2 songs can be saved as a .xm.' },
+      a2m: { state: 'unavailable', reason: 'Only an Adlib Tracker II song can be saved as an .a2m.' },
       s3m: notYet,
     });
     // chiprolled.hvl left the corpus 2026-09-23 (byte-identical dupe);
@@ -93,6 +96,7 @@ describe('the exporter registry', () => {
       bin: { state: 'unavailable', reason: "AHX and HVL songs can't be exported as a C64 .bin." },
       mod: { state: 'unavailable', reason: 'Only ProTracker songs can be saved as a .mod.' },
       xm: { state: 'unavailable', reason: 'Only FastTracker 2 songs can be saved as a .xm.' },
+      a2m: { state: 'unavailable', reason: 'Only an Adlib Tracker II song can be saved as an .a2m.' },
       s3m: notYet,
     });
     expect(rows(xm)).toMatchObject({

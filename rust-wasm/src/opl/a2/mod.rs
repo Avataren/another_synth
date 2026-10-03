@@ -19,6 +19,7 @@ pub mod lzh;
 pub mod model;
 pub mod player;
 pub mod sixpack;
+pub mod write;
 
 pub use model::{parse, unpack, A2mError, A2mSong, Cell, Pattern};
 

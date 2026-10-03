@@ -1,7 +1,9 @@
 import type { Ref } from 'vue';
-import type { Song as PlaybackSong } from '@another-synth/tracker-playback';
+import type { Song as PlaybackSong, TrackerPattern } from '@another-synth/tracker-playback';
 import { createA2mPlayer, type A2mPlayerClient, type A2mPosition } from 'src/audio/tracker/a2m-player';
-import { decodeA2mFile } from 'src/audio/tracker/a2m-file-codec';
+import { encodeA2mFile } from 'src/audio/tracker/a2m-file-codec';
+import { a2mBytesFromSong, type A2mDoc, type A2mSongJson } from 'src/audio/tracker/a2m-codec';
+import { compileA2mSong } from 'src/audio/tracker/a2m-grid';
 import { reportAhxNotice } from 'src/audio/tracker/ahx-notices';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 
@@ -9,9 +11,16 @@ export type PlaybackMode = 'pattern' | 'song';
 
 /** The part of the tracker store the A2M transport reads. */
 export interface A2mSongTransportTracker {
-  /** The module (base64, `data.a2mFile`): what plays. */
-  readonly a2mFile: string | null;
+  /** The song but for its patterns (`data.a2mDoc`): with the grid, what plays. */
+  readonly a2mDoc: A2mDoc | null;
+  readonly patterns: TrackerPattern[];
   readonly sequence: string[];
+}
+
+/** The module the song compiles to, and its identity (the file as base64: equal text is the same module). */
+interface CompiledModule {
+  key: string;
+  bytes: Uint8Array;
 }
 
 /** What the playback store lends the A2M transport, like `SidSongTransportDeps`. */
@@ -40,6 +49,8 @@ export interface A2mSongTransportDeps {
   notify?(message: string): void;
   /** Makes the worklet client; tests hand in one over the real core. */
   createPlayer?: (context: BaseAudioContext) => Promise<A2mPlayerClient>;
+  /** Writes the module for a song; tests stand in for the wasm. */
+  writeModule?: (song: A2mSongJson) => Promise<Uint8Array>;
 }
 
 /** Mute/solo masks cover the tracks an A2M song can have (20). */
@@ -65,7 +76,7 @@ export class A2mSongTransport {
   private active = false;
   /** Bumped whenever a load or start in flight stops being wanted. */
   private epoch = 0;
-  /** The module text the worklet holds (by value: a string). */
+  /** The module the worklet holds (`CompiledModule.key`, by value: a string). */
   private loadedFile: string | null = null;
   private loading: Promise<boolean> | null = null;
   private loadingFile: string | null = null;
@@ -144,46 +155,59 @@ export class A2mSongTransport {
   // Transport verbs
   // ------------------------------------------------------------------
 
-  /** Load the store's module into the worklet (the song passed in is only the display model). */
-  async load(song: PlaybackSong, mode: PlaybackMode): Promise<boolean> {
-    const file = this.deps.trackerStore.a2mFile;
-    if (file === null) {
+  /**
+   * The module the store's song makes: its doc and grid, written by the Rust
+   * writer. Told to the user and null when the song cannot be written.
+   */
+  private async compile(): Promise<CompiledModule | null> {
+    const t = this.deps.trackerStore;
+    if (t.a2mDoc === null) {
       this.notify('This A2M song was saved without its module, so there is nothing to play.');
-      return false;
+      return null;
     }
+    try {
+      const song = compileA2mSong(t.a2mDoc, t.patterns, t.sequence);
+      const bytes = await (this.deps.writeModule ?? a2mBytesFromSong)(song);
+      return { key: encodeA2mFile(bytes), bytes };
+    } catch (error) {
+      this.notify(error instanceof Error ? error.message : String(error));
+      return null;
+    }
+  }
+
+  /** Load the store's song into the worklet (the song passed in is only the display model). */
+  async load(song: PlaybackSong, mode: PlaybackMode): Promise<boolean> {
+    const module = await this.compile();
+    if (module === null) return false;
     this.deps.stopSampleEngine();
     this.deps.playbackMode.value = mode;
     this.deps.getSongBank().setModuleFormat(song.moduleFormat, song.linearFrequency, song.amigaLimits);
     this.active = true;
     const epoch = this.epoch;
     if (this.deps.getSongBank().audioContext.state === 'running') {
-      if (!(await this.loadFile(file))) return false;
+      if (!(await this.loadModule(module))) return false;
       if (epoch !== this.epoch) return false;
     } else {
       // A suspended context cannot finish the handshake before a gesture; the
       // load carries on and `play` (which resumes the context) joins it.
-      void this.loadFile(file);
+      void this.loadModule(module);
     }
     this.deps.hasSongLoaded.value = true;
     this.deps.recordLastSong(song, mode);
     return true;
   }
 
-  /** True once the worklet holds `file`; a refusal is told to the user and is false. */
-  private loadFile(file: string): Promise<boolean> {
+  /** True once the worklet holds `module`; a refusal is told to the user and is false. */
+  private loadModule(module: CompiledModule): Promise<boolean> {
+    const file = module.key;
     if (this.loadedFile === file && this.client) return Promise.resolve(true);
     if (this.loading && this.loadingFile === file) return this.loading;
-    const decoded = decodeA2mFile(file);
-    if (!decoded.ok) {
-      this.notify(`This A2M song cannot play: its module is unusable (${decoded.reason}).`);
-      return Promise.resolve(false);
-    }
     this.loadingFile = file;
     const loading = (async () => {
       try {
         const client = await this.ensureClient();
         this.loadedFile = null;
-        const info = await client.loadSong(decoded.bytes);
+        const info = await client.loadSong(module.bytes);
         if (this.loadingFile !== file) return false;
         this.loadedFile = file;
         this.tracks = info.tracks;
@@ -217,13 +241,6 @@ export class A2mSongTransport {
     const count = Math.max(1, this.deps.trackerStore.sequence.length);
     const order = Math.max(0, Math.min(startSequenceIndex ?? this.deps.resolveStartSequenceIndex(song), count - 1));
     const row = Math.max(0, Math.round(startRow));
-    const resuming =
-      this.active &&
-      isPaused.value &&
-      this.client !== null &&
-      this.loadedFile === this.deps.trackerStore.a2mFile &&
-      this.place.order === order &&
-      this.place.row === row;
     const epoch = this.epoch;
 
     this.deps.stopSampleEngine();
@@ -235,9 +252,19 @@ export class A2mSongTransport {
       return;
     }
     if (epoch !== this.epoch) return;
+    // An edited song is a different module: the worklet reloads it, and
+    // starts over (a pause only resumes the module it paused in).
+    const module = await this.compile();
+    if (module === null) return;
+    const resuming =
+      this.active &&
+      isPaused.value &&
+      this.client !== null &&
+      this.loadedFile === module.key &&
+      this.place.order === order &&
+      this.place.row === row;
     if (!(await this.load(song, mode))) return;
-    const file = this.deps.trackerStore.a2mFile;
-    if (file === null || !(await this.loadFile(file)) || epoch !== this.epoch) return;
+    if (!(await this.loadModule(module)) || epoch !== this.epoch) return;
     const client = await this.ensureClient();
     client.setLoopOrder(mode === 'pattern' ? order : -1);
     if (!resuming) {
