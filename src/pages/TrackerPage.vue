@@ -173,7 +173,7 @@
             Jukebox
           </button>
           <PostFxFilterControl compact />
-          <label class="toggle toolbar-toggle">
+          <label class="toggle toolbar-toggle" :title="AUTO_SCROLL_HINT">
             <input v-model="autoScroll" type="checkbox" />
             <span>Follow</span>
           </label>
@@ -184,7 +184,7 @@
         <div class="toolbar-section toolbar-right">
           <PostFxFilterControl />
           <VisualizationPicker show-placement />
-          <label class="toggle toolbar-toggle">
+          <label class="toggle toolbar-toggle" :title="AUTO_SCROLL_HINT">
             <input
               v-model="autoScroll"
               type="checkbox"
@@ -194,7 +194,7 @@
           </label>
           <label
             class="toggle toolbar-toggle"
-            :title="extraEffectColumnFixed ? 'This song\'s format sets its effect columns' : ''"
+            :title="extraEffectColumnFixed ? 'This song\'s format sets its effect columns' : 'Show a second effect column on every track'"
           >
             <input
               v-model="userSettings.showTrackerExtraEffectColumn"
@@ -455,6 +455,7 @@
             <button
               type="button"
               class="song-button ghost"
+              title="Render the song to an MP3 right away (other formats are under Export…)"
               :disabled="isExporting"
               @click="exportSongToMp3"
             >
@@ -1400,6 +1401,8 @@ const sessionAutosave = useSessionAutosave({
     });
   },
 });
+/** Tooltip for the Follow / Auto-scroll toggle. */
+const AUTO_SCROLL_HINT = 'Scroll the pattern to keep the playing row in view';
 const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
