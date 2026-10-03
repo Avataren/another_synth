@@ -181,91 +181,7 @@
       </div>
 
       <div v-else class="tracker-toolbar">
-        <div class="toolbar-section toolbar-left">
-          <button
-            type="button"
-            class="transport-button ghost"
-            :disabled="isExporting"
-            @click="exportSongToMp3"
-          >
-            {{ isExporting ? 'Exporting…' : 'Export MP3' }}
-          </button>
-        </div>
-        <div class="toolbar-section toolbar-middle">
-          <button
-            type="button"
-            class="song-button"
-            @click="addTrack"
-            :disabled="isReadOnly || hasDocStructure || trackCount >= 32"
-            :title="isReadOnly ? readOnlyHint : hasDocStructure ? ahxChannelsHint : 'Add a track'"
-          >
-            + Track
-          </button>
-          <button
-            type="button"
-            class="song-button ghost"
-            @click="removeTrack"
-            :disabled="isReadOnly || hasDocStructure || trackCount <= 1"
-            :title="isReadOnly ? readOnlyHint : hasDocStructure ? ahxChannelsHint : 'Remove the current track'"
-          >
-            - Track
-          </button>
-        </div>
         <div class="toolbar-section toolbar-right">
-          <button
-            type="button"
-            class="song-button ghost"
-            title="Start a new song"
-            @click="handleNewSong"
-            :disabled="isLoadingSong"
-          >
-            New
-          </button>
-          <button
-            type="button"
-            class="song-button ghost"
-            title="Load a song file"
-            @click="handleLoadSongFile"
-            :disabled="isLoadingSong"
-          >
-            Load
-          </button>
-          <button
-            type="button"
-            class="song-button"
-            title="Save the song to a file"
-            @click="handleSaveSongFile"
-            :disabled="isLoadingSong"
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            class="song-button ghost"
-            data-testid="song-export-open"
-            title="Export the song as a file"
-            @click="showSongExport = true"
-            :disabled="isLoadingSong"
-          >
-            Export…
-          </button>
-          <button
-            type="button"
-            class="song-button ghost"
-            @click="openDemoBrowser()"
-            :disabled="isLoadingSong"
-          >
-            Demos
-          </button>
-          <button
-            type="button"
-            class="song-button ghost"
-            :disabled="isLoadingSong"
-            title="Play the demo collection on its own page"
-            @click="openJukebox"
-          >
-            Jukebox
-          </button>
           <PostFxFilterControl />
           <VisualizationPicker show-placement />
           <label class="toggle toolbar-toggle">
@@ -350,6 +266,15 @@
               <FormatBadge :brand="activeBrand.id" :variant="activeBrand.variant" />
               <span class="song-format__name">{{ activeBrand.brand.name }}</span>
               <span v-if="activeBrand.variant" class="song-format__variant">{{ activeBrand.variant }}</span>
+            </div>
+            <div class="stats-inline">
+              <span class="stat-inline"
+                ><span class="stat-label">Patterns</span>
+                {{ patterns.length }}</span
+              >
+              <span class="stat-inline"
+                ><span class="stat-label">Rows</span> {{ rowsCount }}</span
+              >
             </div>
             <div class="engine-rate" :title="engineRateTitle">
               {{ engineRateLabel }}
@@ -453,17 +378,82 @@
               />
             </div>
           </div>
+          <div class="file-row" data-testid="song-file-section">
+            <button
+              type="button"
+              class="song-button ghost"
+              title="Start a new song"
+              :disabled="isLoadingSong"
+              @click="handleNewSong"
+            >
+              New
+            </button>
+            <button
+              type="button"
+              class="song-button ghost"
+              title="Load a song file"
+              :disabled="isLoadingSong"
+              @click="handleLoadSongFile"
+            >
+              Load
+            </button>
+            <button
+              type="button"
+              class="song-button"
+              title="Save the song to a file"
+              :disabled="isLoadingSong"
+              @click="handleSaveSongFile"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              class="song-button ghost"
+              data-testid="song-export-open"
+              title="Export the song as a file"
+              :disabled="isLoadingSong"
+              @click="showSongExport = true"
+            >
+              Export…
+            </button>
+            <button
+              type="button"
+              class="song-button ghost"
+              :disabled="isExporting"
+              @click="exportSongToMp3"
+            >
+              {{ isExporting ? 'Exporting…' : 'Export MP3' }}
+            </button>
+            <button
+              type="button"
+              class="song-button ghost"
+              :disabled="isLoadingSong"
+              @click="openDemoBrowser()"
+            >
+              Demos
+            </button>
+            <span class="file-row-divider" aria-hidden="true"></span>
+            <button
+              type="button"
+              class="song-button"
+              :disabled="isReadOnly || hasDocStructure || trackCount >= 32"
+              :title="isReadOnly ? readOnlyHint : hasDocStructure ? ahxChannelsHint : 'Add a track'"
+              @click="addTrack"
+            >
+              + Track
+            </button>
+            <button
+              type="button"
+              class="song-button ghost"
+              :disabled="isReadOnly || hasDocStructure || trackCount <= 1"
+              :title="isReadOnly ? readOnlyHint : hasDocStructure ? ahxChannelsHint : 'Remove the current track'"
+              @click="removeTrack"
+            >
+              - Track
+            </button>
+          </div>
           <div v-if="editNotice" class="tracker-edit-notice" role="alert" data-testid="tracker-edit-notice">
             {{ editNotice.message }}
-          </div>
-          <div class="stats-inline">
-            <span class="stat-inline"
-              ><span class="stat-label">Patterns:</span>
-              {{ patterns.length }}</span
-            >
-            <span class="stat-inline"
-              ><span class="stat-label">Rows:</span> {{ rowsCount }}</span
-            >
           </div>
           <div class="pattern-row-inline">
             <div class="pattern-controls">
@@ -505,8 +495,6 @@
                 <div class="control-hint">Rows per edit</div>
               </div>
             </div>
-          </div>
-          <div class="pattern-row-inline">
             <div class="pattern-controls">
               <div class="control-label">Base octave</div>
               <div class="control-field">
@@ -528,8 +516,7 @@
                 <div class="control-hint">Shift+PgUp/PgDn</div>
               </div>
             </div>
-          </div>
-          <div class="transport-controls">
+            <div class="transport-controls">
             <button
               type="button"
               class="transport-icon-btn"
@@ -602,6 +589,7 @@
                 title="Master Volume"
               />
             </div>
+          </div>
           </div>
         </div>
 
@@ -735,6 +723,7 @@
                   @click.stop
                 />
                 <div
+                  v-if="slot.patchId || listsSongInstrument(slot)"
                   class="instrument-volume"
                   @click.stop
                   @mousedown.stop
@@ -757,7 +746,7 @@
                     type="button"
                     class="icon-action-button"
                     :title="isReadOnly ? readOnlyHint : canAddSidInstrumentAt(slot.slot) ? 'New SID instrument' : isProtrackerSong ? 'New sample' : isXmSong ? 'New instrument' : hasDocStructure ? ahxInstrumentsHint : 'New patch'"
-                    :disabled="isReadOnly || (hasDocStructure && !canAddSidInstrumentAt(slot.slot))"
+                    v-if="!(isReadOnly || (hasDocStructure && !canAddSidInstrumentAt(slot.slot)))"
                     @click.stop="
                       onAddInstrumentClick(slot.slot);
                       refocusTracker();
@@ -769,7 +758,7 @@
                     type="button"
                     class="icon-action-button"
                     :title="isAhxSlot(slot) || slot.instrumentFormat === 'sid' || isProtrackerSong || isXmSong ? 'Edit instrument' : 'Edit patch'"
-                    :disabled="isProtrackerSong ? slot.slot > 31 : isXmSong ? slot.slot > 128 : !canEditSlot(slot)"
+                    v-if="!(isProtrackerSong ? slot.slot > 31 : isXmSong ? slot.slot > 128 : !canEditSlot(slot))"
                     @click.stop="editSlotPatch(slot.slot)"
                   >
                     <q-icon name="edit" size="16px" />
@@ -778,7 +767,7 @@
                     type="button"
                     class="icon-action-button danger"
                     title="Clear instrument"
-                    :disabled="isReadOnly || hasDocStructure || !slot.patchId"
+                    v-if="!(isReadOnly || hasDocStructure || !slot.patchId)"
                     @click.stop="
                       clearInstrument(slot.slot);
                       refocusTracker();

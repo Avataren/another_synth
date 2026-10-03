@@ -136,8 +136,8 @@ export {
  * the library (see `TOTAL_SLOTS`), so the page count derives from it rather
  * than defining it.
  */
-export const SLOTS_PER_PAGE = 5;
-export const TOTAL_PAGES = Math.ceil(TOTAL_SLOTS / SLOTS_PER_PAGE); // 26 pages
+export const SLOTS_PER_PAGE = 8;
+export const TOTAL_PAGES = Math.ceil(TOTAL_SLOTS / SLOTS_PER_PAGE); // 17 pages
 
 /** What became of an AHX instrument edit (`updateAhxInstrument`). */
 export type AhxEditOutcome = 'applied' | 'kept' | 'rejected';

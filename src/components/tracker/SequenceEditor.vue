@@ -238,7 +238,7 @@ defineExpose({
 .sequence-editor {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
@@ -250,7 +250,8 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 200px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -363,7 +364,7 @@ defineExpose({
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
-  min-height: 44px;
+  min-height: 34px;
   color: #e8f3ff;
 }
 
@@ -390,7 +391,7 @@ defineExpose({
 
 .sequence-controls button {
   flex-grow: 1;
-  padding: 8px;
+  padding: 4px 8px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
