@@ -41,7 +41,9 @@
               <li><strong>Octave</strong>: adjust base octave in the tracker panel or with Shift+PgUp/PgDn.</li>
               <li><strong>Advance</strong>: notes move the cursor by the step size; Tab/Shift+Tab move tracks.</li>
               <li><strong>Note-off / insert row</strong>: Insert writes ### (note-off) at the current row; Shift+Insert inserts a blank row and shifts steps below down. Delete clears the step.</li>
-              <li><strong>Instruments</strong>: slots hold patches; click Edit to open a slot in the patch editor. Typing previews with the active slot if it has a patch.</li>
+              <li><strong>Instruments</strong>: slots hold patches; click Edit to open a slot in the patch editor. Notes are written with the active slot: click a slot, or press Alt+Up / Alt+Down to step through them.</li>
+              <li><strong>Typing an instrument</strong>: move to the Instr column (Right arrow) and type the slot number as two digits (<code>0</code> <code>3</code> for 03). It becomes the active slot, so the notes you enter after it use it.</li>
+              <li><strong>Edit mode</strong>: F2 turns editing on or off. With it off, note keys only audition the sound.</li>
             </ul>
           </section>
         </q-tab-panel>

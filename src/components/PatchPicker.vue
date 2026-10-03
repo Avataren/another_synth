@@ -3,11 +3,14 @@
     <button
       type="button"
       class="patch-picker-trigger"
-      :class="{ open: isOpen, 'has-value': !!modelValue }"
+      :class="{ open: isOpen, 'has-value': !!modelValue, 'icon-only': iconOnly }"
+      :title="displayLabel"
+      :aria-label="displayLabel"
       @click.stop="toggleDropdown"
     >
-      <span class="patch-picker-label">{{ displayLabel }}</span>
-      <q-icon name="expand_more" size="16px" class="picker-icon" :class="{ rotated: isOpen }" />
+      <q-icon v-if="iconOnly" name="library_music" size="16px" />
+      <span v-else class="patch-picker-label">{{ displayLabel }}</span>
+      <q-icon v-if="!iconOnly" name="expand_more" size="16px" class="picker-icon" :class="{ rotated: isOpen }" />
     </button>
 
     <Teleport to="body">
@@ -119,6 +122,8 @@ interface Props {
   banks?: Bank[];
   /** Flat list of patch options (alternative to banks) */
   patches?: PatchOption[];
+  /** A small icon button (the placeholder becomes its tooltip) instead of a wide label, for rows that show the name themselves */
+  iconOnly?: boolean;
 }
 
 interface Emits {
@@ -710,6 +715,13 @@ onUnmounted(() => {
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+.patch-picker-trigger.icon-only {
+  min-width: 0;
+  width: 28px;
+  padding: 0;
+  justify-content: center;
 }
 
 .patch-picker-trigger:hover {

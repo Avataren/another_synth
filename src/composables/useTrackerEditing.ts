@@ -2,7 +2,7 @@ import { type Ref, type ComputedRef } from 'vue';
 import type { TrackerEntryData } from 'src/components/tracker/tracker-types';
 import type { TrackerPattern, InstrumentSlot } from 'src/stores/tracker-store';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
-import { pickActiveInstrumentId } from 'src/audio/tracker/instrument-ids';
+import { isInstrumentSlotFilled, pickActiveInstrumentId } from 'src/audio/tracker/instrument-ids';
 import type { AhxEditGate } from 'src/audio/tracker/ahx-doc/edit-guard';
 
 /**
@@ -95,6 +95,26 @@ export function useTrackerEditing(context: TrackerEditingContext) {
    */
   function setActiveInstrument(slotNumber: number) {
     context.activeInstrumentId.value = context.formatInstrumentId(slotNumber);
+  }
+
+  /**
+   * Make the previous (-1) or next (+1) filled slot the active instrument,
+   * stopping at the ends. Starts from the first filled slot when none is active.
+   */
+  function stepActiveInstrument(delta: -1 | 1) {
+    const filled = context.instrumentSlots.value
+      .filter(isInstrumentSlotFilled)
+      .map((slot) => slot.slot)
+      .sort((a, b) => a - b);
+    if (filled.length === 0) return;
+    const current = Number(context.activeInstrumentId.value);
+    const index = filled.indexOf(current);
+    const next =
+      index === -1
+        ? (delta > 0 ? filled.find((n) => n > current) : [...filled].reverse().find((n) => n < current)) ??
+          filled[delta > 0 ? 0 : filled.length - 1]!
+        : filled[Math.max(0, Math.min(filled.length - 1, index + delta))]!;
+    setActiveInstrument(next);
   }
 
   /**
@@ -307,6 +327,61 @@ export function useTrackerEditing(context: TrackerEditingContext) {
   }
 
   /**
+   * The first digit of a two-digit instrument number, waiting for its second.
+   * Tied to the step it was typed on: moving away abandons it.
+   */
+  let pendingInstrument: { pattern: unknown; row: number; track: number; digit: number } | null = null;
+
+  /**
+   * Handle a decimal digit typed in the instrument column.
+   *
+   * Two digits make a slot number (`0`,`3` -> 03). A lone digit that names a
+   * slot is written at once, so the column answers the first key; the second
+   * digit completes it and moves the cursor on. The typed instrument also
+   * becomes the active one, so the notes entered after it inherit it.
+   * A number with no slot is ignored.
+   */
+  function handleInstrumentInput(digitChar: string) {
+    if (!context.isEditMode.value) return;
+    if (context.activeColumn.value !== 1) return;
+    if (!/^[0-9]$/.test(digitChar)) return;
+    const digit = Number(digitChar);
+    const row = context.activeRow.value;
+    const track = context.activeTrack.value;
+    const pattern = context.currentPattern.value;
+    const pending =
+      pendingInstrument &&
+      pendingInstrument.pattern === pattern &&
+      pendingInstrument.row === row &&
+      pendingInstrument.track === track
+        ? pendingInstrument
+        : null;
+    pendingInstrument = null;
+
+    const slotNumber = pending ? pending.digit * 10 + digit : digit;
+    const exists = context.instrumentSlots.value.some((slot) => slot.slot === slotNumber);
+    if (slotNumber < 1 || !exists) {
+      // `0` is the start of `01`..`09`; anything else that names no slot is dropped.
+      if (!pending && digit === 0) pendingInstrument = { pattern, row, track, digit };
+      return;
+    }
+    if (inAhxSong() && refusedByAhx({ kind: 'instrument', value: slotNumber })) return;
+
+    const instrumentId = context.formatInstrumentId(slotNumber);
+    context.pushHistory();
+    updateEntryAt(row, track, (entry) => ({ ...entry, instrument: instrumentId }));
+    context.activeInstrumentId.value = instrumentId;
+    if (pending) {
+      advanceRowByStep();
+    } else if (slotNumber < 10 && context.instrumentSlots.value.some((slot) => slot.slot >= slotNumber * 10)) {
+      // A second digit could still follow (`1` -> `10`..`19`).
+      pendingInstrument = { pattern, row, track, digit };
+    } else {
+      advanceRowByStep();
+    }
+  }
+
+  /**
    * Handle macro hexadecimal input
    */
   function handleMacroInput(hexChar: string) {
@@ -509,6 +584,8 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     setActiveInstrument,
     handleNoteEntry,
     handleVolumeInput,
+    handleInstrumentInput,
+    stepActiveInstrument,
     handleMacroInput,
     clearInstrumentField,
     clearVolumeNibble,

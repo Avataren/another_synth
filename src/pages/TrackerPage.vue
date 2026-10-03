@@ -720,6 +720,7 @@
                   :model-value="null"
                   :patches="ahxPresetList"
                   :placeholder="slot.slot <= ahxInstrumentCount ? 'Load preset' : 'Add from preset'"
+                  :icon-only="slot.slot <= ahxInstrumentCount"
                   @select="
                     (p) => {
                       onAhxPresetSelect(slot.slot, p.id);
@@ -749,6 +750,7 @@
                   :model-value="null"
                   :patches="sidPresetList"
                   :placeholder="slot.slot <= (trackerStore.sidDoc?.instruments.length ?? 0) ? 'Load preset' : 'Add from preset'"
+                  :icon-only="slot.slot <= (trackerStore.sidDoc?.instruments.length ?? 0)"
                   @select="
                     (p) => {
                       onSidPresetSelect(slot.slot, p.id);
@@ -2451,6 +2453,8 @@ const {
   setActiveInstrument,
   handleNoteEntry,
   handleVolumeInput,
+  handleInstrumentInput,
+  stepActiveInstrument,
   handleMacroInput,
   clearInstrumentField,
   clearVolumeNibble,
@@ -2943,6 +2947,8 @@ const keyboardContext: TrackerKeyboardContext = {
   // Editing
   handleNoteEntry,
   handleVolumeInput,
+  handleInstrumentInput,
+  stepActiveInstrument,
   handleMacroInput,
   clearStep,
   clearInstrumentField,

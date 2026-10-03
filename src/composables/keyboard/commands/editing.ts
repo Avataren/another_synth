@@ -22,6 +22,24 @@ export const editingCommands: KeyboardCommand[] = [
     }
   },
   {
+    key: 'ArrowUp',
+    modifiers: { alt: true },
+    description: 'Previous instrument slot',
+    category: 'editing',
+    handler: (ctx) => {
+      ctx.stepActiveInstrument(-1);
+    }
+  },
+  {
+    key: 'ArrowDown',
+    modifiers: { alt: true },
+    description: 'Next instrument slot',
+    category: 'editing',
+    handler: (ctx) => {
+      ctx.stepActiveInstrument(1);
+    }
+  },
+  {
     key: 'Delete',
     columnFilter: 0,
     description: 'Clear current step',
@@ -126,6 +144,19 @@ export function createHexInputCommands(): KeyboardCommand[] {
         }
       });
     }
+  }
+
+  // Decimal digits in the instrument column: a slot number is two digits.
+  for (const digit of '0123456789'.split('')) {
+    commands.push({
+      key: digit,
+      columnFilter: 1,
+      description: `Enter instrument digit ${digit}`,
+      category: 'editing',
+      handler: (ctx, event) => {
+        if (!event.repeat) ctx.handleInstrumentInput(digit);
+      }
+    });
   }
 
   // Effect command letters (effect column only)

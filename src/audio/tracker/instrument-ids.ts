@@ -11,6 +11,15 @@ import { normalizeInstrumentFormat } from 'src/audio/tracker/instrument-types';
  */
 export { formatInstrumentId, normalizeInstrumentId } from '@another-synth/tracker-playback';
 
+/** Whether a slot holds an instrument a note can use (a patch, an AHX instrument or a SID one). */
+export function isInstrumentSlotFilled(slot: InstrumentSlot): boolean {
+  return (
+    Boolean(slot.patchId) ||
+    slot.ahxData !== undefined ||
+    normalizeInstrumentFormat(slot.instrumentFormat) === 'sid'
+  );
+}
+
 /**
  * The instrument that should be selected: the current one while it still has
  * a patch, otherwise the first slot that has one, otherwise nothing. An AHX
@@ -22,10 +31,7 @@ export function pickActiveInstrumentId(
   slots: readonly InstrumentSlot[],
   current: string | null,
 ): string | null {
-  const isFilled = (slot: InstrumentSlot) =>
-    Boolean(slot.patchId) ||
-    slot.ahxData !== undefined ||
-    normalizeInstrumentFormat(slot.instrumentFormat) === 'sid';
+  const isFilled = isInstrumentSlotFilled;
   if (current) {
     const stillThere = slots.some((slot) => isFilled(slot) && formatInstrumentId(slot.slot) === current);
     if (stillThere) return current;
