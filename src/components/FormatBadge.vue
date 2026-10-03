@@ -79,4 +79,12 @@ const vars = computed(() => formatBrandVars(props.brand));
   height: 12px;
   width: auto;
 }
+
+/* Bitmap-font labels (7 glyph rows): 14px is a whole 2px per pixel, so the
+   letters stay crisp instead of landing on uneven pixel boundaries. */
+.format-badge[data-format='goat'] .format-badge__label :deep(svg),
+.format-badge[data-format='ahx'] .format-badge__label :deep(svg),
+.format-badge[data-format='hvl'] .format-badge__label :deep(svg) {
+  height: 14px;
+}
 </style>
