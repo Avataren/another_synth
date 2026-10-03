@@ -1380,13 +1380,14 @@ const sessionAutosave = useSessionAutosave({
     const when = new Date(record.savedAt).toLocaleString();
     $q.notify({
       type: 'info',
+      classes: 'session-restore-toast',
+      icon: 'history',
       message: `Restore “${record.title}” from your last session?`,
       caption: `Saved ${when}`,
       timeout: 0,
       actions: [
         {
           label: 'Restore',
-          color: 'white',
           handler: () => {
             void restore().catch((err) => {
               console.error('[session-autosave] could not restore the session', err);
@@ -1394,7 +1395,7 @@ const sessionAutosave = useSessionAutosave({
             });
           },
         },
-        { label: 'Dismiss', color: 'white' },
+        { label: 'Dismiss' },
       ],
     });
   },

@@ -58,3 +58,26 @@ body,
 .q-separator {
   background: var(--panel-border) !important;
 }
+
+// Session-restore offer: a solid, high-contrast box so it is not mistaken for a
+// faded overlay at the bottom of the screen.
+.session-restore-toast {
+  background: #0b1020 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffd54a;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7);
+
+  .q-notification__message {
+    font-weight: 600;
+  }
+
+  .q-notification__caption {
+    color: #d6dcec;
+    opacity: 1;
+  }
+
+  .q-notification__actions .q-btn {
+    color: #ffd54a !important;
+    font-weight: 700;
+  }
+}
