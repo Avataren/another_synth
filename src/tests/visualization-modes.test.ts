@@ -37,6 +37,7 @@ describe('visualization modes', () => {
     expect(ids).toContain('bars3d');
     expect(ids).toContain('raymarch');
     expect(ids).toContain('terrain');
+    expect(ids).toContain('fractal');
   });
 
   it('reads an unknown stored value as the default', () => {

@@ -19,6 +19,7 @@ import { registerAnimationCallback } from 'src/composables/useAnimationLoop';
 import { Bars3dRenderer } from 'src/components/tracker/bars3d-renderer';
 import { TerrainRenderer } from 'src/components/tracker/terrain-renderer';
 import { RaymarchRenderer } from 'src/components/tracker/raymarch-renderer';
+import { FractalRenderer } from 'src/components/tracker/fractal-renderer';
 import { webgl2Available } from 'src/components/tracker/glow-scope-renderer';
 import { SpectrumFeed } from 'src/components/tracker/spectrum-feed';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
@@ -36,11 +37,13 @@ interface Props {
   raymarched?: boolean;
   /** Show the spectrum as a raymarched landscape instead of bars (takes precedence over `raymarched`). */
   terrain?: boolean;
+  /** Show a raymarched Mandelbulb with a glass sphere instead of bars (takes precedence over `terrain`). */
+  fractal?: boolean;
   /** The song's tempo: the raytraced ball bounces in time with it. */
   bpm?: number;
 }
 
-const props = withDefaults(defineProps<Props>(), { raymarched: false, terrain: false, bpm: 120 });
+const props = withDefaults(defineProps<Props>(), { raymarched: false, terrain: false, fractal: false, bpm: 120 });
 
 // Mounted without the app's store (a preview, a test), the view just keeps its adaptive resolution.
 let settingsStore: ReturnType<typeof useUserSettingsStore> | null = null;
@@ -51,7 +54,7 @@ try {
 }
 
 /** Bars across the scene: the raytraced view can afford a denser row. */
-const bands = computed(() => (props.terrain ? 64 : props.raymarched ? 80 : 40));
+const bands = computed(() => (props.fractal || props.terrain ? 64 : props.raymarched ? 80 : 40));
 /** Cap the resolution: the scene is soft, and it redraws every frame. */
 const MAX_PIXEL_RATIO = 1.5;
 
@@ -62,7 +65,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 // The terrain wants the music as it happens: a shorter window and less smoothing, for less lag.
 const spectrum = new SpectrumFeed(props.terrain ? { curve: 1.5, fftSize: 4096, smoothing: 0.25 } : { curve: 1.5 });
 
-let renderer: Bars3dRenderer | RaymarchRenderer | TerrainRenderer | null = null;
+let renderer: Bars3dRenderer | RaymarchRenderer | TerrainRenderer | FractalRenderer | null = null;
 let unregisterAnimation: (() => void) | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let cssWidth = 0;
@@ -101,11 +104,13 @@ function draw(time: number): void {
 function start(): void {
   const canvas = canvasRef.value;
   if (renderer || !canvas || !glSupported.value) return;
-  const created = props.terrain
-    ? new TerrainRenderer(canvas)
-    : props.raymarched
-      ? new RaymarchRenderer(canvas)
-      : new Bars3dRenderer(canvas);
+  const created = props.fractal
+    ? new FractalRenderer(canvas)
+    : props.terrain
+      ? new TerrainRenderer(canvas)
+      : props.raymarched
+        ? new RaymarchRenderer(canvas)
+        : new Bars3dRenderer(canvas);
   if (!created.ok) {
     created.dispose();
     return;
@@ -130,7 +135,7 @@ function stop(): void {
 }
 
 onMounted(start);
-watch([glSupported, () => props.raymarched, () => props.terrain], async () => {
+watch([glSupported, () => props.raymarched, () => props.terrain, () => props.fractal], async () => {
   stop();
   await nextTick();
   start();

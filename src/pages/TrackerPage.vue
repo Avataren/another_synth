@@ -860,6 +860,13 @@
       />
 
       <Bars3dWall
+        v-if="scopeWallVisible && visualizationMode === 'fractal'"
+        :audio-node="masterOutputNode"
+        :audio-context="audioContext"
+        fractal
+      />
+
+      <Bars3dWall
         v-if="scopeWallVisible && visualizationMode === 'raymarch'"
         :audio-node="masterOutputNode"
         :audio-context="audioContext"
