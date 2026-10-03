@@ -140,19 +140,25 @@
                 <input v-model="drawMode" type="checkbox" :disabled="empty" data-testid="mod-draw" />
                 Draw
               </label>
-              <button type="button" class="mod-btn" data-testid="mod-load" @click="fileEl?.click()">Load WAV…</button>
+              <button type="button" class="mod-btn" data-testid="mod-load" title="IFF 8SVX, raw 8-bit, WAV or any audio file" @click="fileEl?.click()">Import…</button>
               <label class="mod-field mod-field--inline" title="The note the loaded file sounds at its own pitch on">
                 <span class="mod-field__label">Plays at</span>
                 <select v-model.number="loadPeriod" class="mod-select" data-testid="mod-load-note">
                   <option v-for="n in MOD_LOAD_NOTES" :key="n.period" :value="n.period">{{ n.label }}</option>
                 </select>
               </label>
-              <button type="button" class="mod-btn" :disabled="empty" data-testid="mod-save-wav" @click="saveWav">Save WAV</button>
+              <label class="mod-field mod-field--inline">
+                <span class="mod-field__label">Export</span>
+                <select v-model="exportFormat" class="mod-select" data-testid="mod-export-format">
+                  <option v-for="f in MOD_SAMPLE_FORMATS" :key="f.id" :value="f.id">{{ f.label }}</option>
+                </select>
+              </label>
+              <button type="button" class="mod-btn" :disabled="empty" data-testid="mod-export" @click="exportSample">Export</button>
               <button type="button" class="mod-btn" :disabled="empty" data-testid="mod-normalize" @click="edit(normalize)">Normalize</button>
               <button type="button" class="mod-btn" :disabled="empty" data-testid="mod-reverse" @click="edit(reverse)">Reverse</button>
               <button type="button" class="mod-btn" :disabled="empty" data-testid="mod-halve" @click="edit(halve)">Half length</button>
               <button type="button" class="mod-btn mod-btn--danger" :disabled="empty" data-testid="mod-clear" @click="clear">Clear</button>
-              <input ref="fileEl" type="file" accept=".wav,audio/*" hidden data-testid="mod-file" @change="onFile" />
+              <input ref="fileEl" type="file" accept=".iff,.8svx,.raw,.sam,.smp,.snd,.sample,.pcm,.wav,audio/*" hidden data-testid="mod-file" @change="onFile" />
             </div>
             <p v-if="error" class="mod-error" role="alert" data-testid="mod-error">{{ error }}</p>
           </section>
@@ -200,6 +206,15 @@ import AhxNumberField from 'src/components/ahx/AhxNumberField.vue';
 import AhxSliderField from 'src/components/ahx/AhxSliderField.vue';
 import FormatBadge from 'src/components/FormatBadge.vue';
 import ModWaveform from 'src/components/mod/ModWaveform.vue';
+import {
+  amigaFormatOf,
+  MOD_SAMPLE_FORMATS,
+  parse8svx,
+  parseRaw,
+  write8svx,
+  writeRaw,
+  type ModSampleFormatId,
+} from 'src/audio/tracker/mod-sample-formats';
 import { exportFileName } from 'src/audio/tracker/song-export/file-name';
 
 const route = useRoute();
@@ -294,21 +309,37 @@ async function onFile(event: Event): Promise<void> {
   if (!file) return;
   error.value = '';
   try {
-    const buffer = await audioStore.audioContext.decodeAudioData(await file.arrayBuffer());
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const stem = clampModName(file.name.replace(/\.[^.]+$/, ''));
+    const kind = amigaFormatOf(bytes, file.name);
+    if (kind) {
+      // Amiga formats are already 8-bit mono at module rates: taken as they are.
+      const loaded = kind === '8svx' ? parse8svx(bytes) : parseRaw(bytes);
+      const base: ModSample = { ...draft.value, name: loaded.name ?? (draft.value.name || stem), volume: loaded.volume ?? draft.value.volume };
+      const next = withData({ ...base, loopStart: 0, loopLength: 0 }, loaded.data);
+      commit(loaded.loopLength ? withLoop(next, loaded.loopStart ?? 0, loaded.loopLength) : next);
+      return;
+    }
+    const buffer = await audioStore.audioContext.decodeAudioData(bytes.buffer.slice(0) as ArrayBuffer);
     const mono = new Float32Array(buffer.length);
     for (let c = 0; c < buffer.numberOfChannels; c++) {
       const channel = buffer.getChannelData(c);
       for (let i = 0; i < mono.length; i++) mono[i]! += channel[i]! / buffer.numberOfChannels;
     }
-    const name = draft.value.name || clampModName(file.name.replace(/\.[^.]+$/, ''));
+    const name = draft.value.name || stem;
     commit({ ...fromPcm({ ...draft.value, name }, mono, buffer.sampleRate, loadPeriod.value) });
   } catch (caught) {
     error.value = `Could not read ${file.name}: ${(caught as Error).message}`;
   }
 }
 
-function saveWav(): void {
-  downloadBytes(toWav(draft.value), exportFileName(draft.value.name || `sample_${slotNumber.value}`, '.wav'), 'audio/wav');
+const exportFormat = ref<ModSampleFormatId>('8svx');
+function exportSample(): void {
+  const format = MOD_SAMPLE_FORMATS.find((f) => f.id === exportFormat.value)!;
+  const sample = draft.value;
+  const bytes = format.id === '8svx' ? write8svx(sample) : format.id === 'raw' ? writeRaw(sample) : toWav(sample);
+  const mime = format.id === 'wav' ? 'audio/wav' : 'application/octet-stream';
+  downloadBytes(bytes, exportFileName(sample.name || `sample_${slotNumber.value}`, format.extension), mime);
 }
 
 // Playing: the song bank's own instrument for this slot, so what is heard is what the song plays.
