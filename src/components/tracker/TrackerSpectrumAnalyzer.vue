@@ -50,6 +50,8 @@ interface ChannelAnalyzer {
    *  smoothing again, so both show the identical trace. */
   updatedAt: number;
   updatedBars: number;
+  /** Any band still moving or showing a peak marker after the last update. */
+  active: boolean;
 }
 
 /** One side's canvas, and the 1-2 channels drawn into it. Every channel on
@@ -70,6 +72,9 @@ interface Side {
   dpr: number;
   unregisterAnimation: (() => void) | null;
   resizeObserver: ResizeObserver | null;
+  ctx: CanvasRenderingContext2D | null;
+  /** The canvas shows the resting (silent) state; cleared on resize/theme. */
+  restPainted: boolean;
 }
 
 type Mode = 'none' | 'quad' | 'stereo' | 'mono';
@@ -84,7 +89,40 @@ const peakDecay = 0.995;
 let cachedColors: { primary: { r: number; g: number; b: number }; secondary: { r: number; g: number; b: number } } | null = null;
 let themeObserver: MutationObserver | null = null;
 let barColors: Array<{ r: number; g: number; b: number }> = [];
+/** Colour table size; bands index into it so any band count spans the whole sweep. */
 const MAX_BARS_PER_CHANNEL = 80;
+/** Band count cap and minimum band width (CSS px): fewer, wider bars are cheaper to analyse and draw. */
+const MAX_BANDS = 40;
+const MIN_BAND_WIDTH_PX = 12;
+/**
+ * One vertical gradient strip per bar colour, rebuilt with the theme colours.
+ * A bar is then a single drawImage scaled to its height at its own globalAlpha,
+ * instead of a fresh CanvasGradient and three rgba() strings per bar per frame.
+ * The strip is white-alpha-shaped in the bar's colour: 1 at the base, 0.75 at
+ * the middle, fading to a faint top (the old absolute 0.05 stop, as a share of
+ * the typical 0.45-0.9 base opacity).
+ */
+const BAR_SPRITE_HEIGHT = 64;
+let barSprites: HTMLCanvasElement[] = [];
+
+function buildBarSprites() {
+  barSprites = barColors.map(({ r, g, b }) => {
+    const sprite = document.createElement('canvas');
+    sprite.width = 1;
+    sprite.height = BAR_SPRITE_HEIGHT;
+    const sctx = sprite.getContext('2d');
+    if (sctx) {
+      // Top of the sprite is the top of the bar.
+      const gradient = sctx.createLinearGradient(0, BAR_SPRITE_HEIGHT, 0, 0);
+      gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 1)`);
+      gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.75)`);
+      gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.08)`);
+      sctx.fillStyle = gradient;
+      sctx.fillRect(0, 0, 1, BAR_SPRITE_HEIGHT);
+    }
+    return sprite;
+  });
+}
 
 const left: Side = {
   canvasRef: leftCanvasRef,
@@ -97,6 +135,8 @@ const left: Side = {
   dpr: 1,
   unregisterAnimation: null,
   resizeObserver: null,
+  ctx: null,
+  restPainted: false,
 };
 const right: Side = {
   canvasRef: rightCanvasRef,
@@ -109,6 +149,8 @@ const right: Side = {
   dpr: 1,
   unregisterAnimation: null,
   resizeObserver: null,
+  ctx: null,
+  restPainted: false,
 };
 const sides = [left, right];
 
@@ -149,6 +191,8 @@ function updateCachedColors() {
       b: Math.round(cachedColors.primary.b * (1 - t) + cachedColors.secondary.b * t)
     });
   }
+  buildBarSprites();
+  sides.forEach((side) => (side.restPainted = false));
 }
 
 function setupThemeObserver() {
@@ -213,6 +257,7 @@ function updateCanvasSize(side: Side) {
     side.displayHeight = rect.height;
     canvas.width = nextWidth;
     canvas.height = nextHeight;
+    side.restPainted = false;
     const ctx = canvas.getContext('2d');
     if (ctx) ctx.scale(side.dpr, side.dpr);
   }
@@ -230,6 +275,7 @@ function createChannelAnalyzer(audioContext: BaseAudioContext): ChannelAnalyzer 
     sourceNode: null,
     updatedAt: -1,
     updatedBars: 0,
+    active: true,
   };
 }
 
@@ -399,6 +445,7 @@ function updateChannelData(channel: ChannelAnalyzer, numBars: number, time: numb
   channel.updatedBars = numBars;
   channel.analyser.getByteFrequencyData(channel.dataArray);
   const bufferLength = channel.analyser.frequencyBinCount;
+  let active = false;
   for (let i = 0; i < numBars; i++) {
     const logIndex = Math.pow(i / numBars, 1.5) * (bufferLength * 0.7);
     const dataIndex = Math.min(Math.floor(logIndex), bufferLength - 1);
@@ -411,7 +458,9 @@ function updateChannelData(channel: ChannelAnalyzer, numBars: number, time: numb
     } else {
       channel.peaks[i] = channel.peaks[i]! * peakDecay;
     }
+    if (rawValue > 0 || channel.smoothed[i]! > 0.001 || channel.peaks[i]! > 0.05) active = true;
   }
+  channel.active = active;
 }
 
 /** Draws one channel across the *entire* width of its side's canvas.
@@ -441,58 +490,67 @@ function drawChannel(
   // than being the only thing that's visible at all.
   const minBarHeightPx = side.displayHeight * 0.04;
 
+  const displayHeight = side.displayHeight;
+  const half = barGap / 2;
+  const w = barWidth - barGap;
   for (let i = 0; i < numBars; i++) {
-    const barHeight = Math.max(minBarHeightPx, channel.smoothed[i]! * side.displayHeight * 0.9);
-    const peakHeight = channel.peaks[i]! * side.displayHeight * 0.9;
+    const smoothed = channel.smoothed[i]!;
+    const peak = channel.peaks[i]!;
+    const barHeight = Math.max(minBarHeightPx, smoothed * displayHeight * 0.9);
+    const peakHeight = peak * displayHeight * 0.9;
 
     const x =
       side.innerEdgeDirection === -1
         ? innerX - (i + 1) * barWidth
         : innerX + i * barWidth;
-    const y = side.displayHeight - barHeight;
+    const y = displayHeight - barHeight;
+    const sprite = barSprites[Math.floor((i * MAX_BARS_PER_CHANNEL) / numBars)] ?? barSprites[0]!;
 
-    const { r, g, b } = barColors[i] ?? barColors[0]!;
+    ctx.globalAlpha = 0.45 + smoothed * 0.45;
+    ctx.drawImage(sprite, 0, 0, 1, BAR_SPRITE_HEIGHT, x + half, y, w, barHeight);
 
-    const gradient = ctx.createLinearGradient(x, side.displayHeight, x, y);
-    const baseOpacity = 0.45 + channel.smoothed[i]! * 0.45;
-    gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${baseOpacity})`);
-    gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${baseOpacity * 0.75})`);
-    gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.05)`);
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(x + barGap / 2, y, barWidth - barGap, barHeight);
-
-    if (peakHeight > 2 && channel.peaks[i]! > 0.05) {
-      const peakY = side.displayHeight - peakHeight;
-      const peakOpacity = Math.min(0.9, 0.35 + channel.peaks[i]! * 0.65);
-      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${peakOpacity})`;
-      ctx.fillRect(x + barGap / 2, peakY, barWidth - barGap, 3);
+    if (peakHeight > 2 && peak > 0.05) {
+      ctx.globalAlpha = Math.min(0.9, 0.35 + peak * 0.65);
+      // The sprite's base row is fully opaque in the bar's colour.
+      ctx.drawImage(sprite, 0, BAR_SPRITE_HEIGHT - 1, 1, 1, x + half, displayHeight - peakHeight, w, 3);
     }
   }
+  ctx.globalAlpha = 1;
 }
 
 function drawSide(side: Side, time: number) {
   const canvas = side.canvasRef.value;
   if (!canvas || side.channels.length === 0) return;
-  updateCanvasSize(side);
+  // Sized by the ResizeObserver / remeasure(), not here: reading the rect
+  // every frame forced a layout flush per strip.
+  if (side.canvasWidth === 0) updateCanvasSize(side);
   if (side.displayWidth === 0 || side.displayHeight === 0) return;
-  const ctx = canvas.getContext('2d');
+  const ctx = side.ctx ?? (side.ctx = canvas.getContext('2d'));
   if (!ctx) return;
   if (!cachedColors) updateCachedColors();
-
-  ctx.clearRect(0, 0, side.displayWidth, side.displayHeight);
 
   // One shared band count for the whole strip, sized to how much width is
   // actually available -- every channel on this side uses it, so they all
   // fan out from the same center point using the full strip.
-  const numBars = Math.min(MAX_BARS_PER_CHANNEL, Math.floor(side.displayWidth / 8));
+  const numBars = Math.min(MAX_BANDS, Math.floor(side.displayWidth / MIN_BAND_WIDTH_PX));
   if (numBars <= 0) return;
   const barWidth = side.displayWidth / numBars;
 
-  side.channels.forEach((channel) => {
+  // Update every channel first, then repaint only if something moved (or the
+  // strip itself changed): a stopped song leaves the bars at their resting
+  // baseline, and redrawing identical pixels at 60 fps is wasted work.
+  let anyActive = false;
+  for (const channel of side.channels) {
     updateChannelData(channel, numBars, time);
+    if (channel.active) anyActive = true;
+  }
+  if (!anyActive && side.restPainted) return;
+  side.restPainted = !anyActive;
+
+  ctx.clearRect(0, 0, side.displayWidth, side.displayHeight);
+  for (const channel of side.channels) {
     drawChannel(ctx, side, channel, numBars, barWidth);
-  });
+  }
 }
 
 function updateAnimationState(side: Side) {
@@ -528,6 +586,8 @@ function remeasure() {
 }
 
 onMounted(() => {
+  // Zooming changes devicePixelRatio without resizing the element.
+  window.addEventListener('resize', remeasure);
   setupThemeObserver();
   updateCachedColors();
 
@@ -567,6 +627,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener('resize', remeasure);
   cleanup();
   sides.forEach((side) => {
     side.resizeObserver?.disconnect();

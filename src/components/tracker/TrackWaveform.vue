@@ -68,6 +68,19 @@ const SCOPE_FFT_SIZE = 2048;
  */
 const ANALYSER_SCOPE_HEADROOM = 1.15;
 
+/** No data, or every sample below audibility (-120 dB): the trace is a flat line. */
+function isSilent(data: ArrayLike<number> | null): boolean {
+  if (!data) return true;
+  // A silent analyser reads exact zeros and a decayed one near them; an AHX
+  // snapshot is int16, where any nonzero sample is far above this.
+  const limit = data instanceof Int16Array ? 0 : 1e-6;
+  for (let i = 0; i < data.length; i++) {
+    const v = data[i] ?? 0;
+    if (v > limit || v < -limit) return false;
+  }
+  return true;
+}
+
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let analyser: AnalyserNode | null = null;
 let floatData: Float32Array | null = null;
@@ -89,6 +102,12 @@ const GLOW_ALPHA = 0.16;
 let canvasWidth = 0;
 let canvasHeight = 0;
 let pixelRatio = 1;
+/**
+ * The last frame drew the flat silent line, so another silent frame would paint
+ * the identical pixels. Cleared by anything that changes what that line looks
+ * like (size, colours, source), so a stopped song stops repainting every scope.
+ */
+let flatPainted = false;
 
 // Cached theme colors - updated only when theme changes
 // The waveform draws in the theme's complement, like the spectrum strips it
@@ -106,6 +125,7 @@ function updateCachedColors() {
     style.getPropertyValue('--tracker-accent-complement').trim() || 'rgb(254, 65, 116)';
   cachedColorRgb = parseCssColor(cachedWaveformColor);
   cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
+  flatPainted = false;
 }
 
 function setupThemeObserver() {
@@ -133,6 +153,7 @@ function updateCanvasSize() {
     pixelRatio = ratio;
     canvas.width = Math.round(canvasWidth * ratio);
     canvas.height = Math.round(canvasHeight * ratio);
+    flatPainted = false;
   }
 }
 
@@ -269,6 +290,7 @@ function startVisualization() {
     ctx.stroke();
   };
 
+  flatPainted = false;
   const draw = () => {
     const source = props.scopeSource ?? null;
     const analyserFullScale = props.analyserFullScale ?? null;
@@ -282,6 +304,14 @@ function startVisualization() {
       if (localAnalyser.fftSize !== size) localAnalyser.fftSize = size;
       if (floatData?.length !== size) floatData = new Float32Array(size);
       localAnalyser.getFloatTimeDomainData(floatData);
+    }
+
+    const sourceData: ArrayLike<number> | null = source ? source(props.scopeChannel ?? 0) : floatData;
+    if (isSilent(sourceData)) {
+      if (flatPainted) return;
+      flatPainted = true;
+    } else {
+      flatPainted = false;
     }
 
     // Resizing the bitmap resets the transform, so set it every frame: the
@@ -304,17 +334,17 @@ function startVisualization() {
     ctx.stroke();
 
     if (source) {
-      drawScope(source(props.scopeChannel ?? 0), AHX_SCOPE_FULL_SCALE);
+      drawScope(sourceData, AHX_SCOPE_FULL_SCALE);
       return;
     }
     if (analyserFullScale) {
       const fullScale = analyserFullScale();
-      drawScope(floatData, (fullScale && fullScale > 0 ? fullScale : 1) * ANALYSER_SCOPE_HEADROOM, true);
+      drawScope(sourceData, (fullScale && fullScale > 0 ? fullScale : 1) * ANALYSER_SCOPE_HEADROOM, true);
       return;
     }
     // A sampled format's track: full scale is 1.0, drawn about zero, with no
     // display gain (that setting is for the AHX/HVL scopes).
-    drawScope(floatData, 1, false, 1);
+    drawScope(sourceData, 1, false, 1);
   };
 
   // Register with shared animation loop

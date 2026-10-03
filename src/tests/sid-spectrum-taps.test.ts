@@ -398,6 +398,10 @@ function recordCanvases() {
         r.rects = []; // keep only the latest frame
       },
       fillRect: (x: number, y: number, w: number, h: number) => r.rects.push([x, y, w, h]),
+      // Bars are blits of a pre-rendered gradient strip; the destination rect
+      // is what the old fillRect recorded.
+      drawImage: (_img: unknown, _sx: number, _sy: number, _sw: number, _sh: number, x: number, y: number, w: number, h: number) =>
+        r.rects.push([x, y, w, h]),
       createLinearGradient: () => ({ addColorStop: () => undefined }),
     } as unknown as CanvasRenderingContext2D;
   } as unknown as typeof HTMLCanvasElement.prototype.getContext);

@@ -202,10 +202,22 @@ function tick(time: number) {
     holds[i] = dbToPercent(meter.holdDb);
   });
 
-  fillPercent.value = fills;
-  holdPercent.value = holds;
+  // Quantised to 0.1% (well under a pixel on a ~100px track) and assigned only
+  // on change: a fresh array every frame re-rendered the meter at 60 fps even
+  // while it sat at silence.
+  for (let i = 0; i < 2; i++) {
+    fills[i] = Math.round(fills[i]! * 10) / 10;
+    holds[i] = Math.round(holds[i]! * 10) / 10;
+  }
+  if (fills[0] !== fillPercent.value[0] || fills[1] !== fillPercent.value[1]) {
+    fillPercent.value = fills;
+  }
+  if (holds[0] !== holdPercent.value[0] || holds[1] !== holdPercent.value[1]) {
+    holdPercent.value = holds;
+  }
 
-  peakLabel.value = formatPeakLabel(framePeak);
+  const label = formatPeakLabel(framePeak);
+  if (label !== peakLabel.value) peakLabel.value = label;
 }
 
 function resetClip() {
