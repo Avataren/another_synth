@@ -140,7 +140,7 @@
                 <input v-model="drawMode" type="checkbox" :disabled="empty" data-testid="mod-draw" />
                 Draw
               </label>
-              <button type="button" class="mod-btn" data-testid="mod-load" title="IFF 8SVX, raw 8-bit, WAV or any audio file" @click="fileEl?.click()">Import…</button>
+              <button type="button" class="mod-btn" data-testid="mod-load" title="IFF 8SVX, AIFF, raw 8-bit, WAV or any audio file" @click="fileEl?.click()">Import…</button>
               <label class="mod-field mod-field--inline" title="The note the loaded file sounds at its own pitch on">
                 <span class="mod-field__label">Plays at</span>
                 <select v-model.number="loadPeriod" class="mod-select" data-testid="mod-load-note">
@@ -158,7 +158,7 @@
               <button type="button" class="mod-btn" :disabled="empty" data-testid="mod-reverse" @click="edit(reverse)">Reverse</button>
               <button type="button" class="mod-btn" :disabled="empty" data-testid="mod-halve" @click="edit(halve)">Half length</button>
               <button type="button" class="mod-btn mod-btn--danger" :disabled="empty" data-testid="mod-clear" @click="clear">Clear</button>
-              <input ref="fileEl" type="file" accept=".iff,.8svx,.raw,.sam,.smp,.snd,.sample,.pcm,.wav,audio/*" hidden data-testid="mod-file" @change="onFile" />
+              <input ref="fileEl" type="file" accept=".iff,.8svx,.aif,.aiff,.raw,.sam,.smp,.snd,.sample,.pcm,.wav,audio/*" hidden data-testid="mod-file" @change="onFile" />
             </div>
             <p v-if="error" class="mod-error" role="alert" data-testid="mod-error">{{ error }}</p>
           </section>
@@ -210,8 +210,10 @@ import {
   amigaFormatOf,
   MOD_SAMPLE_FORMATS,
   parse8svx,
+  parseAiff,
   parseRaw,
   write8svx,
+  writeAiff,
   writeRaw,
   type ModSampleFormatId,
 } from 'src/audio/tracker/mod-sample-formats';
@@ -312,6 +314,18 @@ async function onFile(event: Event): Promise<void> {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const stem = clampModName(file.name.replace(/\.[^.]+$/, ''));
     const kind = amigaFormatOf(bytes, file.name);
+    if (kind === 'aiff') {
+      const aiff = parseAiff(bytes);
+      const named: ModSample = { ...draft.value, name: aiff.name ?? (draft.value.name || stem), loopStart: 0, loopLength: 0 };
+      if (aiff.data8) {
+        // Already 8-bit mono: taken as it is, like the other Amiga formats.
+        const next = withData(named, aiff.data8);
+        commit(aiff.loopLength ? withLoop(next, aiff.loopStart ?? 0, aiff.loopLength) : next);
+      } else {
+        commit(fromPcm(named, aiff.pcm, aiff.rate, loadPeriod.value));
+      }
+      return;
+    }
     if (kind) {
       // Amiga formats are already 8-bit mono at module rates: taken as they are.
       const loaded = kind === '8svx' ? parse8svx(bytes) : parseRaw(bytes);
@@ -337,7 +351,8 @@ const exportFormat = ref<ModSampleFormatId>('8svx');
 function exportSample(): void {
   const format = MOD_SAMPLE_FORMATS.find((f) => f.id === exportFormat.value)!;
   const sample = draft.value;
-  const bytes = format.id === '8svx' ? write8svx(sample) : format.id === 'raw' ? writeRaw(sample) : toWav(sample);
+  const bytes =
+    format.id === '8svx' ? write8svx(sample) : format.id === 'aiff' ? writeAiff(sample) : format.id === 'raw' ? writeRaw(sample) : toWav(sample);
   const mime = format.id === 'wav' ? 'audio/wav' : 'application/octet-stream';
   downloadBytes(bytes, exportFileName(sample.name || `sample_${slotNumber.value}`, format.extension), mime);
 }

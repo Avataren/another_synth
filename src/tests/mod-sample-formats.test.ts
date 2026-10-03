@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyModSample } from 'src/audio/tracker/mod-sample-codec';
 import { withLoop } from 'src/audio/tracker/mod-sample-ops';
-import { amigaFormatOf, looksLike8svx, parse8svx, parseRaw, write8svx, writeRaw } from 'src/audio/tracker/mod-sample-formats';
+import { amigaFormatOf, looksLike8svx, parse8svx, parseAiff, parseRaw, write8svx, writeAiff, writeRaw } from 'src/audio/tracker/mod-sample-formats';
 
 const sample = () =>
   withLoop(
@@ -60,5 +60,48 @@ describe('raw', () => {
     expect(amigaFormatOf(new Uint8Array(4), 'kick.RAW')).toBe('raw');
     expect(amigaFormatOf(write8svx(sample()), 'x.bin')).toBe('8svx');
     expect(amigaFormatOf(new Uint8Array(4), 'x.wav')).toBeNull();
+  });
+});
+
+describe('AIFF', () => {
+  it('round-trips 8-bit data, rate, name and loop', () => {
+    const bytes = writeAiff(sample());
+    expect(amigaFormatOf(bytes, 'x.bin')).toBe('aiff');
+    const back = parseAiff(bytes);
+    expect(back.rate).toBeCloseTo(8287, 3);
+    expect(back.bits).toBe(8);
+    expect(Array.from(back.data8!)).toEqual(Array.from(sample().data));
+    expect(back.name).toBe('bass');
+    expect([back.loopStart, back.loopLength]).toEqual([20, 60]);
+  });
+
+  it('writes an unlooped sample without loop chunks', () => {
+    const back = parseAiff(writeAiff({ ...sample(), loopStart: 0, loopLength: 0 }));
+    expect(back.loopLength).toBeUndefined();
+  });
+
+  it('reads 16-bit stereo as mono float', () => {
+    const file = new Uint8Array(12 + 26 + 16 + 8);
+    const v = new DataView(file.buffer);
+    const put = (at: number, t: string) => [...t].forEach((c, i) => (file[at + i] = c.charCodeAt(0)));
+    put(0, 'FORM');
+    v.setUint32(4, file.length - 8, false);
+    put(8, 'AIFF');
+    put(12, 'COMM');
+    v.setUint32(16, 18, false);
+    v.setUint16(20, 2, false);
+    v.setUint32(22, 2, false);
+    v.setUint16(26, 16, false);
+    v.setUint16(28, 0x400e, false); // 80-bit float: 44100 = 0xAC44 * 2^-48 * 2^15
+    v.setBigUint64(30, 0xac44000000000000n, false);
+    put(38, 'SSND');
+    v.setUint32(42, 16, false); // 8 bytes of offset/block size + 8 of audio
+    [16384, -16384, 32767, 0].forEach((x, i) => v.setInt16(54 + i * 2, x, false));
+    const back = parseAiff(file);
+    expect(back.rate).toBeCloseTo(44100, 3);
+    expect(back.channels).toBe(2);
+    expect(back.pcm.length).toBe(2);
+    expect(back.pcm[0]).toBeCloseTo(0, 5);
+    expect(back.pcm[1]).toBeCloseTo(0.5, 3);
   });
 });

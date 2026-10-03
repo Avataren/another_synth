@@ -10,7 +10,7 @@ import type { ModSample } from '@another-synth/tracker-playback';
 import { MOD_MAX_SAMPLE_BYTES } from 'src/audio/tracker/mod-sample-codec';
 import { clampModName } from 'src/audio/tracker/mod-sample-ops';
 
-export type ModSampleFormatId = 'wav' | '8svx' | 'raw';
+export type ModSampleFormatId = 'wav' | '8svx' | 'aiff' | 'raw';
 
 export interface ModSampleFormat {
   id: ModSampleFormatId;
@@ -20,6 +20,7 @@ export interface ModSampleFormat {
 
 export const MOD_SAMPLE_FORMATS: readonly ModSampleFormat[] = [
   { id: '8svx', label: 'IFF 8SVX', extension: '.iff' },
+  { id: 'aiff', label: 'AIFF', extension: '.aiff' },
   { id: 'raw', label: 'Raw 8-bit signed', extension: '.raw' },
   { id: 'wav', label: 'WAV', extension: '.wav' },
 ];
@@ -168,9 +169,177 @@ export function writeRaw(sample: ModSample): Uint8Array {
 }
 
 /** The format a file is, by its bytes first and its name second; `null` for anything else (the browser decodes it). */
-export function amigaFormatOf(bytes: Uint8Array, fileName: string): '8svx' | 'raw' | null {
+export function amigaFormatOf(bytes: Uint8Array, fileName: string): '8svx' | 'aiff' | 'raw' | null {
   if (looksLike8svx(bytes)) return '8svx';
+  if (looksLikeAiff(bytes)) return 'aiff';
   const lower = fileName.toLowerCase();
   if (RAW_EXTENSIONS.some((ext) => lower.endsWith(ext))) return 'raw';
   return null;
+}
+
+// ---- AIFF -----------------------------------------------------------------
+
+export function looksLikeAiff(bytes: Uint8Array): boolean {
+  return bytes.length >= 12 && tag(bytes, 0) === 'FORM' && (tag(bytes, 8) === 'AIFF' || tag(bytes, 8) === 'AIFC');
+}
+
+/** An IEEE 754 80-bit extended float, big-endian: how AIFF stores its sample rate. */
+function readExtended(view: DataView, at: number): number {
+  const exponent = view.getUint16(at, false);
+  const sign = exponent & 0x8000 ? -1 : 1;
+  const mantissa = view.getBigUint64(at + 2, false);
+  if ((exponent & 0x7fff) === 0 && mantissa === 0n) return 0;
+  return sign * Number(mantissa) * 2 ** ((exponent & 0x7fff) - 16383 - 63);
+}
+
+function writeExtended(view: DataView, at: number, value: number): void {
+  if (value <= 0) {
+    for (let i = 0; i < 10; i++) view.setUint8(at + i, 0);
+    return;
+  }
+  const exponent = Math.floor(Math.log2(value));
+  view.setUint16(at, 16383 + exponent, false);
+  view.setBigUint64(at + 2, BigInt(Math.round(value * 2 ** (63 - exponent))), false);
+}
+
+export interface ParsedAiff {
+  /** Mono, -1..1 (channels mixed down). */
+  pcm: Float32Array;
+  rate: number;
+  bits: number;
+  channels: number;
+  /** The sample as raw signed bytes, when the file is already 8-bit mono. */
+  data8?: Int8Array;
+  name?: string;
+  loopStart?: number;
+  loopLength?: number;
+}
+
+/** An AIFF file's audio and sustain loop; throws a message for the user when it can't be read. */
+export function parseAiff(bytes: Uint8Array): ParsedAiff {
+  if (!looksLikeAiff(bytes)) throw new Error('not an AIFF file');
+  if (tag(bytes, 8) === 'AIFC') throw new Error('compressed AIFF (AIFC) is not supported');
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let channels = 0;
+  let frames = 0;
+  let bits = 0;
+  let rate = 0;
+  let sound: Uint8Array | null = null;
+  let name: string | undefined;
+  const markers = new Map<number, number>();
+  let loop: [number, number] | null = null;
+
+  let at = 12;
+  while (at + 8 <= bytes.length) {
+    const id = tag(bytes, at);
+    const size = view.getUint32(at + 4, false);
+    const start = at + 8;
+    const end = Math.min(bytes.length, start + size);
+    if (id === 'COMM' && size >= 18) {
+      channels = view.getUint16(start, false);
+      frames = view.getUint32(start + 2, false);
+      bits = view.getUint16(start + 6, false);
+      rate = readExtended(view, start + 8);
+    } else if (id === 'SSND') {
+      const offset = view.getUint32(start, false);
+      sound = bytes.subarray(start + 8 + offset, end);
+    } else if (id === 'NAME') {
+      name = clampModName(String.fromCharCode(...bytes.subarray(start, end)).replace(/\0.*$/, '').trim());
+    } else if (id === 'MARK') {
+      let p = start + 2;
+      const count = view.getUint16(start, false);
+      for (let i = 0; i < count && p + 7 <= end; i++) {
+        markers.set(view.getUint16(p, false), view.getUint32(p + 2, false));
+        const nameLength = bytes[p + 6] ?? 0;
+        p += 7 + nameLength + ((nameLength + 1) & 1); // pstring, padded to even
+      }
+    } else if (id === 'INST' && size >= 20) {
+      // sustain loop: playMode(2) beginMarker(2) endMarker(2) at offset 8
+      if (view.getUint16(start + 8, false) !== 0) loop = [view.getUint16(start + 10, false), view.getUint16(start + 12, false)];
+    }
+    at = start + size + (size & 1);
+  }
+  if (!channels || !bits || !sound) throw new Error('the file has no readable sound data');
+  if (bits !== 8 && bits !== 16 && bits !== 24) throw new Error(`${bits}-bit AIFF is not supported`);
+
+  const bytesPer = bits / 8;
+  const count = Math.min(frames, Math.floor(sound.length / (bytesPer * channels)));
+  const pcm = new Float32Array(count);
+  const data8 = bits === 8 && channels === 1 ? new Int8Array(count) : undefined;
+  const sv = new DataView(sound.buffer, sound.byteOffset, sound.byteLength);
+  for (let i = 0; i < count; i++) {
+    let sum = 0;
+    for (let c = 0; c < channels; c++) {
+      const p = (i * channels + c) * bytesPer;
+      sum += bits === 8 ? sv.getInt8(p) / 128 : bits === 16 ? sv.getInt16(p, false) / 32768 : ((sv.getInt8(p) << 16) | (sv.getUint8(p + 1) << 8) | sv.getUint8(p + 2)) / 8388608;
+    }
+    pcm[i] = sum / channels;
+    if (data8) data8[i] = sv.getInt8(i);
+  }
+  const result: ParsedAiff = { pcm, rate, bits, channels, ...(data8 ? { data8 } : {}), ...(name ? { name } : {}) };
+  const begin = loop ? markers.get(loop[0]) : undefined;
+  const finish = loop ? markers.get(loop[1]) : undefined;
+  if (begin !== undefined && finish !== undefined && finish - begin > 2) {
+    result.loopStart = begin;
+    result.loopLength = finish - begin;
+  }
+  return result;
+}
+
+/** An 8-bit mono AIFF for `sample`, at the rate C-2 plays it at, with its loop as the sustain loop. */
+export function writeAiff(sample: ModSample): Uint8Array {
+  const rate = Math.round(3546895 / 428);
+  const name = new TextEncoder().encode(sample.name);
+  const looping = sample.loopLength > 2;
+  const n = sample.data.length;
+  const pad = (len: number) => len + (len & 1);
+  const markLength = 2 + 2 * (2 + 4 + 2); // count + two markers with empty pstring names
+  const total =
+    4 +
+    (8 + 18) +
+    (name.length ? 8 + pad(name.length) : 0) +
+    (looping ? 8 + 20 + 8 + markLength : 0) +
+    8 + 8 + pad(n);
+  const out = new Uint8Array(8 + total);
+  const view = new DataView(out.buffer);
+  const put = (p: number, text: string) => [...text].forEach((c, i) => (out[p + i] = c.charCodeAt(0)));
+  put(0, 'FORM');
+  view.setUint32(4, total, false);
+  put(8, 'AIFF');
+  let p = 12;
+  put(p, 'COMM');
+  view.setUint32(p + 4, 18, false);
+  view.setUint16(p + 8, 1, false);
+  view.setUint32(p + 10, n, false);
+  view.setUint16(p + 14, 8, false);
+  writeExtended(view, p + 16, rate);
+  p += 26;
+  if (name.length) {
+    put(p, 'NAME');
+    view.setUint32(p + 4, name.length, false);
+    out.set(name, p + 8);
+    p += 8 + pad(name.length);
+  }
+  if (looping) {
+    put(p, 'MARK');
+    view.setUint32(p + 4, markLength, false);
+    view.setUint16(p + 8, 2, false);
+    view.setUint16(p + 10, 1, false);
+    view.setUint32(p + 12, sample.loopStart, false);
+    out[p + 16] = 0; // empty name, padded to even
+    view.setUint16(p + 18, 2, false);
+    view.setUint32(p + 20, sample.loopStart + sample.loopLength, false);
+    p += 8 + markLength;
+    put(p, 'INST');
+    view.setUint32(p + 4, 20, false);
+    out[p + 8 + 2] = 127; // high note
+    view.setUint16(p + 8 + 8, 1, false); // sustain loop: forward
+    view.setUint16(p + 8 + 10, 1, false);
+    view.setUint16(p + 8 + 12, 2, false);
+    p += 28;
+  }
+  put(p, 'SSND');
+  view.setUint32(p + 4, 8 + n, false);
+  sample.data.forEach((v, i) => (out[p + 16 + i] = v & 0xff));
+  return out;
 }
