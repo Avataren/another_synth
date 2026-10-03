@@ -1,3 +1,4 @@
+import { fxaaGlsl } from './fxaa-shader';
 import { RAYMARCH_GEOMETRY_GLSL } from './raymarch-geometry';
 
 /**
@@ -972,37 +973,7 @@ vec3 aces(vec3 color) {
   return clamp(ACES_OUT * (a / b), 0.0, 1.0);
 }
 
-float lumaOf(vec3 c) {
-  return dot(c, vec3(0.299, 0.587, 0.114));
-}
-
-// Cheap FXAA (Lottes' two-tap form) on the scene. It runs on the encoded values,
-// which sit under a gamma, so edges are judged about as the eye sees them. Flat
-// areas bail out after the first taps; only the edge pixels pay for the rest.
-vec4 antiAlias(vec2 uv) {
-  vec2 px = 1.0 / vec2(textureSize(uScene, 0));
-  vec4 m = texture(uScene, uv);
-  float lM = lumaOf(m.rgb);
-  float lNW = lumaOf(texture(uScene, uv + vec2(-1.0, 1.0) * px).rgb);
-  float lNE = lumaOf(texture(uScene, uv + vec2(1.0, 1.0) * px).rgb);
-  float lSW = lumaOf(texture(uScene, uv + vec2(-1.0, -1.0) * px).rgb);
-  float lSE = lumaOf(texture(uScene, uv + vec2(1.0, -1.0) * px).rgb);
-  float lo = min(lM, min(min(lNW, lNE), min(lSW, lSE)));
-  float hi = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
-  if (hi - lo < max(0.03, hi * 0.1)) return m;
-
-  vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
-  float reduce = max((lNW + lNE + lSW + lSE) * 0.03125, 1.0 / 128.0);
-  dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + reduce), -8.0, 8.0) * px;
-
-  vec4 a = 0.5 * (texture(uScene, uv + dir * (1.0 / 3.0 - 0.5))
-                + texture(uScene, uv + dir * (2.0 / 3.0 - 0.5)));
-  vec4 b = a * 0.5 + 0.25 * (texture(uScene, uv + dir * -0.5)
-                           + texture(uScene, uv + dir * 0.5));
-  float lB = lumaOf(b.rgb);
-  return (lB < lo || lB > hi) ? a : b;
-}
-
+${fxaaGlsl('uScene')}
 void main() {
   vec4 sceneSample = antiAlias(vUv);
   vec3 scene = decodeHdr(sceneSample.rgb);

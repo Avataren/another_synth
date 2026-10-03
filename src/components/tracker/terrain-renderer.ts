@@ -11,6 +11,7 @@ import { RAYMARCH_VERTEX_SHADER } from 'src/components/tracker/raymarch-shader';
 import { TERRAIN_FRAGMENT_SHADER } from 'src/components/tracker/terrain-shader';
 import { skyState } from 'src/components/tracker/sky-cycle';
 import { terrainCamera } from 'src/components/tracker/terrain-camera';
+import { fxaaGlsl } from 'src/components/tracker/fxaa-shader';
 import { BLUR_VERTEX_SHADER } from 'src/components/tracker/glow-scope-shader';
 import {
   TerrainHistory,
@@ -31,13 +32,16 @@ const HEIGHT_PER_LEVEL = 5.5;
  */
 const NEWEST_Z = -6.3;
 
+// The scene arrives tone mapped and gamma encoded, so the FXAA can run on it as it is.
 const BLIT_FRAGMENT_SHADER = `#version 300 es
-precision mediump float;
+precision highp float;
+precision highp sampler2D;
 in vec2 vUv;
 uniform sampler2D uSrc;
 out vec4 outColor;
+${fxaaGlsl('uSrc')}
 void main() {
-  outColor = vec4(texture(uSrc, vUv).rgb, 1.0);
+  outColor = vec4(antiAlias(vUv).rgb, 1.0);
 }
 `;
 
