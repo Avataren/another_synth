@@ -36,6 +36,8 @@ export interface Bars3dFrame {
   timeMs: number;
   /** The song's tempo, for views that keep time with it. */
   bpm?: number;
+  /** Raymarched view: trace at half the canvas width and height and scale up, instead of the adaptive resolution. */
+  halfResolution?: boolean;
 }
 
 /** Unit box: 24 vertices (position, normal) and 36 indices. */

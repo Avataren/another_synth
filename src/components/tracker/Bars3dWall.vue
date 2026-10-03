@@ -21,6 +21,7 @@ import { TerrainRenderer } from 'src/components/tracker/terrain-renderer';
 import { RaymarchRenderer } from 'src/components/tracker/raymarch-renderer';
 import { webgl2Available } from 'src/components/tracker/glow-scope-renderer';
 import { SpectrumFeed } from 'src/components/tracker/spectrum-feed';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
 
 /**
  * A 3D scene: glowing spectrum bars standing on a glossy floor, with a diffuse
@@ -40,6 +41,14 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), { raymarched: false, terrain: false, bpm: 120 });
+
+// Mounted without the app's store (a preview, a test), the view just keeps its adaptive resolution.
+let settingsStore: ReturnType<typeof useUserSettingsStore> | null = null;
+try {
+  settingsStore = useUserSettingsStore();
+} catch {
+  settingsStore = null;
+}
 
 /** Bars across the scene: the raytraced view can afford a denser row. */
 const bands = computed(() => (props.terrain ? 64 : props.raymarched ? 80 : 40));
@@ -85,6 +94,7 @@ function draw(time: number): void {
     bands: bands.value,
     timeMs: time,
     bpm: props.bpm,
+    halfResolution: settingsStore?.settings.raymarchHalfResolution === true,
   });
 }
 

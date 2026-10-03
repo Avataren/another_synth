@@ -47,6 +47,12 @@ export interface UserSettings {
    */
   webglScopes: boolean;
   /**
+   * Trace the Raytraced view at half the canvas width and height and scale it
+   * up (a quarter of the pixels): much lighter on the GPU, a little softer. On by
+   * default. Off lets the view pick its own resolution from the GPU's speed.
+   */
+  raymarchHalfResolution: boolean;
+  /**
    * Fixed display gain (1, 2 or 4) for the AHX/HVL per-channel scopes, so a
    * quiet voice is readable. Display only, and clipped at the scope's edge
    * rather than rescaled per frame: the trace stays comparable between
@@ -237,6 +243,7 @@ export const defaultSettings: UserSettings = {
   visualizationMode: DEFAULT_VISUALIZATION_MODE,
   visualizationPlacement: DEFAULT_VISUALIZATION_PLACEMENT,
   webglScopes: true,
+  raymarchHalfResolution: true,
   ahxScopeGain: 1,
   masterVolume: 1,
   enableMidi: false,

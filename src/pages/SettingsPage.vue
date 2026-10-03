@@ -275,6 +275,28 @@
                     </div>
                   </label>
 
+                  <label class="toggle-setting">
+                    <input
+                      type="checkbox"
+                      :checked="settings.raymarchHalfResolution"
+                      data-testid="setting-raymarch-half-resolution"
+                      @change="
+                        updateSetting(
+                          'raymarchHalfResolution',
+                          ($event.target as HTMLInputElement).checked,
+                        )
+                      "
+                    />
+                    <div class="toggle-info">
+                      <span class="toggle-label">Raytraced view at half resolution</span>
+                      <span class="toggle-description"
+                        >Trace the Raytraced view at half the width and height and scale it up,
+                        a quarter of the pixels. Softer, but much lighter on the GPU. Off picks
+                        the resolution automatically</span
+                      >
+                    </div>
+                  </label>
+
                   <div class="select-setting">
                     <label class="select-label" for="ahx-scope-gain">
                       AHX/HVL and SID scope gain

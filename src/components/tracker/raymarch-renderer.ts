@@ -36,6 +36,8 @@ const ROW_WIDTH = 11.2;
 const VIEW_WIDTH = 5.6;
 const MAX_HEIGHT = 3.6;
 /** How much of its cell a bar fills across (the rest is the gap to its neighbour); a peak cap is 0.8 of that. */
+/** The fixed scale of the half resolution setting: half the canvas width and height. */
+const HALF_RESOLUTION = 0.5;
 const BAR_FILL = 0.63;
 const MAX_BARS = RAYMARCH_MAX_BARS;
 const SKY_WIDTH = 384;
@@ -186,6 +188,7 @@ export class RaymarchRenderer {
   private skyProgram: WebGLProgram | null = null;
   private skyUniforms: UniformLocations = {};
   private budget: GpuRenderBudget | null = null;
+  private halfResolution = false;
   private readonly rect = new Float32Array(4);
 
   private bounces = 0;
@@ -203,6 +206,7 @@ export class RaymarchRenderer {
 
   /** The current marcher resolution as a fraction of the canvas. */
   get resolutionScale(): number {
+    if (this.halfResolution) return HALF_RESOLUTION;
     return this.budget?.quality.scale ?? 0.75;
   }
 
@@ -478,8 +482,11 @@ export class RaymarchRenderer {
     const baseV =
       0.5 + (0.5 * focal * (px * up[0] + py * up[1] + pz * up[2])) / depth;
 
-    const rw = Math.max(1, Math.round(width * budget.quality.scale));
-    const rh = Math.max(1, Math.round(height * budget.quality.scale));
+    // Half resolution is fixed; otherwise the budget picks the scale from how long the GPU takes.
+    this.halfResolution = frame.halfResolution === true;
+    const scale = this.halfResolution ? HALF_RESOLUTION : budget.quality.scale;
+    const rw = Math.max(1, Math.round(width * scale));
+    const rh = Math.max(1, Math.round(height * scale));
     budget.begin(rw, rh);
     gl.bindVertexArray(this.emptyVao);
     gl.activeTexture(gl.TEXTURE3);
