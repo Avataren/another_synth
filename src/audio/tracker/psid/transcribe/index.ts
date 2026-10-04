@@ -236,9 +236,12 @@ export function transcribePsid(file: PsidFile, options: TranscribeOptions = {}):
       pointFilter = false;
       continue;
     }
+    // A subsong that does not loop is cut to make room, but only once while other subsongs can still be
+    // left out instead: halved again and again, the start song shrank to a few rows (rubicon: 3001 rows
+    // to 46) to keep jingles.
     const longest = current
       .map((p, i) => [p, i] as const)
-      .filter(([p]) => p.loop.kind === 'none' && p.loop.length > 64)
+      .filter(([p]) => p.loop.kind === 'none' && p.loop.length > 64 && (current.length === 1 || !cut.has(p.subsong)))
       .sort((a, b) => b[0].loop.length - a[0].loop.length)[0];
     if (longest !== undefined) {
       const [p, i] = longest;

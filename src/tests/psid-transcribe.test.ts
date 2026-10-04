@@ -216,6 +216,17 @@ describe('importPsid: whole files', () => {
     expect(r.notes.some((n) => /^Not imported: subsongs? \d.*\.$/.test(n))).toBe(true);
     exportsEverywhere(r.doc);
   }, 120_000);
+
+  it('Rubicon: the start song is not cut to a stub to keep its jingles; subsongs are left out instead', () => {
+    const r = imported('tel_jeroen/rubicon.sid');
+    const start = r.reports.find((x) => x.gtSubsong === 0)!;
+    // Halved over and over to fit ten more subsongs it was 46 rows of 3001 (score 0.37).
+    expect(start.rows!).toBeGreaterThanOrEqual(1000);
+    expect(r.fidelity!.score).toBeGreaterThanOrEqual(0.7);
+    expect(r.reports.some((x) => x.gtSubsong === null)).toBe(true);
+    expect(r.notes.some((n) => /^Not imported: subsongs? \d.*\.$/.test(n))).toBe(true);
+    exportsEverywhere(r.doc);
+  }, 120_000);
 });
 
 /**
