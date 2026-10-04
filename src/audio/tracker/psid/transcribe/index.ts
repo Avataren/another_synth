@@ -101,6 +101,24 @@ function noteKeys(rows: number, programs: readonly NoteProgram[]): string[] {
   return Array.from({ length: rows }, (_, r) => `${cells[0]![r]}|${cells[1]![r]}|${cells[2]![r]}`);
 }
 
+/**
+ * Whether the tune's notes start on a bare test-bit frame (the gate on with the test bit set, the
+ * waveform on the next frame), as GoatTracker's player writes them: then a row starts on that
+ * frame (`RowGrid.lead` 0) and its instrument's `firstWave` is that frame, with no wave row for it.
+ */
+function startLead(f: TraceFrames, onsets: readonly (readonly number[])[]): 0 | 1 {
+  let bare = 0;
+  let total = 0;
+  onsets.forEach((list, v) => {
+    const ctrl = f.voices[v]!.ctrl;
+    for (const o of list) {
+      total++;
+      if ((ctrl[o]! & 0x08) !== 0 && o + 1 < f.frames && (ctrl[o + 1]! & 0x08) === 0) bare++;
+    }
+  });
+  return total > 0 && bare >= 0.9 * total ? 0 : 1;
+}
+
 function prepare(file: PsidFile, subsong: number, maxSeconds: number | undefined): Prepared | string {
   const capture = captureSid(file, maxSeconds === undefined ? { subsong } : { subsong, maxSeconds });
   if (!capture.ok) return capture.reason;
@@ -116,7 +134,7 @@ function transcribed(subsong: number, trace: SidTrace, effects: boolean): Prepar
   const frames = traceFrames(trace);
   const onsets = onsetsOf(frames);
   if (onsets.every((l) => l.length === 0)) return 'plays no notes';
-  const grid = detectGrid(onsets, frames.frames);
+  const grid = detectGrid(onsets, frames.frames, startLead(frames, onsets));
   const tuning = estimateTuning(frames);
   const notes = splitLines(frames, grid, placeNotes(frames, grid, onsets), tuning);
   const plans = effects ? notes.map((list) => planPitch(frames, grid, list, (n) => noteBase(frames, grid, n, tuning), tuning)) : [];

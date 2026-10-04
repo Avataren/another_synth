@@ -1,4 +1,4 @@
-import type { SidInstrument, SidTableRow } from 'src/audio/tracker/sid-doc';
+import { SID_DEFAULT_TEMPO, type SidInstrument, type SidTableRow } from 'src/audio/tracker/sid-doc';
 import { MAX_HARD_RESTART_GAP, MAX_PULSE_FRAMES, type NoteProgram, type ProgramFrame, type PulseFrame } from './notes';
 
 /**
@@ -45,8 +45,10 @@ type PitchClass = number | `a${number}` | 'free' | 'none';
  * How a group's noise frames name their pitch: absolute (a drum that sounds
  * the same under any note) or relative to the row's note (Hubbard's drums,
  * transposed with the bass line). A group takes the one its notes agree in.
+ * `all`: every sounding frame is an absolute note (a drum or a stab that sounds
+ * the same under any note, merged from groups that differ only in the row's note).
  */
-export type NoiseMode = 'absolute' | 'relative';
+export type NoiseMode = 'absolute' | 'relative' | 'all';
 
 export interface Timbre {
   readonly ad: number;
@@ -63,6 +65,8 @@ export interface Timbre {
   readonly pitch: readonly PitchClass[];
   /** As `pitch`, with the noise frames relative to the row's note. */
   readonly relPitch: readonly PitchClass[];
+  /** As `pitch`, with every sounding frame an absolute note. */
+  readonly allPitch: readonly PitchClass[];
 }
 
 /** Notes of one timbre. */
@@ -91,7 +95,7 @@ const pitchClass = (f: ProgramFrame, base: number, noise: NoiseMode = 'absolute'
   const k = Math.round(f.pitch);
   if (Math.abs(f.pitch - k) > PITCH_SNAP) return 'free';
   // Noise: its pitch is the drum's, whatever the note.
-  if (f.ctrl & 0x80 && noise === 'absolute') return `a${Math.max(1, Math.min(95, base + k))}`;
+  if ((f.ctrl & 0x80 && noise === 'absolute') || noise === 'all') return `a${Math.max(1, Math.min(95, base + k))}`;
   return k;
 };
 
@@ -107,6 +111,7 @@ export function timbreOf(p: NoteProgram): Timbre {
     ctrl: p.frames.map((f) => f.ctrl),
     pitch: p.frames.map((f) => pitchClass(f, p.base)),
     relPitch: p.frames.map((f) => pitchClass(f, p.base, 'relative')),
+    allPitch: p.frames.map((f) => pitchClass(f, p.base, 'all')),
   };
 }
 
@@ -135,8 +140,8 @@ function isPrefix(short: Timbre, long: Timbre, pulse = true, noise: NoiseMode = 
   if (short.ctrl.length > long.ctrl.length) return false;
   for (let i = 0; i < short.ctrl.length; i++) {
     if (short.ctrl[i] !== long.ctrl[i]) return false;
-    const a = noise === 'absolute' ? short.pitch[i] : short.relPitch[i];
-    const b = noise === 'absolute' ? long.pitch[i] : long.relPitch[i];
+    const a = noise === 'absolute' ? short.pitch[i] : noise === 'all' ? short.allPitch[i] : short.relPitch[i];
+    const b = noise === 'absolute' ? long.pitch[i] : noise === 'all' ? long.allPitch[i] : long.relPitch[i];
     if (a !== b && a !== 'free' && b !== 'free') return false;
   }
   return true;
@@ -183,27 +188,48 @@ function joins(timbre: Timbre, group: NoteGroup, pulse: boolean, noise: NoiseMod
 
 /** The instrument plans of `programs`: timbres, split by vibrato; never more than `max` (the least used merge into their nearest). */
 export function groupNotes(programs: readonly NoteProgram[], max = MAX_TRANSCRIBED_INSTRUMENTS): InstrumentPlan[] {
-  // Notes that differ only in how their pulse width starts share an instrument (and its pulse)
-  // rather than going past the limit, where unlike notes would be merged.
-  const strict = plansOf(programs, true);
-  if (strict.length <= max) return strict;
-  // First the least used give up their own pulse only: into a plan they differ from in nothing else.
-  const plans = strict.slice().sort((a, b) => b.members.length - a.members.length);
-  for (let i = plans.length - 1; i >= 0 && plans.length > max; i--) {
-    const victim = plans[i]!;
-    const host = plans.find(
-      (p, k) =>
-        k !== i &&
-        (p.vibrato === null) === (victim.vibrato === null) &&
-        (victim.group.noise === null || p.group.noise === null || victim.group.noise === p.group.noise) &&
-        joins(victim.group.timbre, p.group, false, p.group.noise ?? victim.group.noise),
+  // Notes that differ only in how their pulse width starts share an instrument: the pulse
+  // program is shared per envelope (`sharePulse`), as GoatTracker's own songs do (the round trip
+  // of the GT corpus makes 40 instruments of 19 when the pulse is told apart).
+  const plans = mergeAbsolute(plansOf(programs, false));
+  return plans.length <= max ? plans : mergedTo(plans, max);
+}
+
+/**
+ * Drum plans that play the same absolute notes on different row notes (which the
+ * grouping by row-relative pitch kept apart) become one instrument whose wave program names
+ * absolute notes, as GoatTracker songs write them (`81da 41a6 009c`).
+ */
+function mergeAbsolute(plans: InstrumentPlan[]): InstrumentPlan[] {
+  const order = [...plans].sort((a, b) => b.group.rep.frames.length - a.group.rep.frames.length);
+  const hosts: InstrumentPlan[] = [];
+  for (const plan of order) {
+    // Frames whose pitch is not heard match any: merging needs notes that say the pitch is the same.
+    const evidence = plan.group.timbre.allPitch.filter((x) => typeof x === 'string' && x.startsWith('a')).length;
+    // Drums only: a tonal line merged on its absolute notes lost pitch on real tunes (terra_cresta voice 2 0.76 -> 0.43).
+    const drum = plan.group.timbre.ctrl.some((c) => (c & 0x80) !== 0);
+    if (plan.vibrato !== null || plan.group.timbre.legato || evidence < 2 || !drum) {
+      hosts.push(plan);
+      continue;
+    }
+    const host = hosts.find(
+      (h) =>
+        h.vibrato === null &&
+        !h.group.timbre.legato &&
+        h.group.timbre.pulse === plan.group.timbre.pulse &&
+        isPrefix(plan.group.timbre, h.group.timbre, false, 'all') &&
+        h.members.every((m) => isPrefix(timbreOf(m), h.group.timbre, false, 'all')) &&
+        plan.members.every((m) => isPrefix(timbreOf(m), h.group.timbre, false, 'all')),
     );
-    if (host === undefined) continue;
-    host.members.push(...victim.members);
-    plans.splice(i, 1);
+    if (host === undefined) {
+      hosts.push(plan);
+      continue;
+    }
+    host.members.push(...plan.members);
+    // Only when it joined another base's notes: a plan of one base keeps its mode.
+    if (new Set(host.members.map((m) => m.base)).size > 1) host.group.noise = 'all';
   }
-  if (plans.length <= max) return plans;
-  return mergedTo(plansOf(programs, false), max);
+  return hosts;
 }
 
 function plansOf(programs: readonly NoteProgram[], pulse: boolean): InstrumentPlan[] {
@@ -405,7 +431,8 @@ export function waveSteps(rep: NoteProgram, vibratoFrom: number | null, noise: N
     const frame = i + 1;
     const pc = pitchClass(f, rep.base, noise ?? 'absolute');
     let right = NO_CHANGE;
-    const free = (vibratoFrom !== null && frame >= vibratoFrom) || !!f.owned;
+    // A test-bit frame is silent: its pitch is not heard, and writing it would only tell notes apart.
+    const free = (vibratoFrom !== null && frame >= vibratoFrom) || !!f.owned || (f.ctrl & 0x08) !== 0;
     if (free && !f.owned && frame === vibratoFrom && centre !== null && rep.base + centre !== lastNote) {
       // GoatTracker's vibrato swings around the last note set: set the centre as it starts.
       right = noteRight(rep.base, centre);
@@ -768,6 +795,9 @@ const mode = <T>(values: readonly T[]): T | undefined => {
  */
 function firstWave(plan: InstrumentPlan): number {
   if (plan.group.timbre.legato) return 0x00;
+  // A row that starts on the original's own test-bit frame (`RowGrid.lead` 0): that frame, as it was.
+  const bare = plan.members.filter((m) => m.note.onset === m.note.tick0 && (m.tick0Ctrl & 0x09) === 0x09);
+  if (bare.length * 2 > plan.members.length) return mode(bare.map((m) => m.tick0Ctrl))!;
   if (plan.members.reduce((sum, m) => sum + m.testStartGain, 0) > 0) return 0x09;
   // A waveform GoatTracker takes as one ($00, $FE, $FF are commands), gate off.
   const ok = (w: number): boolean => w >= 0x10 && w !== 0xfe && w !== 0xff && !(w & 1);
@@ -787,10 +817,11 @@ function noteTiming(plan: InstrumentPlan, rowFrames: number): Pick<SidInstrument
   // The gap after its notes decides how early the next row is read (the gate timer): the
   // gate goes off `gapAfter` frames before the next gate-on, GoatTracker's `gateTimer` frames
   // before the next row's first frame, which is 1 + the voice's delay before it.
-  const delay = Math.max(0, (mode(members.map((m) => m.note.onset - m.note.tick0)) ?? 1) - 1);
+  const lead = Math.max(0, mode(members.map((m) => m.note.onset - m.note.tick0)) ?? 1);
   // (A gap past MAX_HARD_RESTART_GAP is a rest, the note's own release: a key-off, not the gate timer's.)
   const gapAfter = mode(members.flatMap((m) => (m.gapAfter !== null && m.gapAfter <= MAX_HARD_RESTART_GAP ? [m.gapAfter] : [])));
-  const gateTimer = Math.max(1, Math.min(Math.max(1, rowFrames - 1), (gapAfter ?? 2) - 1 - delay));
+  // (The song starts at GoatTracker's tempo 6 until an `F` command runs: a gate timer at or past it stops the player.)
+  const gateTimer = Math.max(1, Math.min(Math.max(1, rowFrames - 1), SID_DEFAULT_TEMPO - 1, (gapAfter ?? 2) - lead));
   // A legato note: no gate-off before it (GoatTracker's $40 gate-timer bit).
   return { gateTimer, hardRestart: hardRestart && !legato, noGateOff: legato || gapBefore <= 1 };
 }
@@ -887,6 +918,27 @@ function fitPulsePrograms(pulse: (TableProgram | null)[], plans: readonly Instru
 }
 
 /**
+ * Plans of one envelope (and filter) whose pulse programs sweep alike play one program, the most
+ * used plan's: the starting width is the note's own, not an instrument's, in the songs GoatTracker
+ * makes (the round trip of its corpus made 40 instruments of 19 without this).
+ */
+function sharePulse(pulse: (TableProgram | null)[], plans: readonly InstrumentPlan[]): void {
+  const classes = new Map<string, number[]>();
+  plans.forEach((p, i) => {
+    if (pulse[i] === null) return;
+    const t = p.group.timbre;
+    // The same sweep structure, whatever width it starts from (the set-width rows aside).
+    const shape = pulse[i]!.rows.map((r) => (r.left >= 0x80 && r.left !== 0xff ? 'S' : `${r.left},${r.right}`)).join(';');
+    const key = `${t.ad},${t.sr},${t.filter},${shape}`;
+    classes.set(key, [...(classes.get(key) ?? []), i]);
+  });
+  for (const idx of classes.values()) {
+    const donor = idx.reduce((best, i) => (plans[i]!.members.length > plans[best]!.members.length ? i : best), idx[0]!);
+    for (const i of idx) pulse[i] = pulse[donor]!;
+  }
+}
+
+/**
  * The GoatTracker instruments of `plans`, their programs placed in `tables`
  * within GoatTracker's 255 rows a table: wave programs cut where they cost
  * least (`fitWavePrograms`), and when the pulse programs do not fit, the
@@ -903,6 +955,7 @@ export function buildInstruments(
   const wave = fitWavePrograms(plans, waveBudget);
   const timings = plans.map((p) => noteTiming(p, rowFrames));
   const pulse = plans.map((p, i) => (p.group.timbre.legato ? null : pulseProgram(p.group.rep.frames, p.group.rep.pulse, timings[i]!.gateTimer)));
+  sharePulse(pulse, plans);
   fitPulsePrograms(pulse, plans, 255 - tables.pulse.length);
   return plans.map((plan, i) => {
     const rep = plan.group.rep;

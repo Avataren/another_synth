@@ -162,7 +162,7 @@ export function placeNotes(f: TraceFrames, g: RowGrid, onsets: readonly (readonl
     const notes: RowNote[] = [];
     const delay = g.delays[voice] ?? 0;
     for (const onset of list) {
-      const k = Math.max(0, nearestRowTo(g, onset - 1 - delay));
+      const k = Math.max(0, nearestRowTo(g, onset - g.lead - delay));
       const last = notes[notes.length - 1];
       if (last !== undefined && last.row >= k) {
         last.folded++;
@@ -219,13 +219,13 @@ export function splitLines(f: TraceFrames, g: RowGrid, voices: readonly RowNote[
       const lastRow = rowOfFrame(g, end - 1 - delay);
       for (let r = note.row; r <= lastRow; r++) {
         const tick0 = rowStart(g, r);
-        const s = Math.max(note.onset, tick0 + 1 + delay);
-        const e = Math.min(end, rowStart(g, r + 1) + 1 + delay);
+        const s = Math.max(note.onset, tick0 + g.lead + delay);
+        const e = Math.min(end, rowStart(g, r + 1) + g.lead + delay);
         if (e <= s) continue;
         const row = rowNotes(s, e);
         if (r > note.row && row.line && row.set !== prev) {
           out[out.length - 1]!.end = tick0;
-          out.push({ voice, row: r, tick0, onset: tick0 + 1 + delay, end, folded: 0, legato: true });
+          out.push({ voice, row: r, tick0, onset: tick0 + g.lead + delay, end, folded: 0, legato: true });
         }
         prev = row.set;
       }
@@ -249,16 +249,19 @@ function gateOffRun(f: TraceFrames, v: number, frame: number, max: number): numb
  */
 function baseNote(f: TraceFrames, voice: number, from: number, to: number, tuning: number): number {
   const vf = f.voices[voice]!;
+  // Frames that sound a pitch: a waveform on and the test bit clear. A note's own test frame says
+  // nothing about its pitch (its frequency is left over), a release frame does.
   const counts = new Map<number, number>();
+  let first = 0;
+  let seen = false;
   for (let i = from; i < Math.max(from + 1, to); i++) {
-    if (!(vf.ctrl[i]! & 1) && i !== from) continue;
+    if ((vf.ctrl[i]! & 0xf0) === 0 || (vf.ctrl[i]! & 0x08) !== 0) continue;
     const p = pitchOf(vf.freq[i]!, f.clockHz) - tuning;
     if (!Number.isFinite(p)) continue;
     const n = nearestNote(p);
     counts.set(n, (counts.get(n) ?? 0) + 1);
+    if (!seen) [first, seen] = [n, true];
   }
-  const start = pitchOf(vf.freq[from]!, f.clockHz) - tuning;
-  const first = Number.isFinite(start) ? nearestNote(start) : 0;
   let best = first;
   let bestCount = counts.get(first) ?? 0;
   for (const [n, c] of counts) if (c > bestCount) [best, bestCount] = [n, c];
@@ -272,7 +275,7 @@ function baseNote(f: TraceFrames, voice: number, from: number, to: number, tunin
  */
 export function noteBase(f: TraceFrames, g: RowGrid, note: RowNote, tuning: number): number {
   const onset = Math.max(0, Math.min(f.frames - 1, note.onset));
-  const firstRowEnd = rowStart(g, note.row + 1) + 1 + (g.delays[note.voice] ?? 0);
+  const firstRowEnd = rowStart(g, note.row + 1) + g.lead + (g.delays[note.voice] ?? 0);
   const to = Math.min(note.end, onset + 24, Math.max(firstRowEnd, onset + 4));
   return baseNote(f, note.voice, onset, to, tuning);
 }
@@ -360,7 +363,8 @@ export function notePrograms(f: TraceFrames, notes: readonly RowNote[], tuning =
     const gapAfter = next === undefined ? null : gateOffRun(f, note.voice, next.onset, MAX_HARD_RESTART_GAP + 1);
     const tailStart = next === undefined || gapAfter === null || gapAfter > MAX_HARD_RESTART_GAP ? note.end : next.onset - gapAfter;
     // The note's own frames: tick 0 + 1 up to the tail (a quantized early gate-on shifts to tick 0 + 1).
-    const shift = Math.max(0, note.tick0 + 1 - note.onset);
+    const lead = g?.lead ?? 1;
+    const shift = Math.max(0, note.tick0 + lead - note.onset);
     const count = Math.min(MAX_PROGRAM_FRAMES, Math.max(1, tailStart - note.tick0 - 1 + shift));
     const frames: ProgramFrame[] = [];
     for (let i = 1; i <= count; i++) {

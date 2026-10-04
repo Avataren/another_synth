@@ -25,6 +25,13 @@ export interface RowGrid {
   readonly delays: readonly number[];
   /** Share of the note starts that land on a row start (the rest are moved or folded into a note). */
   readonly coverage: number;
+  /**
+   * Frames from a row's first to its notes' gate-on (before the voice's delay): 1 when a row starts
+   * a frame early (the gate-off first frame, the wave table's first row on the original's gate-on
+   * frame), 0 when it starts on the original's own first frame, a bare test-bit frame as
+   * GoatTracker's players write it (`firstWave` $09, the wave table's first row on the next).
+   */
+  readonly lead: number;
 }
 
 /** Row lengths are 3 or more frames: GoatTracker's shortest `F` tempo. */
@@ -96,15 +103,15 @@ function steadyTempo(onsets: readonly (readonly number[])[], share: number): { t
 }
 
 /** Per-voice delays for per-voice phases (mod `t`): after the earliest voice's, smallest worst case. */
-function delaysFor(phases: readonly (number | null)[], t: number): { delays: number[]; start: number } {
+function delaysFor(phases: readonly (number | null)[], t: number, lead: number): { delays: number[]; start: number } {
   let start = 0;
   let bestWorst = Infinity;
   for (let s = 0; s < t; s++) {
     let worst = 0;
-    for (const p of phases) if (p !== null) worst = Math.max(worst, (((p - 1 - s) % t) + t) % t);
+    for (const p of phases) if (p !== null) worst = Math.max(worst, (((p - lead - s) % t) + t) % t);
     if (worst < bestWorst) [bestWorst, start] = [worst, s];
   }
-  return { delays: phases.map((p) => (p === null ? 0 : Math.min(MIN_ROW_FRAMES - 1, (((p - 1 - start) % t) + t) % t))), start };
+  return { delays: phases.map((p) => (p === null ? 0 : Math.min(MIN_ROW_FRAMES - 1, (((p - lead - start) % t) + t) % t))), start };
 }
 
 /**
@@ -186,28 +193,28 @@ function pairwiseDelays(onsets: readonly (readonly number[])[]): number[] {
  * notes and is the tune's typical row (not a finer grid that happens to fit),
  * else rows laid note by note at the tune's typical length.
  */
-export function detectGrid(onsets: readonly (readonly number[])[], frames: number): RowGrid {
+export function detectGrid(onsets: readonly (readonly number[])[], frames: number, lead = 1): RowGrid {
   const total = onsets.reduce((n, l) => n + l.length, 0);
-  if (total === 0) return steadyGrid(6, -1, frames, onsets.map(() => 0), 1);
+  if (total === 0) return steadyGrid(6, -lead, frames, onsets.map(() => 0), 1, lead);
   const typical = typicalLength(onsets, frames);
   const steady = steadyTempo(onsets, GOOD_COVERAGE);
   if (steady !== null && steady.t >= typical) {
-    const { delays, start } = delaysFor(steady.phases, steady.t);
-    const first = Math.min(...onsets.flatMap((l, v) => (l.length > 0 ? [l[0]! - 1 - delays[v]!] : [])));
+    const { delays, start } = delaysFor(steady.phases, steady.t, lead);
+    const first = Math.min(...onsets.flatMap((l, v) => (l.length > 0 ? [l[0]! - lead - delays[v]!] : [])));
     let origin = start + Math.floor((first - start) / steady.t) * steady.t;
-    if (origin < -1) origin += steady.t;
-    return steadyGrid(steady.t, origin, frames, delays, steady.hits / total);
+    if (origin < -lead) origin += steady.t;
+    return steadyGrid(steady.t, origin, frames, delays, steady.hits / total, lead);
   }
   const delays = pairwiseDelays(onsets);
-  const anchors = [...new Set(onsets.flatMap((l, v) => l.map((o) => o - 1 - delays[v]!)))].sort((a, b) => a - b);
-  return laidGrid(anchors, typical, frames, delays);
+  const anchors = [...new Set(onsets.flatMap((l, v) => l.map((o) => o - lead - delays[v]!)))].sort((a, b) => a - b);
+  return laidGrid(anchors, typical, frames, delays, lead);
 }
 
-function steadyGrid(t: number, origin: number, frames: number, delays: readonly number[], coverage: number): RowGrid {
+function steadyGrid(t: number, origin: number, frames: number, delays: readonly number[], coverage: number, lead: number): RowGrid {
   const starts: number[] = [];
   for (let r = origin; r < frames; r += t) starts.push(r);
   if (starts.length === 0) starts.push(origin);
-  return { starts, delays, coverage };
+  return { starts, delays, coverage, lead };
 }
 
 /**
@@ -216,8 +223,8 @@ function steadyGrid(t: number, origin: number, frames: number, delays: readonly 
  * on the next anchor, or cut short at an anchor that comes early; the
  * current length follows the rows that land on anchors.
  */
-function laidGrid(anchors: readonly number[], typical: number, frames: number, delays: readonly number[]): RowGrid {
-  const origin = Math.max(-1, anchors[0]! - typical * Math.floor((anchors[0]! + 1) / typical));
+function laidGrid(anchors: readonly number[], typical: number, frames: number, delays: readonly number[], lead: number): RowGrid {
+  const origin = Math.max(-lead, anchors[0]! - typical * Math.floor((anchors[0]! + 1) / typical));
   const starts = [origin];
   const recent: number[] = [];
   let length = typical;
@@ -256,7 +263,7 @@ function laidGrid(anchors: readonly number[], typical: number, frames: number, d
     }
     r = end;
   }
-  return { starts, delays, coverage: anchors.length === 0 ? 1 : hit / anchors.length };
+  return { starts, delays, coverage: anchors.length === 0 ? 1 : hit / anchors.length, lead };
 }
 
 /** Rows whose length differs from the row before (and row 0): GoatTracker needs an `F` command there. */

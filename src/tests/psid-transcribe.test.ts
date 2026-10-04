@@ -125,9 +125,9 @@ const FLOORS: readonly (readonly [string, number, number])[] = [
   ['daglish_ben/krakout.sid', 0.95, 32],
   ['daglish_ben/last_ninja.sid', 0.84, 44],
   ['huelsbeck_chris/great_giana_sisters.sid', 0.97, 20],
-  ['huelsbeck_chris/r_type.sid', 0.94, 25],
+  ['huelsbeck_chris/r_type.sid', 0.94, 26],
   ['joseph_richard/defender_of_the_crown.sid', 0.97, 1],
-  ['tel_jeroen/golden_axe.sid', 0.87, 35],
+  ['tel_jeroen/golden_axe.sid', 0.87, 36],
   ['tel_jeroen/robocop_3.sid', 0.88, 29],
   ['chiptunesak/vibratotest.sid', 0.92, 1],
 ];
