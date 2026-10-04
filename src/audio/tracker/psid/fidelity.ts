@@ -56,9 +56,11 @@ const FILTER_WEIGHT = 0.15;
 /** The share of frames from which the filter counts in full. */
 const FILTER_FULL_SHARE = 0.1;
 
-/** How far a voice's own delay may lie from the voices' common one (frames). */
-const VOICE_DELAY_SPREAD = 8;
-/** How much better (score) a voice's own delay must score than the common one to be taken. */
+/** The delays (frames) a voice's transcription is tried at, and the stretch of the song they are scored over. */
+const MIN_DELAY = -30;
+const MAX_DELAY = 90;
+const SCAN_FRAMES = 1500;
+/** Delays whose score is within this of the best count as tied. */
 const VOICE_DELAY_GAIN = 0.01;
 
 const WEIGHTS = { pitch: 0.3, gate: 0.15, wave: 0.15, level: 0.15, onsets: 0.1, envelope: 0.1, pulse: 0.05 };
@@ -100,7 +102,7 @@ function bestOffset(a: TraceFrames, b: TraceFrames, voices: readonly number[] = 
 }
 
 /** Voice `v`'s envelope level at the end of each frame of `f`. */
-function voiceLevels(f: TraceFrames, v: number): Uint8Array {
+export function voiceLevels(f: TraceFrames, v: number): Uint8Array {
   const vf = f.voices[v]!;
   const frames = Array.from({ length: f.frames }, (_, i) => ({
     ad: vf.ad[i]!,
@@ -112,7 +114,7 @@ function voiceLevels(f: TraceFrames, v: number): Uint8Array {
 }
 
 /** Voice `v` of `b` (delayed by `offset`) against voice `v` of `a`; `la`, `lb`: their envelope levels. */
-function compareVoice(a: TraceFrames, b: TraceFrames, v: number, offset: number, maxFrames: number, la: Uint8Array, lb: Uint8Array): VoiceFidelity {
+export function compareVoice(a: TraceFrames, b: TraceFrames, v: number, offset: number, maxFrames: number, la: Uint8Array, lb: Uint8Array): VoiceFidelity {
   const n = Math.max(0, Math.min(maxFrames, a.frames, b.frames - offset));
   const va = a.voices[v]!;
   const vb = b.voices[v]!;
@@ -243,19 +245,34 @@ export function measureFidelity(trace: SidTrace, doc: SidDoc, gtSubsong: number,
   const capture = captureSid(parsed.file, { subsong: 0, maxSeconds: seconds });
   if (!capture.ok) return capture.reason;
   const b = unrolled(traceFrames(capture.trace), maxFrames + 200);
-  // The delay of all voices together, then each voice's own near it, where the voice scores best
-  // (a transcription's voices need not start at the same frame; ties keep the common delay).
+  // Each voice's delay: where it scores best over a stretch of the song (a transcription's voices need
+  // not start at the same frame, and a tune whose rows repeat every few frames has note starts that
+  // line up at many delays, which the score tells apart). Delays that score alike keep the one nearest
+  // the voices' common delay, counted from their note starts.
   const common = bestOffset(a, b).offset;
+  const scan = Math.min(SCAN_FRAMES, maxFrames);
   const offsets = [0, 1, 2].map((v) => {
     const la = voiceLevels(a, v);
     const lb = voiceLevels(b, v);
+    const scores = new Map<number, number>();
+    let top = -1;
+    for (let off = MIN_DELAY; off <= MAX_DELAY; off++) {
+      const score = compareVoice(a, b, v, off, scan, la, lb).score;
+      scores.set(off, score);
+      if (score > top) top = score;
+    }
     let best = common;
-    let bestScore = compareVoice(a, b, v, common, maxFrames, la, lb).score;
-    for (let d = 1; d <= VOICE_DELAY_SPREAD; d++) {
-      for (const off of [common - d, common + d]) {
-        const score = compareVoice(a, b, v, off, maxFrames, la, lb).score;
-        if (score > bestScore + VOICE_DELAY_GAIN) [best, bestScore] = [off, score];
-      }
+    let bestGap = Infinity;
+    for (const [off, score] of scores) {
+      if (score < top - VOICE_DELAY_GAIN) continue;
+      const gap = Math.abs(off - common);
+      if (gap < bestGap) [best, bestGap] = [off, gap];
+    }
+    // The scan only proposes: over the whole stretch compared, the candidate must beat the common delay.
+    if (best !== common) {
+      const own = compareVoice(a, b, v, best, maxFrames, la, lb).score;
+      const shared = compareVoice(a, b, v, common, maxFrames, la, lb).score;
+      if (own <= shared + VOICE_DELAY_GAIN) best = common;
     }
     return best;
   });
