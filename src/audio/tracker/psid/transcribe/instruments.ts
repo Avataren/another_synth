@@ -47,8 +47,13 @@ type PitchClass = number | `a${number}` | 'free' | 'none';
  * transposed with the bass line). A group takes the one its notes agree in.
  * `all`: every sounding frame is an absolute note (a drum or a stab that sounds
  * the same under any note, merged from groups that differ only in the row's note).
+ * `burstK`: the first K frames are absolute notes, the rest follow the row's note
+ * (a drum's click and pitch drop, then the bass line: `81da 41a6 4100`).
  */
-export type NoiseMode = 'absolute' | 'relative' | 'all';
+export type NoiseMode = 'absolute' | 'relative' | 'all' | `burst${number}`;
+
+/** The most frames a drum's absolute burst (`burstK`) is tried over. */
+const MAX_BURST = 6;
 
 export interface Timbre {
   readonly ad: number;
@@ -67,6 +72,8 @@ export interface Timbre {
   readonly relPitch: readonly PitchClass[];
   /** As `pitch`, with every sounding frame an absolute note. */
   readonly allPitch: readonly PitchClass[];
+  /** As `pitch`, with the first K frames absolute notes and the rest relative: index K - 1. */
+  readonly burstPitch: readonly (readonly PitchClass[])[];
 }
 
 /** Notes of one timbre. */
@@ -87,7 +94,7 @@ export interface InstrumentPlan {
 }
 
 /** The pitch class of frame `f` of a note on `base`. */
-const pitchClass = (f: ProgramFrame, base: number, noise: NoiseMode = 'absolute'): PitchClass => {
+const pitchClass = (f: ProgramFrame, base: number, noise: NoiseMode = 'absolute', index = 0): PitchClass => {
   if (f.owned) return 'free';
   // A silent frame (the test bit holds the oscillator, or no waveform): its pitch is not heard.
   if (f.ctrl & 0x08 || !(f.ctrl & 0xf0)) return 'free';
@@ -95,7 +102,8 @@ const pitchClass = (f: ProgramFrame, base: number, noise: NoiseMode = 'absolute'
   const k = Math.round(f.pitch);
   if (Math.abs(f.pitch - k) > PITCH_SNAP) return 'free';
   // Noise: its pitch is the drum's, whatever the note.
-  if ((f.ctrl & 0x80 && noise === 'absolute') || noise === 'all') return `a${Math.max(1, Math.min(95, base + k))}`;
+  const burst = noise.startsWith('burst') ? Number(noise.slice(5)) : 0;
+  if ((f.ctrl & 0x80 && noise === 'absolute') || noise === 'all' || index < burst) return `a${Math.max(1, Math.min(95, base + k))}`;
   return k;
 };
 
@@ -112,6 +120,7 @@ export function timbreOf(p: NoteProgram): Timbre {
     pitch: p.frames.map((f) => pitchClass(f, p.base)),
     relPitch: p.frames.map((f) => pitchClass(f, p.base, 'relative')),
     allPitch: p.frames.map((f) => pitchClass(f, p.base, 'all')),
+    burstPitch: Array.from({ length: MAX_BURST }, (_, k) => p.frames.map((f, i) => pitchClass(f, p.base, `burst${k + 1}`, i))),
   };
 }
 
@@ -129,6 +138,14 @@ function pulseShape(p: NoteProgram): string {
   return `${pw[0]! >> 8},${Math.sign(d)}${Math.round(Math.log2(Math.abs(d)))}`;
 }
 
+/** The timbre's pitch classes under `mode`. */
+function pitchesOf(t: Timbre, mode: NoiseMode): readonly PitchClass[] {
+  if (mode === 'absolute') return t.pitch;
+  if (mode === 'all') return t.allPitch;
+  if (mode === 'relative') return t.relPitch;
+  return t.burstPitch[Number(mode.slice(5)) - 1]!;
+}
+
 /**
  * `short` plays the start of what `long` plays (a between-semitones pitch
  * matches any), its noise pitched as `noise` says; `pulse`: the pulse shapes
@@ -140,8 +157,8 @@ function isPrefix(short: Timbre, long: Timbre, pulse = true, noise: NoiseMode = 
   if (short.ctrl.length > long.ctrl.length) return false;
   for (let i = 0; i < short.ctrl.length; i++) {
     if (short.ctrl[i] !== long.ctrl[i]) return false;
-    const a = noise === 'absolute' ? short.pitch[i] : noise === 'all' ? short.allPitch[i] : short.relPitch[i];
-    const b = noise === 'absolute' ? long.pitch[i] : noise === 'all' ? long.allPitch[i] : long.relPitch[i];
+    const a = pitchesOf(short, noise)[i];
+    const b = pitchesOf(long, noise)[i];
     if (a !== b && a !== 'free' && b !== 'free') return false;
   }
   return true;
@@ -212,22 +229,30 @@ function mergeAbsolute(plans: InstrumentPlan[]): InstrumentPlan[] {
       hosts.push(plan);
       continue;
     }
-    const host = hosts.find(
-      (h) =>
-        h.vibrato === null &&
-        !h.group.timbre.legato &&
-        h.group.timbre.pulse === plan.group.timbre.pulse &&
-        isPrefix(plan.group.timbre, h.group.timbre, false, 'all') &&
-        h.members.every((m) => isPrefix(timbreOf(m), h.group.timbre, false, 'all')) &&
-        plan.members.every((m) => isPrefix(timbreOf(m), h.group.timbre, false, 'all')),
-    );
-    if (host === undefined) {
+    // The mode both plans (and every note of the host) agree in: the host's own once set, else the
+    // fewest absolute frames that do.
+    let chosen: NoiseMode | null = null;
+    const host = hosts.find((h) => {
+      if (h.vibrato !== null || h.group.timbre.legato || h.group.timbre.pulse !== plan.group.timbre.pulse) return false;
+      const fixed = h.group.noise !== null && (h.group.noise === 'all' || h.group.noise.startsWith('burst'));
+      const modes: NoiseMode[] = fixed ? [h.group.noise!] : [...Array.from({ length: MAX_BURST }, (_, k) => `burst${k + 1}` as NoiseMode), 'all'];
+      const mode = modes.find(
+        (m) =>
+          isPrefix(plan.group.timbre, h.group.timbre, false, m) &&
+          h.members.every((x) => isPrefix(timbreOf(x), h.group.timbre, false, m)) &&
+          plan.members.every((x) => isPrefix(timbreOf(x), h.group.timbre, false, m)),
+      );
+      if (mode === undefined) return false;
+      chosen = mode;
+      return true;
+    });
+    if (host === undefined || chosen === null) {
       hosts.push(plan);
       continue;
     }
     host.members.push(...plan.members);
     // Only when it joined another base's notes: a plan of one base keeps its mode.
-    if (new Set(host.members.map((m) => m.base)).size > 1) host.group.noise = 'all';
+    if (new Set(host.members.map((m) => m.base)).size > 1) host.group.noise = chosen;
   }
   return hosts;
 }
@@ -429,7 +454,7 @@ export function waveSteps(rep: NoteProgram, vibratoFrom: number | null, noise: N
   const centre = vibratoFrom === null ? null : Math.round(swing.reduce((a, f) => a + f.pitch!, 0) / Math.max(1, swing.length));
   rep.frames.forEach((f, i) => {
     const frame = i + 1;
-    const pc = pitchClass(f, rep.base, noise ?? 'absolute');
+    const pc = pitchClass(f, rep.base, noise ?? 'absolute', i);
     let right = NO_CHANGE;
     // A test-bit frame is silent: its pitch is not heard, and writing it would only tell notes apart.
     const free = (vibratoFrom !== null && frame >= vibratoFrom) || !!f.owned || (f.ctrl & 0x08) !== 0;
