@@ -88,7 +88,16 @@ export interface NoteProgram {
    * table's step on one frame of every row, `pulseProgram`).
    */
   readonly pulse: readonly PulseFrame[];
+  /**
+   * For a note that drives the filter (`filter`): the cutoff's high byte per frame from the wave
+   * table's first row on, up to the next note and `MAX_FILTER_FRAMES` (a sweep outlasts the 48
+   * frames of `frames`). Set with `filter`.
+   */
+  filterTrack?: readonly number[];
 }
+
+/** Longest stretch of a note's cutoff the filter table follows. */
+export const MAX_FILTER_FRAMES = 400;
 
 export interface PulseFrame {
   readonly pw: number;

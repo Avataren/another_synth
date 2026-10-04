@@ -19,10 +19,10 @@ import { measureFidelity } from 'src/audio/tracker/psid/fidelity';
 const CORPUS = resolve(__dirname, '../../public/songs/goattracker');
 
 const SONGS: readonly (readonly [string, number, number])[] = [
-  ['stinsen/shadow.sng', 0.83, 43],
-  ['stinsen/ballad.sng', 0.82, 16],
+  ['stinsen/shadow.sng', 0.85, 43],
+  ['stinsen/ballad.sng', 0.85, 16],
   ['stinsen/premonition_fv_po_ro_ffff.sng', 0.92, 50],
-  ['mch/hybrid_song.sng', 0.90, 22],
+  ['mch/hybrid_song.sng', 0.92, 21],
 ];
 
 describe('a GoatTracker song, exported to .sid and transcribed', () => {

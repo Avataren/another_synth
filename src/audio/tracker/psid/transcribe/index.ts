@@ -18,7 +18,7 @@ import { estimateTuning, traceFrames, type TraceFrames } from './frames';
 import { detectGrid, rowLength, rowOfFrame, tempoChanges, type RowGrid } from './grid';
 import { foldInstruments } from './fold';
 import { buildInstruments, groupNotes, TableBuilder, type InstrumentPlan } from './instruments';
-import { filterDriver, noteBase, notePrograms, onsetsOf, placeNotes, splitLines, type NoteProgram } from './notes';
+import { filterDriver, MAX_FILTER_FRAMES, noteBase, notePrograms, onsetsOf, placeNotes, splitLines, type NoteProgram } from './notes';
 import { planPitch, type PitchRow } from './pitch';
 import { findLoop, flatSubsong, subsongRows, type PatternPitch, type SongLoop, type SubsongRows } from './song';
 
@@ -140,7 +140,13 @@ function transcribed(subsong: number, trace: SidTrace, effects: boolean): Prepar
   const plans = effects ? notes.map((list) => planPitch(frames, grid, list, (n) => noteBase(frames, grid, n, tuning), tuning)) : [];
   const all = notes.flatMap((list, v) => notePrograms(frames, list, tuning, grid, plans[v]));
   const driver = filterDriver(frames, onsets);
-  for (const p of all) if (p.note.voice === driver) p.filter = true;
+  for (const p of all) {
+    if (p.note.voice !== driver) continue;
+    p.filter = true;
+    const from = Math.max(0, p.note.tick0 + 1);
+    const to = Math.min(frames.frames, p.note.end, from + MAX_FILTER_FRAMES);
+    p.filterTrack = Array.from({ length: Math.max(0, to - from) }, (_, k) => frames.cutoff[from + k]! >> 3);
+  }
   const rows = rowOfFrame(grid, frames.frames - 1) + 1;
   const loop = findLoop(frames, grid, noteKeys(rows, all));
   const programs = all.filter((p) => p.note.row < loop.length);
@@ -315,7 +321,7 @@ function build(file: PsidFile, preps: readonly Prepared[], speedMultiplier: numb
   let rowFrames = 127;
   for (const prep of preps) for (let k = 0; k < prep.loop.length; k++) rowFrames = Math.min(rowFrames, rowLength(prep.grid, k));
   const plans = groupNotes(preps.flatMap((p) => p.programs), SID_MAX_INSTRUMENTS);
-  const built = buildInstruments(plans, tables, rowFrames, instrumentName);
+  const built = buildInstruments(plans, tables, rowFrames, instrumentName, 3 * preps.length);
   if (!tables.fits) return { ok: false, reason: "GoatTracker's tables are full" };
   const folded = foldInstruments(built, songRows(preps, plans, built, tables, speedMultiplier));
   const instruments = folded.instruments.map((ins, i) => ({ ...ins, name: renumbered(ins.name, i + 1) }));
@@ -366,6 +372,7 @@ function compileSong(
   tables: TableBuilder,
   rowsList: readonly SubsongRows[],
 ): Built {
+  if (!tables.fits) return { ok: false, reason: "GoatTracker's tables are full" };
   const base = makeSidDoc({
     format: 'sid',
     version: SID_FILE_VERSION,

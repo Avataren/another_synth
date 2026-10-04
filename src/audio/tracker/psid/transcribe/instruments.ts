@@ -660,42 +660,68 @@ export function pulseProgram(frames: readonly ProgramFrame[], pulse: readonly Pu
 // Filter table
 // ---------------------------------------------------------------------------
 
+/** Longest run of equal steps a filter row holds (time is 7 bits). */
+const MAX_FILTER_RUN = 127;
+/** Segments an unrolled filter program keeps (the table is shared by the whole song). */
+const MAX_FILTER_SEGMENTS = 24;
+
 /**
  * The filter program of a note that drives the filter: its mode, resonance
  * and routing and its cutoff on the first frame (one frame: GoatTracker runs
  * a set-cutoff row right after a set-mode row), then the cutoff's runs of
- * equal steps (8-bit, as GoatTracker's cutoff is), a step past a signed byte
- * as a set row; a repeating tail loops. Holds after its last row.
+ * equal steps (8-bit, as GoatTracker's cutoff is; `track` gives the whole note,
+ * else its first frames), a step past a signed byte as a set row. A sweep that
+ * repeats (a slow rise made of steps and holds, as GoatTracker songs write it)
+ * loops. Holds after its last row.
  */
-export function filterProgram(frames: readonly ProgramFrame[]): TableProgram {
+export function filterProgram(frames: readonly ProgramFrame[], track?: readonly number[]): TableProgram {
   const first = frames[0]!;
   const rows: SidTableRow[] = [
     { left: 0x80 | ((first.mode & 7) << 4), right: first.resonance },
     { left: 0x00, right: first.cutoff },
   ];
-  const cut = frames.map((f) => f.cutoff);
+  const cut = track !== undefined && track.length >= frames.length ? track : frames.map((f) => f.cutoff);
   const segs: [number, number][] = [];
   for (let i = 1; i < cut.length; i++) {
     const d = cut[i]! - cut[i - 1]!;
     const last = segs[segs.length - 1];
-    if (last !== undefined && last[0] === d && last[1] < 127) last[1]++;
+    if (last !== undefined && last[0] === d && last[1] < MAX_FILTER_RUN) last[1]++;
     else segs.push([d, 1]);
   }
   while (segs.length > 0 && segs[segs.length - 1]![0] === 0) segs.pop();
-  let value = first.cutoff;
-  for (const [step, n] of segs.slice(0, 8)) {
-    if (step >= -128 && step <= 127) rows.push({ left: n, right: step & 0xff });
-    else {
-      // A jump: set the value it lands on, then the rest of the run.
-      value += step;
-      rows.push({ left: 0x00, right: value & 0xff });
-      if (n > 1) rows.push({ left: n - 1, right: 0 });
-      value += step * (n - 1);
-      continue;
+  // A repeating tail: the smallest cycle (in segments) seen twice, the last segment (cut by the
+  // note's end) left out of the comparison.
+  let loopAt = -1;
+  let period = 0;
+  const body = segs.slice(0, -1);
+  for (let p = 1; p <= 8 && loopAt < 0; p++) {
+    for (let s = 0; s + 2 * p <= body.length; s++) {
+      let ok = true;
+      for (let k = s; k + p < body.length && ok; k++) ok = body[k]![0] === body[k + p]![0] && body[k]![1] === body[k + p]![1];
+      if (ok) {
+        loopAt = s;
+        period = p;
+        break;
+      }
     }
-    value += step * n;
   }
-  rows.push({ left: 0xff, right: 0 });
+  const keep = loopAt >= 0 ? segs.slice(0, loopAt + period) : segs.slice(0, MAX_FILTER_SEGMENTS);
+  const rowOfSeg: number[] = [];
+  let value = first.cutoff;
+  keep.forEach(([step, n], k) => {
+    rowOfSeg[k] = rows.length + 1;
+    if (step >= -128 && step <= 127) {
+      rows.push({ left: n, right: step & 0xff });
+      value += step * n;
+      return;
+    }
+    // A jump: set the value it lands on, then the rest of the run.
+    value += step;
+    rows.push({ left: 0x00, right: value & 0xff });
+    if (n > 1) rows.push({ left: n - 1, right: 0 });
+    value += step * (n - 1);
+  });
+  rows.push({ left: 0xff, right: loopAt >= 0 ? rowOfSeg[loopAt]! : 0 });
   return { rows };
 }
 
@@ -963,6 +989,22 @@ function sharePulse(pulse: (TableProgram | null)[], plans: readonly InstrumentPl
   }
 }
 
+/** The filter programs, in place, within `budget` rows: the longest is cut by a quarter until they fit. */
+function fitFilterPrograms(filters: (TableProgram | null)[], budget: number): void {
+  const rowsOf = (): number => sharedRows(filters.filter((x): x is TableProgram => x !== null));
+  while (rowsOf() > budget) {
+    let longest = -1;
+    for (let i = 0; i < filters.length; i++) {
+      const f = filters[i];
+      if (f && f.rows.length > 4 && (longest < 0 || f.rows.length > filters[longest]!.rows.length)) longest = i;
+    }
+    if (longest < 0) break;
+    const was = filters[longest]!;
+    const cut = cutPulse(was, Math.max(4, Math.floor(was.rows.length * 0.75)));
+    for (let i = 0; i < filters.length; i++) if (filters[i] === was) filters[i] = cut;
+  }
+}
+
 /**
  * The GoatTracker instruments of `plans`, their programs placed in `tables`
  * within GoatTracker's 255 rows a table: wave programs cut where they cost
@@ -975,6 +1017,7 @@ export function buildInstruments(
   tables: TableBuilder,
   rowFrames: number,
   name: (plan: InstrumentPlan, n: number) => string,
+  reserveFilterRows = 3,
 ): SidInstrument[] {
   const waveBudget = 255 - tables.wave.length;
   const wave = fitWavePrograms(plans, waveBudget);
@@ -982,6 +1025,9 @@ export function buildInstruments(
   const pulse = plans.map((p, i) => (p.group.timbre.legato ? null : pulseProgram(p.group.rep.frames, p.group.rep.pulse, timings[i]!.gateTimer)));
   sharePulse(pulse, plans);
   fitPulsePrograms(pulse, plans, 255 - tables.pulse.length);
+  // (Each subsong's own filter row, `staticFilter`, needs 3 rows after these.)
+  const filters = plans.map((p) => (p.group.timbre.filter !== '' ? filterProgram(p.group.rep.frames, p.group.rep.filterTrack) : null));
+  fitFilterPrograms(filters, 255 - tables.filter.length - reserveFilterRows);
   return plans.map((plan, i) => {
     const rep = plan.group.rep;
     const members = plan.members;
@@ -1002,7 +1048,7 @@ export function buildInstruments(
       vibratoDelay: vib === null ? 0 : Math.min(255, vib.delay),
       wavePtr: tables.place('wave', wave[i]!),
       pulsePtr: p === null || p === undefined ? 0 : tables.place('pulse', p),
-      filterPtr: plan.group.timbre.filter !== '' ? tables.place('filter', filterProgram(rep.frames)) : 0,
+      filterPtr: filters[i] === null || filters[i] === undefined ? 0 : tables.place('filter', filters[i]!),
       speedPtr: vib === null ? 0 : tables.speedRow(vib.left, vib.right),
     };
   });
