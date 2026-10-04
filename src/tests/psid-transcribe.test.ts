@@ -122,6 +122,8 @@ const FLOORS: readonly (readonly [string, number, number])[] = [
   ['galway_martin/commando_high_score.sid', 0.94, 7],
   ['galway_martin/ocean_loader_1.sid', 0.96, 24],
   ['galway_martin/ocean_loader_2.sid', 0.96, 23],
+  // A note gated for 6 frames and released for 90, in rows of 32: its key-off cannot be a row, so it stays the instrument's.
+  ['galway_martin/times_of_lore.sid', 0.92, 40],
   ['daglish_ben/krakout.sid', 0.95, 32],
   ['daglish_ben/last_ninja.sid', 0.84, 44],
   ['huelsbeck_chris/great_giana_sisters.sid', 0.97, 20],

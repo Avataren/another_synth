@@ -112,6 +112,8 @@ export const MAX_PULSE_FRAMES = 256;
 
 /** A gate-off within this many frames of the gate going on is the instrument's (a pluck), not a key-off. */
 const EARLY_GATE_OFF = 4;
+/** The gate timer a key-off is expected to be read with (`subsongRows` has the instrument's own). */
+const TYPICAL_GATE_TIMER = 2;
 
 /**
  * The voice whose notes drive the filter, or null: routed through it in most
@@ -394,12 +396,20 @@ export function notePrograms(f: TraceFrames, notes: readonly RowNote[], tuning =
     }
     // A late gate-off that holds to the end: a key-off; the instrument sustains.
     let keyOff: number | null = null;
+    // A key-off is a row of the pattern (`subsongRows`): one that would land on the note's own row (a
+    // gate of a few frames in rows of 32) cannot be written there, and is the instrument's gate-off.
+    const placeable = (rel: number): boolean => {
+      if (g === undefined) return true;
+      const when = note.tick0 + rel + TYPICAL_GATE_TIMER;
+      const k = rowOfFrame(g, when);
+      return (when - rowStart(g, k) <= rowStart(g, k + 1) - when ? k : k + 1) > note.row;
+    };
     const on = frames.findIndex((x) => x.ctrl & 1);
     if (on >= 0) {
       let j = frames.length;
       while (j > 0 && !(frames[j - 1]!.ctrl & 1)) j--;
       const heldOn = frames.slice(on, j).every((x) => x.ctrl & 1);
-      if (heldOn && j < frames.length && j - on > EARLY_GATE_OFF) {
+      if (heldOn && j < frames.length && j - on > EARLY_GATE_OFF && placeable(j + 1)) {
         keyOff = j + 1;
         for (let k = j; k < frames.length; k++) frames[k] = { ...frames[k]!, ctrl: frames[k]!.ctrl | 1 };
       } else if (heldOn && j === frames.length && count === MAX_PROGRAM_FRAMES) {
@@ -411,7 +421,7 @@ export function notePrograms(f: TraceFrames, notes: readonly RowNote[], tuning =
             if (off < 0) off = src;
           } else off = -1;
         }
-        if (off >= 0) keyOff = off - note.tick0 + shift;
+        if (off >= 0 && placeable(off - note.tick0 + shift)) keyOff = off - note.tick0 + shift;
       }
     }
     const gapBefore = gateOffRun(f, note.voice, onset, 40);
