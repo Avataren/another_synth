@@ -87,6 +87,7 @@ export function subsongRows(
   tempo: readonly { readonly row: number; readonly length: number }[],
   commands: readonly { readonly row: number; readonly command: number; readonly param: number }[] = [],
   pitch: readonly PatternPitch[] = [],
+  accents: ReadonlyMap<NoteProgram, { readonly command: number; readonly param: number }> = new Map(),
 ): SubsongRows {
   const length = loop.length;
   const voices: SidDocRow[][] = [0, 1, 2].map(() => Array.from({ length }, () => BLANK_SID_ROW));
@@ -130,6 +131,14 @@ export function subsongRows(
     // A free command column, else one that only keeps a running effect going.
     const v = voices.find((x) => x[row]!.command === 0) ?? voices.find((_, i) => yielding.has(`${i}:${row}`));
     if (v !== undefined) v[row] = { ...v[row]!, command, param };
+  }
+  // A note that points the filter at another program than its instrument's (`Axx`): last, into a
+  // column still free (the tempo and the song's commands come first).
+  for (const p of programs) {
+    const a = accents.get(p);
+    if (a === undefined || p.note.row >= length) continue;
+    const cell = voices[p.note.voice]![p.note.row]!;
+    if (cell.command === 0) voices[p.note.voice]![p.note.row] = { ...cell, command: a.command, param: a.param };
   }
   return { voices, length, loopRow: loop.loopRow, loop: loop.kind };
 }

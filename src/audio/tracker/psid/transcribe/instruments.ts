@@ -1018,6 +1018,7 @@ export function buildInstruments(
   rowFrames: number,
   name: (plan: InstrumentPlan, n: number) => string,
   reserveFilterRows = 3,
+  filterAccents?: Map<NoteProgram, { command: number; param: number }>,
 ): SidInstrument[] {
   const waveBudget = 255 - tables.wave.length;
   const wave = fitWavePrograms(plans, waveBudget);
@@ -1025,9 +1026,39 @@ export function buildInstruments(
   const pulse = plans.map((p, i) => (p.group.timbre.legato ? null : pulseProgram(p.group.rep.frames, p.group.rep.pulse, timings[i]!.gateTimer)));
   sharePulse(pulse, plans);
   fitPulsePrograms(pulse, plans, 255 - tables.pulse.length);
-  // (Each subsong's own filter row, `staticFilter`, needs 3 rows after these.)
-  const filters = plans.map((p) => (p.group.timbre.filter !== '' ? filterProgram(p.group.rep.frames, p.group.rep.filterTrack) : null));
-  fitFilterPrograms(filters, 255 - tables.filter.length - reserveFilterRows);
+  const filters: (TableProgram | null)[] = plans.map(() => null);
+  const alts: { plan: number; members: NoteProgram[]; program: TableProgram }[] = [];
+  const trackOf = (m: NoteProgram): readonly number[] => (m.filterTrack !== undefined && m.filterTrack.length >= m.frames.length ? m.filterTrack : m.frames.map((f) => f.cutoff));
+  // A note's cutoff that is the start of a longer note's follows the same program (it just ends sooner).
+  const startOf = (short: readonly number[], long: readonly number[]): boolean => short.length <= long.length && short.every((v, k) => v === long[k]);
+  plans.forEach((plan, i) => {
+    if (plan.group.timbre.filter === '') return;
+    // The programs of the plan's notes, longest first: the first is the instrument's own, another that
+    // at least two notes share points the filter at it (`Axx`, filterAccents).
+    const clusters: { track: readonly number[]; members: NoteProgram[] }[] = [];
+    for (const m of [...plan.members].sort((x, y) => trackOf(y).length - trackOf(x).length)) {
+      const t = trackOf(m);
+      const home = clusters.find((c) => startOf(t, c.track));
+      if (home !== undefined) home.members.push(m);
+      else clusters.push({ track: t, members: [m] });
+    }
+    const main = clusters[0]!;
+    filters[i] = filterProgram(plan.group.rep.frames, plan.group.rep.filterTrack ?? main.track);
+    for (const c of clusters.slice(1)) if (c.members.length >= 2) alts.push({ plan: i, members: c.members, program: filterProgram(c.members[0]!.frames, c.members[0]!.filterTrack) });
+  });
+  const budget = 255 - tables.filter.length - reserveFilterRows;
+  fitFilterPrograms(filters, budget);
+  // The instruments' own programs come first; an alternative goes in only if it fits what is left,
+  // the most shared first (whole or not at all).
+  if (filterAccents !== undefined) {
+    const placed = filters.filter((x): x is TableProgram => x !== null);
+    for (const a of [...alts].sort((x, y) => y.members.length - x.members.length)) {
+      if (sharedRows([...placed, a.program]) > budget) continue;
+      placed.push(a.program);
+      const ptr = tables.place('filter', a.program);
+      for (const m of a.members) filterAccents.set(m, { command: 0xa, param: ptr });
+    }
+  }
   return plans.map((plan, i) => {
     const rep = plan.group.rep;
     const members = plan.members;

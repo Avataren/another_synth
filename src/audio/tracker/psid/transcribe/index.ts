@@ -199,8 +199,11 @@ export function transcribePsid(file: PsidFile, options: TranscribeOptions = {}):
   let lastReason = '';
   let current = preps.slice();
   const cut = new Map<number, number>();
+  // Per-note filter pointers (`Axx`) make patterns unique: first try with them, and without them
+  // before anything is cut or left out.
+  let pointFilter = true;
   for (;;) {
-    const built = build(file, current, speedMultiplier);
+    const built = build(file, current, speedMultiplier, pointFilter);
     if (built.ok) {
       for (const prep of preps) {
         const at = current.findIndex((p) => p.subsong === prep.subsong);
@@ -229,6 +232,10 @@ export function transcribePsid(file: PsidFile, options: TranscribeOptions = {}):
       return { ok: true, doc: built.doc, reports, notes };
     }
     lastReason = built.reason;
+    if (pointFilter) {
+      pointFilter = false;
+      continue;
+    }
     const longest = current
       .map((p, i) => [p, i] as const)
       .filter(([p]) => p.loop.kind === 'none' && p.loop.length > 64)
@@ -255,7 +262,7 @@ export function transcribePsid(file: PsidFile, options: TranscribeOptions = {}):
       let fitting: Prepared[] | null = null;
       while (lo <= hi) {
         const mid = (lo + hi) >> 1;
-        const attempt = build(file, current.slice(0, mid), speedMultiplier);
+        const attempt = build(file, current.slice(0, mid), speedMultiplier, pointFilter);
         if (attempt.ok) {
           fitting = current.slice(0, mid);
           lo = mid + 1;
@@ -314,16 +321,17 @@ const renumbered = (name: string, n: number): string => `${name.replace(/ ?\d*$/
  * (Grouping into more than 63 before the fold makes more table programs than
  * GoatTracker's 255 rows hold: they are cut, and the song sounds no closer.)
  */
-function build(file: PsidFile, preps: readonly Prepared[], speedMultiplier: number): Built {
+function build(file: PsidFile, preps: readonly Prepared[], speedMultiplier: number, pointFilter = true): Built {
   const tables = new TableBuilder();
   // A gate timer must stay below every row's length (GoatTracker reads the next row
   // when its counter meets the gate timer).
   let rowFrames = 127;
   for (const prep of preps) for (let k = 0; k < prep.loop.length; k++) rowFrames = Math.min(rowFrames, rowLength(prep.grid, k));
   const plans = groupNotes(preps.flatMap((p) => p.programs), SID_MAX_INSTRUMENTS);
-  const built = buildInstruments(plans, tables, rowFrames, instrumentName, 3 * preps.length);
+  const filterAccents = new Map<NoteProgram, { command: number; param: number }>();
+  const built = buildInstruments(plans, tables, rowFrames, instrumentName, 3 * preps.length, pointFilter ? filterAccents : undefined);
   if (!tables.fits) return { ok: false, reason: "GoatTracker's tables are full" };
-  const folded = foldInstruments(built, songRows(preps, plans, built, tables, speedMultiplier));
+  const folded = foldInstruments(built, songRows(preps, plans, built, tables, speedMultiplier, filterAccents));
   const instruments = folded.instruments.map((ins, i) => ({ ...ins, name: renumbered(ins.name, i + 1) }));
   return compileSong(file, preps, speedMultiplier, instruments, tables, folded.songs);
 }
@@ -335,6 +343,7 @@ function songRows(
   instruments: readonly SidInstrument[],
   tables: TableBuilder,
   speedMultiplier: number,
+  accents: ReadonlyMap<NoteProgram, { readonly command: number; readonly param: number }>,
 ): SubsongRows[] {
   const instrumentOf = new Map<NoteProgram, number>();
   plans.forEach((plan, i) => {
@@ -359,7 +368,7 @@ function songRows(
         continued: x.continued,
       })),
     );
-    return subsongRows(prep.loop, prep.grid, prep.programs, instrumentOf, (n) => instruments[n - 1]?.gateTimer ?? 2, tempo, staticFilter(prep, tables), pitch);
+    return subsongRows(prep.loop, prep.grid, prep.programs, instrumentOf, (n) => instruments[n - 1]?.gateTimer ?? 2, tempo, staticFilter(prep, tables), pitch, accents);
   });
 }
 
