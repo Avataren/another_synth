@@ -117,11 +117,13 @@ const FLOORS: readonly (readonly [string, number, number])[] = [
   ['hubbard_rob/crazy_comets.sid', 0.90, 35],
   ['hubbard_rob/knucklebusters.sid', 0.94, 48],
   ['hubbard_rob/chimera.sid', 0.86, 21],
-  ['galway_martin/arkanoid.sid', 0.83, 20],
+  ['galway_martin/arkanoid.sid', 0.83, 21],
   ['galway_martin/comic_bakery.sid', 0.92, 14],
   ['galway_martin/commando_high_score.sid', 0.94, 7],
   ['galway_martin/ocean_loader_1.sid', 0.96, 24],
   ['galway_martin/ocean_loader_2.sid', 0.96, 23],
+  // A pitch slide that starts late in its row (after a hold) stays the instrument's: as a row effect it would run from the row's start.
+  ['galway_martin/miami_vice.sid', 0.90, 40],
   // A note gated for 6 frames and released for 90, in rows of 32: its key-off cannot be a row, so it stays the instrument's.
   ['galway_martin/times_of_lore.sid', 0.92, 40],
   ['daglish_ben/krakout.sid', 0.95, 32],

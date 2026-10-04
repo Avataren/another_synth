@@ -48,6 +48,8 @@ export interface PitchPlan {
   readonly base: Int16Array;
 }
 
+/** A glide may start this many frames after its row's second tick and still be a pattern effect. */
+const GLIDE_START_SLACK = 3;
 /** A glide moves at least this far (semitones). */
 const MIN_GLIDE = 0.6;
 /** A glide's end pitch within this of a note lands on it. */
@@ -234,6 +236,9 @@ export function planPitch(
       if (clash) continue;
       // On the note's own row the wave table's first row sets the note on tick 1: the effect moves from tick 2.
       const s = frameOfTick(r, r === note.row ? 2 : 1);
+      // A pattern effect starts on a row's second tick: a glide that begins later in its row (after a hold)
+      // would be played from the start of the row, so it stays the instrument's (as its wave table steps).
+      if (gl.a - s > GLIDE_START_SLACK) continue;
       const lands = Math.abs(gl.to - Math.round(gl.to)) <= LANDS;
       if (lands && r > note.row) {
         const t = nearestNote(gl.to);
