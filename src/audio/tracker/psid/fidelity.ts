@@ -49,6 +49,11 @@ export interface Fidelity {
   readonly offset: number;
 }
 
+/** The filter's weight in the score when a tenth of the frames or more use it. */
+const FILTER_WEIGHT = 0.15;
+/** The share of frames from which the filter counts in full. */
+const FILTER_FULL_SHARE = 0.1;
+
 const WEIGHTS = { pitch: 0.3, gate: 0.15, wave: 0.15, level: 0.15, onsets: 0.1, envelope: 0.1, pulse: 0.05 };
 
 /** The voice's oscillator sounds under its gate: gate set, test bit clear (the test bit holds it silent). */
@@ -184,7 +189,10 @@ export function compareFrames(a: TraceFrames, b: TraceFrames, offset: number, ma
   const weight = (v: number): number => (a.voices[v]!.ctrl.some(soundOn) ? 1 : 0.2);
   const total = [0, 1, 2].reduce((s, v) => s + weight(v), 0);
   const voiceScore = voices.reduce((s, x, v) => s + x.score * weight(v), 0) / total;
-  const filterWeight = filtered === 0 ? 0 : 0.15;
+  // The filter counts for what it is used: in full from a tenth of the frames (the share at which
+  // the transcriber sets a song's own filter, `staticFilter`), less below. A filter routed in 1% of
+  // a song's frames costs that song a fifteenth of what a filter all through it does.
+  const filterWeight = filtered === 0 ? 0 : FILTER_WEIGHT * Math.min(1, filtered / Math.max(1, n) / FILTER_FULL_SHARE);
   const score = voiceScore * (1 - filterWeight) + filter * filterWeight;
   return { voices, filter, score, frames: n, offset };
 }
