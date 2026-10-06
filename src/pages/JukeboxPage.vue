@@ -214,6 +214,9 @@
           :audio-node="masterOutputNode"
           :audio-context="audioContext"
           fractal
+          :pattern-tracks="trackerStore.isSidSong ? undefined : currentPattern?.tracks"
+          :pattern-row="playbackRow"
+          :pattern-rows="rowsCount"
         />
 
         <Bars3dWall

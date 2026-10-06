@@ -20,6 +20,7 @@ import { Bars3dRenderer } from 'src/components/tracker/bars3d-renderer';
 import { TerrainRenderer } from 'src/components/tracker/terrain-renderer';
 import { RaymarchRenderer } from 'src/components/tracker/raymarch-renderer';
 import { FractalRenderer } from 'src/components/tracker/fractal-renderer';
+import type { PatternFloorView } from 'src/components/tracker/fractal-pattern-floor';
 import { webgl2Available } from 'src/components/tracker/glow-scope-renderer';
 import { SpectrumFeed } from 'src/components/tracker/spectrum-feed';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
@@ -41,6 +42,10 @@ interface Props {
   fractal?: boolean;
   /** The song's tempo: the raytraced ball bounces in time with it. */
   bpm?: number;
+  /** The Fractal view lays the playing pattern on its floor: the pattern's channels, the playing row and the row count. */
+  patternTracks?: PatternFloorView['tracks'] | undefined;
+  patternRow?: number;
+  patternRows?: number;
 }
 
 const props = withDefaults(defineProps<Props>(), { raymarched: false, terrain: false, fractal: false, bpm: 120 });
@@ -98,6 +103,10 @@ function draw(time: number): void {
     timeMs: time,
     bpm: props.bpm,
     halfResolution: settingsStore?.settings.raymarchHalfResolution === true,
+    pattern:
+      props.fractal && props.patternTracks
+        ? { tracks: props.patternTracks, row: props.patternRow ?? 0, rows: props.patternRows ?? 64 }
+        : undefined,
   });
 }
 

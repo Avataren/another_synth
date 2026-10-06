@@ -1,3 +1,4 @@
+import type { PatternFloorView } from 'src/components/tracker/fractal-pattern-floor';
 import {
   BloomChain,
   MultisampleTarget,
@@ -38,6 +39,8 @@ export interface Bars3dFrame {
   bpm?: number;
   /** Raymarched view: trace at half the canvas width and height and scale up, instead of the adaptive resolution. */
   halfResolution?: boolean;
+  /** The Fractal view's floor: the playing pattern to draw on it. */
+  pattern?: PatternFloorView | undefined;
 }
 
 /** Unit box: 24 vertices (position, normal) and 36 indices. */

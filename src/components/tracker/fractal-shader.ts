@@ -42,6 +42,11 @@ uniform float uMid;
 uniform float uHigh;
 uniform vec3 uGlass;
 uniform float uBand[${FRACTAL_BANDS}];
+uniform sampler2D uPattern;
+uniform float uPatHalfW;
+uniform float uPatRowH;
+uniform float uPatRows;
+uniform float uPatOffset;
 
 out vec4 outColor;
 
@@ -208,12 +213,30 @@ vec3 floorColor(vec3 p, vec3 rd, bool reflect_) {
   vec3 glow = palette(k / ${FRACTAL_BANDS}.0 * 0.8) * level * level * 2.6 * smoothstep(0.0, 14.0, 14.0 - length(tile));
   vec3 albedo = mix(vec3(0.034, 0.036, 0.043), vec3(0.006, 0.006, 0.01), dark);
 
+  // The playing pattern, laid on the floor: channels across x, rows along z, the playing row at z = 0. Sampled with the pixel's footprint on the floor (long along the view, short across) so it stays legible at a grazing angle.
+  vec3 pat = vec3(0.0);
+  float patMask = 0.0;
+  if (uPatHalfW > 0.0) {
+    float rowsHalf = 0.5 * (uPatRows - 2.0) * uPatRowH;
+    patMask = (1.0 - smoothstep(uPatHalfW - 0.2, uPatHalfW, abs(q.x))) * (1.0 - smoothstep(0.55 * rowsHalf, rowsHalf, abs(q.y)));
+    if (patMask > 0.0) {
+      vec2 uv = vec2(q.x / (2.0 * uPatHalfW) + 0.5, (q.y / uPatRowH + uPatOffset) / uPatRows);
+      vec2 along = rd.xz / max(length(rd.xz), 1e-4);
+      vec2 scale = vec2(0.5 / uPatHalfW, 1.0 / (uPatRowH * uPatRows));
+      vec2 gx = along * fw * scale;
+      vec2 gy = vec2(-along.y, along.x) * fw * max(-rd.y, 0.12) * scale;
+      float cur = 1.0 - smoothstep(0.35, 0.6, abs(q.y) / uPatRowH);
+      pat = textureGrad(uPattern, uv, gx, gy).rgb * (1.0 + 0.5 * cur) * patMask;
+      pat += vec3(0.25, 0.45, 0.9) * 0.025 * cur * patMask;
+    }
+  }
+
   // Lit like the bulb: the sun (blocked by the bulb), the sky (less of it under the bulb).
   float sh = reflect_ ? bulbShadow(p, KEY_DIR, 22, 6.0, 5.0) : 0.8;
   float open = 1.0 - 0.6 * smoothstep(2.6, 0.0, length(p.xz));
   vec3 lit = albedo * (SUN_COL * KEY_DIR.y * sh + SKY_COL * 0.7 * open);
   float fre = 0.2 + 0.6 * pow(1.0 - max(-rd.y, 0.0), 3.0);
-  vec3 col = lit * (1.0 - 0.5 * fre) + glow * (1.0 - dark);
+  vec3 col = lit * (1.0 - 0.5 * fre) + glow * (1.0 - dark) * (1.0 - 0.7 * patMask) + pat * 0.55;
   // The sun's glint on the glossy floor, sharper and stronger on the dark squares (polished), and the bulb blocks it.
   float glint = pow(max(dot(reflect(rd, vec3(0.0, 1.0, 0.0)), KEY_DIR), 0.0), mix(150.0, 500.0, dark));
   col += SUN_COL * glint * mix(0.15, 0.6, dark) * sh;

@@ -18,6 +18,10 @@ import {
   fractalCamera,
   glassPosition,
 } from 'src/components/tracker/fractal-camera';
+import {
+  FLOOR_WINDOW_ROWS,
+  FloorPatternTexture,
+} from 'src/components/tracker/fractal-pattern-floor';
 import { BLUR_VERTEX_SHADER } from 'src/components/tracker/glow-scope-shader';
 
 /** How much of the bloom is added. */
@@ -107,6 +111,7 @@ export class FractalRenderer {
   private mid = 0;
   private high = 0;
   private lastMs = 0;
+  private floorPattern: FloorPatternTexture | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     canvas.addEventListener('webglcontextlost', this.onLost);
@@ -160,6 +165,7 @@ export class FractalRenderer {
       this.target = new RenderTarget(gl);
       this.combined = new RenderTarget(gl);
       this.budget = new GpuRenderBudget(gl);
+      this.floorPattern = new FloorPatternTexture(gl);
     } catch (error) {
       console.error(error);
       this.release();
@@ -177,6 +183,11 @@ export class FractalRenderer {
       'uHigh',
       'uGlass',
       'uBand',
+      'uPattern',
+      'uPatHalfW',
+      'uPatRowH',
+      'uPatRows',
+      'uPatOffset',
     ]);
     this.combineUniforms = uniformLocations(gl, this.combineProgram, [
       'uScene',
@@ -204,7 +215,9 @@ export class FractalRenderer {
       if (this.meterBuffer) gl.deleteBuffer(this.meterBuffer);
       if (this.meterFence) gl.deleteSync(this.meterFence);
       this.budget?.dispose();
+      this.floorPattern?.dispose(gl);
     }
+    this.floorPattern = null;
     this.budget = null;
     this.emptyVao = null;
     this.program = null;
@@ -349,6 +362,17 @@ export class FractalRenderer {
     gl.uniform1f(u.uHigh ?? null, this.high);
     gl.uniform3f(u.uGlass ?? null, glass[0], glass[1], glass[2]);
     gl.uniform1fv(u.uBand ?? null, this.smooth);
+    const floorPattern = this.floorPattern;
+    if (floorPattern) {
+      floorPattern.update(gl, frame.pattern, frame.timeMs);
+      floorPattern.bind(gl, 1);
+      gl.uniform1i(u.uPattern ?? null, 1);
+      gl.uniform1f(u.uPatHalfW ?? null, floorPattern.halfWidth);
+      gl.uniform1f(u.uPatRowH ?? null, floorPattern.rowHeight);
+      gl.uniform1f(u.uPatRows ?? null, FLOOR_WINDOW_ROWS);
+      gl.uniform1f(u.uPatOffset ?? null, floorPattern.offset);
+      gl.activeTexture(gl.TEXTURE0);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     this.meterFrame(gl, target, frame.timeMs);
