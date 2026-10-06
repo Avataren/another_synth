@@ -260,7 +260,11 @@ export function planPitch(
       const lands = Math.abs(gl.to - Math.round(gl.to)) <= LANDS;
       if (lands && r > note.row) {
         const t = nearestNote(gl.to);
-        const dist = Math.abs(regOf(t) - regOfPitch(gl.from));
+        // From the pitch the pattern holds when the row starts (the row before's), which is lower than the
+        // glide's own start when the original steps up in the row's first frames before it slides.
+        const before = p[rowStart(g, r) - 1 - from];
+        const start = before !== undefined && Number.isFinite(before) && Math.abs(before - gl.from) <= 12 ? Math.min(before, gl.from) : gl.from;
+        const dist = Math.abs(regOf(t) - regOfPitch(start));
         const speed = gridSpeed(Math.ceil(dist / Math.max(1, movingFrames(g, s, gl.b))), true);
         effects.push({ kind: 'porta', r, rb, s, b: gl.b, note: t, speed, command: 3, to: gl.to });
       } else {

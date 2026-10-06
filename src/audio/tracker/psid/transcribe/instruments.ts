@@ -168,7 +168,8 @@ function isPrefix(short: Timbre, long: Timbre, pulse = true, noise: NoiseMode = 
 function distance(a: Timbre, b: Timbre): number {
   let d = 0;
   if (a.ad !== b.ad) d += 6;
-  if (a.sr !== b.sr) d += 6;
+  // The sustain level is how loud the note holds: each step apart is heard (an echo voice at sustain 1 on a lead's 6).
+  if (a.sr !== b.sr) d += 6 + (Math.abs((a.sr >> 4) - (b.sr >> 4)) >= 4 ? 15 : 0);
   if (a.pulse !== b.pulse) d += 2;
   if (a.pulseShape !== b.pulseShape) d += 2;
   // A legato note on a gated instrument retriggers; a gated note on a legato one never sounds.
