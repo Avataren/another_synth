@@ -1,6 +1,7 @@
 import { GT_NOTE_REGS, nearestNote, pitchOf, type TraceFrames } from './frames';
-import { rowOfFrame, rowStart, type RowGrid } from './grid';
+import { rowLength, rowOfFrame, rowStart, type RowGrid } from './grid';
 import type { RowNote } from './notes';
+import { vibratoFor } from './vibrato';
 
 /**
  * The pitch a note's pattern plays (plan-psid-import.md §3, pitch effects):
@@ -32,8 +33,10 @@ export interface PitchRow {
   readonly row: number;
   /** GoatTracker note index (0-95) to set, or null for the command alone. */
   readonly note: number | null;
-  /** 1 portamento up, 2 down, 3 tone portamento (speed 0: a tie). */
-  readonly command: 1 | 2 | 3;
+  /** 1 portamento up, 2 down, 3 tone portamento (speed 0: a tie), 4 vibrato (`vibrato`). */
+  readonly command: 1 | 2 | 3 | 4;
+  /** The speed-table row of a vibrato (`command` 4). */
+  readonly vibrato?: { readonly left: number; readonly right: number };
   /** The speed in frequency-register units a moving frame (0 = a tie). */
   readonly speed: number;
   /** A row that keeps an effect started on an earlier row running (it may give way to a tempo command). */
@@ -122,6 +125,45 @@ function steppedByNotes(p: Float64Array, base: number, r: Run): boolean {
   return true;
 }
 
+/** A swing is at least this many extrema (two periods), swinging this far (semitones, peak to peak). */
+const MIN_EXTREMA = 5;
+/** A pattern vibrato swings 4 times deeper than the instrument vibrato's model says (measured on the player, robocop_3): 2 more shifts. */
+const PATTERN_VIBRATO_SHIFT = 2;
+/** A slide this many frames long or more, then a swing: a pattern vibrato. */
+const MIN_SLIDE_FRAMES = 6;
+/** ... that starts this many frames into its note or later (a slide at the start leaves its swing to the instrument's vibrato). */
+const LATE_SLIDE = 24;
+const SWING_SPAN: readonly [number, number] = [0.1, 2];
+
+/**
+ * The regular swing the pitch makes from frame `from` on (a vibrato after a slide): its frames
+ * [a, b], period and peak-to-peak span, or null. The extrema must keep one spacing and depth.
+ */
+function swingFrom(p: Float64Array, base: number, from: number): { a: number; b: number; period: number; span: number } | null {
+  const at = (i: number): number => p[i - base]!;
+  const ext: number[] = [];
+  let dir = 0;
+  for (let i = from + 1; i < base + p.length; i++) {
+    const d = at(i) - at(i - 1);
+    if (!Number.isFinite(d)) break;
+    if (Math.abs(d) < STILL) continue;
+    const s = Math.sign(d);
+    if (dir !== 0 && s !== dir) ext.push(i - 1);
+    dir = s;
+  }
+  if (ext.length < MIN_EXTREMA) return null;
+  const gaps = ext.slice(1).map((e, k) => e - ext[k]!);
+  const half = [...gaps].sort((x, y) => x - y)[gaps.length >> 1]!;
+  const depths = ext.slice(1).map((e, k) => Math.abs(at(e) - at(ext[k]!)));
+  const depth = [...depths].sort((x, y) => x - y)[depths.length >> 1]!;
+  if (half < 2 || depth < SWING_SPAN[0] || depth > SWING_SPAN[1]) return null;
+  // Keep the extrema while they keep the spacing and depth.
+  let last = 0;
+  while (last + 1 < ext.length && Math.abs(gaps[last]! - half) <= 1 && Math.abs(depths[last]! - depth) <= 0.4 * depth) last++;
+  if (last + 1 < MIN_EXTREMA) return null;
+  return { a: from + 1, b: ext[last]!, period: 2 * half, span: depth };
+}
+
 /** The glides of a note: runs over `MIN_GLIDE` that are not a vibrato's swing or an arpeggio. */
 function glides(p: Float64Array, base: number): Run[] {
   const runs = monotonicRuns(p, base);
@@ -149,7 +191,8 @@ function glides(p: Float64Array, base: number): Run[] {
 }
 
 interface Effect {
-  readonly kind: 'porta' | 'bend';
+  readonly kind: 'porta' | 'bend' | 'vibrato';
+  readonly vibrato?: { readonly left: number; readonly right: number };
   /** First and last row it runs on. */
   readonly r: number;
   readonly rb: number;
@@ -158,7 +201,7 @@ interface Effect {
   readonly b: number;
   readonly note: number | null;
   readonly speed: number;
-  readonly command: 1 | 2 | 3;
+  readonly command: 1 | 2 | 3 | 4;
   /** The pitch the original ends on. */
   readonly to: number;
 }
@@ -276,6 +319,22 @@ export function planPitch(
         effects.push({ kind: 'bend', r, rb, s, b: gl.b, note: null, speed, command: gl.to > gl.from ? 1 : 2, to: gl.to });
       }
       lastEnd = gl.b;
+      // A swing that follows it, once it has landed (a vibrato on the note it slid to): command 4 from the next row.
+      const last = effects[effects.length - 1]!;
+      // (Only after a real slide: the swing after a short bend is the instrument's own vibrato.)
+      const sw = gl.b - gl.a + 1 >= MIN_SLIDE_FRAMES && gl.a - from >= LATE_SLIDE ? swingFrom(p, from, gl.b) : null;
+      if (sw === null) continue;
+      const vr = Math.max(last.rb + 1, rowOfFrame(g, sw.a - 1 - delay));
+      const vrb = Math.max(vr, rowOfFrame(g, sw.b - delay));
+      const vs = frameOfTick(vr, 1);
+      // A row's first frame does not advance the effect: a swing of `period` frames is one of that many less ticks.
+      const len = Math.max(2, rowLength(g, vr));
+      if (vs >= sw.b || sw.b - vs < 2 * sw.period || taken.has(vr)) continue;
+      let vclash = false;
+      for (let k = vr; k <= vrb; k++) if (taken.has(k)) vclash = true;
+      if (vclash) continue;
+      effects.push({ kind: 'vibrato', r: vr, rb: vrb, s: vs, b: sw.b, note: null, speed: 0, command: 4, to: gl.to, vibrato: vibratoFor((sw.period * (len - 1)) / len, sw.span, PATTERN_VIBRATO_SHIFT) });
+      lastEnd = sw.b;
     }
     // The rows in order: each glide's rows, and on the rows between, a tie where the held
     // pitch moves to another note. After a bend the pitch is the pattern's until a tie or
@@ -303,6 +362,10 @@ export function planPitch(
           own(eff.s, eff.b);
           setBase(eff.b + 1, eff.note!);
           current = eff.note;
+        } else if (eff.kind === 'vibrato') {
+          endBend(eff.s);
+          for (let k = r; k <= eff.rb; k++) rows.push({ row: k, note: null, command: 4, speed: 0, vibrato: eff.vibrato!, continued: k > r });
+          own(eff.s, eff.b);
         } else {
           endBend(eff.s);
           for (let k = r; k <= eff.rb; k++) rows.push({ row: k, note: null, command: eff.command, speed: eff.speed, continued: k > r });

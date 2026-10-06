@@ -353,4 +353,12 @@ describe('importPsid: an arpeggio stepped on the row start (lead 0)', () => {
     const lengths = new Set(grid.starts.slice(2, 100).map((s, i) => grid.starts[i + 3]! - s));
     expect([...lengths]).toEqual([3]);
   });
+
+  it('robocop_3 plays a vibrato (4xx) on the note its slide lands on', () => {
+    const bytes = new Uint8Array(readFileSync(resolve(__dirname, 'fixtures/psid/tel_jeroen/robocop_3.sid')));
+    const r = importPsid(bytes, { subsongs: [0], measure: false });
+    if (!r.ok) throw new Error(r.reason);
+    const cmds = r.doc.patterns.flatMap((p) => p.rows.filter((x) => x.command === 4));
+    expect(cmds.length).toBeGreaterThan(10);
+  });
 });

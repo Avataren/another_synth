@@ -381,7 +381,7 @@ function songRows(
         note: x.note,
         command: x.command,
         // A speed-table row holds the 16-bit speed (below $8000: the register step itself).
-        param: x.speed === 0 ? 0 : tables.speedRow(Math.min(0x7f, x.speed >> 8), x.speed >= 0x8000 ? 0xff : x.speed & 0xff),
+        param: x.command === 4 ? tables.speedRow(x.vibrato!.left, x.vibrato!.right) : x.speed === 0 ? 0 : tables.speedRow(Math.min(0x7f, x.speed >> 8), x.speed >= 0x8000 ? 0xff : x.speed & 0xff),
         continued: x.continued,
       })),
     );

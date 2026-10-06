@@ -1,4 +1,5 @@
 import { SID_DEFAULT_TEMPO, type SidInstrument, type SidTableRow } from 'src/audio/tracker/sid-doc';
+import { vibratoFor } from './vibrato';
 import { MAX_HARD_RESTART_GAP, MAX_PULSE_FRAMES, type NoteProgram, type ProgramFrame, type PulseFrame } from './notes';
 
 /**
@@ -730,43 +731,6 @@ export function filterProgram(frames: readonly ProgramFrame[], track?: readonly 
 // Vibrato
 // ---------------------------------------------------------------------------
 
-/** GoatTracker's vibrato (player.s `mt_effect_4`) for compare value `speed`: per frame, +1 (add) or -1 (subtract). */
-function gtVibratoDirections(speed: number, frames: number): number[] {
-  const out: number[] = [];
-  let time = 0;
-  for (let f = 0; f < frames; f++) {
-    let a = time;
-    if (a & 0x80 || a <= speed) a = (a + 2) & 0xff;
-    else a = ((a ^ 0xff) + 2) & 0xff;
-    time = a;
-    out.push(a & 1 ? -1 : 1);
-  }
-  return out;
-}
-
-interface VibratoShape {
-  readonly period: number;
-  /** Peak to peak, in steps. */
-  readonly span: number;
-}
-
-const VIBRATO_SHAPES: ReadonlyMap<number, VibratoShape> = (() => {
-  const m = new Map<number, VibratoShape>();
-  for (let s = 1; s <= 30; s++) {
-    let pos = 0;
-    const path = gtVibratoDirections(s, 200).map((d) => (pos += d));
-    const tail = path.slice(100);
-    const span = Math.max(...tail) - Math.min(...tail);
-    for (let p = 2; p < 64; p++) {
-      if (tail.slice(0, 60).every((v, i) => v === tail[i + p])) {
-        m.set(s, { period: p, span });
-        break;
-      }
-    }
-  }
-  return m;
-})();
-
 export interface VibratoFit {
   /** Speed-table left byte ($80 | compare value: the depth calculated from the note step) and right (the shift). */
   readonly left: number;
@@ -796,17 +760,9 @@ export function fitVibrato(rep: NoteProgram): VibratoFit | null {
   const period = median(turns.slice(1).map((t, i) => t - turns[i]!));
   const span = Math.max(...pitches) - Math.min(...pitches);
   if (period < 2 || span < 0.05) return null;
-  let speed = 1;
-  let bestErr = Infinity;
-  for (const [s, shape] of VIBRATO_SHAPES) {
-    const err = Math.abs(shape.period - period);
-    if (err < bestErr) [speed, bestErr] = [s, err];
-  }
-  const shape = VIBRATO_SHAPES.get(speed)!;
-  // One step of the calculated speed is 1 / 2^shift of the note step.
-  const shift = Math.max(0, Math.min(8, Math.round(Math.log2(shape.span / span))));
+  const { left, right } = vibratoFor(period, span);
   const from = start + 1;
-  return { left: 0x80 | speed, right: shift, delay: Math.max(1, from - 1), from };
+  return { left, right, delay: Math.max(1, from - 1), from };
 }
 
 // ---------------------------------------------------------------------------
