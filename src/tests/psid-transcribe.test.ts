@@ -335,13 +335,22 @@ describe('importPsid: refusals', () => {
 });
 
 describe('importPsid: an arpeggio stepped on the row start (lead 0)', () => {
-  it('robocop_3 voice 1 keeps one tie row per 6-frame step, not a held note', () => {
+  it('robocop_3 voice 1 keeps a tie row per arpeggio step, not a held note', () => {
     const bytes = new Uint8Array(readFileSync(resolve(__dirname, 'fixtures/psid/tel_jeroen/robocop_3.sid')));
     const r = importPsid(bytes, { subsongs: [0], measure: false });
     if (!r.ok) throw new Error(r.reason);
     const entry = r.doc.subsongs[0]!.orderlists[0]!.entries[0]!;
     const rows = r.doc.patterns[entry.pattern]!.rows.slice(1, 20);
-    // The tune plays a note every row; the transcription once held one note for ~18 frames.
-    expect(rows.filter((x) => x.note !== 0).length).toBeGreaterThanOrEqual(15);
+    // The arpeggio steps every other row; the transcription once held one note for ~18 frames.
+    expect(rows.filter((x) => x.note !== 0).length).toBeGreaterThanOrEqual(8);
+  });
+
+  it('robocop_3 lays rows on its held arpeggio steps (periods 6 and 9), 3 frames each, through its intro', () => {
+    const bytes = new Uint8Array(readFileSync(resolve(__dirname, 'fixtures/psid/tel_jeroen/robocop_3.sid')));
+    const r = importPsid(bytes, { subsongs: [0], measure: false });
+    if (!r.ok) throw new Error(r.reason);
+    const grid = r.reports[0]!.grid;
+    const lengths = new Set(grid.starts.slice(2, 100).map((s, i) => grid.starts[i + 3]! - s));
+    expect([...lengths]).toEqual([3]);
   });
 });

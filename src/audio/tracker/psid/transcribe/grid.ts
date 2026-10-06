@@ -193,11 +193,18 @@ function pairwiseDelays(onsets: readonly (readonly number[])[]): number[] {
  * notes and is the tune's typical row (not a finer grid that happens to fit),
  * else rows laid note by note at the tune's typical length.
  */
-export function detectGrid(onsets: readonly (readonly number[])[], frames: number, lead = 1): RowGrid {
+export function detectGrid(
+  onsets: readonly (readonly number[])[],
+  frames: number,
+  lead = 1,
+  steps: readonly (readonly number[])[] = [],
+): RowGrid {
   const total = onsets.reduce((n, l) => n + l.length, 0);
   if (total === 0) return steadyGrid(6, -lead, frames, onsets.map(() => 0), 1, lead);
   const typical = typicalLength(onsets, frames);
-  const steady = steadyTempo(onsets, GOOD_COVERAGE);
+  const steadyOnsets = steadyTempo(onsets, GOOD_COVERAGE);
+  const held = heldSteps(onsets, steps, frames, typical, steadyOnsets?.t ?? typical);
+  const steady = held.length > 0 ? null : steadyOnsets;
   if (steady !== null && steady.t >= typical) {
     const { delays, start } = delaysFor(steady.phases, steady.t, lead);
     const first = Math.min(...onsets.flatMap((l, v) => (l.length > 0 ? [l[0]! - lead - delays[v]!] : [])));
@@ -206,8 +213,48 @@ export function detectGrid(onsets: readonly (readonly number[])[], frames: numbe
     return steadyGrid(steady.t, origin, frames, delays, steady.hits / total, lead);
   }
   const delays = pairwiseDelays(onsets);
-  const anchors = [...new Set(onsets.flatMap((l, v) => l.map((o) => o - lead - delays[v]!)))].sort((a, b) => a - b);
+  const anchors = [...new Set([...onsets.flatMap((l, v) => l.map((o) => o - lead - delays[v]!)), ...held])].sort((a, b) => a - b);
   return laidGrid(anchors, typical, frames, delays, lead);
+}
+
+/** A stretch with no note start this many typical rows long is one held note (an arpeggio stepping on a held gate). */
+const HELD_ROWS = 4;
+/** In it, a run of this many equal steps lays the rows. */
+const MIN_RUN = 4;
+
+/**
+ * Row starts for the stretches where the gates stay on for long (a tune's intro that arpeggiates
+ * on a held note) and the voice that steps most does so at a period the tune's rows `t` do not
+ * keep (robocop_3: 9 frames against rows of 6; a period that is a multiple or a divisor of the row
+ * is played by ties on rows already). Without them the steps fall between rows, where a tie cannot play them.
+ */
+function heldSteps(
+  onsets: readonly (readonly number[])[],
+  steps: readonly (readonly number[])[],
+  frames: number,
+  typical: number,
+  t: number,
+): number[] {
+  const starts = [...new Set(onsets.flat())].sort((a, b) => a - b);
+  const out: number[] = [];
+  let prev = 0;
+  for (const end of [...starts, frames]) {
+    if (end - prev >= HELD_ROWS * typical) {
+      const inside = steps.map((l) => l.filter((f) => f > prev + 2 && f < end - 2));
+      const best = inside.reduce((b, l) => (l.length > b.length ? l : b), [] as number[]);
+      for (let i = 2; i < best.length; i++) {
+        const a = best[i - 2]!;
+        const b = best[i - 1]!;
+        const c = best[i]!;
+        const d = b - a;
+        if (d !== c - b || d < MIN_ROW_FRAMES || d > MAX_STEADY_ROW || d % t === 0 || t % d === 0) continue;
+        out.push(a, b, c);
+      }
+    }
+    prev = end;
+  }
+  const kept = [...new Set(out)].sort((a, b) => a - b);
+  return kept.length >= MIN_RUN ? kept : [];
 }
 
 function steadyGrid(t: number, origin: number, frames: number, delays: readonly number[], coverage: number, lead: number): RowGrid {

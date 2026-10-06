@@ -119,6 +119,20 @@ function startLead(f: TraceFrames, onsets: readonly (readonly number[])[]): 0 | 
   return total > 0 && bare >= 0.9 * total ? 0 : 1;
 }
 
+/** Per voice, the frames where a held, audible note's frequency changes (not a note start). */
+function pitchSteps(f: TraceFrames): number[][] {
+  return f.voices.map((v) => {
+    const out: number[] = [];
+    for (let i = 1; i < f.frames; i++) {
+      const c = v.ctrl[i]!;
+      const p = v.ctrl[i - 1]!;
+      if ((c & 1) === 0 || (p & 1) === 0 || (c & 0xf0) === 0 || (c & 0x08) !== 0 || (p & 0x08) !== 0) continue;
+      if (v.freq[i] !== v.freq[i - 1]) out.push(i);
+    }
+    return out;
+  });
+}
+
 function prepare(file: PsidFile, subsong: number, maxSeconds: number | undefined): Prepared | string {
   const capture = captureSid(file, maxSeconds === undefined ? { subsong } : { subsong, maxSeconds });
   if (!capture.ok) return capture.reason;
@@ -134,7 +148,7 @@ function transcribed(subsong: number, trace: SidTrace, effects: boolean): Prepar
   const frames = traceFrames(trace);
   const onsets = onsetsOf(frames);
   if (onsets.every((l) => l.length === 0)) return 'plays no notes';
-  const grid = detectGrid(onsets, frames.frames, startLead(frames, onsets));
+  const grid = detectGrid(onsets, frames.frames, startLead(frames, onsets), pitchSteps(frames));
   const tuning = estimateTuning(frames);
   const notes = splitLines(frames, grid, placeNotes(frames, grid, onsets), tuning);
   const plans = effects ? notes.map((list) => planPitch(frames, grid, list, (n) => noteBase(frames, grid, n, tuning), tuning)) : [];
