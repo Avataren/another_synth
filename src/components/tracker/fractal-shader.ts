@@ -236,7 +236,7 @@ vec3 floorColor(vec3 p, vec3 rd, bool reflect_) {
   float open = 1.0 - 0.6 * smoothstep(2.6, 0.0, length(p.xz));
   vec3 lit = albedo * (SUN_COL * KEY_DIR.y * sh + SKY_COL * 0.7 * open);
   float fre = 0.2 + 0.6 * pow(1.0 - max(-rd.y, 0.0), 3.0);
-  vec3 col = lit * (1.0 - 0.5 * fre) + glow * (1.0 - dark) * (1.0 - 0.7 * patMask) + pat * 0.55;
+  vec3 col = lit * (1.0 - 0.5 * fre) + glow * (1.0 - dark) * (1.0 - 0.7 * patMask) + pat * 0.4;
   // The sun's glint on the glossy floor, sharper and stronger on the dark squares (polished), and the bulb blocks it.
   float glint = pow(max(dot(reflect(rd, vec3(0.0, 1.0, 0.0)), KEY_DIR), 0.0), mix(150.0, 500.0, dark));
   col += SUN_COL * glint * mix(0.15, 0.6, dark) * sh;
