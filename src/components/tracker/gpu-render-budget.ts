@@ -20,13 +20,17 @@ interface TimerContext {
 
 /** Sparse, nonblocking GPU measurements shared by both ray-based visualizers. */
 export class GpuRenderBudget {
-  readonly quality = new RenderQuality();
+  readonly quality: RenderQuality;
   private readonly timer: TimerExtension | null;
   private readonly pending: { query: WebGLQuery; pixels: number }[] = [];
   private active: { query: WebGLQuery; pixels: number } | null = null;
   private frames = 0;
 
-  constructor(private readonly gl: TimerContext) {
+  constructor(
+    private readonly gl: TimerContext,
+    initialScale?: number,
+  ) {
+    this.quality = new RenderQuality(initialScale);
     this.timer = gl.getExtension('EXT_disjoint_timer_query_webgl2');
   }
 

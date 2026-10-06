@@ -66,7 +66,7 @@ Hit traceBars(vec3 ro, vec3 rd, Hit best) {
   float g = g0 + dg * start;
   int bar = clamp(int(floor(g + sign(dg) * 0.0001)), 0, uBands - 1);
   int direction = dg > 0.0 ? 1 : -1;
-  for (int cell = 0; cell < MAX_BARS; cell++) {
+  for (int cell = 0; cell < uBands; cell++) {
     if (t > end || bar < 0 || bar >= uBands) break;
     float nextT = end;
     if (abs(dg) > 1e-7) {

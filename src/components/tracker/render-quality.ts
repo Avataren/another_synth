@@ -3,7 +3,7 @@ const MAX_PIXELS = 1_200_000;
 
 /** GPU time excludes unrelated UI work. Frame cadence remains a fallback when timers are unavailable. */
 export class RenderQuality {
-  scale = 0.75;
+  scale: number;
   private lastTime: number | null = null;
   private frameMs = 16.7;
   private gpuMs: number | null = null;
@@ -12,6 +12,11 @@ export class RenderQuality {
   private blockedUntil = 0;
   private raisedAt = -Infinity;
   private cooldown = 4000;
+
+  /** `initialScale` can start low for a heavy shader: its first frames are the slowest (a lazy driver compile), and the budget raises it as soon as they prove fast. */
+  constructor(initialScale = 0.75) {
+    this.scale = initialScale;
+  }
 
   recordGpu(milliseconds: number, timeMs: number): void {
     if (!Number.isFinite(milliseconds) || milliseconds <= 0) return;

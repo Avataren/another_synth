@@ -51,6 +51,15 @@ uniform sampler2D uBarData;  // row 0: height/peak; row 1: linear RGB
 uniform sampler2D uSky;
 uniform vec2 uSkyRes;
 
+// Loop bounds supplied at run time (RAYMARCH_LOOPS). A literal bound lets the driver unroll the loop, and with the
+// whole scene inlined at every call site that is minutes of compiling on some drivers (and a hung browser). A
+// uniform bound keeps each loop a loop, compiled once.
+uniform int uSamples;          // sub-pixel samples to shade (4 on an edge, 1 elsewhere), and probe rays
+uniform int uBounces;
+uniform int uWaveOctaves;
+uniform int uHitSteps;         // bisection steps finding where a ray meets the sea
+uniform int uShadowSteps;
+
 // The sky's clock (see sky-cycle.ts): directions and light colours of the sun and moon, etc.
 uniform vec3 uSunDir;
 uniform vec3 uMoonDir;
@@ -164,8 +173,7 @@ float oceanWaves(vec2 position, int iterations, out vec2 grad) {
   float sumValues = 0.0;
   float sumWeights = 0.0;
   grad = vec2(0.0);
-  for (int i = 0; i < 20; i++) {
-    if (i >= iterations) break;
+  for (int i = 0; i < iterations; i++) {
     vec2 dir = vec2(sin(iter), cos(iter));
     float x = dot(dir, position) * frequency + uTime * timeMul + phase;
     float wave = exp(SHARP * (sin(x) - 1.0));
@@ -240,7 +248,7 @@ float barRipple(vec2 xz) {
 /** Height of the surface at a point, with few octaves (for finding where a ray meets it). */
 float oceanHeight(vec2 xz, float dist) {
   vec2 g;
-  float w = oceanWaves(xz, 8, g);
+  float w = oceanWaves(xz, uWaveOctaves, g);
   return uSeaLift + (w - WAVE_MEAN) * WAVE_AMP * oceanFade(dist) + barRipple(xz);
 }
 
@@ -254,7 +262,7 @@ float oceanHit(vec3 ro, vec3 rd) {
   float lo = max(0.0, (top - ro.y) / rd.y);
   float hi = max(lo, (bottom - ro.y) / rd.y);
   float t = clamp(mean, lo, hi);
-  for (int i = 0; i < 14; i++) {
+  for (int i = 0; i < uHitSteps; i++) {
     vec3 p = ro + rd * t;
     float distance = p.y - oceanHeight(p.xz, t);
     if (abs(distance) < 0.0001) return t;
@@ -286,8 +294,8 @@ float softShadow(vec3 ro, vec3 rd, float mint, float k) {
   if (rd.z > -1e-3) return 1.0;   // the light is not on the far side of the row
   float dmin = 1e5;
   float tMid = max(-ro.z / rd.z, 0.0);
-  for (int i = 0; i < 9; i++) {
-    float z = mix(-uHalfZ, uHalfZ, float(i) / 8.0);
+  for (int i = 0; i < uShadowSteps; i++) {
+    float z = mix(-uHalfZ, uHalfZ, float(i) / float(uShadowSteps - 1));
     float t = (z - ro.z) / rd.z;
     if (t < mint) continue;
     dmin = min(dmin, mapBars(ro + rd * t).x);
@@ -711,7 +719,7 @@ vec3 shade(vec3 p, vec3 rd, Hit h, bool full, out vec3 n, out float refl) {
     {
       vec2 g;
       // Use the same broad swells for the surface and its normals, at every distance.
-      float w = oceanWaves(p.xz, 8, g);
+      float w = oceanWaves(p.xz, uWaveOctaves, g);
       float fade = oceanFade(h.t);
       n = normalize(vec3(-g.x * WAVE_AMP * fade, 1.0, -g.y * WAVE_AMP * fade));
       n = normalize(mix(n, vec3(0.0, 1.0, 0.0), 0.8 * min(1.0, sqrt(h.t * 0.01) * 1.1)));
@@ -828,7 +836,7 @@ vec3 secondary(vec3 ro, vec3 rd, out float t) {
 vec3 render(vec3 ro, vec3 rd) {
   vec3 col = vec3(0.0);
   vec3 through = vec3(1.0);
-  for (int bounce = 0; bounce < 2; bounce++) {
+  for (int bounce = 0; bounce < uBounces; bounce++) {
     Hit h = trace(ro, rd, true);   // the sea is real for mirrors off the bars too
     if (h.mat == 0) {
       col += through * (bounce == 0 ? background(rd) : environment(rd));
@@ -909,30 +917,33 @@ void main() {
   // Adaptive supersampling: a bar or ball, whose outline and bevel facets a few pixels wide, shimmer
   // against the pixel grid (moire along the row of bars). Probe four sub-pixel rays, which is cheap,
   // and shade four samples, spread over the whole pixel (rotated grid), wherever they touch a bar or ball or disagree.
+  // One loop for each, with a run-time count, so the probe and the shading are each compiled once.
   const vec2 OFFSETS[4] = vec2[4](vec2(-0.375, -0.125), vec2(0.125, -0.375), vec2(0.375, 0.125), vec2(-0.125, 0.375));
   bool edge = false;
-  vec3 n0;
-  int k0 = probeKey(frag + OFFSETS[0], n0);
-  for (int i = 1; i < 4; i++) {
+  vec3 n0 = vec3(0.0, 1.0, 0.0);
+  int k0 = 0;
+  for (int i = 0; i < uSamples; i++) {
     vec3 ni;
     int ki = probeKey(frag + OFFSETS[i], ni);
-    if (ki != k0 || dot(n0, ni) < 0.985) edge = true;
+    if (i == 0) {
+      n0 = ni;
+      k0 = ki;
+    } else if (ki != k0 || dot(n0, ni) < 0.985) {
+      edge = true;
+    }
   }
   // Anything on a bar or the ball is supersampled, not only its outline: a pixel that flips between
   // one sample and four as the camera drifts is a flicker of its own.
   if (k0 >= 2 * 1024) edge = true;
-  vec4 sceneOut, reflOut;
-  if (!edge) {
-    shadeSample(frag, sceneOut, reflOut);
-  } else {
-    sceneOut = vec4(0.0);
-    reflOut = vec4(0.0);
-    for (int i = 0; i < 4; i++) {
-      vec4 s, r;
-      shadeSample(frag + OFFSETS[i], s, r);
-      sceneOut += s * 0.25;
-      reflOut += r * 0.25;
-    }
+  int count = edge ? uSamples : 1;
+  vec4 sceneOut = vec4(0.0);
+  vec4 reflOut = vec4(0.0);
+  for (int i = 0; i < uSamples; i++) {
+    if (i >= count) break;
+    vec4 s, r;
+    shadeSample(edge ? frag + OFFSETS[i] : frag, s, r);
+    sceneOut += s / float(count);
+    reflOut += r / float(count);
   }
   outColor = sceneOut;
   outRefl = reflOut;
@@ -992,3 +1003,12 @@ void main() {
   outColor = vec4(col, 1.0);
 }
 `;
+
+/** The values of the run-time loop bounds (the `uSamples` family of uniforms) the fragment shader is run with. */
+export const RAYMARCH_LOOPS = {
+  uSamples: 4,
+  uBounces: 2,
+  uWaveOctaves: 8,
+  uHitSteps: 14,
+  uShadowSteps: 9,
+} as const;

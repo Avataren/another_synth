@@ -4,6 +4,8 @@ import {
   BloomChain,
   RenderTarget,
   linkProgram,
+  programStatus,
+  startProgram,
   uniformLocations,
   type UniformLocations,
 } from 'src/components/tracker/glow-gl';
@@ -11,6 +13,7 @@ import type { Bars3dFrame } from 'src/components/tracker/bars3d-renderer';
 import {
   RAYMARCH_COMBINE_FRAGMENT_SHADER,
   RAYMARCH_FRAGMENT_SHADER,
+  RAYMARCH_LOOPS,
   RAYMARCH_SKY_FRAGMENT_SHADER,
   RAYMARCH_VERTEX_SHADER,
 } from 'src/components/tracker/raymarch-shader';
@@ -159,6 +162,9 @@ class SceneTarget {
   }
 }
 
+/** The first frames run small: see RenderQuality. */
+const INITIAL_SCALE = 0.4;
+
 /**
  * The 3D bars scene, raytraced: one full-screen fragment shader intersects
  * the bars (soft shadows, ambient occlusion, a glossy mirror
@@ -189,6 +195,7 @@ export class RaymarchRenderer {
   private skyUniforms: UniformLocations = {};
   private budget: GpuRenderBudget | null = null;
   private halfResolution = false;
+  private linked = false;
   private readonly rect = new Float32Array(4);
 
   private bounces = 0;
@@ -231,8 +238,8 @@ export class RaymarchRenderer {
     if (!gl) return false;
     this.gl = gl;
     try {
-      this.budget = new GpuRenderBudget(gl);
-      this.skyProgram = linkProgram(
+      this.budget = new GpuRenderBudget(gl, INITIAL_SCALE);
+      this.skyProgram = startProgram(
         gl,
         RAYMARCH_VERTEX_SHADER,
         RAYMARCH_SKY_FRAGMENT_SHADER,
@@ -256,7 +263,7 @@ export class RaymarchRenderer {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      this.program = linkProgram(
+      this.program = startProgram(
         gl,
         RAYMARCH_VERTEX_SHADER,
         RAYMARCH_FRAGMENT_SHADER,
@@ -281,7 +288,41 @@ export class RaymarchRenderer {
       this.release();
       return false;
     }
-    this.uniforms = uniformLocations(gl, this.program, [
+    this.blurUniforms = uniformLocations(gl, this.blurProgram, [
+      'uSrc',
+      'uStep',
+    ]);
+    this.combineUniforms = uniformLocations(gl, this.combineProgram, [
+      'uScene',
+      'uSharp',
+      'uBlur',
+      'uBaseV',
+      'uStrength',
+      'uExposure',
+    ]);
+    this.emptyVao = gl.createVertexArray();
+    this.gl = gl;
+    return true;
+  }
+
+
+  /**
+   * The two heavy programs compile in the background. Until both are linked nothing is drawn; once they
+   * are, finds their uniforms. A failed link makes the view unusable, as a failed init does.
+   */
+  private programsReady(gl: WebGL2RenderingContext): boolean {
+    if (this.linked) return true;
+    const { program, skyProgram } = this;
+    if (!program || !skyProgram) return false;
+    const states = [program, skyProgram].map((p) => programStatus(gl, p));
+    const failed = states.find((s) => s.state === 'failed');
+    if (failed) {
+      console.error(`raymarch program: ${failed.error ?? 'link failed'}`);
+      this.lost = true;
+      return false;
+    }
+    if (states.some((s) => s.state === 'pending')) return false;
+    this.uniforms = uniformLocations(gl, program, [
       'uRes',
       'uEye',
       'uTarget',
@@ -311,20 +352,9 @@ export class RaymarchRenderer {
       'uBallRot',
       'uBallOn',
       'uSeaLift',
+      ...Object.keys(RAYMARCH_LOOPS),
     ]);
-    this.blurUniforms = uniformLocations(gl, this.blurProgram, [
-      'uSrc',
-      'uStep',
-    ]);
-    this.combineUniforms = uniformLocations(gl, this.combineProgram, [
-      'uScene',
-      'uSharp',
-      'uBlur',
-      'uBaseV',
-      'uStrength',
-      'uExposure',
-    ]);
-    this.skyUniforms = uniformLocations(gl, this.skyProgram, [
+    this.skyUniforms = uniformLocations(gl, skyProgram, [
       'uSkyRes',
       'uTime',
       'uLoud',
@@ -340,8 +370,7 @@ export class RaymarchRenderer {
       'uAurora',
       'uSunE',
     ]);
-    this.emptyVao = gl.createVertexArray();
-    this.gl = gl;
+    this.linked = true;
     return true;
   }
 
@@ -360,6 +389,7 @@ export class RaymarchRenderer {
         t?.dispose(gl);
       this.bloom?.dispose(gl);
     }
+    this.linked = false;
     this.budget = null;
     this.skyTarget = null;
     this.skyProgram = null;
@@ -422,7 +452,8 @@ export class RaymarchRenderer {
       !skyTarget ||
       !skyProgram ||
       !budget ||
-      !barTexture
+      !barTexture ||
+      !this.programsReady(gl)
     )
       return;
     const width = this.canvas.width;
@@ -553,6 +584,8 @@ export class RaymarchRenderer {
     gl.uniformMatrix3fv(u.uBallRot ?? null, false, ball.rotation);
     gl.uniform1f(u.uBallOn ?? null, ball.visible ? 1 : 0);
     gl.uniform1f(u.uSeaLift ?? null, SEA_LIFT);
+    for (const [name, value] of Object.entries(RAYMARCH_LOOPS))
+      gl.uniform1i(u[name] ?? null, value);
     this.applySky(gl, u, sky);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0]);

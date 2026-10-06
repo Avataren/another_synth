@@ -42,6 +42,58 @@ export function linkProgram(
   return program;
 }
 
+const PARALLEL_COMPILE = 'KHR_parallel_shader_compile';
+
+/**
+ * Starts compiling and linking a program without waiting for it: the driver does the work on other threads
+ * where it can (KHR_parallel_shader_compile), so a heavy shader does not freeze the page. Poll with
+ * `programStatus`; where the extension is missing the status call is the one that waits.
+ */
+export function startProgram(
+  gl: WebGL2RenderingContext,
+  vertex: string,
+  fragment: string,
+): WebGLProgram {
+  gl.getExtension(PARALLEL_COMPILE);
+  const vs = compileShaderUnchecked(gl, gl.VERTEX_SHADER, vertex);
+  const fs = compileShaderUnchecked(gl, gl.FRAGMENT_SHADER, fragment);
+  const program = gl.createProgram();
+  if (!program) throw new Error('createProgram failed');
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
+  return program;
+}
+
+function compileShaderUnchecked(
+  gl: WebGL2RenderingContext,
+  type: number,
+  source: string,
+): WebGLShader {
+  const shader = gl.createShader(type);
+  if (!shader) throw new Error('createShader failed');
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  return shader;
+}
+
+/** 'pending' while the driver is still compiling, then 'ready' or 'failed' (with the info log in `error`). */
+export function programStatus(
+  gl: WebGL2RenderingContext,
+  program: WebGLProgram,
+): { state: 'pending' | 'ready' | 'failed'; error?: string } {
+  const ext = gl.getExtension(PARALLEL_COMPILE) as {
+    COMPLETION_STATUS_KHR: number;
+  } | null;
+  if (ext && !gl.getProgramParameter(program, ext.COMPLETION_STATUS_KHR)) {
+    return { state: 'pending' };
+  }
+  if (gl.getProgramParameter(program, gl.LINK_STATUS)) return { state: 'ready' };
+  return { state: 'failed', error: gl.getProgramInfoLog(program) ?? 'link failed' };
+}
+
 export function uniformLocations(
   gl: WebGL2RenderingContext,
   program: WebGLProgram,
