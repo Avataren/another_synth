@@ -7,6 +7,7 @@ import { scopeWallGrid } from 'src/components/tracker/scope-wall-layout';
 import {
   DEFAULT_VISUALIZATION_MODE,
   VISUALIZATION_MODES,
+  persistedVisualizationMode,
   sanitizeVisualizationMode,
 } from 'src/components/tracker/visualization-modes';
 import { defaultSettings, useUserSettingsStore } from 'src/stores/user-settings-store';
@@ -176,5 +177,24 @@ describe('VisualizationPicker', () => {
     const wrapper = mountPicker();
     expect(wrapper.find('.viz-picker-label').text()).toBe('Pattern');
     wrapper.unmount();
+  });
+
+  it('never persists a raymarched view, so a crashing one cannot lock the user out', () => {
+    for (const mode of ['raymarch', 'terrain', 'fractal']) {
+      expect(persistedVisualizationMode(mode)).toBe('pattern');
+    }
+    expect(persistedVisualizationMode('bars3d')).toBe('bars3d');
+    expect(persistedVisualizationMode('nonsense')).toBe('pattern');
+  });
+
+  it('saves and loads the settings without the raymarched view', () => {
+    localStorage.setItem('synth-user-settings', JSON.stringify({ visualizationMode: 'raymarch' }));
+    setActivePinia(createPinia());
+    const store = useUserSettingsStore();
+    expect(store.settings.visualizationMode).toBe('pattern');
+    store.settings.visualizationMode = 'fractal';
+    expect(store.settings.visualizationMode).toBe('fractal'); // this session keeps it
+    const saved = JSON.parse(localStorage.getItem('synth-user-settings') ?? '{}') as { visualizationMode?: string };
+    expect(saved.visualizationMode).not.toBe('fractal');
   });
 });

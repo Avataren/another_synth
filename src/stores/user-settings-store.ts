@@ -11,6 +11,7 @@ import type { Sid6581Revision } from 'src/audio/worklets/sid-core';
 import {
   DEFAULT_VISUALIZATION_MODE,
   DEFAULT_VISUALIZATION_PLACEMENT,
+  persistedVisualizationMode,
   type VisualizationMode,
   type VisualizationPlacement,
 } from 'src/components/tracker/visualization-modes';
@@ -396,7 +397,9 @@ function loadSettings(): UserSettings {
     if (stored) {
       const parsed = JSON.parse(stored) as Partial<UserSettings>;
       // Merge with defaults to handle missing keys
-      return { ...defaultSettings, ...migrateSettingsVersion(parsed) };
+      const merged = { ...defaultSettings, ...migrateSettingsVersion(parsed) };
+      merged.visualizationMode = persistedVisualizationMode(merged.visualizationMode);
+      return merged;
     } else {
       // Check for old format settings to migrate
       const migrated = migrateOldSettings();
@@ -415,7 +418,8 @@ function loadSettings(): UserSettings {
  */
 function saveSettings(settings: UserSettings): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    const stored = { ...settings, visualizationMode: persistedVisualizationMode(settings.visualizationMode) };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
   } catch (error) {
     console.error('Failed to save user settings to localStorage:', error);
   }

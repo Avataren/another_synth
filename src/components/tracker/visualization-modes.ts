@@ -114,6 +114,21 @@ export function sanitizeVisualizationMode(value: unknown): VisualizationMode {
     : DEFAULT_VISUALIZATION_MODE;
 }
 
+/**
+ * The raymarched views, which can hang or crash a browser on a GPU or driver that cannot take them. They are
+ * never saved with the settings, so a page that crashes on load comes back on the default view after a reload,
+ * not the same crash with no way out short of clearing local storage.
+ */
+export function isHeavyVisualizationMode(mode: VisualizationMode): boolean {
+  return mode === 'raymarch' || mode === 'terrain' || mode === 'fractal';
+}
+
+/** What is stored for `mode`: itself, unless it is one of the heavy views. */
+export function persistedVisualizationMode(mode: unknown): VisualizationMode {
+  const valid = sanitizeVisualizationMode(mode);
+  return isHeavyVisualizationMode(valid) ? DEFAULT_VISUALIZATION_MODE : valid;
+}
+
 /** The modes that replace the channel row and pattern grid with a wall of scopes. */
 export function isScopeWallMode(mode: VisualizationMode): boolean {
   return mode === 'scopes' || mode === 'stereo' || mode === 'equalizer' || mode === 'bars3d' || mode === 'raymarch' || mode === 'terrain' || mode === 'fractal' || isGlowWallMode(mode);
