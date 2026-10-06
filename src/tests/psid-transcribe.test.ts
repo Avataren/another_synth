@@ -333,3 +333,15 @@ describe('importPsid: refusals', () => {
     expect(!r.ok && r.reason).toMatch(/plays no notes/);
   });
 });
+
+describe('importPsid: an arpeggio stepped on the row start (lead 0)', () => {
+  it('robocop_3 voice 1 keeps one tie row per 6-frame step, not a held note', () => {
+    const bytes = new Uint8Array(readFileSync(resolve(__dirname, 'fixtures/psid/tel_jeroen/robocop_3.sid')));
+    const r = importPsid(bytes, { subsongs: [0], measure: false });
+    if (!r.ok) throw new Error(r.reason);
+    const entry = r.doc.subsongs[0]!.orderlists[0]!.entries[0]!;
+    const rows = r.doc.patterns[entry.pattern]!.rows.slice(1, 20);
+    // The tune plays a note every row; the transcription once held one note for ~18 frames.
+    expect(rows.filter((x) => x.note !== 0).length).toBeGreaterThanOrEqual(15);
+  });
+});

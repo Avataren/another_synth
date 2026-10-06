@@ -205,6 +205,24 @@ export function planPitch(
   const delay = g.delays[voice] ?? 0;
   const taken = new Set<number>(notes.map((n) => n.row));
   const frameOfTick = (r: number, t: number): number => rowStart(g, r) + t + delay;
+  const ctrlOf = f.voices[voice]!.ctrl;
+  // The tick (0 or 1) at which this note's rows hold one pitch each: the one whose windows are the
+  // cleaner (a window with two notes in it is cut at the wrong frame).
+  const tiePhase = (note: RowNote, firstRowEnd: number): 0 | 1 => {
+    const last = Math.min(rowOfFrame(g, Math.min(f.frames, note.end) - 1 - delay), note.row + 64);
+    const score = [0, 0];
+    for (const t of [0, 1]) {
+      for (let r = note.row + 1; r <= last; r++) {
+        const s = frameOfTick(r, t);
+        const e = Math.min(note.end, f.frames, frameOfTick(r + 1, t));
+        if (e - s < 2 || s < firstRowEnd - 1) continue;
+        const steps = new Set<number>();
+        for (let i = s; i < e; i++) steps.add(f.voices[voice]!.freq[i]!);
+        if ((ctrlOf[s]! & 1) !== 0 && steps.size === 1) score[t]!++;
+      }
+    }
+    return score[0]! > score[1]! ? 0 : 1;
+  };
   for (const [n, note] of notes.entries()) {
     const from = Math.max(0, note.onset);
     const next = notes[n + 1];
@@ -258,6 +276,9 @@ export function planPitch(
     // The rows in order: each glide's rows, and on the rows between, a tie where the held
     // pitch moves to another note. After a bend the pitch is the pattern's until a tie or
     // a glide sets a note again.
+    // Where a row's held pitch starts: GoatTracker's own ties act on a row's second tick, but a tune whose
+    // player writes its notes on a row's first frame (a bare test-bit frame, `RowGrid.lead` 0) steps there.
+    const tie = g.lead === 0 && tiePhase(note, firstRowEnd) === 0 ? 0 : 1;
     let current: number | null = baseOf(note);
     let bentTo = 0;
     let bendFrom = -1;
@@ -290,8 +311,8 @@ export function planPitch(
         continue;
       }
       if (r === note.row || taken.has(r)) continue;
-      const s = frameOfTick(r, 1);
-      const e = Math.min(to, frameOfTick(r + 1, 1));
+      const s = frameOfTick(r, tie);
+      const e = Math.min(to, frameOfTick(r + 1, tie));
       if (e - s < 2) continue;
       // Only while the gate stays on: a pitch that changes as the note is let go is its release
       // (the row keeps its note column for the key-off).
