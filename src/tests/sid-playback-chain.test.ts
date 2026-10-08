@@ -418,60 +418,76 @@ function loadedChip(h: Awaited<ReturnType<typeof setup>>): string | undefined {
   return h.playbackStore.sidTransport().player?.song?.chipModel;
 }
 
-describe('S5.7: switching the chip model mid-session rebuilds the player with it', () => {
-  it('while playing: the doc is retagged, the worklet reloads the 8580 file, seeks back to the row it was on and plays on', async () => {
+describe('S5.7: switching the chip model mid-session switches the chip in place', () => {
+  const chipSwitches = (node: { received: SidCommand[] }) =>
+    node.received.filter((c): c is Extract<SidCommand, { type: 'set-chip-model' }> => c.type === 'set-chip-model').map((c) => c.model);
+  const loads = (node: { received: SidCommand[] }) => node.received.filter((c) => c.type === 'load-song').length;
+
+  it('while playing: the doc is retagged and the worklet switches chips, with no reload and no seek, so the song plays on', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const h = await setup();
     const node = await startPlaying(h);
     await until(() => loadedChip(h) === '6581', 'the song\'s own 6581 load');
     node.pump(3 * ROW + 500);
     await settle();
-    const loadsBefore = node.received.filter((c) => c.type === 'load-song').length;
+    const loadsBefore = loads(node);
+    const sentBefore = node.received.length;
 
     expect(h.trackerStore.setSidChip('8580')).toBe(true);
     expect(h.trackerStore.sidDoc?.chipModel).toBe('8580');
+    await until(() => chipSwitches(node).length === 1, 'the chip switch');
+    // Past the reload delay: nothing else follows.
     await new Promise((r) => setTimeout(r, SID_RELOAD_IDLE_MS + 60));
-    await until(() => loadedChip(h) === '8580', 'the 8580 load');
 
-    expect(node.received.filter((c) => c.type === 'load-song').length).toBe(loadsBefore + 1);
-    expect(node.received.slice(-3).map((c) => c.type)).toEqual(['load-song', 'seek', 'play']);
-    const load = node.received.at(-3) as Extract<SidCommand, { type: 'load-song' }>;
-    // Header byte 5 (after 'ASID' and the version): the chip code, 0 = 8580.
-    expect(new Uint8Array(load.bytes as ArrayBuffer)[5]).toBe(0);
-    // Resumed, not restarted: the seek is the row the song had reached.
-    expect((node.received.at(-2) as Extract<SidCommand, { type: 'seek' }>).row).toBe(3);
+    expect(chipSwitches(node)).toEqual(['8580']);
+    expect(loads(node)).toBe(loadsBefore);
+    expect(node.received.slice(sentBefore).map((c) => c.type)).toEqual(['set-chip-model']);
     expect(h.playbackStore.isPlaying).toBe(true);
     expect(peak(node.pump(4 * ROW).mix)).toBeGreaterThan(0.05);
 
-    // Undo is a doc edit too: back to the song's own 6581.
+    // Undo is a doc edit too: back to the song's own 6581, in place as well.
     h.trackerStore.undo();
-    await new Promise((r) => setTimeout(r, SID_RELOAD_IDLE_MS + 60));
-    await until(() => loadedChip(h) === '6581', 'the 6581 reload after undo');
+    await until(() => chipSwitches(node).length === 2, 'the switch back after undo');
+    expect(chipSwitches(node)).toEqual(['8580', '6581']);
+    expect(loads(node)).toBe(loadsBefore);
   }, 30000);
 
-  it('paused: the switch waits for the resume, which loads the new chip at the paused row', async () => {
+  it('switching back and forth keeps switching in place, never reloading', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const h = await setup();
+    const node = await startPlaying(h);
+    await until(() => loadedChip(h) === '6581', 'the song\'s own 6581 load');
+    node.pump(2 * ROW + 500);
+    await settle();
+    const loadsBefore = loads(node);
+    h.trackerStore.setSidChip('8580');
+    await until(() => chipSwitches(node).length === 1, 'the chip switch');
+    h.trackerStore.setSidChip('6581');
+    await until(() => chipSwitches(node).length === 2, 'the switch back');
+    expect(loads(node)).toBe(loadsBefore);
+  }, 30000);
+
+  it('paused: the switch is applied at once and the resume plays on without a reload', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const h = await setup();
     const node = await startPlaying(h);
     node.pump(2 * ROW + 500);
     await settle();
     h.playbackStore.pause();
-    const loadsBefore = node.received.filter((c) => c.type === 'load-song').length;
+    const loadsBefore = loads(node);
     h.trackerStore.setSidChip('8580');
-    await new Promise((r) => setTimeout(r, SID_RELOAD_IDLE_MS + 60));
-    expect(node.received.filter((c) => c.type === 'load-song').length).toBe(loadsBefore);
+    await until(() => chipSwitches(node).length === 1, 'the chip switch while paused');
     await h.playbackStore.resume();
-    expect(node.received.slice(-3).map((c) => c.type)).toEqual(['load-song', 'seek', 'play']);
-    expect((node.received.at(-2) as Extract<SidCommand, { type: 'seek' }>).row).toBe(2);
-    await until(() => loadedChip(h) === '8580', 'the 8580 load on resume');
+    expect(loads(node)).toBe(loadsBefore);
+    expect(node.received.at(-1)!.type).toBe('play');
   }, 30000);
 
-  it('stopped: the next Play loads the retagged song (the chain song is tagged 6581, the switch makes it 8580)', async () => {
+  it('stopped: the song is on the 8580 when it next plays (switched in place if the worklet holds it, else loaded tagged 8580)', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const h = await setup();
     h.trackerStore.setSidChip('8580');
-    await startPlaying(h);
-    await until(() => loadedChip(h) === '8580', 'the 8580 load');
+    const node = await startPlaying(h);
+    await until(() => loadedChip(h) === '8580' || chipSwitches(node).includes('8580'), 'the 8580');
   }, 30000);
 });
 

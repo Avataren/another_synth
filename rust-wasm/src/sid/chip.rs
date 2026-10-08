@@ -265,6 +265,37 @@ impl Chip {
         }
     }
 
+    /// Switch the chip's model while playing, to what `with_profile(model, ..)`
+    /// with the profile the chip holds would have built: the filter's maps, the
+    /// voices' DAC DC, the gain, the volume DAC. Oscillators, envelopes,
+    /// registers, filter state and queued writes carry on, so a song keeps its
+    /// place and its notes keep sounding.
+    pub fn set_model(&mut self, model: SidModel) -> Result<(), SidError> {
+        if let Some(reason) = model.unimplemented_reason() {
+            return Err(SidError::ModelNotImplemented { model, reason });
+        }
+        let profile = self.filter.profile();
+        self.model = model;
+        self.filter.set_model(model);
+        for v in self.voices.iter_mut() {
+            v.set_model(model, profile.voice_dc);
+        }
+        self.trim = match model {
+            SidModel::Sid8580 => GAIN_TRIM_8580,
+            SidModel::Sid6581 => profile.gain_trim,
+        };
+        self.base_gain = match model {
+            SidModel::Sid8580 => CHIP_GAIN,
+            SidModel::Sid6581 => profile.chip_gain(CHIP_GAIN),
+        };
+        self.mix_dc = profile.mix_dc;
+        self.volume_dac = match model {
+            SidModel::Sid8580 => std::array::from_fn(|v| v as f64 / 15.0),
+            SidModel::Sid6581 => profile.volume_table(),
+        };
+        Ok(())
+    }
+
     /// The revision profile the chip plays (on an 8580, the one it was given).
     pub fn profile(&self) -> &'static RevisionProfile {
         self.filter.profile()

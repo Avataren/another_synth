@@ -245,4 +245,26 @@ describe('SidProcessorCore over the real wasm', () => {
     for (let i = from; i < r3.length; i++) diff = Math.max(diff, Math.abs((r3[i] ?? 0) - (gtFirst[i] ?? 0)));
     expect(diff).toBeGreaterThan(0.01 * peak(r3));
   });
+
+  it('switches the chip while playing: no reload, the song keeps its place and keeps sounding', () => {
+    const run = (switchAt: 'never' | 'mid') => {
+      const { core, events } = newCore();
+      core.handle({ type: 'load-song', id: nextId++, bytes: chainBytes() });
+      core.handle({ type: 'play' });
+      const first = render(core, ROW * 4).mix;
+      if (switchAt === 'mid') core.handle({ type: 'set-chip-model', model: '8580' });
+      const second = render(core, ROW * 4).mix;
+      return { first, second, loaded: events.filter((e) => e.type === 'song-loaded').length, ended: events.some((e) => e.type === 'song-end') };
+    };
+    const kept = run('never');
+    const switched = run('mid');
+    // Up to the switch the two are one sound; after it the 8580 plays on, a different sound, not silence or a restart.
+    expect(switched.first).toEqual(kept.first);
+    expect(switched.loaded).toBe(1);
+    expect(switched.ended).toBe(false);
+    expect(peak(switched.second)).toBeGreaterThan(0.01);
+    let diff = 0;
+    for (let i = 0; i < kept.second.length; i++) diff = Math.max(diff, Math.abs((kept.second[i] ?? 0) - (switched.second[i] ?? 0)));
+    expect(diff).toBeGreaterThan(0.001);
+  });
 });

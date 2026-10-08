@@ -1952,7 +1952,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.psidTune = markRaw({ ...tune, subsong });
       this.psidRevision += 1;
     },
-    /** Plays the tune on `chip`, restarting it. Not an edit: no undo step. */
+    /** Plays the tune on `chip`, which the player switches to in place. Not an edit: no undo step. */
     selectPsidChip(chip: '6581' | '8580') {
       const tune = this.psidTune;
       if (tune === null || psidTuneChip(tune) === chip) return;

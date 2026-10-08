@@ -55,6 +55,14 @@ export const SID_RELOAD_IDLE_MS = 150;
 
 const SID_VOICES = 3;
 
+/** Both docs are the same song, tagged for different chips. */
+function sameSongOnAnotherChip(a: SidDoc, b: SidDoc): boolean {
+  if (a.chipModel === b.chipModel) return false;
+  const one = serializeSidFile({ ...a, chipModel: '6581' });
+  const two = serializeSidFile({ ...b, chipModel: '6581' });
+  return one.length === two.length && one.every((byte, i) => byte === two[i]);
+}
+
 /**
  * The SID counterpart of `AhxSongTransport` (plan-sid-tracking.md S4): the
  * playback store's verbs for a `'sid'` song, played by the SID worklet
@@ -74,7 +82,9 @@ const SID_VOICES = 3;
  * Edits: a doc change while playing reloads the song once the edits pause
  * (`SID_RELOAD_IDLE_MS`) and puts it back at the row it was on (a load, a
  * seek and a play, ordered on the port). Paused, the reload waits for the
- * resume; stopped, the next Play loads the doc as it is.
+ * resume; stopped, the next Play loads the doc as it is. A change of chip
+ * alone is no edit: the worklet switches chips in place (`setChipModel`), so
+ * the song neither reloads nor loses its place.
  */
 export class SidSongTransport {
   private client: SidPlayerClient | null = null;
@@ -348,10 +358,17 @@ export class SidSongTransport {
     this.setState('playing');
   }
 
-  /** The store's tune changed (another subsong): a playing tune restarts on it, any other loads at its next Play. */
+  /** The store's tune changed: another chip switches in place; another subsong restarts a playing tune, any other loads at its next Play. */
   onTuneChange(): void {
     const tune = this.deps.trackerStore.psidTune;
     if (!this.active || tune === null || this.loadedTune === tune) return;
+    const loaded = this.loadedTune;
+    if (this.client !== null && loaded !== null && loaded.bytes === tune.bytes && loaded.subsong === tune.subsong) {
+      // The same tune on another chip: switch in place, it plays on from where it is.
+      this.client.setChipModel(psidTuneChip(tune));
+      this.loadedTune = tune;
+      return;
+    }
     if (!this.deps.isPlaying.value) {
       this.loadedTune = null;
       return;
@@ -482,6 +499,7 @@ export class SidSongTransport {
 
   /** The store's SID doc changed (an edit, an undo): reload a playing song once the edits pause. */
   onDocChange(): void {
+    if (this.switchChipInPlace()) return;
     if (!this.active || !this.deps.isPlaying.value) return;
     this.cancelReload();
     this.reloadTimer = setTimeout(() => {
@@ -489,6 +507,22 @@ export class SidSongTransport {
       if (this.active && this.deps.isPlaying.value) this.reloadInPlace(true);
     }, SID_RELOAD_IDLE_MS);
     (this.reloadTimer as { unref?: () => void }).unref?.();
+  }
+
+  /**
+   * The doc is the loaded song on another chip: switch the worklet's chip and
+   * call the new doc the loaded one. False when anything else changed (or
+   * edits are waiting to reload), and the usual reload applies.
+   */
+  private switchChipInPlace(): boolean {
+    const client = this.client;
+    const loaded = this.loadedDoc;
+    const doc = this.playDoc();
+    if (!this.active || client === null || loaded === null || doc === null || this.reloadTimer !== null) return false;
+    if (!sameSongOnAnotherChip(loaded, doc)) return false;
+    client.setChipModel(doc.chipModel);
+    this.loadedDoc = doc;
+    return true;
   }
 
   private cancelReload(): void {

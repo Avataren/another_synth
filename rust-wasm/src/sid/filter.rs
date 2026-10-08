@@ -308,6 +308,13 @@ impl Filter {
         self.set(self.cutoff_reg, self.res);
     }
 
+    /// Become a filter of `model` while playing: the integrator state carries
+    /// on, the cutoff and resonance maps are the new model's.
+    pub fn set_model(&mut self, model: SidModel) {
+        self.model = model;
+        self.set(self.cutoff_reg, self.res);
+    }
+
     /// Mode bits (LP/BP/HP); other bits are ignored.
     pub fn set_mode(&mut self, mode: u8) {
         self.mode = mode & (LP | BP | HP);

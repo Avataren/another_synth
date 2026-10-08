@@ -69,6 +69,17 @@ impl SidChipPlayer {
         self.chip.set_voice_mask((heard & !mute) as u8);
     }
 
+    /// Switch to the 8580 (`true`) or the 6581 from the next sample on; the
+    /// tune's notes keep sounding.
+    pub fn set_chip_model(&mut self, model_8580: bool) {
+        let model = if model_8580 {
+            SidModel::Sid8580
+        } else {
+            SidModel::Sid6581
+        };
+        let _ = self.chip.set_model(model);
+    }
+
     /// Play the 6581 as revision `name` (`DieRevision::name`); `false` for an unknown name.
     pub fn set_revision(&mut self, name: &str) -> bool {
         match DieRevision::from_name(name) {

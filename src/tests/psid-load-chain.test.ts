@@ -89,7 +89,7 @@ describe('a C64 .sid through the real load path', () => {
     expect(loads()[2]!.subsong).toBe(2);
   }, 60000);
 
-  it('the chip can be chosen for a tune: it restarts on it, is saved with it, and the choice is remembered for the next song', async () => {
+  it('the chip can be chosen for a tune: it switches in place (no restart), is saved with it, and the choice is remembered for the next song', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const app = await setupSidApp();
@@ -105,8 +105,10 @@ describe('a C64 .sid through the real load path', () => {
     // What the page's toggle does:
     settings.updateSetting('sidChipPreference', '8580');
     app.trackerStore.selectPsidChip('8580');
-    await until(() => loads().length === 2, 'the reload');
-    expect(loads()[1]!.model).toBe('8580');
+    await until(() => node.received.some((c) => c.type === 'set-chip-model'), 'the chip switch');
+    // Switched in place: the tune plays on, it is not loaded again.
+    expect(node.received.filter((c) => c.type === 'set-chip-model')).toEqual([{ type: 'set-chip-model', model: '8580' }]);
+    expect(loads()).toHaveLength(1);
     expect(app.trackerStore.serializeSong().data.psidChip).toBe('8580');
     // Another tune opens on the chosen chip, whatever its own tag.
     await app.host.loadSongFromFile(fileOf(fixture('tel_jeroen/golden_axe.sid'), 'Golden_Axe.sid'));

@@ -154,6 +154,11 @@ export class SidPlayerClient {
     this.send({ type: 'set-revision', revision });
   }
 
+  /** Switch the chip while playing: no reload, the song keeps its place. */
+  setChipModel(model: '6581' | '8580'): void {
+    this.send({ type: 'set-chip-model', model });
+  }
+
   /** Make this worklet a preview voice: songs loaded from now on are played by keys. Before the load. */
   setPreview(enabled: boolean): void {
     this.send({ type: 'set-preview', enabled });

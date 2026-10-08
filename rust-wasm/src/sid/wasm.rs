@@ -152,6 +152,18 @@ impl SidPlayer {
         }
     }
 
+    /// Switch the chip to the 8580 (`true`) or the 6581 from the next sample on,
+    /// without a reload: the song keeps its place and sounding notes carry on.
+    pub fn set_chip_model(&mut self, model_8580: bool) {
+        let model = if model_8580 {
+            SidModel::Sid8580
+        } else {
+            SidModel::Sid6581
+        };
+        // Both models construct, so this cannot fail.
+        let _ = self.player.chip_mut().set_model(model);
+    }
+
     /// Play the 6581 as revision `name` (`DieRevision::name`: "gt", "r2",
     /// "r3", "r4", "r4ar") from the next sample on, without a reload. An 8580
     /// song keeps its chip. `false` for an unknown name, which changes nothing.

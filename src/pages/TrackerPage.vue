@@ -357,15 +357,15 @@
                   >
                     <option v-for="(_, s) in sidSubsongCount" :key="s" :value="s">{{ s }}</option>
                   </select>
-                  <button type="button" class="sid-subsong-btn" title="New subsong" :disabled="isReadOnly || isLoadingSong" @click="onSidSubsongAction('add')">+</button>
-                  <button type="button" class="sid-subsong-btn" title="Copy this subsong" :disabled="isReadOnly || isLoadingSong" @click="onSidSubsongAction('clone')">
+                  <button type="button" class="sid-subsong-btn" title="New subsong" :disabled="isReadOnly || isLoadingSong || isPsidTune" @click="onSidSubsongAction('add')">+</button>
+                  <button type="button" class="sid-subsong-btn" title="Copy this subsong" :disabled="isReadOnly || isLoadingSong || isPsidTune" @click="onSidSubsongAction('clone')">
                     <q-icon name="content_copy" size="12px" />
                   </button>
                   <button
                     type="button"
                     class="sid-subsong-btn"
                     title="Delete this subsong"
-                    :disabled="isReadOnly || isLoadingSong || sidSubsongCount <= 1"
+                    :disabled="isReadOnly || isLoadingSong || isPsidTune || sidSubsongCount <= 1"
                     @click="onSidSubsongAction('delete')"
                   >&times;</button>
                 </div>
@@ -1527,8 +1527,9 @@ const sidTempoTitle = computed(() =>
 /** Why the last edit was refused (a grid, sequence or song-setting edit of an AHX or SID song); clears itself. */
 const editNotice = computed(() => ahxEditNotice.value);
 const sidSpeed = computed(() => trackerStore.sidDoc?.speedMultiplier ?? 1);
-const sidSubsong = computed(() => trackerStore.sidSubsong);
-const sidSubsongCount = computed(() => trackerStore.sidFlat.length);
+/** A tune's subsongs are the file's (`psidTune.file.songs`); a song's are the doc's flat subsongs. */
+const sidSubsong = computed(() => (trackerStore.psidTune !== null ? trackerStore.psidTune.subsong : trackerStore.sidSubsong));
+const sidSubsongCount = computed(() => (trackerStore.psidTune !== null ? trackerStore.psidTune.file.songs : trackerStore.sidFlat.length));
 
 function onSidTempoInput(event: Event): void {
   const input = event.target as HTMLInputElement;
@@ -1543,6 +1544,12 @@ function onSidSpeedInput(event: Event): void {
 }
 /** Another subsong: the song stops (the player plays the one shown), and the sequence starts at its top. */
 function onSidSubsongInput(event: Event): void {
+  if (trackerStore.psidTune !== null) {
+    // A tune has no sequence to reset; the transport restarts it on the subsong.
+    trackerStore.selectPsidSubsong(Number((event.target as HTMLSelectElement).value));
+    refocusTracker();
+    return;
+  }
   handleStop();
   trackerStore.selectSidSubsong(Number((event.target as HTMLSelectElement).value));
   playbackStore.setSequenceIndex(0);

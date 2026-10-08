@@ -22,6 +22,7 @@ export interface SidChipWasm {
   set_gain(gain: number): void;
   set_mute_solo(mute: number, solo: number): void;
   set_revision(name: string): boolean;
+  set_chip_model(model8580: boolean): void;
   render(out: Float32Array, v0: Float32Array, v1: Float32Array, v2: Float32Array): number;
   chip_model(): string;
   tap_full_scale(): number;
@@ -98,6 +99,10 @@ export class PsidPlayback implements SidWasmPlayer {
 
   set_revision(name: string): boolean {
     return this.chip.set_revision(name);
+  }
+
+  set_chip_model(model8580: boolean): void {
+    this.chip.set_chip_model(model8580);
   }
 
   render(out: Float32Array, v0: Float32Array, v1: Float32Array, v2: Float32Array): number {

@@ -169,6 +169,14 @@ impl Voice {
         self.model
     }
 
+    /// Become a voice of `model` (6581 DAC offset `dc`) while playing: the
+    /// accumulator, noise register, envelope and waveform state carry on; only
+    /// the model's own traits change from the next cycle.
+    pub fn set_model(&mut self, model: SidModel, dc: f64) {
+        self.model = model;
+        self.dc = dc;
+    }
+
     /// 24-bit phase accumulator.
     #[inline]
     pub fn accumulator(&self) -> u32 {

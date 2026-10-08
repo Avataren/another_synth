@@ -527,3 +527,35 @@ fn sid_player_shell_switches_the_6581_revision_while_playing() {
     assert!(!p.set_revision("r5"));
     assert_eq!(p.revision(), "gt");
 }
+
+#[test]
+fn sid_player_shell_switches_the_chip_while_playing_and_keeps_its_place() {
+    let mut song = chord();
+    song.model = SidModel::Sid6581;
+    let bytes = song.to_bytes();
+    let mut p = SidPlayer::new(&bytes, 44_100.0).unwrap();
+    p.play();
+    let n = 44_100;
+    let (mut out, mut a, mut b, mut c) = (
+        vec![0.0; n],
+        vec![0.0; n],
+        vec![0.0; n],
+        vec![0.0; n],
+    );
+    p.render(&mut out, &mut a, &mut b, &mut c);
+    let row = p.song_row();
+    let before = out.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    assert!(before > 0.05, "the 6581 chord sounds: {before}");
+    p.set_chip_model(true);
+    assert_eq!(p.chip_model(), "8580");
+    assert!(p.is_playing());
+    // No restart: the song carries on from where it was, and still sounds.
+    p.render(&mut out, &mut a, &mut b, &mut c);
+    assert!(p.song_row() >= row, "row {} then {}", row, p.song_row());
+    let after = out.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    assert!(after > 0.05, "the 8580 chord sounds: {after}");
+    p.set_chip_model(false);
+    assert_eq!(p.chip_model(), "6581");
+    p.render(&mut out, &mut a, &mut b, &mut c);
+    assert!(p.song_row() >= row);
+}

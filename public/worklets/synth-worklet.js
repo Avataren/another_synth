@@ -2994,6 +2994,14 @@ var SidChipPlayer = class {
     wasm.sidchipplayer_set_mute_solo(this.__wbg_ptr, mute, solo);
   }
   /**
+   * Switch to the 8580 (`true`) or the 6581 from the next sample on; the
+   * tune's notes keep sounding.
+   * @param {boolean} model_8580
+   */
+  set_chip_model(model_8580) {
+    wasm.sidchipplayer_set_chip_model(this.__wbg_ptr, model_8580);
+  }
+  /**
    * A voice tap's full scale (`Chip::tap_full_scale`) at gain 1.0.
    * @returns {number}
    */
@@ -3128,6 +3136,14 @@ var SidPlayer = class {
    */
   enable_preview() {
     wasm.sidplayer_enable_preview(this.__wbg_ptr);
+  }
+  /**
+   * Switch the chip to the 8580 (`true`) or the 6581 from the next sample on,
+   * without a reload: the song keeps its place and sounding notes carry on.
+   * @param {boolean} model_8580
+   */
+  set_chip_model(model_8580) {
+    wasm.sidplayer_set_chip_model(this.__wbg_ptr, model_8580);
   }
   /**
    * A voice tap's full scale (`Chip::tap_full_scale`) at gain 1.0.

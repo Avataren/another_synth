@@ -33,6 +33,8 @@ export interface SidWasmPlayer {
   set_mute_solo(mute: number, solo: number): void;
   /** Play the 6581 as revision `name` (`Sid6581Revision`) from now on; `false` for an unknown name. An 8580 song ignores it. */
   set_revision(name: string): boolean;
+  /** Play on the 8580 (`true`) or the 6581 from now on, keeping the song's place. */
+  set_chip_model(model8580: boolean): void;
   /** Mix into `out`, voice taps into `v0..v2`; silence while paused. Returns frames. */
   render(out: Float32Array, v0: Float32Array, v1: Float32Array, v2: Float32Array): number;
   song_row(): number;
@@ -110,6 +112,8 @@ export type SidCommand =
   | { type: 'set-mute-solo'; mute: number; solo: number }
   /** The 6581 revision, applied at once without a reload. Outlives the song. */
   | { type: 'set-revision'; revision: Sid6581Revision }
+  /** The chip (6581 or 8580), applied at once without a reload: the song keeps its place and its sounding notes. */
+  | { type: 'set-chip-model'; model: '6581' | '8580' }
   /** Keyboard-preview worklet: every song loaded from now on is a preview voice. Send it before the load. */
   | { type: 'set-preview'; enabled: boolean }
   /** Preview: `instrument` (1-based) at note table index `note` (0 = C-0 .. 92 = G#7). */
@@ -207,6 +211,9 @@ export class SidProcessorCore {
       case 'set-revision':
         this.revision = command.revision;
         this.player?.set_revision(command.revision);
+        break;
+      case 'set-chip-model':
+        this.player?.set_chip_model(command.model === '8580');
         break;
       case 'set-preview':
         this.preview = command.enabled;
