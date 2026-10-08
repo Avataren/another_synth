@@ -73,6 +73,16 @@ class FakeAudioContext {
       disconnect: (): void => undefined,
     };
   }
+  createBiquadFilter(): object {
+    return {
+      type: 'peaking',
+      frequency: new FakeAudioParam(),
+      Q: new FakeAudioParam(),
+      gain: new FakeAudioParam(),
+      connect: (): void => undefined,
+      disconnect: (): void => undefined,
+    };
+  }
   createWaveShaper(): object {
     return {
       curve: null,
@@ -153,6 +163,7 @@ describe('the one speaker feed runs through the rack', () => {
     // word on the output ceiling), and registered itself for the store.
     expect(system.postFxRack.activeStages()).toEqual([
       system.postFxLpfStage,
+      system.postFxEqStage,
       system.postFxLimiterStage,
     ]);
     expect(registry.getPostFxRack()?.rack).toBe(system.postFxRack);

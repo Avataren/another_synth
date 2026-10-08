@@ -33,6 +33,19 @@
     >
       LIM
     </button>
+    <button
+      type="button"
+      class="post-fx-lim-btn"
+      :class="{ active: eqEnabled }"
+      title="Equalizer"
+    >
+      EQ
+      <q-menu class="post-fx-params-menu" anchor="bottom right" self="top right">
+        <div class="post-fx-params post-fx-eq-panel">
+          <PostFxEqEditor />
+        </div>
+      </q-menu>
+    </button>
     <button type="button" class="post-fx-params-btn" title="Filter parameters">
       <q-icon name="tune" size="16px" />
       <q-menu class="post-fx-params-menu" anchor="bottom right" self="top right">
@@ -240,6 +253,8 @@
         >
           Limiter defaults
         </button>
+        <div class="post-fx-divider"></div>
+        <PostFxEqEditor />
       </div>
     </q-menu>
   </button>
@@ -250,6 +265,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { usePostFxStore, type PostFxFilterMode } from 'src/stores/post-fx-store';
 import { getPostFxRack } from '@another-synth/tracker-playback';
 import { getSharedAudioSystem } from 'src/audio/shared-audio-system';
+import PostFxEqEditor from 'src/components/PostFxEqEditor.vue';
 import { registerAnimationCallback } from 'src/composables/useAnimationLoop';
 
 defineProps<{
@@ -273,6 +289,7 @@ const mode = computed(() => postFxStore.mode);
 const params = computed(() => postFxStore.params);
 const limiterEnabled = computed(() => postFxStore.limiterEnabled);
 const limiterParams = computed(() => postFxStore.limiterParams);
+const eqEnabled = computed(() => postFxStore.eqEnabled);
 
 /** True while the limiter is actually pulling gain down (meter threshold). */
 const limiterActive = ref(false);
@@ -518,6 +535,10 @@ function onRelease(event: Event): void {
 
 .post-fx-reset {
   align-self: flex-start;
+}
+
+.post-fx-eq-panel {
+  min-width: min(380px, 92vw);
 }
 
 .post-fx-divider {

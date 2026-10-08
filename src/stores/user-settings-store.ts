@@ -182,6 +182,12 @@ export interface UserSettings {
     releaseMs: number;
   };
 
+  /** Post-fx graphic equalizer: off by default, ten band gains in dB. */
+  postFxEqEnabled: boolean;
+  postFxEqParams: {
+    gainsDb: number[];
+  };
+
   /**
    * Which 6581 a SID song plays on (8580 songs are unaffected). `r2`, `r3` and
    * `r4` are real chips measured from recordings (rust-wasm/src/sid/revision.rs),
@@ -280,6 +286,10 @@ export const defaultSettings: UserSettings = {
   postFxLimiterParams: {
     ceilingDb: -1.5,
     releaseMs: 150,
+  },
+  postFxEqEnabled: false,
+  postFxEqParams: {
+    gainsDb: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   },
   sid6581Revision: 'r3',
   sidChipPreference: null,

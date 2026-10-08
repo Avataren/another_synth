@@ -60,6 +60,11 @@ function recordingFactory() {
           connect: (): void => undefined,
           disconnect: (): void => undefined,
         }) as unknown as DynamicsCompressorNode,
+      createBiquadFilter: () =>
+        ({
+          connect: (): void => undefined,
+          disconnect: (): void => undefined,
+        }) as unknown as BiquadFilterNode,
       createWaveShaper: () =>
         ({
           curve: null,

@@ -2,6 +2,7 @@
 import {
   AmigaLpfStage,
   LimiterStage,
+  EqStage,
   PostFxRack,
   registerPostFxRack,
 } from '@another-synth/tracker-playback';
@@ -149,6 +150,7 @@ export default class AudioSystem {
      */
     postFxRack: PostFxRack;
     postFxLpfStage: AmigaLpfStage;
+    postFxEqStage: EqStage;
     postFxLimiterStage: LimiterStage;
     /**
      * The latency mode this context was actually built with.
@@ -187,6 +189,9 @@ export default class AudioSystem {
         this.postFxRack = new PostFxRack(this.audioContext);
         this.postFxLpfStage = new AmigaLpfStage(this.audioContext);
         this.postFxRack.registerStage(this.postFxLpfStage);
+        // The EQ shapes the tone before the limiter, so boosts cannot clip.
+        this.postFxEqStage = new EqStage(this.audioContext);
+        this.postFxRack.registerStage(this.postFxEqStage);
         // The limiter goes last: it catches whatever the filter stage leaves,
         // and it is the final word on the output ceiling.
         this.postFxLimiterStage = new LimiterStage(this.audioContext);
@@ -196,6 +201,7 @@ export default class AudioSystem {
         registerPostFxRack({
             rack: this.postFxRack,
             amigaLpf: this.postFxLpfStage,
+            equalizer: this.postFxEqStage,
             limiter: this.postFxLimiterStage,
         });
         // A re-suspension (iOS interruption, Safari auto-suspend) must not

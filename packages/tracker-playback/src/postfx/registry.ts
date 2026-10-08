@@ -11,12 +11,14 @@
  */
 
 import type { AmigaLpfStage } from './amiga-lpf-stage';
+import type { EqStage } from './eq-stage';
 import type { LimiterStage } from './limiter-stage';
 import type { PostFxRack } from './post-fx-rack';
 
 export interface PostFxRegistration {
   rack: PostFxRack;
   amigaLpf: AmigaLpfStage;
+  equalizer: EqStage;
   limiter: LimiterStage;
 }
 

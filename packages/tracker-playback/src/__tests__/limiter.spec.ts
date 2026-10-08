@@ -67,6 +67,7 @@ function createMockFactory() {
       compressor = new MockNode();
       return compressor as unknown as DynamicsCompressorNode;
     },
+    createBiquadFilter: () => new MockNode() as unknown as BiquadFilterNode,
     createWaveShaper: () => {
       shaper = new MockNode();
       return shaper as unknown as WaveShaperNode;

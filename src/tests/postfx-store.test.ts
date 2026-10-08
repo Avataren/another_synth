@@ -58,6 +58,10 @@ function castRegistration(
   return {
     rack: rack as unknown as PostFxRegistration['rack'],
     amigaLpf: stage as unknown as PostFxRegistration['amigaLpf'],
+    equalizer: {
+      setParams: vi.fn(),
+      setBypassed: vi.fn(),
+    } as unknown as PostFxRegistration['equalizer'],
     limiter: limiter as unknown as PostFxRegistration['limiter'],
   };
 }

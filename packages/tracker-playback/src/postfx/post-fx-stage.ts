@@ -33,6 +33,7 @@ export interface AudioNodeFactory {
   createIIRFilter(feedforward: number[], feedback: number[]): IIRFilterNode;
   createDynamicsCompressor(): DynamicsCompressorNode;
   createWaveShaper(): WaveShaperNode;
+  createBiquadFilter(): BiquadFilterNode;
 }
 
 /** Real-node factory used everywhere outside tests. */
@@ -43,5 +44,6 @@ export function createDefaultNodeFactory(context: BaseAudioContext): AudioNodeFa
       context.createIIRFilter(feedforward, feedback),
     createDynamicsCompressor: () => context.createDynamicsCompressor(),
     createWaveShaper: () => context.createWaveShaper(),
+    createBiquadFilter: () => context.createBiquadFilter(),
   };
 }

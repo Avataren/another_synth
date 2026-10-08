@@ -25,12 +25,15 @@ import { ref } from 'vue';
 import {
   AMIGA_LPF_DEFAULT_PARAMS,
   DEFAULT_MODULE_FORMAT,
+  EQ_DEFAULT_PARAMS,
   LIMITER_DEFAULT_PARAMS,
   getPostFxRack,
   onPostFxRackRegistered,
   sanitizeAmigaLpfParams,
+  sanitizeEqParams,
   sanitizeLimiterParams,
   type AmigaLpfParams,
+  type EqParams,
   type LimiterParams,
   type ModuleFormat,
   type PostFxRegistration,
@@ -87,6 +90,12 @@ export const usePostFxStore = defineStore('postFx', () => {
   );
   const limiterParams = ref<LimiterParams>(
     sanitizeLimiterParams(settingsStore.settings.postFxLimiterParams ?? {}),
+  );
+
+  /** The graphic EQ: a persisted toggle plus ten band gains. */
+  const eqEnabled = ref<boolean>(settingsStore.settings.postFxEqEnabled ?? false);
+  const eqParams = ref<EqParams>(
+    sanitizeEqParams(settingsStore.settings.postFxEqParams ?? {}),
   );
 
   /**
@@ -158,6 +167,11 @@ export const usePostFxStore = defineStore('postFx', () => {
   onPostFxRackRegistered((registration: PostFxRegistration) => {
     registration.amigaLpf.setParams(params.value);
     applyModeToStage(registration.rack.contextTime());
+    registration.equalizer.setParams(eqParams.value);
+    registration.equalizer.setBypassed(
+      !eqEnabled.value,
+      registration.rack.contextTime(),
+    );
     registration.limiter.setParams(limiterParams.value);
     registration.limiter.setBypassed(
       !limiterEnabled.value,
@@ -277,6 +291,23 @@ export const usePostFxStore = defineStore('postFx', () => {
     setLimiterParams({ ...LIMITER_DEFAULT_PARAMS });
   }
 
+  function setEqEnabled(enabled: boolean): void {
+    if (eqEnabled.value === enabled) return;
+    eqEnabled.value = enabled;
+    settingsStore.updateSetting('postFxEqEnabled', enabled);
+    getPostFxRack()?.equalizer.setBypassed(!enabled, currentAudioTime());
+  }
+
+  function setEqParams(next: EqParams): void {
+    eqParams.value = sanitizeEqParams(next);
+    settingsStore.updateSetting('postFxEqParams', eqParams.value);
+    getPostFxRack()?.equalizer.setParams(eqParams.value);
+  }
+
+  function resetEqToDefaults(): void {
+    setEqParams({ gainsDb: [...EQ_DEFAULT_PARAMS.gainsDb] });
+  }
+
   /**
    * Gain reduction in dB (<= 0) for the meter. 0 when the stage is bypassed
    * or the rack does not exist yet (headless tests, pre-boot UI).
@@ -309,6 +340,11 @@ export const usePostFxStore = defineStore('postFx', () => {
     setLimiterParams,
     resetLimiterParamsToDefaults,
     limiterReduction,
+    eqEnabled,
+    eqParams,
+    setEqEnabled,
+    setEqParams,
+    resetEqToDefaults,
     engineActive,
     songHasAmigaChain,
     resolveLedAt,

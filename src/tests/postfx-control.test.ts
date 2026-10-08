@@ -47,6 +47,10 @@ beforeEach(() => {
       setBypassed: () => undefined,
       cancelPending: () => undefined,
     } as never,
+    equalizer: {
+      setParams: () => undefined,
+      setBypassed: () => undefined,
+    } as never,
     limiter: {
       setParams: () => undefined,
       setBypassed: () => undefined,
