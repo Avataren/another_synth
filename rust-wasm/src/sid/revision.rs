@@ -98,8 +98,10 @@ impl DieRevision {
     }
 }
 
-/// The revision `SidModel::Sid6581` plays. The one swap point.
-pub const SID6581_REVISION: DieRevision = DieRevision::GtRef;
+/// The revision `SidModel::Sid6581` plays. The one swap point. R3, a measured
+/// real chip and the most common revision; GT_REF (GoatTracker's playback)
+/// stays selectable but is not hardware.
+pub const SID6581_REVISION: DieRevision = DieRevision::R3;
 
 /// The profile `SidModel::Sid6581` plays.
 pub const fn profile_6581() -> &'static RevisionProfile {

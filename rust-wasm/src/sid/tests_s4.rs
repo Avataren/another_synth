@@ -509,7 +509,7 @@ fn sid_player_shell_switches_the_6581_revision_while_playing() {
     song.model = SidModel::Sid6581;
     let bytes = song.to_bytes();
     let mut p = SidPlayer::new(&bytes, 44_100.0).unwrap();
-    assert_eq!(p.revision(), "gt");
+    assert_eq!(p.revision(), "r3");
     p.play();
     let (mut out, mut a, mut b, mut c) = (
         vec![0.0; 4096],

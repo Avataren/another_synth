@@ -101,7 +101,7 @@ export class SidSongTransport {
   private previewSeq = 0;
   private previewOutputListeners = new Set<(node: AudioNode | null) => void>();
   /** The 6581 revision both worklets play (the user's setting). */
-  private revision: Sid6581Revision = 'gt';
+  private revision: Sid6581Revision = 'r3';
 
   constructor(private readonly deps: SidSongTransportDeps) {}
 

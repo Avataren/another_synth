@@ -143,7 +143,7 @@ export class SidProcessorCore {
   private stopAtEnd = false;
   private mute = 0;
   private solo = 0;
-  private revision: Sid6581Revision = 'gt';
+  private revision: Sid6581Revision = 'r3';
   private preview = false;
   private loop: { start: number; end: number } | null = null;
   private framesSincePosition = 0;

@@ -58,17 +58,17 @@ const emit = defineEmits<{ select: [model: SidChipModel]; 'select-revision': [re
 
 const SID_CHIP_MODELS: readonly SidChipModel[] = ['8580', '6581'];
 
-/** The 6581 revisions offered, in the order of the chips' brightness after the default. */
+/** The 6581 revisions offered, default first, then the chips by brightness, GoatTracker's filter last. */
 const REVISIONS: readonly { value: Sid6581Revision; label: string; title: string }[] = [
-  { value: 'gt', label: 'GT', title: "GoatTracker's reSID filter, what most GT songs were mixed against" },
-  { value: 'r3', label: 'R3', title: 'Real R3 chip (1983), bright' },
+  { value: 'r3', label: 'R3', title: 'Real R3 chip (1983), bright (default)' },
   { value: 'r2', label: 'R2', title: 'Real R2 chip (1982), bright' },
   { value: 'r4', label: 'R4', title: 'Real R4 chip (1987), dark' },
+  { value: 'gt', label: 'GT', title: "GoatTracker's reSID filter, not a real chip: what GT songs were mixed against" },
 ];
 
 const REVISION_TITLE =
   "Which 6581 plays the song. The 6581's filter differed from chip to chip: GT is GoatTracker's " +
-  'filter; R2, R3 and R4 are real chips measured from recordings. Heard at once, for every 6581 song.';
+  'filter, not a real chip; R2, R3 and R4 are real chips measured from recordings. Heard at once, for every 6581 song.';
 
 function chooseRevision(revision: Sid6581Revision): void {
   if (revision !== props.revision) emit('select-revision', revision);

@@ -5799,7 +5799,7 @@ var SidProcessorCore = class {
     __publicField(this, "stopAtEnd", false);
     __publicField(this, "mute", 0);
     __publicField(this, "solo", 0);
-    __publicField(this, "revision", "gt");
+    __publicField(this, "revision", "r3");
     __publicField(this, "preview", false);
     __publicField(this, "loop", null);
     __publicField(this, "framesSincePosition", 0);

@@ -359,7 +359,7 @@ impl Filter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sid::revision::R4AR;
+    use crate::sid::revision::{GT_REF, R4AR};
 
     const SR: f64 = 44_100.0;
 
@@ -396,10 +396,11 @@ mod tests {
     fn effective_cutoff_has_gts_4_khz_delta_mode_ceiling_on_both_models() {
         // GT2 plays through reSID in its delta-clock mode, which limits the
         // cutoff to 4 kHz; the maps stay unclamped (register_maps and
-        // map_6581_endpoints pin 12 kHz / 18 kHz at 0x7FF).
+        // map_6581_endpoints pin 12 kHz / 18 kHz at 0x7FF). The 6581 side is
+        // the GT reference profile: the hardware revisions have no ceiling.
         for model in [SidModel::Sid8580, SidModel::Sid6581] {
             for sr in [44_100.0, 48_000.0] {
-                let mut f = Filter::with_model(model, sr);
+                let mut f = Filter::with_profile(model, &GT_REF, sr);
                 f.set(0x7FF, 0);
                 assert_eq!(f.effective_cutoff(), 4000.0, "{model:?} sr {sr} reg 0x7FF");
                 assert!(
@@ -408,18 +409,26 @@ mod tests {
                 );
                 // First register whose map exceeds 4 kHz clamps; below passes.
                 let over = (0..=0x7FFu16)
-                    .find(|&r| cutoff_hz_for(model, r) > 4000.0)
+                    .find(|&r| cutoff_hz_for_profile(model, r) > 4000.0)
                     .unwrap();
                 f.set(over, 0);
                 assert_eq!(f.effective_cutoff(), 4000.0, "{model:?} reg {over:#x}");
                 f.set(over - 1, 0);
                 assert_eq!(
                     f.effective_cutoff(),
-                    cutoff_hz_for(model, over - 1),
+                    cutoff_hz_for_profile(model, over - 1),
                     "{model:?} reg {:#x}",
                     over - 1
                 );
             }
+        }
+    }
+
+    /// The cutoff map of `model`, the 6581 on the GT reference profile.
+    fn cutoff_hz_for_profile(model: SidModel, reg: u16) -> f64 {
+        match model {
+            SidModel::Sid6581 => cutoff_hz_6581_with(&GT_REF, reg),
+            _ => cutoff_hz_for(model, reg),
         }
     }
 
@@ -567,18 +576,18 @@ mod tests {
         // one deliberate drop is 0x3FF -> 0x400 (~6 kHz -> ~4.6 kHz), the
         // FC_HI $7F/$80 step.
         for r in (0..0x3FFu16).chain(0x400..0x7FF) {
-            assert!(cutoff_hz_6581(r + 1) > cutoff_hz_6581(r), "reg {r:#05x}");
+            assert!(cutoff_hz_6581_with(&GT_REF, r + 1) > cutoff_hz_6581_with(&GT_REF, r), "reg {r:#05x}");
         }
-        assert!(cutoff_hz_6581(0x400) < cutoff_hz_6581(0x3FF) * 0.85);
+        assert!(cutoff_hz_6581_with(&GT_REF, 0x400) < cutoff_hz_6581_with(&GT_REF, 0x3FF) * 0.85);
         // Bottom quarter: the 6581 barely moves (220 -> ~420 Hz) where the
         // 8580 sweeps 30 -> ~3 kHz; the top ends 18 kHz vs 12 kHz.
-        assert!(cutoff_hz_6581(0x200) / cutoff_hz_6581(0) < 2.0);
+        assert!(cutoff_hz_6581_with(&GT_REF, 0x200) / cutoff_hz_6581(0) < 2.0);
         assert!(cutoff_hz(0x200) / cutoff_hz(0) > 100.0);
         // Hand values: reg 0 -> 220 vs 30 (x7.3); 0x100 -> sqrt(220 * 420)
         // = 304 vs 1527 (x5.0); 0x200 -> 420 vs 3024 (x7.2); 0x7FF -> 18000
         // vs 12000 (x1.5).
         for r in [0u16, 0x100, 0x200, 0x7FF] {
-            let (a, b) = (cutoff_hz_6581(r), cutoff_hz(r));
+            let (a, b) = (cutoff_hz_6581_with(&GT_REF, r), cutoff_hz(r));
             assert!((a / b).max(b / a) > 1.45, "reg {r}: 6581 {a} vs 8580 {b}");
         }
         assert_eq!(cutoff_hz_for(SidModel::Sid8580, 0x333), cutoff_hz(0x333));

@@ -183,11 +183,11 @@ export interface UserSettings {
   };
 
   /**
-   * Which 6581 a SID song plays on (8580 songs are unaffected). `gt` is the
-   * filter GoatTracker's playback has, what GT songs were mixed against, so it
-   * is the default; `r2`, `r3` and `r4` are real chips measured from
-   * recordings (rust-wasm/src/sid/revision.rs), brighter to darker: r3 > r2 >
-   * r4. Applied live, mid-song.
+   * Which 6581 a SID song plays on (8580 songs are unaffected). `r2`, `r3` and
+   * `r4` are real chips measured from recordings (rust-wasm/src/sid/revision.rs),
+   * brighter to darker: r3 > r2 > r4; `r3`, the most common revision, is the
+   * default. `gt` is the filter GoatTracker's playback has (not a real chip),
+   * for songs mixed against it. Applied live, mid-song.
    */
   sid6581Revision: Sid6581Revision;
   /**
@@ -281,7 +281,7 @@ export const defaultSettings: UserSettings = {
     ceilingDb: -1.5,
     releaseMs: 150,
   },
-  sid6581Revision: 'gt',
+  sid6581Revision: 'r3',
   sidChipPreference: null,
   jukeboxRandomSubsong: true,
 };

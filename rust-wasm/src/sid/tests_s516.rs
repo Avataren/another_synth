@@ -192,17 +192,16 @@ fn a_cutoff_row_straight_after_a_set_row_is_taken_on_the_same_frame() {
 // ---------------------------------------------------------------------------
 
 use super::filter::{cutoff_hz_6581_with, resonance_q_6581_with};
-use super::revision::{DieRevision, GT_REF, R4AR};
+use super::revision::{DieRevision, GT_REF, R3, R4AR};
 use super::Chip;
 
 #[test]
-fn the_default_6581_is_the_gt_reference_and_r4ar_is_still_a_profile_a_chip_can_take() {
+fn the_default_6581_is_r3_and_gt_ref_and_r4ar_are_still_profiles_a_chip_can_take() {
     let d = Chip::new(SidModel::Sid6581).unwrap();
     let r = Chip::with_profile(SidModel::Sid6581, DEFAULT_SAMPLE_RATE, &R4AR).unwrap();
     let g = Chip::with_profile(SidModel::Sid6581, DEFAULT_SAMPLE_RATE, &GT_REF).unwrap();
-    for c in [&d, &g] {
-        assert_eq!(c.filter().cutoff(), cutoff_hz_6581_with(&GT_REF, 0));
-    }
+    assert_eq!(d.filter().cutoff(), cutoff_hz_6581_with(&R3, 0));
+    assert_eq!(g.filter().cutoff(), cutoff_hz_6581_with(&GT_REF, 0));
     assert_eq!(r.filter().cutoff(), cutoff_hz_6581_with(&R4AR, 0));
     assert_eq!(GT_REF.revision, DieRevision::GtRef);
 }
