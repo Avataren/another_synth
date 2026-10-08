@@ -6,7 +6,16 @@
   -->
   <div class="eq-editor">
     <div class="eq-header">
-      <span class="eq-title">Equalizer</span>
+      <select
+        class="eq-presets"
+        aria-label="Equalizer preset"
+        :value="currentPreset?.id ?? 'custom'"
+        @change="onPreset($event)"
+      >
+        <option v-if="!currentPreset" value="custom" disabled>Custom</option>
+        <option v-for="p in EQ_PRESETS" :key="p.id" :value="p.id">{{ p.label }}</option>
+      </select>
+      <span class="eq-title"></span>
       <button
         type="button"
         class="eq-toggle"
@@ -15,8 +24,13 @@
       >
         {{ enabled ? 'ON' : 'OFF' }}
       </button>
-      <button type="button" class="eq-reset" @click="postFxStore.resetEqToDefaults()">
-        Flat
+      <button
+        type="button"
+        class="eq-reset"
+        title="Reset all bands to 0 dB"
+        @click="postFxStore.resetEqToDefaults()"
+      >
+        Reset
       </button>
     </div>
     <svg
@@ -83,9 +97,11 @@ import { computed, ref } from 'vue';
 import {
   EQ_BAND_FREQUENCIES,
   EQ_MAX_GAIN_DB,
+  EQ_PRESETS,
   EQ_MIN_GAIN_DB,
   eqEffectiveGains,
   eqResponseDb,
+  matchEqPreset,
 } from '@another-synth/tracker-playback';
 import { usePostFxStore } from 'src/stores/post-fx-store';
 
@@ -99,6 +115,17 @@ const CURVE_POINTS = 160;
 const postFxStore = usePostFxStore();
 const enabled = computed(() => postFxStore.eqEnabled);
 const gains = computed(() => postFxStore.eqParams.gainsDb);
+
+const currentPreset = computed(() => matchEqPreset({ gainsDb: gains.value }));
+
+function onPreset(event: Event): void {
+  const preset = EQ_PRESETS.find(
+    (p) => p.id === (event.target as HTMLSelectElement).value,
+  );
+  if (!preset) return;
+  postFxStore.setEqParams({ gainsDb: [...preset.gainsDb] });
+  if (!postFxStore.eqEnabled) postFxStore.setEqEnabled(true);
+}
 
 const svgRef = ref<SVGSVGElement | null>(null);
 const dragIndex = ref<number | null>(null);
@@ -216,6 +243,15 @@ function onKey(index: number, event: KeyboardEvent): void {
   letter-spacing: 0.04em;
   padding: 2px 8px;
   cursor: pointer;
+}
+.eq-presets {
+  background: #14171b;
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 4px;
+  max-width: 150px;
 }
 .eq-toggle.active {
   background: rgba(120, 220, 160, 0.14);
