@@ -32,7 +32,7 @@ describe('eq-math', () => {
   it('shelves reach their gain well past the corner', () => {
     const gains = new Array<number>(EQ_BAND_COUNT).fill(0);
     gains[0] = 9;
-    const r = eqResponseDb({ gainsDb: gains }, [20, 10000]);
+    const r = eqResponseDb({ gainsDb: gains }, [10, 10000]);
     expect(r[0]).toBeGreaterThan(8);
     expect(Math.abs(r[1]!)).toBeLessThan(0.3);
   });

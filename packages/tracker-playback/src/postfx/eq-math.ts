@@ -79,8 +79,9 @@ function biquadCoefficients(
     a1 = -2 * cos;
     a2 = 1 - alpha / A;
   } else {
-    // Shelves use the same alpha with S derived from Q, as Web Audio does.
-    const k = 2 * Math.sqrt(A) * alpha;
+    // Web Audio ignores Q on shelves and uses shelf slope S = 1, which makes
+    // alpha = sin(w0) / sqrt(2) -- NOT the peaking alpha above.
+    const k = 2 * Math.sqrt(A) * (Math.sin(w0) / Math.SQRT2);
     if (type === 'lowshelf') {
       b0 = A * (A + 1 - (A - 1) * cos + k);
       b1 = 2 * A * (A - 1 - (A + 1) * cos);
